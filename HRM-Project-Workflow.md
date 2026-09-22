@@ -4,13 +4,14 @@
 
 **Project:** HRM System for Technology Retail Business (TechZone)  
 **Team:**
-- Huỳnh Viễn Thông (3123411287) 
+- Huỳnh Viễn Thông (3123411287)
 - Lê Phan Nguyên Hải (3123411081)
 - Võ Hoàng Bảo (3123411030)
 - Đoàn Trung Kiên (3123411166)
 
 **Tech Stack:**
-- Frontend: React + TypeScript + Vite
+- Frontend Web: React + TypeScript + Vite
+- Frontend Mobile: React Native (Expo)
 - Backend: Python + FastAPI
 - Database: Supabase PostgreSQL
 - AI: LangGraph + LangChain + pgvector (DO LAST)
@@ -22,9 +23,9 @@
 ```
 WEEK 1: Foundation        → Setup + DB + Auth
 WEEK 2: Core Modules      → Personnel + Leave + Attendance  
-WEEK 3: Business Modules  → Sales + Payroll + Payslip
-WEEK 4: Reports & Polish  → Dashboard + UI + Export
-WEEK 5: Integration       → Testing + Demo
+WEEK 3: Business Modules → Sales + Payroll + Payslip
+WEEK 4: Reports & Polish → Dashboard + UI + Export
+WEEK 5: Integration      → Testing + Demo
 ```
 
 ---
@@ -36,14 +37,16 @@ WEEK 5: Integration       → Testing + Demo
 ```
 SGU_HRM-Project/
 ├── backend/              # FastAPI
-│   ├── app/api/          # /auth, /employees, /leave, /attendance, /payroll, /reports
-│   ├── app/core/         # config, security
-│   ├── app/db/           # supabase connection
+│   ├── app/api/         # /auth, /employees, /leave, /attendance, /payroll, /reports
+│   ├── app/core/        # config, security
+│   ├── app/db/          # supabase connection
 │   ├── requirements.txt
 │   └── main.py
-├── frontend/             # React + Vite
+├── frontend-web/        # React Web (Vite)
 │   └── src/
-└── supabase/migrations/  # SQL scripts
+├── frontend-mobile/     # React Native (Expo)
+│   └── App.tsx
+└── supabase/migrations/ # SQL scripts
 ```
 
 ### 1.2 Database Schema (23 Tables)
@@ -65,6 +68,18 @@ SGU_HRM-Project/
 
 **Test Accounts:** `admin`, `hr_manager`, `store_mgr_q1`, `staff_dung`, `tech_em` (password: `123456`)
 
+### 1.4 Frontend Web Setup
+- [ ] Vite + React + TypeScript project
+- [ ] Install: React Router, TailwindCSS, Recharts, TanStack Query
+- [ ] Setup project structure
+- [ ] Create base layout components
+
+### 1.5 Frontend Mobile Setup (React Native / Expo)
+- [ ] Expo project setup
+- [ ] Install: React Navigation, NativeWind/Tailwind, Axios
+- [ ] Setup project structure (shared API service layer)
+- [ ] Create base navigation structure
+
 ---
 
 ## WEEK 2: Core Modules
@@ -77,10 +92,16 @@ SGU_HRM-Project/
 - [ ] Contract CRUD
 - [ ] POST `/api/promotions` - Thăng cấp + auto role change
 
-**Frontend:**
+**Web Frontend:**
 - [ ] Employee list (filter by store/department/status)
 - [ ] Add/Edit/Delete employee
 - [ ] Promotion form
+
+**Mobile Frontend:**
+- [ ] Employee list (basic view)
+- [ ] Add employee form
+- [ ] Employee detail view
+- [ ] Manager: View branch employees
 
 ### 2.2 Leave Requests (2-Level Approval)
 
@@ -94,11 +115,19 @@ SGU_HRM-Project/
 - [ ] POST `/api/leave-requests/{id}/approve-level2` - HR Manager
 - [ ] POST `/api/leave-requests/{id}/reject`
 
-**Frontend:**
+**Web Frontend:**
 - [ ] Submit leave request form
 - [ ] Leave balance display
 - [ ] Pending requests list (Manager)
 - [ ] Approve/Reject buttons
+- [ ] Calendar view of leaves
+
+**Mobile Frontend:**
+- [ ] Submit leave request form
+- [ ] Leave balance display
+- [ ] My leave requests list
+- [ ] Manager: Pending requests list + Approve/Reject
+- [ ] Push notifications for status updates
 
 ### 2.3 Attendance
 
@@ -111,10 +140,20 @@ SGU_HRM-Project/
 - [ ] POST `/api/attendances/check-out`
 - [ ] POST `/api/shift-schedules` - Assign shift
 
-**Frontend:**
+**Web Frontend:**
 - [ ] Check-in/Check-out button
 - [ ] My attendance calendar
-- [ ] Manager: Daily attendance + Shift roster
+- [ ] My payroll & payslip
+- [ ] My leave requests
+- [ ] My profile
+- [ ] Manager: Daily attendance + Shift roster + Approvals
+
+**Mobile Frontend:**
+- [ ] **Check-in/Check-out (PRIMARY)**
+- [ ] My attendance history
+- [ ] My shift schedule
+- [ ] Manager: View branch attendance
+- [ ] Manager: Approve pending attendance edits
 
 ---
 
@@ -160,13 +199,23 @@ NET = GROSS - Insurance (10.5%) - Penalty
 **API:**
 - [ ] GET `/api/payroll/generate/{month}`
 - [ ] GET `/api/payrolls/{id}` - Detail with breakdown
+- [ ] GET `/api/payrolls/employee/{id}/annual` - Annual summary
 
-**Frontend:**
+### 3.3 Payroll & Payslip
+
+**Web Frontend:**
 - [ ] Run payroll button (HR)
 - [ ] Payroll detail with formula
 - [ ] View monthly payslip
 - [ ] **Print phiếu lương tháng (PDF)**
 - [ ] **Print bảng lương năm (PDF)**
+
+**Mobile Frontend:**
+- [ ] View my payslip (monthly)
+- [ ] View salary breakdown
+- [ ] Annual income summary
+- [ ] **Print/In phiếu lương tháng**
+- [ ] **Print/In bảng lương năm**
 
 ---
 
@@ -180,15 +229,31 @@ NET = GROSS - Insurance (10.5%) - Penalty
 - [ ] By salary range (<7M, 7-12M, 12-20M, >20M)
 - [ ] By seniority (<1yr, 1-3yr, >3yr)
 
-**Frontend:**
+**Web Frontend:**
 - [ ] Dashboard with charts (Recharts)
 - [ ] Export PDF/Excel
 
+**Mobile Frontend:**
+- [ ] Basic dashboard view
+- [ ] Charts (simplified)
+
 ### 4.2 UI/UX Polish
 
+**Web Frontend:**
 - [ ] Responsive design
 - [ ] Role-based navigation
 - [ ] Print-optimized CSS
+
+**Mobile Frontend:**
+- [ ] Touch-friendly UI components
+- [ ] Offline support (cache attendance)
+- [ ] Push notifications setup
+
+### 4.3 Shared API Service
+- [ ] Create shared API service layer (TypeScript)
+- [ ] Use same endpoints for Web & Mobile
+- [ ] Handle token refresh (Supabase Auth)
+- [ ] Error handling utilities
 
 ---
 
@@ -201,27 +266,29 @@ NET = GROSS - Insurance (10.5%) - Penalty
 - [ ] Test print functionality
 - [ ] Fix bugs
 
+**Mobile Testing:**
+- [ ] Test check-in/out on iOS/Android
+- [ ] Test offline mode
+- [ ] Test push notifications
+
 ### 5.2 Demo Scenarios
 
-**Step 1: Admin (`admin`)**
+**Step 1: Admin (`admin`)** - Web only
 - Show RBAC permissions
 - Show Audit Log
 
-**Step 2: Employee (`staff_dung`)**
-- Check-in attendance
-- Submit leave request
-- View salary (220M sales)
-- **Print phiếu lương tháng**
+**Step 2: Employee (`staff_dung`)** - Web + Mobile
+- **Web:** View profile, attendance history, payroll
+- **Mobile:** Check-in/out, Submit leave, View salary
+- **Demo print:** Phiếu lương tháng (Mobile)
 
-**Step 3: Store Manager (`store_mgr_q1`)**
-- View only Q1 employees
-- Approve leave (Level 1)
+**Step 3: Store Manager (`store_mgr_q1`)** - Web + Mobile
+- **Web:** Full branch management, view employees
+- **Mobile:** Quick approve leave (Level 1), View branch attendance
 
-**Step 4: HR Manager (`hr_manager`)**
-- Approve leave (Level 2)
-- **Promote employee** → show permission change
-- Run payroll
-- Show Dashboard charts
+**Step 4: HR Manager (`hr_manager`)** - Web + Mobile
+- **Web:** Run payroll, Dashboard charts, Promote employee
+- **Mobile:** Quick approve leave (Level 2), Push notifications
 
 ---
 
@@ -229,11 +296,11 @@ NET = GROSS - Insurance (10.5%) - Penalty
 
 | Week | Thông | Hải | Bảo | Kiên |
 |------|-------|-----|-----|------|
-| 1 | Setup + DB | Setup + Auth | Frontend scaffold | DB migration |
-| 2 | Auth + RBAC | Personnel | Leave | Attendance |
-| 3 | Payroll API | Sales/Commission | Payroll FE | Payslip/Print |
-| 4 | Reports API | Dashboard | UI Polish | Export |
-| 5 | Integration | Demo prep | Demo prep | Testing |
+| 1 | Setup + DB  | Setup + Auth    | Web scaffold       | Mobile scaffold |
+| 2 | Auth + RBAC | Personnel       | Leave (Web)        | Leave (Mobile - All roles) |
+| 3 | Payroll API | Sales/Commission| Payroll (Web)      | Attendance (Mobile) |
+| 4 | Reports API | Dashboard (Web) | UI Polish          | Dashboard (Mobile - All roles) |
+| 5 | Integration | Demo prep (Web) | Demo prep (Mobile) | Testing |
 
 ---
 
@@ -284,3 +351,40 @@ NET = GROSS - Insurance (10.5%) - Penalty
 
 - [ ] RAG for HR Policy Q&A
 - [ ] Employee retention prediction
+
+---
+
+## Mobile App Notes (React Native / Expo)
+
+### Why Expo?
+- Faster setup, easier deployment
+- Can generate iOS/Android APK without Mac
+- Push notifications support
+- Can share via QR code for testing
+
+### Key Mobile Features (Priority)
+
+**Employee Features:**
+1. **Check-in/Check-out** - Main mobile feature
+2. **View salary/payslip** - Employee self-service
+3. **Submit leave request** - On-the-go submission
+4. **View attendance history** - Personal records
+
+**Manager Features (Mobile):**
+1. **Approve leave requests (Level 1/2)** - Quick approval on the go
+2. **View branch attendance** - Daily overview
+3. **View branch reports** - Basic stats
+4. **Push notifications** - Alerts for pending approvals
+
+### Web vs Mobile Focus
+
+| Feature | Web (All Roles) | Mobile (All Roles) |
+|---------|-----------------|-------------------|
+| Personnel CRUD | ✓ Full | ✓ Full |
+| Leave approval | ✓ Full | ✓ Quick approve |
+| Attendance | ✓ Manage + Check-in | ✓ Check-in/out + View |
+| Payroll | ✓ Full | ✓ View/Print |
+| Reports | ✓ Full | ✓ View |
+| Notifications | ✗ | ✓ Push alerts |
+
+> **Note:** Cả Web và Mobile đều có đầy đủ chức năng cho tất cả roles. Mobile tập trung vào tính năng nhanh (check-in, quick approve).
