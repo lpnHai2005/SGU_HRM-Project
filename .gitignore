@@ -28,3 +28,11 @@ Desktop.ini
 
 # Temporary scratch & logs
 *.log
+.agents
+.agent
+.claude
+.codex
+.cursor
+.gemini
+.impeccable
+.opencode
