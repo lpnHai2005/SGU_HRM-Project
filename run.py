@@ -22,6 +22,7 @@ GREEN = "\033[92m"
 CYAN = "\033[96m"
 YELLOW = "\033[93m"
 MAGENTA = "\033[95m"
+RED = "\033[91m"
 RESET = "\033[0m"
 BOLD = "\033[1m"
 
@@ -39,6 +40,60 @@ def check_and_prepare_env():
     if not os.path.exists(frontend_env) and os.path.exists(frontend_env_example):
         print(f"{YELLOW}[SETUP] Đang sao chép .env.example -> frontend-web/.env{RESET}")
         shutil.copy(frontend_env_example, frontend_env)
+
+
+def check_and_install_dependencies(python_executable, npm_cmd):
+    """
+    Kiểm tra thư viện Python trong requirements.txt và thư viện Frontend (node_modules).
+    Nếu thiếu sẽ tự động chạy pip install / npm install.
+    """
+    print(f"\n{BOLD}🔍 [KIỂM TRA THƯ VIỆN & PHỤ THUỘC]{RESET}")
+
+    # 1. Kiểm tra Backend (requirements.txt)
+    req_file = os.path.join(BACKEND_DIR, "requirements.txt")
+    if os.path.exists(req_file):
+        test_cmd = [
+            python_executable,
+            "-c",
+            "import fastapi, uvicorn, sqlalchemy, asyncpg, pydantic, dotenv",
+        ]
+        test_result = subprocess.run(
+            test_cmd,
+            cwd=BACKEND_DIR,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+        if test_result.returncode != 0:
+            print(f"{YELLOW}⚠️  Phát hiện thiếu thư viện Python. Đang tự động chạy: pip install -r requirements.txt...{RESET}")
+            try:
+                subprocess.run(
+                    [python_executable, "-m", "pip", "install", "-r", "requirements.txt"],
+                    cwd=BACKEND_DIR,
+                    check=True,
+                )
+                print(f"{GREEN}✓ Đã cài đặt xong toàn bộ thư viện Python!{RESET}")
+            except subprocess.CalledProcessError as e:
+                print(f"{RED}❌ Lỗi khi cài đặt requirements.txt: {e}{RESET}")
+        else:
+            print(f"{GREEN}✓ Thư viện Python (requirements.txt): Đã cài đầy đủ.{RESET}")
+
+    # 2. Kiểm tra Frontend (node_modules)
+    node_modules_dir = os.path.join(FRONTEND_DIR, "node_modules")
+    if not os.path.exists(node_modules_dir):
+        print(f"{YELLOW}⚠️  Chưa tìm thấy thư mục node_modules. Đang tự động chạy: npm install...{RESET}")
+        try:
+            subprocess.run(
+                [npm_cmd, "install"],
+                cwd=FRONTEND_DIR,
+                shell=(os.name == "nt"),
+                check=True,
+            )
+            print(f"{GREEN}✓ Đã cài đặt xong node_modules cho Frontend!{RESET}")
+        except subprocess.CalledProcessError as e:
+            print(f"{RED}❌ Lỗi khi cài đặt npm install: {e}{RESET}")
+    else:
+        print(f"{GREEN}✓ Thư viện Frontend (node_modules): Đã cài đầy đủ.{RESET}")
 
 
 def stream_logs(pipe, prefix, color):
@@ -94,11 +149,13 @@ def main():
     # Tìm lệnh npm phù hợp
     npm_cmd = "npm.cmd" if os.name == "nt" else "npm"
     if not shutil.which(npm_cmd):
-        # Thử tìm lệnh npm thường
         npm_cmd = "npm"
         if not shutil.which(npm_cmd):
             print(f"{YELLOW}[CẢNH BÁO] Không tìm thấy lệnh 'npm' trong PATH.{RESET}")
             print(f"Vui lòng cài đặt Node.js từ https://nodejs.org/")
+
+    # Tự động kiểm tra và cài đặt requirements.txt & node_modules nếu thiếu
+    check_and_install_dependencies(python_executable, npm_cmd)
 
     processes = []
 
