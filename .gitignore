@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+backend/venv/
+backend/.venv/
+
+# Environment Variables & Secrets
+.env
+backend/.env
+**/.env
+frontend/.env.local
+
+# Build outputs
+frontend/dist/
+*.pyc
+__pycache__/
+.pytest_cache/
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Temporary scratch & logs
+*.log
