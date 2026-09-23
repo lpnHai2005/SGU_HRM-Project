@@ -10,14 +10,17 @@ Dự án Hệ thống thông tin Quản lý Nhân sự (HRM) dành cho chuỗi b
 
 ---
 
-## 🚀 Hướng Dẫn Cài Đặt & Chạy Dự Án
+## 🚀 Cách Chạy Dự Án Nhanh Nhất (Chỉ 1 lệnh)
 
-### Yêu Cầu Hệ Thống
-- **Python**: 3.10 trở lên
-- **Node.js**: 18 trở lên (khuyên dùng Node 20 hoặc 22)
-- **Git**
+Tại thư mục gốc dự án:
+```powershell
+python run.py
+```
+*(Script sẽ tự động chạy song song cả Backend FastAPI lẫn Frontend React Vite trong cùng 1 terminal, và tự động dọn dẹp tắt hết khi bạn nhấn `Ctrl + C`).*
 
 ---
+
+## 🛠️ Cách Chạy Từng Phần Riêng Biệt (Thủ công)
 
 ### 1. Cấu Hình & Chạy Backend (FastAPI)
 
