@@ -55,7 +55,7 @@ def check_and_install_dependencies(python_executable, npm_cmd):
         test_cmd = [
             python_executable,
             "-c",
-            "import fastapi, uvicorn, sqlalchemy, asyncpg, pydantic, dotenv",
+            "import fastapi, uvicorn, sqlalchemy, asyncpg, pydantic, dotenv, openpyxl",
         ]
         test_result = subprocess.run(
             test_cmd,
