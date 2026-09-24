@@ -395,7 +395,79 @@ export const payrollApi = {
   getProjects: async (): Promise<any[]> => {
     return api.get('/payrolls/projects/list');
   },
+
+  getPayslip: async (payrollId: number): Promise<any> => {
+    return api.get(`/payrolls/${payrollId}/payslip`);
+  },
+
+  updateStatus: async (payrollId: number, paymentStatus: string): Promise<any> => {
+    return api.put(`/payrolls/${payrollId}/status`, { payment_status: paymentStatus });
+  },
+
+  confirmAll: async (period: string): Promise<any> => {
+    return api.post('/payrolls/confirm-all', { salary_period: period, payment_status: 'CONFIRMED' });
+  },
+
+  payAll: async (period: string): Promise<any> => {
+    return api.post('/payrolls/pay-all', { salary_period: period, payment_status: 'PAID' });
+  },
+
+  getMySales: async (period?: string): Promise<any> => {
+    return api.get('/payrolls/sales-records/me', period ? { period } : undefined);
+  },
+
+  getMyCommission: async (period?: string): Promise<any> => {
+    return api.get('/payrolls/commissions/me', period ? { period } : undefined);
+  },
+
+  getExportExcelUrl: (period?: string, storeId?: number): string => {
+    const params = new URLSearchParams();
+    if (period) params.append('period', period);
+    if (storeId) params.append('store_id', String(storeId));
+    return `${API_BASE_URL}/payrolls/export/excel?${params.toString()}`;
+  },
 };
+
+// ============================================
+// Report & Analytics API
+// ============================================
+
+export const reportApi = {
+  getDashboardStats: async (period?: string): Promise<any> => {
+    return api.get('/reports/dashboard-stats', period ? { period } : undefined);
+  },
+
+  getMonthlyStatus: async (): Promise<any> => {
+    return api.get('/reports/monthly-status');
+  },
+
+  getDemographics: async (storeId?: number): Promise<any> => {
+    return api.get('/reports/demographics', storeId ? { store_id: storeId } : undefined);
+  },
+
+  getPayrollFund: async (period?: string): Promise<any> => {
+    return api.get('/reports/payroll-fund', period ? { period } : undefined);
+  },
+
+  getSalesPerformance: async (params?: { period?: string; store_id?: number }): Promise<any> => {
+    return api.get('/reports/sales-performance', params);
+  },
+
+  getAuditLogs: async (limit?: number, action?: string): Promise<any[]> => {
+    return api.get<any[]>('/reports/audit-logs', { limit: limit || 50, action });
+  },
+
+  getExportDemographicsExcelUrl: (storeId?: number): string => {
+    const params = storeId ? `?store_id=${storeId}` : '';
+    return `${API_BASE_URL}/reports/export/demographics/excel${params}`;
+  },
+
+  getExportPayrollFundExcelUrl: (period?: string): string => {
+    const params = period ? `?period=${period}` : '';
+    return `${API_BASE_URL}/reports/export/payroll-summary/excel${params}`;
+  },
+};
+
 
 // ============================================
 // Role & Permission API
