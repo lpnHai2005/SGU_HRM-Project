@@ -419,16 +419,92 @@ class PayrollOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class SalesRecordUpdate(BaseModel):
+    phone_revenue: Optional[float] = None
+    laptop_revenue: Optional[float] = None
+    accessory_revenue: Optional[float] = None
+    target_kpi: Optional[float] = None
+
+
+class CommissionOut(BaseModel):
+    commission_id: int
+    sale_record_id: Optional[int] = None
+    employee_id: int
+    employee_code: Optional[str] = None
+    employee_name: Optional[str] = None
+    salary_period: str
+    commission_rate: Optional[float] = 1.00
+    commission_amount: float = 0.0
+    kpi_bonus_amount: float = 0.0
+    notes: Optional[str] = None
+    phone_revenue: Optional[float] = 0.0
+    laptop_revenue: Optional[float] = 0.0
+    accessory_revenue: Optional[float] = 0.0
+    total_revenue: Optional[float] = 0.0
+    kpi_achievement_rate: Optional[float] = 0.0
+    created_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PayrollStatusUpdate(BaseModel):
+    payment_status: str = Field(..., json_schema_extra={"example": "CONFIRMED"}, description="DRAFT, CONFIRMED, PAID")
+    payment_date: Optional[date] = None
+
+
+class BatchPayrollStatusRequest(BaseModel):
+    salary_period: str = Field(..., json_schema_extra={"example": "2026-09"})
+    payment_status: str = Field("CONFIRMED", json_schema_extra={"example": "CONFIRMED"}, description="CONFIRMED or PAID")
+    payment_date: Optional[date] = None
+
+
 # ===================================================================================
 # 9. PROJECT SCHEMAS
 # ===================================================================================
+
+class ProjectCreate(BaseModel):
+    project_code: str
+    project_name: str
+    description: Optional[str] = None
+    start_date: date
+    end_date: Optional[date] = None
+    status: Optional[str] = "IN_PROGRESS"
+    budget: Optional[float] = 0.0
+
+
+class ProjectUpdate(BaseModel):
+    project_name: Optional[str] = None
+    description: Optional[str] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    status: Optional[str] = None
+    budget: Optional[float] = None
+
+
+class ProjectMemberCreate(BaseModel):
+    employee_id: int
+    project_role: Optional[str] = "MEMBER"
+    project_allowance: Optional[float] = 0.0
+    joined_date: date
+    left_date: Optional[date] = None
+    is_active: Optional[bool] = True
+
+
+class ProjectMemberUpdate(BaseModel):
+    project_role: Optional[str] = None
+    project_allowance: Optional[float] = None
+    left_date: Optional[date] = None
+    is_active: Optional[bool] = None
+
 
 class ProjectMemberOut(BaseModel):
     project_member_id: int
     project_id: int
     employee_id: int
+    employee_code: Optional[str] = None
     employee_name: Optional[str] = None
-    role_in_project: str = "Thành viên"
+    position_name: Optional[str] = None
+    project_role: str = "Thành viên"
     project_allowance: Optional[float] = 0.0
     joined_date: date
     left_date: Optional[date] = None
