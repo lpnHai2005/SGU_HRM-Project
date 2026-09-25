@@ -103,24 +103,25 @@ SGU_HRM-Project/
 - [ ] Employee detail view
 - [ ] Manager: View branch employees
 
-### 2.2 Leave Requests (2-Level Approval)
+### 2.2 Leave Requests (2-Level Approval & Direct HR Approval)
 
-**Status Flow:** `PENDING → STORE_APPROVED → HR_APPROVED` hoặc `REJECTED`
+**Status Flow:** `PENDING → STORE_APPROVED → HR_APPROVED` (hoặc HR duyệt thẳng `PENDING → HR_APPROVED`), `REJECTED` hoặc `CANCELLED`.
+*Lưu ý:* HR có thể duyệt thẳng Cấp 2 kể cả trước khi Cửa hàng trưởng duyệt Cấp 1; các công đoạn không áp dụng trong chi tiết đơn hiển thị nhãn "Không áp dụng" thay vì "Chưa xử lý".
 
-**Leave Types:** ANNUAL (phép năm), SICK (ốm đau), MATERNITY (thai sản), RESIGNATION (nghỉ việc)
+**Leave Types:** ANNUAL (phép năm), SICK (ốm đau), MATERNITY (thai sản), RESIGNATION (nghỉ việc), VIEC_RIENG, KHONG_LUONG
 
 **API:**
-- [ ] POST `/api/leave-requests` - Submit
-- [ ] POST `/api/leave-requests/{id}/approve-level1` - Store Manager
-- [ ] POST `/api/leave-requests/{id}/approve-level2` - HR Manager
-- [ ] POST `/api/leave-requests/{id}/reject`
+- [x] POST `/api/leave-requests` - Submit
+- [x] POST `/api/leave-requests/{id}/approve-level1` - Store Manager (Cấp 1)
+- [x] POST `/api/leave-requests/{id}/approve-level2` - HR Manager (Cấp 2 / Duyệt thẳng)
+- [x] POST `/api/leave-requests/{id}/reject`
 
 **Web Frontend:**
-- [ ] Submit leave request form
-- [ ] Leave balance display
-- [ ] Pending requests list (Manager)
-- [ ] Approve/Reject buttons
-- [ ] Calendar view of leaves
+- [x] Submit leave request form
+- [x] Leave balance display
+- [x] Pending requests list (Manager)
+- [x] Approve/Reject buttons
+- [x] Calendar view of leaves
 
 **Mobile Frontend:**
 - [ ] Submit leave request form

@@ -346,6 +346,29 @@ export const leaveApi = {
   ): Promise<{ message: string }> => {
     return api.post(`/leaves/${requestId}/reject`, data);
   },
+
+  getStats: async (): Promise<{
+    total_requests: number;
+    pending_store_approval: number;
+    pending_hr_approval: number;
+    approved: number;
+    rejected: number;
+    on_leave_today: number;
+  }> => {
+    return api.get('/leaves/summary/stats');
+  },
+
+  getCalendar: async (params?: { month?: string; store_id?: number }): Promise<LeaveRequest[]> => {
+    return api.get<LeaveRequest[]>('/leaves/calendar', params);
+  },
+
+  getById: async (requestId: number): Promise<LeaveRequest> => {
+    return api.get<LeaveRequest>(`/leaves/${requestId}`);
+  },
+
+  cancel: async (requestId: number): Promise<{ message: string }> => {
+    return api.post(`/leaves/${requestId}/cancel`);
+  },
 };
 
 // ============================================
