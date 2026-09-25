@@ -1,6 +1,6 @@
 from datetime import datetime, date
 from typing import Optional, List, Dict, Any, Union
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 try:
     from pydantic import EmailStr
 except ImportError:
@@ -179,13 +179,43 @@ class EmployeeCreate(EmployeeBase):
 class EmployeeUpdate(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    gender: Optional[str] = None
+    dob: Optional[date] = None
+    identity_card: Optional[str] = None
+    identity_issued_date: Optional[date] = None
+    identity_issued_place: Optional[str] = None
     phone: Optional[str] = None
     personal_email: Optional[str] = None
+    company_email: Optional[str] = None
+    permanent_address: Optional[str] = None
     current_address: Optional[str] = None
+    avatar: Optional[str] = None
     store_id: Optional[int] = None
     department_id: Optional[int] = None
     position_id: Optional[int] = None
+    education_level_id: Optional[int] = None
+    join_date: Optional[date] = None
+    resignation_date: Optional[date] = None
     employment_status: Optional[str] = None
+    bank_account_number: Optional[str] = None
+    bank_name: Optional[str] = None
+    tax_code: Optional[str] = None
+    insurance_code: Optional[str] = None
+    basic_salary: Optional[float] = None
+
+    @field_validator("dob", "join_date", "resignation_date", "identity_issued_date", mode="before")
+    @classmethod
+    def empty_str_to_none_date(cls, v):
+        if v == "" or v is None:
+            return None
+        return v
+
+    @field_validator("store_id", "department_id", "position_id", "education_level_id", mode="before")
+    @classmethod
+    def empty_str_to_none_int(cls, v):
+        if v == "" or v is None:
+            return None
+        return v
 
 
 class EmployeeOut(EmployeeBase):
@@ -219,6 +249,32 @@ class ContractCreate(BaseModel):
     salary_percentage: Optional[float] = 100.0
     working_hours_per_week: Optional[int] = 48
     signed_date: Optional[date] = None
+
+    @field_validator("start_date", "end_date", "signed_date", mode="before")
+    @classmethod
+    def empty_str_to_none_contract_date(cls, v):
+        if v == "" or v is None:
+            return None
+        return v
+
+
+class ContractUpdate(BaseModel):
+    contract_type: Optional[str] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    basic_salary: Optional[float] = None
+    insurance_salary: Optional[float] = None
+    salary_percentage: Optional[float] = None
+    working_hours_per_week: Optional[int] = None
+    signed_date: Optional[date] = None
+    status: Optional[str] = None
+
+    @field_validator("start_date", "end_date", "signed_date", mode="before")
+    @classmethod
+    def empty_str_to_none_contract_update_date(cls, v):
+        if v == "" or v is None:
+            return None
+        return v
 
 
 class ContractOut(ContractCreate):

@@ -204,6 +204,7 @@ import type {
   PromotionCreate,
   Contract,
   ContractCreate,
+  ContractUpdate,
   Lookups,
 } from '../types';
 
@@ -243,6 +244,14 @@ export const employeeApi = {
 
   createContract: async (data: ContractCreate): Promise<{ message: string; contract_number: string }> => {
     return api.post('/employees/contracts', data);
+  },
+
+  updateContract: async (contractId: number, data: ContractUpdate): Promise<{ message: string; contract_id: number }> => {
+    return api.put(`/employees/contracts/${contractId}`, data);
+  },
+
+  deleteContract: async (contractId: number): Promise<{ message: string }> => {
+    return api.delete(`/employees/contracts/${contractId}`);
   },
 
   getLookups: async (): Promise<Lookups> => {
