@@ -247,6 +247,7 @@ export interface LeaveType {
   type_name: string;
   is_paid: boolean;
   max_days_allowed: number;
+  requires_attachment?: boolean;
 }
 
 export interface LeaveBalance {
@@ -256,14 +257,24 @@ export interface LeaveBalance {
   annual_leave_used: number;
   annual_leave_remaining: number;
   sick_leave_used: number;
+  pending_leave_days?: number;
+  maternity_leave_used?: number;
+  unpaid_leave_used?: number;
+  seniority_bonus_days?: number;
 }
 
 export interface LeaveRequest {
   request_id: number;
   employee_id: number;
+  employee_code?: string | null;
   employee_name?: string | null;
+  store_id?: number | null;
+  store_name?: string | null;
+  department_name?: string | null;
+  position_name?: string | null;
   leave_type_id: number;
   leave_type_name?: string | null;
+  leave_type_code?: string | null;
   start_date: string;
   end_date: string;
   total_days?: number;
@@ -271,12 +282,20 @@ export interface LeaveRequest {
   status: string;
   attachment_url?: string | null;
   store_manager_id?: number | null;
+  store_manager_name?: string | null;
   store_approved_at?: string | null;
   store_manager_note?: string | null;
   hr_approver_id?: number | null;
+  hr_approver_name?: string | null;
   hr_approved_at?: string | null;
   rejection_reason?: string | null;
+  rejected_by_id?: number | null;
+  rejected_by_name?: string | null;
+  rejected_by_role?: string | null;
+  rejected_at?: string | null;
+  is_store_manager_request?: boolean | null;
   created_at?: string | null;
+  updated_at?: string | null;
 }
 
 export interface LeaveRequestCreate {

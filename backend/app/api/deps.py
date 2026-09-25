@@ -186,3 +186,7 @@ async def record_audit_log(
     except Exception as e:
         # Không làm gián đoạn luồng chính nếu ghi audit log gặp lỗi
         print(f"[AUDIT_LOG_ERROR] Lỗi khi ghi nhật ký hệ thống: {e}")
+
+
+log_audit = record_audit_log
+

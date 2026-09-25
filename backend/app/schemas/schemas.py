@@ -288,6 +288,17 @@ class AttendanceOut(BaseModel):
 # 7. LEAVE SCHEMAS
 # ===================================================================================
 
+class LeaveTypeOut(BaseModel):
+    leave_type_id: int
+    type_code: str
+    type_name: str
+    is_paid: bool
+    max_days_allowed: int
+    requires_attachment: bool = False
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class LeaveBalanceOut(BaseModel):
     employee_id: int
     employee_name: Optional[str] = None
@@ -295,6 +306,10 @@ class LeaveBalanceOut(BaseModel):
     annual_leave_used: float = 0.0
     annual_leave_remaining: float = 12.0
     sick_leave_used: float = 0.0
+    pending_leave_days: float = 0.0
+    maternity_leave_used: float = 0.0
+    unpaid_leave_used: float = 0.0
+    seniority_bonus_days: float = 0.0
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -319,9 +334,15 @@ class LeaveRejectRequest(BaseModel):
 class LeaveRequestOut(BaseModel):
     request_id: int
     employee_id: int
+    employee_code: Optional[str] = None
     employee_name: Optional[str] = None
+    store_id: Optional[int] = None
+    store_name: Optional[str] = None
+    department_name: Optional[str] = None
+    position_name: Optional[str] = None
     leave_type_id: int
     leave_type_name: Optional[str] = None
+    leave_type_code: Optional[str] = None
     start_date: date
     end_date: date
     total_days: Optional[float] = 0.0
@@ -329,12 +350,20 @@ class LeaveRequestOut(BaseModel):
     status: str = "PENDING"
     attachment_url: Optional[str] = None
     store_manager_id: Optional[int] = None
+    store_manager_name: Optional[str] = None
     store_approved_at: Optional[datetime] = None
     store_manager_note: Optional[str] = None
     hr_approver_id: Optional[int] = None
+    hr_approver_name: Optional[str] = None
     hr_approved_at: Optional[datetime] = None
     rejection_reason: Optional[str] = None
+    rejected_by_id: Optional[int] = None
+    rejected_by_name: Optional[str] = None
+    rejected_by_role: Optional[str] = None
+    rejected_at: Optional[datetime] = None
+    is_store_manager_request: Optional[bool] = False
     created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 

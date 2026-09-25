@@ -134,6 +134,21 @@ SGU_HRM-Project/
 * Viết API Quản lý Hợp đồng lao động (`/employees/contracts`): Tự động sinh mã `HDLD-TZ-xxx-yyyy`.
 * Viết API Thăng chức & Bổ nhiệm (`/employees/promotions`): Tự động ghi lịch sử `position_histories` và **tự động cập nhật vai trò RBAC** của User (ví dụ: Nhân viên thăng lên Cửa hàng trưởng $\rightarrow$ tự động gán role `STORE_MANAGER`).
 
+### 5.3b. TUẦN 2: Phân hệ Quản lý Đơn Nghỉ Phép & Quy trình Phê duyệt 2 Cấp (Leaves Module)
+* **Quy trình Phê duyệt 2 Cấp (Rubric III.3.1.3 & III.3.2.2):**
+  - Cửa hàng trưởng duyệt sơ bộ Cấp 1 (`/leaves/{id}/approve-store` & alias `/approve-level1`): Kiểm tra ca kíp chi nhánh, chống xung đột lợi ích (không tự duyệt đơn của mình).
+  - Trưởng phòng HR duyệt chính thức Cấp 2 (`/leaves/{id}/approve-hr` & alias `/approve-level2`): Duyệt đơn chi nhánh đã qua Cấp 1 hoặc đơn nhân sự Trụ sở/CHT gửi thẳng.
+  - Tự động hóa nghiệp vụ: Khi duyệt đơn thôi việc (`THOI_VIEC`), tự động chuyển hồ sơ nhân sự sang `RESIGNED` và khóa tài khoản `users`; khi duyệt thai sản (`THAI_SAN`), chuyển sang `ON_LEAVE`.
+* **Ràng buộc nộp đơn & Tính số dư phép năm (Week 2.2):**
+  - Hạn mức cơ bản 12 ngày/năm + chế độ thưởng thâm niên (+1 ngày cho mỗi 5 năm làm việc).
+  - Chặn nộp vượt quá số dư phép năm còn lại; chặn nộp ngày bắt đầu > ngày kết thúc; chặn nộp trùng khoảng thời gian.
+  - Cho phép nhân viên chủ động hủy đơn (`/leaves/{id}/cancel`) khi còn ở trạng thái `PENDING`.
+* **Báo cáo & Tiện ích Lịch:**
+  - Thẻ KPI thời gian thực (`/leaves/summary/stats`) phục vụ Dashboard quản trị.
+  - Lịch nhân sự nghỉ phép theo tháng (`/leaves/calendar`) phục vụ theo dõi quân số vắng mặt.
+  - Hỗ trợ toàn diện cả 2 tiền tố router: `/api/v1/leaves` và `/api/v1/leave-requests`.
+  - Bộ kiểm thử tự động 14/14 test cases (`test_leaves_workflow.py`) PASS 100%.
+
 ### 5.4. TUẦN 3: Phân hệ Payroll API (Tiền lương, Hoa hồng & Dự án)
 * **Động cơ Chốt lương tự động (`/payrolls/calculate` & `/payrolls/generate/{month}`):**
   - Tự động gọi `sp_calculate_monthly_commission` để tính hoa hồng bán lẻ 3 nhóm ngành hàng (ĐT 1%, Laptop 1%, Phụ kiện 3%) và thưởng nóng KPI.
