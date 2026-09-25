@@ -102,13 +102,29 @@ export interface EmployeeCreate {
 export interface EmployeeUpdate {
   first_name?: string;
   last_name?: string;
+  gender?: string;
+  dob?: string;
+  identity_card?: string;
+  identity_issued_date?: string;
+  identity_issued_place?: string;
   phone?: string;
   personal_email?: string;
+  company_email?: string;
+  permanent_address?: string;
   current_address?: string;
+  avatar?: string;
   store_id?: number;
   department_id?: number;
   position_id?: number;
+  education_level_id?: number;
+  join_date?: string;
+  resignation_date?: string;
   employment_status?: string;
+  bank_account_number?: string;
+  bank_name?: string;
+  tax_code?: string;
+  insurance_code?: string;
+  basic_salary?: number;
 }
 
 export interface PromotionCreate {
@@ -147,6 +163,18 @@ export interface ContractCreate {
   salary_percentage?: number;
   working_hours_per_week?: number;
   signed_date?: string;
+}
+
+export interface ContractUpdate {
+  contract_type?: string;
+  start_date?: string;
+  end_date?: string;
+  basic_salary?: number;
+  insurance_salary?: number;
+  salary_percentage?: number;
+  working_hours_per_week?: number;
+  signed_date?: string;
+  status?: string;
 }
 
 export interface Lookups {
