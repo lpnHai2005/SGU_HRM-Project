@@ -2031,6 +2031,27 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   animation: fadeIn 0.15s ease-out;
 }
 
+.action-dropdown.dropup {
+  top: auto !important;
+  bottom: 100%;
+  margin-top: 0;
+  margin-bottom: 4px;
+}
+
+.action-dropdown-fixed {
+  position: fixed !important;
+  margin: 0 !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.4) !important;
+}
+
+.action-dropdown-fixed.dropup {
+  top: auto !important;
+}
+
+.action-dropdown-fixed.dropdown {
+  bottom: auto !important;
+}
+
 .action-dropdown-item {
   display: flex;
   align-items: center;

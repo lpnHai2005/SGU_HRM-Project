@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { Icons } from '../components/common/Icons'
 import { EmptyState } from '../components/common/EmptyState'
 import { getInitials, getRoleFromUser, formatDate, formatCurrency } from '../utils/formatters'
@@ -33,6 +34,11 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
 
   // Dropdown menu state
   const [openMenuId, setOpenMenuId] = useState<number | null>(null)
+  const [menuPos, setMenuPos] = useState<{
+    top?: number
+    bottom?: number
+    right: number
+  } | null>(null)
 
   // Confirmation modal
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null)
@@ -105,12 +111,56 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
     toastTimeoutRef.current = window.setTimeout(() => setToast(null), 3000)
   }
 
-  // Close menu when clicking outside
+  // Close menu when clicking outside, scrolling, resizing, or pressing Escape
   useEffect(() => {
-    const handleClickOutside = () => setOpenMenuId(null)
-    document.addEventListener('click', handleClickOutside)
-    return () => document.removeEventListener('click', handleClickOutside)
-  }, [])
+    if (openMenuId === null) return
+
+    const handlePointerDown = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as HTMLElement | null
+      if (!target) return
+      // Không đóng nếu click trúng vào bên trong dropdown hoặc nút 3 chấm
+      if (target.closest('.action-dropdown') || target.closest('.btn-icon')) {
+        return
+      }
+      setOpenMenuId(null)
+      setMenuPos(null)
+    }
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setOpenMenuId(null)
+        setMenuPos(null)
+      }
+    }
+
+    const handleScroll = (e: Event) => {
+      const target = e.target as HTMLElement | null
+      if (target && target.closest?.('.action-dropdown')) return
+      setOpenMenuId(null)
+      setMenuPos(null)
+    }
+
+    const handleResize = () => {
+      setOpenMenuId(null)
+      setMenuPos(null)
+    }
+
+    // Tránh việc chính cú click mở menu kích hoạt luôn lệnh đóng
+    const timer = setTimeout(() => {
+      document.addEventListener('pointerdown', handlePointerDown)
+      window.addEventListener('scroll', handleScroll, true)
+      window.addEventListener('resize', handleResize)
+      document.addEventListener('keydown', handleKeyDown)
+    }, 20)
+
+    return () => {
+      clearTimeout(timer)
+      document.removeEventListener('pointerdown', handlePointerDown)
+      window.removeEventListener('scroll', handleScroll, true)
+      window.removeEventListener('resize', handleResize)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [openMenuId])
 
   const fetchEmployees = useCallback(async () => {
     setIsLoading(true)
@@ -168,6 +218,7 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
     setSelectedEmployee(employee || null)
     setFormError('')
     setOpenMenuId(null)
+    setMenuPos(null)
 
     if (mode === 'view') {
       // Load contracts for view mode
@@ -247,12 +298,15 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
     setSelectedEmployee(null)
     setEditingContractId(null)
     setFormError('')
+    setOpenMenuId(null)
+    setMenuPos(null)
   }
 
   // --- Shift edit modal handlers ---
   const openShiftEditModal = (employee: Employee) => {
     setSelectedEmployee(employee)
     setOpenMenuId(null)
+    setMenuPos(null)
     // Preset giờ vào/ra mặc định theo ngày hôm nay
     const today = new Date().toISOString().slice(0, 10)
     setShiftStart(today + 'T08:00')
@@ -267,6 +321,8 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
     setShiftStart('')
     setShiftEnd('')
     setShiftPreset('')
+    setOpenMenuId(null)
+    setMenuPos(null)
   }
 
   const applyShiftPreset = (preset: string) => {
@@ -556,9 +612,11 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
     requestConfirm('contract', msg)
   }
 
-  const handleResign = () => {
-    if (!selectedEmployee) return
-    requestConfirm('resign', `Xác nhận thôi việc cho nhân viên "${selectedEmployee.full_name}"? Hành động này sẽ chấm dứt hợp đồng hiện tại.`)
+  const handleResign = (emp?: Employee) => {
+    const target = emp || selectedEmployee
+    if (!target) return
+    setSelectedEmployee(target)
+    requestConfirm('resign', `Xác nhận thôi việc cho nhân viên "${target.full_name || `${target.first_name} ${target.last_name}`}"? Hành động này sẽ chấm dứt hợp đồng hiện tại.`)
   }
 
   const handleConfirm = () => {
@@ -1284,36 +1342,88 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
   }
 
   // Dropdown menu for actions
-  const renderActionMenu = (emp: Employee) => {
-    // Hiện menu nếu là Admin/HR hoặc Cửa hàng trưởng cùng chi nhánh
+  const handleToggleMenu = (e: React.MouseEvent<HTMLButtonElement>, employeeId: number, index: number, total: number) => {
+    e.stopPropagation()
+    if (openMenuId === employeeId) {
+      setOpenMenuId(null)
+      setMenuPos(null)
+      return
+    }
+
+    const rect = e.currentTarget.getBoundingClientRect()
+    const spaceBelow = window.innerHeight - rect.bottom
+    const menuEstimatedHeight = 185
+
+    // Lật lên trên (drop-up) nếu gần đáy màn hình (< 190px) hoặc ở các dòng cuối của danh sách
+    // Đảm bảo menu nổi đè lên các dòng bảng thay vì làm mở rộng bảng ra
+    const isNearBottom = index >= Math.max(1, total - 2)
+    const openUp = (spaceBelow < menuEstimatedHeight || isNearBottom) && rect.top > menuEstimatedHeight
+
+    setMenuPos({
+      top: openUp ? undefined : rect.bottom + 4,
+      bottom: openUp ? window.innerHeight - rect.top + 4 : undefined,
+      right: window.innerWidth - rect.right,
+    })
+    setOpenMenuId(employeeId)
+  }
+
+  // Dropdown menu for actions (rendered via Portal into document.body to overlay on top of table)
+  const renderActionMenu = () => {
+    if (openMenuId === null || !menuPos) return null
+
+    const emp =
+      filteredEmployees.find((e) => e.employee_id === openMenuId) ||
+      employees.find((e) => e.employee_id === openMenuId)
+    if (!emp) return null
+
     const isManagerOfBranch = role === 'STORE_MANAGER' && user?.store_id === emp.store_id
     if (!canManage && !isManagerOfBranch) return null
-    if (openMenuId !== emp.employee_id) return null
 
-    return (
+    const isDropup = menuPos.bottom !== undefined
+
+    return createPortal(
       <div
-        className="action-dropdown"
+        className={`action-dropdown action-dropdown-fixed ${isDropup ? 'dropup' : 'dropdown'}`}
         onClick={(e) => e.stopPropagation()}
+        style={{
+          position: 'fixed',
+          top: menuPos.top !== undefined ? `${menuPos.top}px` : 'auto',
+          bottom: menuPos.bottom !== undefined ? `${menuPos.bottom}px` : 'auto',
+          right: `${menuPos.right}px`,
+          zIndex: 99999,
+        }}
       >
         {canManage && (
           <>
             <button
               className="action-dropdown-item"
-              onClick={() => openModal('edit', emp)}
+              onClick={() => {
+                setOpenMenuId(null)
+                setMenuPos(null)
+                openModal('edit', emp)
+              }}
             >
               <span className="action-icon icon-edit">{Icons.edit}</span>
               <span>Sửa thông tin</span>
             </button>
             <button
               className="action-dropdown-item"
-              onClick={() => openModal('contract', emp)}
+              onClick={() => {
+                setOpenMenuId(null)
+                setMenuPos(null)
+                openModal('contract', emp)
+              }}
             >
               <span className="action-icon icon-contract">{Icons.fileText}</span>
               <span>Quản lý hợp đồng</span>
             </button>
             <button
               className="action-dropdown-item"
-              onClick={() => openModal('promote', emp)}
+              onClick={() => {
+                setOpenMenuId(null)
+                setMenuPos(null)
+                openModal('promote', emp)
+              }}
             >
               <span className="action-icon icon-promote">{Icons.trendingUp}</span>
               <span>Thăng chức / Điều chuyển</span>
@@ -1324,7 +1434,11 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
         {isManagerOfBranch && (
           <button
             className="action-dropdown-item"
-            onClick={() => openShiftEditModal(emp)}
+            onClick={() => {
+              setOpenMenuId(null)
+              setMenuPos(null)
+              openShiftEditModal(emp)
+            }}
           >
             <span className="action-icon icon-edit">{Icons.edit}</span>
             <span>Sửa ca làm</span>
@@ -1334,15 +1448,17 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
           <button
             className="action-dropdown-item danger"
             onClick={() => {
-              setSelectedEmployee(emp)
-              handleResign()
+              setOpenMenuId(null)
+              setMenuPos(null)
+              handleResign(emp)
             }}
           >
             <span className="action-icon icon-danger">{Icons.xCircle}</span>
             <span>Thôi việc</span>
           </button>
         )}
-      </div>
+      </div>,
+      document.body
     )
   }
 
@@ -1456,7 +1572,7 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
                       </td>
                     </tr>
                   ) : (
-                    filteredEmployees.map((emp) => (
+                    filteredEmployees.map((emp, index) => (
                       <tr key={emp.employee_id}>
                         <td>
                           <div className="table-user-cell">
@@ -1508,7 +1624,7 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
                           </span>
                         </td>
                         <td>
-                          <div style={{ display: 'flex', gap: '4px', position: 'relative' }}>
+                          <div style={{ display: 'flex', gap: '4px' }}>
                             <button
                               className="btn btn-secondary btn-sm btn-icon"
                               title="Xem chi tiết"
@@ -1531,17 +1647,13 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
                             )}
                             {(canManage || (role === 'STORE_MANAGER' && user?.store_id === emp.store_id)) && (
                               <button
-                                className="btn btn-secondary btn-sm btn-icon"
+                                className={`btn btn-secondary btn-sm btn-icon ${openMenuId === emp.employee_id ? 'active' : ''}`}
                                 title="Tùy chọn"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  setOpenMenuId(openMenuId === emp.employee_id ? null : emp.employee_id)
-                                }}
+                                onClick={(e) => handleToggleMenu(e, emp.employee_id, index, filteredEmployees.length)}
                               >
                                 {Icons.moreVertical}
                               </button>
                             )}
-                            {renderActionMenu(emp)}
                           </div>
                         </td>
                       </tr>
@@ -1556,6 +1668,9 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
           </>
         )}
       </div>
+
+      {/* Floating Action Menu rendered outside table container to overlay on top of table */}
+      {renderActionMenu()}
 
       {/* Main Modal */}
       {showModal && (
