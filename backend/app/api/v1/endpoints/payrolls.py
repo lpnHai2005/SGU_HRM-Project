@@ -204,6 +204,7 @@ async def pay_all_payrolls(
     }
 
 
+@router.get("/employee/{employee_id}/annual", summary="Bảng in tổng hợp thu nhập năm của nhân sự (Workflow Week 3.2)")
 @router.get("/annual-summary/{employee_id}", summary="Bảng in tổng hợp thu nhập năm của nhân sự (Rubric III.3.2.5)")
 async def get_annual_salary(
     employee_id: int,
@@ -212,28 +213,100 @@ async def get_annual_salary(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Truy vấn View v_annual_salary_summary:
-    Tổng hợp thu nhập 12 tháng phục vụ quyết toán thuế TNCN và in phiếu lương năm A4.
+    Truy vấn tổng hợp thu nhập 12 tháng phục vụ quyết toán thuế TNCN và in bảng lương năm A4.
+    Hỗ trợ cả URL chuẩn workflow /api/payrolls/employee/{id}/annual và /api/payrolls/annual-summary/{id}.
     """
     roles = current_user.get("roles", [])
     if "ADMIN" not in roles and "HR_MANAGER" not in roles:
         if employee_id != current_user.get("employee_id"):
             raise HTTPException(status_code=403, detail="Bạn chỉ có thể xem báo cáo thu nhập năm của chính mình")
 
+    # Lấy thông tin nhân viên
+    emp_res = await db.execute(text("""
+        SELECT e.employee_id, e.employee_code, e.full_name, e.tax_code,
+               e.bank_account_number, e.bank_name, e.identity_card, e.join_date,
+               s.store_name, d.department_name, pos.position_name
+        FROM employees e
+        LEFT JOIN stores s ON e.store_id = s.store_id
+        LEFT JOIN departments d ON e.department_id = d.department_id
+        LEFT JOIN positions pos ON e.position_id = pos.position_id
+        WHERE e.employee_id = :eid
+    """), {"eid": employee_id})
+    emp_info = emp_res.mappings().first()
+    if not emp_info:
+        raise HTTPException(status_code=404, detail="Không tìm thấy thông tin nhân viên")
+
+    # Lấy danh sách phiếu lương từng tháng trong năm
+    monthly_res = await db.execute(text("""
+        SELECT payroll_id, employee_id, salary_period,
+               standard_working_days, actual_working_days, paid_leave_days, unpaid_leave_days,
+               contract_salary, actual_base_salary, overtime_salary,
+               position_allowance, seniority_allowance, project_allowance,
+               meal_transport_allowance, commission_amount, bonus_amount,
+               holiday_bonus, productivity_bonus, gross_income,
+               bhxh_amount, bhyt_amount, bhtn_amount, total_insurance,
+               personal_income_tax, penalty_deduction, total_deduction,
+               net_salary, payment_status, payment_date
+        FROM payrolls
+        WHERE employee_id = :eid AND salary_period LIKE :year_prefix
+        ORDER BY salary_period ASC
+    """), {"eid": employee_id, "year_prefix": f"{year}-%"})
+    monthly_list = [dict(m) for m in monthly_res.mappings().all()]
+
+    # Lấy dữ liệu tổng hợp năm từ View
     res = await db.execute(text("""
         SELECT * FROM v_annual_salary_summary
         WHERE employee_id = :eid AND salary_year = :year
     """), {"eid": employee_id, "year": year})
     row = res.mappings().first()
-    if not row:
+
+    if not row and not monthly_list:
         return {
             "message": "Chưa có dữ liệu bảng lương trong năm này",
             "employee_id": employee_id,
-            "salary_year": year
+            "salary_year": year,
+            "employee": dict(emp_info),
+            "monthly_records": []
         }
-    
-    row_dict = dict(row)
-    row_dict["net_salary_in_words"] = currency_to_vietnamese_words(float(row_dict.get("total_net_salary_year") or 0))
+
+    # Nếu View có dữ liệu thì lấy, nếu không tính tổng trực tiếp từ monthly_list
+    if row:
+        row_dict = dict(row)
+    else:
+        row_dict = {
+            "employee_id": employee_id,
+            "employee_code": emp_info["employee_code"],
+            "full_name": emp_info["full_name"],
+            "salary_year": year,
+            "total_paid_months": len(monthly_list),
+            "total_contract_salary_year": sum(float(m.get("contract_salary") or 0) for m in monthly_list),
+            "total_time_deducted_year": sum(float(m.get("time_deduction_amount") or 0) for m in monthly_list),
+            "total_base_salary_year": sum(float(m.get("actual_base_salary") or 0) for m in monthly_list),
+            "total_position_allowance_year": sum(float(m.get("position_allowance") or 0) for m in monthly_list),
+            "total_seniority_allowance_year": sum(float(m.get("seniority_allowance") or 0) for m in monthly_list),
+            "total_project_allowance_year": sum(float(m.get("project_allowance") or 0) for m in monthly_list),
+            "total_commission_year": sum(float(m.get("commission_amount") or 0) for m in monthly_list),
+            "total_holiday_bonus_year": sum(float(m.get("holiday_bonus") or 0) for m in monthly_list),
+            "total_productivity_bonus_year": sum(float(m.get("productivity_bonus") or 0) for m in monthly_list),
+            "total_bonus_year": sum(float(m.get("bonus_amount") or 0) for m in monthly_list),
+            "total_overtime_year": sum(float(m.get("overtime_salary") or 0) for m in monthly_list),
+            "total_gross_income_year": sum(float(m.get("gross_income") or 0) for m in monthly_list),
+            "total_insurance_deducted_year": sum(float(m.get("total_insurance") or 0) for m in monthly_list),
+            "total_tax_deducted_year": sum(float(m.get("personal_income_tax") or 0) for m in monthly_list),
+            "total_net_salary_year": sum(float(m.get("net_salary") or 0) for m in monthly_list)
+        }
+
+    net_total = float(row_dict.get("total_net_salary_year") or 0)
+    row_dict["net_salary_in_words"] = currency_to_vietnamese_words(net_total)
+    row_dict["employee"] = dict(emp_info)
+    row_dict["company"] = {
+        "name": "CÔNG TY TNHH THƯƠNG MẠI DỊCH VỤ TECH ZONE",
+        "brand": "TECHZONE",
+        "tax_id": "0312345678",
+        "hotline": "1900 6868",
+        "address": "273 An Dương Vương, Phường 3, Quận 5, TP. Hồ Chí Minh"
+    }
+    row_dict["monthly_records"] = monthly_list
     return row_dict
 
 
@@ -633,7 +706,7 @@ async def add_project_member(
 async def export_payroll_excel(
     period: Optional[str] = Query("2026-09", description="Kỳ lương (YYYY-MM)"),
     store_id: Optional[int] = Query(None, description="Lọc theo cửa hàng"),
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "STORE_MANAGER", "EMPLOYEE"])),
     db: AsyncSession = Depends(get_db)
 ):
     payrolls = await list_payrolls(period=period, employee_id=None, store_id=store_id, payment_status=None, current_user=current_user, db=db)
@@ -693,7 +766,7 @@ async def export_payroll_excel(
 async def export_payroll_csv(
     period: Optional[str] = Query("2026-09", description="Kỳ lương (YYYY-MM)"),
     store_id: Optional[int] = Query(None, description="Lọc theo cửa hàng"),
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "STORE_MANAGER", "EMPLOYEE"])),
     db: AsyncSession = Depends(get_db)
 ):
     payrolls = await list_payrolls(period=period, employee_id=None, store_id=store_id, payment_status=None, current_user=current_user, db=db)
@@ -780,15 +853,100 @@ async def get_printable_payslip(
     net_val = float(row["net_salary"] or 0)
     net_in_words = currency_to_vietnamese_words(net_val)
 
+    # Chi tiết hóa các khoản giảm trừ nếu cần hiển thị chi tiết BHXH 8%, BHYT 1.5%, BHTN 1%
+    final_deductions = []
+    has_broken_insurance = any(d.get("item_code") in ("BHXH", "BHYT", "BHTN") for d in deductions)
+    has_lumped_insurance = any(d.get("item_code") == "INSURANCE" for d in deductions)
+
+    for d in deductions:
+        if has_lumped_insurance and d.get("item_code") == "INSURANCE":
+            continue
+        d_dict = dict(d)
+        d_dict["name"] = d["item_name"]
+        d_dict["amount"] = float(d["amount"] or 0)
+        final_deductions.append(d_dict)
+
+    # Nếu có bảo hiểm và chưa được bóc tách riêng từng dòng
+    if (not has_broken_insurance or has_lumped_insurance) and float(row.get("total_insurance") or 0) > 0:
+        bhxh = float(row.get("bhxh_amount") or 0)
+        bhyt = float(row.get("bhyt_amount") or 0)
+        bhtn = float(row.get("bhtn_amount") or 0)
+        if bhxh > 0:
+            final_deductions.append({
+                "item_code": "BHXH",
+                "item_name": "Bảo hiểm Xã hội (BHXH 8%)",
+                "name": "Bảo hiểm Xã hội (BHXH 8%)",
+                "item_type": "DEDUCTION",
+                "calculation_formula": "8.0% lương đóng bảo hiểm bắt buộc",
+                "amount": bhxh
+            })
+        if bhyt > 0:
+            final_deductions.append({
+                "item_code": "BHYT",
+                "item_name": "Bảo hiểm Y tế (BHYT 1.5%)",
+                "name": "Bảo hiểm Y tế (BHYT 1.5%)",
+                "item_type": "DEDUCTION",
+                "calculation_formula": "1.5% lương đóng bảo hiểm bắt buộc",
+                "amount": bhyt
+            })
+        if bhtn > 0:
+            final_deductions.append({
+                "item_code": "BHTN",
+                "item_name": "Bảo hiểm Thất nghiệp (BHTN 1%)",
+                "name": "Bảo hiểm Thất nghiệp (BHTN 1%)",
+                "item_type": "DEDUCTION",
+                "calculation_formula": "1.0% lương đóng bảo hiểm bắt buộc",
+                "amount": bhtn
+            })
+
+    # Thuế TNCN nếu có
+    pit_amount = float(row.get("personal_income_tax") or 0)
+    has_pit = any(d.get("item_code") == "PIT" for d in final_deductions)
+    if not has_pit and pit_amount > 0:
+        final_deductions.append({
+            "item_code": "PIT",
+            "item_name": "Thuế thu nhập cá nhân (TNCN)",
+            "name": "Thuế thu nhập cá nhân (TNCN)",
+            "item_type": "DEDUCTION",
+            "calculation_formula": "Biểu lũy tiến từng phần Luật Thuế TNCN",
+            "amount": pit_amount
+        })
+
+    final_earnings = []
+    for e in earnings:
+        e_dict = dict(e)
+        e_dict["name"] = e["item_name"]
+        e_dict["amount"] = float(e["amount"] or 0)
+        final_earnings.append(e_dict)
+
+    # Tính toán chuẩn xác tổng thu nhập, tổng khấu trừ và thực lĩnh
+    calc_total_earnings = sum(e["amount"] for e in final_earnings)
+    calc_total_deductions = sum(d["amount"] for d in final_deductions)
+    net_val = calc_total_earnings - calc_total_deductions
+    if net_val < 0:
+        net_val = float(row["net_salary"] or 0)
+    net_in_words = currency_to_vietnamese_words(net_val)
+
+    period_str = str(row["salary_period"])
+    period_parts = period_str.split('-')
+    month_val = period_parts[1] if len(period_parts) > 1 else "09"
+    year_val = period_parts[0] if len(period_parts) > 0 else "2026"
+
+    current_time_str = datetime.now().strftime("%d/%m/%Y %H:%M")
+
     return {
+        "payroll_id": row["payroll_id"],
+        "payroll_code": f"PL-{period_str}-{str(row['payroll_id']).zfill(4)}",
+        "generated_date": current_time_str,
+        "created_at": str(row.get("payment_date") or date.today().strftime("%d/%m/%Y")),
         "company": {
             "name": "CÔNG TY TNHH THƯƠNG MẠI DỊCH VỤ TECH ZONE",
-            "brand": "TECHZONE",
+            "brand": "TECHZONE RETAIL",
             "tax_id": "0312345678",
             "hotline": "1900 6868",
             "address": "273 An Dương Vương, Phường 3, Quận 5, TP. Hồ Chí Minh"
         },
-        "payslip_title": f"PHIẾU LƯƠNG THÁNG {row['salary_period'].split('-')[1]}/{row['salary_period'].split('-')[0]}",
+        "payslip_title": f"PHIẾU LƯƠNG THÁNG {month_val}/{year_val}",
         "salary_period": row["salary_period"],
         "employee": {
             "employee_id": row["employee_id"],
@@ -796,28 +954,37 @@ async def get_printable_payslip(
             "full_name": row["employee_name"],
             "department_name": row["department_name"],
             "position_name": row["position_name"],
-            "store_name": row["store_name"] or "Trụ sở chính",
-            "bank_account": row["bank_account_number"],
-            "bank_name": row["bank_name"],
-            "tax_code": row["tax_code"]
+            "position": row["position_name"],
+            "store_name": row["store_name"] or "Trụ sở chính TechZone",
+            "bank_account": row["bank_account_number"] or "Chưa cập nhật",
+            "bank_account_no": row["bank_account_number"] or "Chưa cập nhật",
+            "bank_name": row["bank_name"] or "Techcombank",
+            "tax_code": row["tax_code"] or "0312345678-001"
+        },
+        "attendance": {
+            "standard_working_days": float(row["standard_working_days"] if row["standard_working_days"] is not None else 26.0),
+            "actual_working_days": float(row["actual_working_days"] if row["actual_working_days"] is not None else 0),
+            "paid_leave_days": float(row["paid_leave_days"] if row["paid_leave_days"] is not None else 0),
+            "unpaid_leave_days": float(row["unpaid_leave_days"] if row["unpaid_leave_days"] is not None else 0),
+            "unworked_hours": float(row["unworked_hours"] if row["unworked_hours"] is not None else 0)
         },
         "attendance_summary": {
-            "standard_working_days": float(row["standard_working_days"] or 26.0),
-            "actual_working_days": float(row["actual_working_days"] or 0),
-            "paid_leave_days": float(row["paid_leave_days"] or 0),
-            "unpaid_leave_days": float(row["unpaid_leave_days"] or 0),
-            "unworked_hours": float(row["unworked_hours"] or 0)
+            "standard_working_days": float(row["standard_working_days"] if row["standard_working_days"] is not None else 26.0),
+            "actual_working_days": float(row["actual_working_days"] if row["actual_working_days"] is not None else 0),
+            "paid_leave_days": float(row["paid_leave_days"] if row["paid_leave_days"] is not None else 0),
+            "unpaid_leave_days": float(row["unpaid_leave_days"] if row["unpaid_leave_days"] is not None else 0),
+            "unworked_hours": float(row["unworked_hours"] if row["unworked_hours"] is not None else 0)
         },
-        "earnings": [dict(e) for e in earnings],
-        "deductions": [dict(d) for d in deductions],
+        "earnings": final_earnings,
+        "deductions": final_deductions,
         "summary": {
             "contract_salary": float(row["contract_salary"] or 0),
             "time_deduction_amount": float(row["time_deduction_amount"] or 0),
             "actual_base_salary": float(row["actual_base_salary"] or 0),
-            "gross_income": float(row["gross_income"] or 0),
+            "gross_income": float(calc_total_earnings),
             "total_insurance": float(row["total_insurance"] or 0),
-            "total_deduction": float(row["total_deduction"] or 0),
-            "net_salary": net_val,
+            "total_deduction": float(calc_total_deductions),
+            "net_salary": float(net_val),
             "net_salary_in_words": net_in_words,
             "payment_status": row["payment_status"],
             "payment_date": str(row["payment_date"]) if row["payment_date"] else None

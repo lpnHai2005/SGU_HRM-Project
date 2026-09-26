@@ -1,5 +1,5 @@
 from typing import Optional, List, Dict, Any
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
@@ -640,6 +640,50 @@ async def hr_approve_leave(
             SET employment_status = 'ON_LEAVE', updated_at = CURRENT_TIMESTAMP
             WHERE employee_id = :eid
         """), {"eid": leave_req["employee_id"]})
+
+    # 3. Đồng bộ hóa ngày nghỉ phép vào bảng chấm công (attendances) để tính công & giảm trừ lương tự động
+    is_unpaid = (leave_req["type_code"] == "KHONG_LUONG") or (leave_req["leave_type_id"] == 5)
+    lt_res = await db.execute(text("SELECT is_paid FROM leave_types WHERE leave_type_id = :ltid"), {"ltid": leave_req["leave_type_id"]})
+    lt_row = lt_res.first()
+    if lt_row and lt_row[0] is False:
+        is_unpaid = True
+
+    att_status = "UNPAID_LEAVE" if is_unpaid else "ANNUAL_LEAVE"
+    emp_store_res = await db.execute(text("SELECT store_id FROM employees WHERE employee_id = :eid"), {"eid": leave_req["employee_id"]})
+    emp_store_id = emp_store_res.scalar() or 1
+
+    cur_d = leave_req["start_date"]
+    end_d = leave_req["end_date"]
+    while cur_d <= end_d:
+        att_note = f"Đơn nghỉ phép #{leave_req['request_id']} ({leave_req['leave_type_name']}) - {'Có trừ lương' if is_unpaid else 'Hưởng lương'}"
+        exist_res = await db.execute(
+            text("SELECT attendance_id FROM attendances WHERE employee_id = :eid AND work_date = :w_date"),
+            {"eid": leave_req["employee_id"], "w_date": cur_d}
+        )
+        existing_att_id = exist_res.scalar()
+        if existing_att_id:
+            await db.execute(text("""
+                UPDATE attendances
+                SET status = :status, notes = :note, actual_work_hours = 0, updated_at = CURRENT_TIMESTAMP
+                WHERE attendance_id = :att_id
+            """), {"status": att_status, "note": att_note, "att_id": existing_att_id})
+        else:
+            await db.execute(text("""
+                INSERT INTO attendances (
+                    employee_id, store_id, shift_id, work_date,
+                    status, notes, overtime_hours, late_minutes, early_minutes, actual_work_hours
+                ) VALUES (
+                    :eid, :sid, 1, :w_date,
+                    :status, :note, 0, 0, 0, 0
+                )
+            """), {
+                "eid": leave_req["employee_id"],
+                "sid": emp_store_id,
+                "w_date": cur_d,
+                "status": att_status,
+                "note": att_note
+            })
+        cur_d += timedelta(days=1)
 
     await db.commit()
 

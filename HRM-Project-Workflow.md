@@ -177,8 +177,8 @@ SGU_HRM-Project/
 **KPI Bonus:** >=100% → 1,000,000 VND | >=120% → 2,000,000 VND
 
 **API:**
-- [ ] POST `/api/sales-records`
-- [ ] GET `/api/commissions/calculate/{month}`
+- [x] POST `/api/sales-records`
+- [x] GET `/api/commissions/calculate/{month}`
 
 ### 3.2 Payroll Calculation
 
@@ -204,18 +204,18 @@ NET = GROSS - Insurance (10.5%) - Penalty
 ```
 
 **API:**
-- [ ] GET `/api/payroll/generate/{month}`
-- [ ] GET `/api/payrolls/{id}` - Detail with breakdown
-- [ ] GET `/api/payrolls/employee/{id}/annual` - Annual summary
+- [x] GET `/api/payroll/generate/{month}`
+- [x] GET `/api/payrolls/{id}` - Detail with breakdown
+- [x] GET `/api/payrolls/employee/{id}/annual` - Annual summary
 
 ### 3.3 Payroll & Payslip
 
 **Web Frontend:**
-- [ ] Run payroll button (HR)
-- [ ] Payroll detail with formula
-- [ ] View monthly payslip
-- [ ] **Print phiếu lương tháng (PDF)**
-- [ ] **Print bảng lương năm (PDF)**
+- [x] Run payroll button (HR)
+- [x] Payroll detail with formula
+- [x] View monthly payslip
+- [x] **Print phiếu lương tháng (PDF)**
+- [x] **Print bảng lương năm (PDF)**
 
 **Mobile Frontend:**
 - [ ] View my payslip (monthly)
