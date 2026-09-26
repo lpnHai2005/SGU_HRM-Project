@@ -17,6 +17,12 @@
   --surface-elevated: #ffffff;
   --surface-overlay: rgba(9, 9, 11, 0.45);
 
+  /* Compatibility aliases */
+  --bg-card: var(--surface-card);
+  --bg-subtle: var(--surface-subtle);
+  --border-color: var(--border-default);
+  --primary-color: #2563eb;
+
   /* Headers & Sidebar */
   --topbar-bg: #ffffff;
   --topbar-border: #e8e8ec;
@@ -157,6 +163,12 @@
   --surface-subtle: #1a1a1d;
   --surface-elevated: #1e1e22;
   --surface-overlay: rgba(0, 0, 0, 0.8);
+
+  /* Compatibility aliases */
+  --bg-card: var(--surface-card);
+  --bg-subtle: var(--surface-subtle);
+  --border-color: var(--border-default);
+  --primary-color: #3b82f6;
 
   /* Headers & Sidebar */
   --topbar-bg: #0d0d0e;

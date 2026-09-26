@@ -60,6 +60,7 @@ export function LeaveRequestsPage({ user }: LeaveRequestsPageProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
   const [feedbackMessage, setFeedbackMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [openMenuId, setOpenMenuId] = useState<number | null>(null)
 
   // Modals state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
@@ -176,10 +177,107 @@ export function LeaveRequestsPage({ user }: LeaveRequestsPageProps) {
   }, [fetchLeaveData])
 
   useEffect(() => {
+    const handleClickOutside = () => setOpenMenuId(null)
+    document.addEventListener('click', handleClickOutside)
+    return () => document.removeEventListener('click', handleClickOutside)
+  }, [])
+
+  useEffect(() => {
     if (activeTab === 'calendar') {
       fetchCalendarData(calendarMonth)
     }
   }, [activeTab, calendarMonth, fetchCalendarData])
+
+  const handlePrevMonth = () => {
+    const [y, m] = calendarMonth.split('-').map(Number)
+    const prevDate = new Date(y, m - 2, 1)
+    const newY = prevDate.getFullYear()
+    const newM = String(prevDate.getMonth() + 1).padStart(2, '0')
+    setCalendarMonth(`${newY}-${newM}`)
+  }
+
+  const handleNextMonth = () => {
+    const [y, m] = calendarMonth.split('-').map(Number)
+    const nextDate = new Date(y, m, 1)
+    const newY = nextDate.getFullYear()
+    const newM = String(nextDate.getMonth() + 1).padStart(2, '0')
+    setCalendarMonth(`${newY}-${newM}`)
+  }
+
+  const handleCurrentMonth = () => {
+    setCalendarMonth(new Date().toISOString().slice(0, 7))
+  }
+
+  const calendarDaysMatrix = useMemo(() => {
+    const [yearStr, monthStr] = calendarMonth.split('-')
+    const year = parseInt(yearStr, 10) || new Date().getFullYear()
+    const month = parseInt(monthStr, 10) || (new Date().getMonth() + 1)
+    
+    // First day of month (0 = Sun, 1 = Mon, ..., 6 = Sat)
+    // Convert to Monday = 0, ..., Sunday = 6
+    const firstDay = new Date(year, month - 1, 1).getDay()
+    const startingBlankDays = (firstDay + 6) % 7
+    
+    // Total days in current month
+    const totalDaysInMonth = new Date(year, month, 0).getDate()
+    
+    // Total days in previous month
+    const prevMonthDays = new Date(year, month - 1, 0).getDate()
+
+    const days: Array<{
+      dateStr: string
+      dayNumber: number
+      isCurrentMonth: boolean
+      isToday: boolean
+      leaves: LeaveRequest[]
+    }> = []
+
+    const todayStr = new Date().toISOString().slice(0, 10)
+
+    // Pad previous month days
+    for (let i = startingBlankDays - 1; i >= 0; i--) {
+      const d = prevMonthDays - i
+      const prevMonth = month === 1 ? 12 : month - 1
+      const prevYear = month === 1 ? year - 1 : year
+      const dateStr = `${prevYear}-${String(prevMonth).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+      days.push({
+        dateStr,
+        dayNumber: d,
+        isCurrentMonth: false,
+        isToday: dateStr === todayStr,
+        leaves: calendarLeaves.filter(l => l.start_date <= dateStr && l.end_date >= dateStr),
+      })
+    }
+
+    // Current month days
+    for (let d = 1; d <= totalDaysInMonth; d++) {
+      const dateStr = `${yearStr}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+      days.push({
+        dateStr,
+        dayNumber: d,
+        isCurrentMonth: true,
+        isToday: dateStr === todayStr,
+        leaves: calendarLeaves.filter(l => l.start_date <= dateStr && l.end_date >= dateStr),
+      })
+    }
+
+    // Pad next month days to fill complete rows of 7
+    const remainingDays = (7 - (days.length % 7)) % 7
+    for (let d = 1; d <= remainingDays; d++) {
+      const nextMonth = month === 12 ? 1 : month + 1
+      const nextYear = month === 12 ? year + 1 : year
+      const dateStr = `${nextYear}-${String(nextMonth).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+      days.push({
+        dateStr,
+        dayNumber: d,
+        isCurrentMonth: false,
+        isToday: dateStr === todayStr,
+        leaves: calendarLeaves.filter(l => l.start_date <= dateStr && l.end_date >= dateStr),
+      })
+    }
+
+    return days
+  }, [calendarMonth, calendarLeaves])
 
   // Filter requests
   const filteredRequests = useMemo(() => {
@@ -489,7 +587,7 @@ export function LeaveRequestsPage({ user }: LeaveRequestsPageProps) {
                     <th>TRẠNG THÁI</th>
                     <th>CHT DUYỆT</th>
                     <th>HR DUYỆT</th>
-                    <th>THAO TÁC</th>
+                    <th style={{ width: '95px', textAlign: 'center' }}>THAO TÁC</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -513,6 +611,7 @@ export function LeaveRequestsPage({ user }: LeaveRequestsPageProps) {
                     )
                     const canRevokeHrApproved = (isHrManager || isAdmin) && req.status === 'HR_APPROVED'
                     const canCancel = isOwner && req.status === 'PENDING'
+                    const hasAnyAction = Boolean(canStoreApprove || canHrApprove || canRejectPending || canRevokeHrApproved || canCancel)
 
                     // Kiểm tra bước CHT có áp dụng hay không
                     const isChtStepNotApplicable = isApplicantStoreManager ||
@@ -638,87 +737,114 @@ export function LeaveRequestsPage({ user }: LeaveRequestsPageProps) {
                             <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary, #9ca3af)' }}>Chờ duyệt</span>
                           )}
                         </td>
-                        <td>
-                          <div className="btn-group" style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
-                            {/* Chi tiết */}
+                        <td style={{ textAlign: 'center' }}>
+                          <div style={{ display: 'inline-flex', gap: '4px', alignItems: 'center', position: 'relative' }}>
+                            {/* Nút 1: Xem chi tiết (Mắt) */}
                             <button
-                              className="btn btn-secondary btn-sm"
+                              className="btn btn-secondary btn-sm btn-icon"
                               title="Xem chi tiết đơn"
                               onClick={() => setDetailModalRequest(req)}
-                              style={{ padding: '4px 8px' }}
                             >
-                              Chi tiết
+                              {Icons.eye}
                             </button>
 
-                            {/* CHT duyệt */}
-                            {canStoreApprove && (
-                              <button
-                                className="btn btn-success btn-sm"
-                                title="Cửa hàng trưởng duyệt sơ bộ đơn nghỉ phép"
-                                onClick={() => setStoreApproveModalRequest(req)}
-                                style={{ padding: '4px 8px', fontSize: '0.75rem' }}
-                              >
-                                {Icons.check} Duyệt
-                              </button>
-                            )}
+                            {/* Nút 2: Tùy chọn thao tác (Dấu 3 chấm) */}
+                            <button
+                              className="btn btn-secondary btn-sm btn-icon"
+                              title={hasAnyAction ? "Tùy chọn thao tác" : "Không có thao tác khác"}
+                              disabled={!hasAnyAction}
+                              style={{
+                                opacity: hasAnyAction ? 1 : 0.4,
+                                cursor: hasAnyAction ? 'pointer' : 'not-allowed',
+                              }}
+                              onClick={(e) => {
+                                if (!hasAnyAction) return
+                                e.stopPropagation()
+                                setOpenMenuId(openMenuId === req.request_id ? null : req.request_id)
+                              }}
+                            >
+                              {Icons.moreVertical}
+                            </button>
 
-                            {/* HR duyệt */}
-                            {canHrApprove && (
-                              <button
-                                className="btn btn-primary btn-sm"
-                                title="Phòng Nhân sự phê duyệt chính thức đơn nghỉ phép"
-                                onClick={() => setHrApproveModalRequest(req)}
-                                style={{ padding: '4px 8px', fontSize: '0.75rem' }}
-                              >
-                                {Icons.check} Duyệt
-                              </button>
-                            )}
-
-                            {/* Từ chối đơn PENDING / STORE_APPROVED */}
-                            {canRejectPending && (
-                              <button
-                                className="btn btn-danger btn-sm"
-                                title="Từ chối đơn"
-                                onClick={() => setRejectModalRequest(req)}
-                                style={{ padding: '4px 8px', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
-                              >
-                                <span style={{ fontWeight: 900 }}>✕</span> Từ chối
-                              </button>
-                            )}
-
-                            {/* HR/Admin Hủy phê duyệt & từ chối đơn đã HR_APPROVED */}
-                            {canRevokeHrApproved && (
-                              <button
-                                className="btn btn-sm"
-                                title="Hủy phê duyệt chính thức & Từ chối đơn"
-                                onClick={() => setRejectModalRequest(req)}
+                            {/* Dropdown Menu thao tác */}
+                            {openMenuId === req.request_id && hasAnyAction && (
+                              <div
+                                className="action-dropdown"
+                                onClick={(e) => e.stopPropagation()}
                                 style={{
-                                  padding: '4px 8px',
-                                  fontSize: '0.75rem',
-                                  backgroundColor: '#fef2f2',
-                                  color: '#dc2626',
-                                  border: '1px solid #fca5a5',
-                                  fontWeight: 600,
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '3px',
-                                  cursor: 'pointer',
+                                  position: 'absolute',
+                                  top: '100%',
+                                  right: 0,
+                                  marginTop: '4px',
+                                  zIndex: 80,
+                                  minWidth: '195px',
                                 }}
                               >
-                                <span style={{ fontWeight: 900 }}>✕</span> Hủy duyệt
-                              </button>
-                            )}
+                                {canStoreApprove && (
+                                  <button
+                                    className="action-dropdown-item"
+                                    onClick={() => {
+                                      setOpenMenuId(null)
+                                      setStoreApproveModalRequest(req)
+                                    }}
+                                  >
+                                    <span className="action-icon icon-promote">{Icons.check}</span>
+                                    <span>Duyệt cấp 1 (CHT)</span>
+                                  </button>
+                                )}
 
-                            {/* Hủy đơn */}
-                            {canCancel && (
-                              <button
-                                className="btn btn-secondary btn-sm"
-                                title="Hủy đơn xin nghỉ"
-                                onClick={() => handleCancelRequest(req.request_id)}
-                                style={{ padding: '4px 8px', color: '#ef4444' }}
-                              >
-                                Hủy đơn
-                              </button>
+                                {canHrApprove && (
+                                  <button
+                                    className="action-dropdown-item"
+                                    onClick={() => {
+                                      setOpenMenuId(null)
+                                      setHrApproveModalRequest(req)
+                                    }}
+                                  >
+                                    <span className="action-icon icon-edit">{Icons.check}</span>
+                                    <span>Duyệt cấp 2 (HR)</span>
+                                  </button>
+                                )}
+
+                                {canRejectPending && (
+                                  <button
+                                    className="action-dropdown-item danger"
+                                    onClick={() => {
+                                      setOpenMenuId(null)
+                                      setRejectModalRequest(req)
+                                    }}
+                                  >
+                                    <span className="action-icon icon-danger">✕</span>
+                                    <span>Từ chối đơn</span>
+                                  </button>
+                                )}
+
+                                {canRevokeHrApproved && (
+                                  <button
+                                    className="action-dropdown-item danger"
+                                    onClick={() => {
+                                      setOpenMenuId(null)
+                                      setRejectModalRequest(req)
+                                    }}
+                                  >
+                                    <span className="action-icon icon-danger">✕</span>
+                                    <span>Hủy duyệt & Từ chối</span>
+                                  </button>
+                                )}
+
+                                {canCancel && (
+                                  <button
+                                    className="action-dropdown-item danger"
+                                    onClick={() => {
+                                      setOpenMenuId(null)
+                                      handleCancelRequest(req.request_id)
+                                    }}
+                                  >
+                                    <span className="action-icon icon-danger">✕</span>
+                                    <span>Hủy đơn xin nghỉ</span>
+                                  </button>
+                                )}
+                              </div>
                             )}
                           </div>
                         </td>
@@ -742,69 +868,326 @@ export function LeaveRequestsPage({ user }: LeaveRequestsPageProps) {
           )
         ) : (
           /* Tab 2: Calendar View */
-          <div className="card-body">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+          <div className="card-body" style={{ padding: '24px' }}>
+            {/* Top Navigation & Controls */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
               <div>
-                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600 }}>Lịch Nhân Sự Nghỉ Phép Tháng {calendarMonth}</h3>
-                <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary, #6b7280)' }}>
-                  Theo dõi danh sách nhân sự vắng mặt đã được phê duyệt trong tháng
+                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  Lịch Nhân Sự Nghỉ Phép Tháng {calendarMonth}
+                </h3>
+                <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                  Theo dõi trực quan lịch vắng mặt theo ngày & chi tiết từng nhân sự đã được duyệt
                 </p>
               </div>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <label style={{ fontSize: '0.85rem', fontWeight: 500 }}>Chọn tháng:</label>
-                <input
-                  type="month"
-                  className="form-input"
-                  value={calendarMonth}
-                  onChange={(e) => setCalendarMonth(e.target.value)}
-                  style={{ width: 'auto', padding: '4px 10px' }}
-                />
+
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <div className="btn-group" style={{ display: 'flex', gap: '4px' }}>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    title="Tháng trước"
+                    onClick={handlePrevMonth}
+                    style={{ padding: '6px 10px' }}
+                  >
+                    {Icons.chevronLeft}
+                  </button>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    title="Trở về tháng hiện tại"
+                    onClick={handleCurrentMonth}
+                    style={{ padding: '6px 12px', fontSize: '12px', fontWeight: 600 }}
+                  >
+                    Hôm nay
+                  </button>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    title="Tháng sau"
+                    onClick={handleNextMonth}
+                    style={{ padding: '6px 10px' }}
+                  >
+                    {Icons.chevronRight}
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <input
+                    type="month"
+                    className="form-input"
+                    value={calendarMonth}
+                    onChange={(e) => setCalendarMonth(e.target.value)}
+                    style={{ width: 'auto', padding: '5px 10px', fontSize: '13px' }}
+                  />
+                </div>
               </div>
             </div>
 
-            {calendarLeaves.length === 0 ? (
-              <EmptyState
-                icon={Icons.calendar}
-                title={`Không có nhân sự nào nghỉ phép trong tháng ${calendarMonth}`}
-                description="Toàn bộ nhân viên tại chi nhánh đều đi làm đầy đủ trong tháng này."
-              />
-            ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
-                {calendarLeaves.map((item) => (
+            {/* Calendar Matrix (7-day grid) */}
+            <div
+              style={{
+                border: '1px solid var(--border-default)',
+                borderRadius: 'var(--radius-md)',
+                overflow: 'hidden',
+                backgroundColor: 'var(--surface-card)',
+                marginBottom: '28px',
+                boxShadow: 'var(--shadow-card)',
+              }}
+            >
+              {/* Day of Week Headers */}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+                  borderBottom: '1px solid var(--border-default)',
+                  backgroundColor: 'var(--surface-subtle)',
+                }}
+              >
+                {['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ Nhật'].map((dayName, idx) => (
                   <div
-                    key={item.request_id}
+                    key={dayName}
                     style={{
-                      border: '1px solid var(--border-color, #e5e7eb)',
-                      borderRadius: '8px',
-                      padding: '16px',
-                      backgroundColor: 'var(--bg-card, #fff)',
-                      boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                      padding: '10px 8px',
+                      textAlign: 'center',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      color: idx >= 5 ? 'var(--text-muted)' : 'var(--text-secondary)',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em',
+                      borderRight: idx < 6 ? '1px solid var(--border-default)' : 'none',
                     }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-                      <span className="badge badge-blue">{item.leave_type_name}</span>
-                      <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--primary-color, #2563eb)' }}>
-                        {item.total_days} ngày
-                      </span>
-                    </div>
-                    <div style={{ fontWeight: 600, fontSize: '1rem', marginBottom: '4px' }}>
-                      {item.employee_name} ({item.employee_code})
-                    </div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary, #6b7280)', marginBottom: '8px' }}>
-                      {item.store_name || item.department_name || 'TechZone'}
-                    </div>
-                    <div style={{ fontSize: '0.85rem', backgroundColor: 'var(--bg-subtle, #f3f4f6)', padding: '6px 10px', borderRadius: '4px', marginBottom: '8px' }}>
-                      <strong>Thời gian:</strong> {formatDate(item.start_date)} &rarr; {formatDate(item.end_date)}
-                    </div>
-                    {item.reason && (
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary, #4b5563)', fontStyle: 'italic' }}>
-                        &ldquo;{item.reason}&rdquo;
-                      </div>
-                    )}
+                    {dayName}
                   </div>
                 ))}
               </div>
-            )}
+
+              {/* Day Cells Grid */}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+                }}
+              >
+                {calendarDaysMatrix.map((cell, idx) => {
+                  const isWeekend = (idx % 7) === 5 || (idx % 7) === 6
+                  const hasLeaves = cell.leaves.length > 0
+
+                  return (
+                    <div
+                      key={cell.dateStr + '-' + idx}
+                      style={{
+                        minHeight: '105px',
+                        padding: '8px',
+                        borderRight: (idx % 7) < 6 ? '1px solid var(--border-default)' : 'none',
+                        borderBottom: idx < calendarDaysMatrix.length - 7 ? '1px solid var(--border-default)' : 'none',
+                        backgroundColor: !cell.isCurrentMonth
+                          ? 'var(--surface-subtle)'
+                          : isWeekend
+                          ? 'var(--surface-subtle)'
+                          : 'var(--surface-card)',
+                        opacity: cell.isCurrentMonth ? 1 : 0.45,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '4px',
+                        position: 'relative',
+                        transition: 'background-color 0.15s ease',
+                      }}
+                    >
+                      {/* Day Header with Date Number */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+                        <span
+                          style={{
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: '12px',
+                            fontWeight: cell.isToday ? 800 : 600,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: cell.isToday ? '24px' : 'auto',
+                            height: cell.isToday ? '24px' : 'auto',
+                            borderRadius: cell.isToday ? '50%' : '0',
+                            backgroundColor: cell.isToday ? 'var(--action-primary)' : 'transparent',
+                            color: cell.isToday
+                              ? 'var(--action-primary-text)'
+                              : cell.isCurrentMonth
+                              ? 'var(--text-primary)'
+                              : 'var(--text-muted)',
+                          }}
+                        >
+                          {cell.dayNumber}
+                        </span>
+
+                        {hasLeaves && cell.isCurrentMonth && (
+                          <span
+                            style={{
+                              fontSize: '10px',
+                              fontWeight: 700,
+                              fontFamily: 'var(--font-mono)',
+                              color: 'var(--status-info)',
+                              padding: '1px 5px',
+                              borderRadius: '4px',
+                              backgroundColor: 'var(--status-info-bg)',
+                            }}
+                          >
+                            {cell.leaves.length} nghỉ
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Leaves Badges in Cell */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', flex: 1, overflow: 'hidden' }}>
+                        {cell.leaves.slice(0, 2).map((lv) => {
+                          const isUnpaid = lv.leave_type_code === 'NGHI_KHONG_LUONG' || lv.leave_type_id === 2
+                          const isPaid = lv.leave_type_code === 'PHEP_NAM' || lv.leave_type_id === 1
+
+                          const badgeBg = isUnpaid
+                            ? 'var(--status-error-bg)'
+                            : isPaid
+                            ? 'var(--status-success-bg)'
+                            : 'var(--status-info-bg)'
+
+                          const badgeBorder = isUnpaid
+                            ? 'var(--status-error-border)'
+                            : isPaid
+                            ? 'var(--status-success-border)'
+                            : 'var(--status-info-border)'
+
+                          const badgeText = isUnpaid
+                            ? 'var(--status-error)'
+                            : isPaid
+                            ? 'var(--status-success)'
+                            : 'var(--status-info)'
+
+                          return (
+                            <div
+                              key={lv.request_id}
+                              title={`${lv.employee_name} (${lv.employee_code || ''}) - ${lv.leave_type_name}: ${formatDate(lv.start_date)} đến ${formatDate(lv.end_date)}`}
+                              onClick={() => setDetailModalRequest(lv)}
+                              style={{
+                                padding: '3px 6px',
+                                borderRadius: '4px',
+                                fontSize: '11px',
+                                fontWeight: 500,
+                                backgroundColor: badgeBg,
+                                border: `1px solid ${badgeBorder}`,
+                                color: badgeText,
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                transition: 'transform 0.1s ease',
+                              }}
+                              onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.02)')}
+                              onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+                            >
+                              <span style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {lv.employee_name?.split(' ').slice(-2).join(' ') || lv.employee_name}
+                              </span>
+                              <span style={{ opacity: 0.75, fontSize: '10px' }}>
+                                • {lv.leave_type_name?.replace('Nghỉ ', '') || 'Phép'}
+                              </span>
+                            </div>
+                          )
+                        })}
+
+                        {cell.leaves.length > 2 && (
+                          <div
+                            style={{
+                              fontSize: '10.5px',
+                              fontWeight: 600,
+                              color: 'var(--text-secondary)',
+                              padding: '2px 4px',
+                              textAlign: 'center',
+                              borderRadius: '4px',
+                              backgroundColor: 'var(--surface-subtle)',
+                              cursor: 'pointer',
+                            }}
+                            onClick={() => {
+                              const firstLeave = cell.leaves[2]
+                              if (firstLeave) setDetailModalRequest(firstLeave)
+                            }}
+                          >
+                            +{cell.leaves.length - 2} nhân sự khác
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Detailed Cards List */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  Danh Sách Đơn Nghỉ Phép Trong Tháng ({calendarLeaves.length})
+                </h4>
+                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  Hiển thị tất cả nhân viên có lịch nghỉ trong tháng {calendarMonth}
+                </span>
+              </div>
+
+              {calendarLeaves.length === 0 ? (
+                <EmptyState
+                  icon={Icons.calendar}
+                  title={`Không có nhân sự nào nghỉ phép trong tháng ${calendarMonth}`}
+                  description="Toàn bộ nhân viên tại chi nhánh đều đi làm đầy đủ trong tháng này."
+                />
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: '16px' }}>
+                  {calendarLeaves.map((item) => (
+                    <div
+                      key={item.request_id}
+                      style={{
+                        border: '1px solid var(--border-default)',
+                        borderRadius: 'var(--radius-md)',
+                        padding: '16px',
+                        backgroundColor: 'var(--surface-card)',
+                        boxShadow: 'var(--shadow-card)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'space-between',
+                        gap: '12px',
+                        transition: 'border-color 0.15s ease',
+                      }}
+                    >
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                          <span className="badge badge-blue">{item.leave_type_name}</span>
+                          <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--status-info)', fontFamily: 'var(--font-mono)' }}>
+                            {item.total_days} ngày
+                          </span>
+                        </div>
+                        <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)', marginBottom: '2px' }}>
+                          {item.employee_name} <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 500 }}>({item.employee_code})</span>
+                        </div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '10px' }}>
+                          {item.store_name || item.department_name || 'TechZone'}
+                        </div>
+                        <div style={{ fontSize: '0.8rem', backgroundColor: 'var(--surface-subtle)', border: '1px solid var(--border-subtle)', padding: '8px 10px', borderRadius: 'var(--radius-sm)', marginBottom: '8px', color: 'var(--text-primary)' }}>
+                          <strong style={{ color: 'var(--text-secondary)' }}>Thời gian:</strong> <span style={{ fontFamily: 'var(--font-mono)' }}>{formatDate(item.start_date)} &rarr; {formatDate(item.end_date)}</span>
+                        </div>
+                        {item.reason && (
+                          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>
+                            &ldquo;{item.reason}&rdquo;
+                          </div>
+                        )}
+                      </div>
+
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        style={{ width: '100%', justifyContent: 'center', gap: '6px' }}
+                        onClick={() => setDetailModalRequest(item)}
+                      >
+                        {Icons.eye} Xem chi tiết đơn
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -1048,7 +1431,7 @@ export function LeaveRequestsPage({ user }: LeaveRequestsPageProps) {
               <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600 }}>Phê Duyệt Đơn Nghỉ Phép</h3>
             </div>
             <div style={{ padding: '20px' }}>
-              <div style={{ backgroundColor: 'var(--bg-subtle, #f3f4f6)', padding: '12px', borderRadius: '6px', marginBottom: '16px' }}>
+              <div style={{ backgroundColor: 'var(--surface-subtle)', border: '1px solid var(--border-default)', padding: '14px', borderRadius: 'var(--radius-sm)', marginBottom: '16px', color: 'var(--text-primary)' }}>
                 <p style={{ margin: '0 0 6px 0' }}><strong>Nhân viên:</strong> {storeApproveModalRequest.employee_name}</p>
                 <p style={{ margin: '0 0 6px 0' }}><strong>Loại nghỉ:</strong> {storeApproveModalRequest.leave_type_name}</p>
                 <p style={{ margin: '0 0 6px 0' }}><strong>Thời gian:</strong> {formatDate(storeApproveModalRequest.start_date)} &rarr; {formatDate(storeApproveModalRequest.end_date)} ({storeApproveModalRequest.total_days} ngày)</p>
@@ -1121,7 +1504,7 @@ export function LeaveRequestsPage({ user }: LeaveRequestsPageProps) {
               <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600 }}>Phê Duyệt Đơn Nghỉ Phép (HR)</h3>
             </div>
             <div style={{ padding: '20px' }}>
-              <div style={{ backgroundColor: 'var(--bg-subtle, #f3f4f6)', padding: '12px', borderRadius: '6px', marginBottom: '16px' }}>
+              <div style={{ backgroundColor: 'var(--surface-subtle)', border: '1px solid var(--border-default)', padding: '14px', borderRadius: 'var(--radius-sm)', marginBottom: '16px', color: 'var(--text-primary)' }}>
                 <p style={{ margin: '0 0 6px 0' }}><strong>Nhân viên:</strong> {hrApproveModalRequest.employee_name} ({hrApproveModalRequest.employee_code})</p>
                 <p style={{ margin: '0 0 6px 0' }}><strong>Chi nhánh:</strong> {hrApproveModalRequest.store_name || 'Trụ sở chính'}</p>
                 <p style={{ margin: '0 0 6px 0' }}><strong>Loại nghỉ:</strong> {hrApproveModalRequest.leave_type_name}</p>
@@ -1236,7 +1619,7 @@ export function LeaveRequestsPage({ user }: LeaveRequestsPageProps) {
                 </div>
               )}
 
-              <div style={{ backgroundColor: 'var(--bg-subtle, #f3f4f6)', padding: '12px', borderRadius: '6px', marginBottom: '16px', fontSize: '0.9rem' }}>
+              <div style={{ backgroundColor: 'var(--surface-subtle)', border: '1px solid var(--border-default)', padding: '14px', borderRadius: 'var(--radius-sm)', marginBottom: '16px', fontSize: '0.9rem', color: 'var(--text-primary)' }}>
                 <p style={{ margin: '0 0 6px 0' }}><strong>Nhân viên:</strong> {rejectModalRequest.employee_name} ({rejectModalRequest.employee_code})</p>
                 <p style={{ margin: '0 0 6px 0' }}><strong>Loại nghỉ:</strong> {rejectModalRequest.leave_type_name} ({rejectModalRequest.total_days} ngày)</p>
                 <p style={{ margin: '0 0 6px 0' }}><strong>Thời gian:</strong> {formatDate(rejectModalRequest.start_date)} &rarr; {formatDate(rejectModalRequest.end_date)}</p>
@@ -1466,7 +1849,7 @@ export function LeaveRequestsPage({ user }: LeaveRequestsPageProps) {
 
               <div style={{ marginBottom: '16px' }}>
                 <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary, #6b7280)', textTransform: 'uppercase', fontWeight: 600 }}>Lý do xin nghỉ</label>
-                <div style={{ backgroundColor: 'var(--bg-subtle, #f9fafb)', padding: '10px', borderRadius: '6px', marginTop: '4px' }}>
+                <div style={{ backgroundColor: 'var(--surface-subtle)', border: '1px solid var(--border-default)', padding: '10px 12px', borderRadius: 'var(--radius-sm)', marginTop: '4px', color: 'var(--text-primary)' }}>
                   {detailModalRequest.reason || 'Không có ghi chú'}
                 </div>
               </div>

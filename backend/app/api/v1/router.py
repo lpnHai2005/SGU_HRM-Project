@@ -18,6 +18,7 @@ api_router.include_router(attendances.router, prefix="/attendances", tags=["Ch�
 api_router.include_router(leaves.router, prefix="/leaves", tags=["Nghỉ phép (Leaves)"])
 api_router.include_router(leaves.router, prefix="/leave-requests", tags=["Nghỉ phép (Leave Requests Workflow)"])
 api_router.include_router(payrolls.router, prefix="/payrolls", tags=["Lương & Thưởng (Payrolls)"])
+api_router.include_router(payrolls.router, prefix="/payroll", tags=["Lương & Thưởng (Payroll alias)"])
 api_router.include_router(reports.router, prefix="/reports", tags=["Báo cáo & Thống kê (Reports)"])
 api_router.include_router(audit_logs.router, prefix="/audit-logs", tags=["Nhật ký Hệ thống (Audit Logs)"])
 api_router.include_router(ai_copilot.router, prefix="/ai-copilot", tags=["Trợ lý AI (AI Copilot)"])

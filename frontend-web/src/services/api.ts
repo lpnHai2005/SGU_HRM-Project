@@ -414,7 +414,9 @@ import type {
 export const payrollApi = {
   getAll: async (params?: {
     period?: string
+    store_id?: number
     employee_id?: number
+    payment_status?: string
   }): Promise<Payroll[]> => {
     return api.get<Payroll[]>('/payrolls', params);
   },
@@ -423,7 +425,13 @@ export const payrollApi = {
     return api.get<Payroll>(`/payrolls/${payrollId}`);
   },
 
-  calculate: async (period: string): Promise<{ message: string; salary_period: string }> => {
+  calculate: async (period: string): Promise<{
+    message: string
+    salary_period: string
+    total_employees_calculated?: number
+    total_gross_income?: number
+    total_net_salary?: number
+  }> => {
     return api.post('/payrolls/calculate', { salary_period: period });
   },
 
@@ -431,11 +439,15 @@ export const payrollApi = {
     return api.post<Payroll[]>(`/payrolls/generate/${month}`);
   },
 
+  generateMonth: async (month: string): Promise<Payroll[]> => {
+    return api.get<Payroll[]>(`/payroll/generate/${month}`);
+  },
+
   getAnnualSummary: async (
     employeeId: number,
     year?: string
   ): Promise<any> => {
-    return api.get(`/payrolls/annual-summary/${employeeId}`, year ? { year } : undefined);
+    return api.get(`/payrolls/employee/${employeeId}/annual`, year ? { year } : undefined);
   },
 
   recordSales: async (data: SalesRecordCreate): Promise<{ message: string }> => {
@@ -454,16 +466,16 @@ export const payrollApi = {
     return api.get(`/payrolls/${payrollId}/payslip`);
   },
 
-  updateStatus: async (payrollId: number, paymentStatus: string): Promise<any> => {
-    return api.put(`/payrolls/${payrollId}/status`, { payment_status: paymentStatus });
+  updateStatus: async (payrollId: number, paymentStatus: string, paymentDate?: string): Promise<any> => {
+    return api.put(`/payrolls/${payrollId}/status`, { payment_status: paymentStatus, payment_date: paymentDate });
   },
 
   confirmAll: async (period: string): Promise<any> => {
     return api.post('/payrolls/confirm-all', { salary_period: period, payment_status: 'CONFIRMED' });
   },
 
-  payAll: async (period: string): Promise<any> => {
-    return api.post('/payrolls/pay-all', { salary_period: period, payment_status: 'PAID' });
+  payAll: async (period: string, paymentDate?: string): Promise<any> => {
+    return api.post('/payrolls/pay-all', { salary_period: period, payment_status: 'PAID', payment_date: paymentDate });
   },
 
   getMySales: async (period?: string): Promise<any> => {
@@ -479,6 +491,34 @@ export const payrollApi = {
     if (period) params.append('period', period);
     if (storeId) params.append('store_id', String(storeId));
     return `${API_BASE_URL}/payrolls/export/excel?${params.toString()}`;
+  },
+
+  exportExcel: async (period: string, storeId?: number): Promise<Blob> => {
+    const token = tokenService.get();
+    const query = new URLSearchParams({ period });
+    if (storeId) query.append('store_id', String(storeId));
+    
+    const response = await fetch(`${API_BASE_URL}/payrolls/export/excel?${query.toString()}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!response.ok) throw new Error('Không thể tải file Excel bảng lương');
+    return response.blob();
+  },
+
+  exportCsv: async (period: string, storeId?: number): Promise<Blob> => {
+    const token = tokenService.get();
+    const query = new URLSearchParams({ period });
+    if (storeId) query.append('store_id', String(storeId));
+    
+    const response = await fetch(`${API_BASE_URL}/payrolls/export/csv?${query.toString()}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!response.ok) throw new Error('Không thể tải file CSV bảng lương');
+    return response.blob();
   },
 };
 
