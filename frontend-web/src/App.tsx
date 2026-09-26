@@ -18,6 +18,33 @@ import { PayrollPage } from './pages/PayrollPage'
 import { ReportsPage } from './pages/ReportsPage'
 import { AuditLogPage } from './pages/AuditLogPage'
 
+// ProtectedRoute: chặn EMPLOYEE truy cập các trang quản lý
+function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode; allowedRoles: string[] }) {
+  const { user } = useAuth()
+  const role = getRoleFromUser(user)
+  if (!allowedRoles.includes(role)) {
+    return (
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '60vh',
+        gap: '16px',
+        padding: '24px',
+        textAlign: 'center',
+      }}>
+        <div style={{ fontSize: '64px' }}>🔒</div>
+        <h2 style={{ margin: 0, fontSize: '20px' }}>Không có quyền truy cập</h2>
+        <p style={{ margin: 0, color: 'var(--text-secondary)' }}>
+          Bạn không có quyền truy cập trang này. Vui lòng liên hệ quản trị viên.
+        </p>
+      </div>
+    )
+  }
+  return <>{children}</>
+}
+
 export function App() {
   const { user, isAuthenticated, isLoading, logout } = useAuth()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -128,12 +155,12 @@ export function App() {
             }
           />
           <Route path="/dashboard" element={<Navigate to="/" replace />} />
-          <Route path="/employees" element={<EmployeeListPage user={user} />} />
+          <Route path="/employees" element={<ProtectedRoute allowedRoles={['ADMIN', 'HR_MANAGER', 'STORE_MANAGER']}><EmployeeListPage user={user} /></ProtectedRoute>} />
           <Route path="/attendance" element={<AttendancePage user={user} />} />
           <Route path="/leave" element={<LeaveRequestsPage user={user} />} />
           <Route path="/payroll" element={<PayrollPage user={user} />} />
-          <Route path="/reports" element={<ReportsPage user={user} />} />
-          <Route path="/audit" element={<AuditLogPage user={user} />} />
+          <Route path="/reports" element={<ProtectedRoute allowedRoles={['ADMIN', 'HR_MANAGER', 'STORE_MANAGER']}><ReportsPage user={user} /></ProtectedRoute>} />
+          <Route path="/audit" element={<ProtectedRoute allowedRoles={['ADMIN', 'HR_MANAGER']}><AuditLogPage user={user} /></ProtectedRoute>} />
           <Route path="/login" element={<Navigate to="/" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

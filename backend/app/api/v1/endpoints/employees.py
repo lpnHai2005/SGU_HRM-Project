@@ -20,8 +20,16 @@ async def list_employees(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
+    # Kiểm tra quyền: chỉ ADMIN, HR_MANAGER, STORE_MANAGER được phép xem danh sách nhân sự
+    user_roles = current_user.get("roles", [])
+    if not any(role in user_roles for role in ["ADMIN", "HR_MANAGER", "STORE_MANAGER"]):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Bạn không có quyền truy cập trang quản lý nhân sự."
+        )
+
     # Store Manager chỉ xem nhân viên chi nhánh mình phụ trách
-    if "STORE_MANAGER" in current_user.get("roles", []) and "ADMIN" not in current_user.get("roles", []) and "HR_MANAGER" not in current_user.get("roles", []):
+    if "STORE_MANAGER" in user_roles and "ADMIN" not in user_roles and "HR_MANAGER" not in user_roles:
         store_id = current_user.get("store_id")
 
     base_query = """
