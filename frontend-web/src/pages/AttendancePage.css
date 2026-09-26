@@ -38,7 +38,7 @@
   height: 44px;
   border-radius: 12px;
   background: rgba(43, 184, 167, 0.12);
-  color: #0d9488;
+  color: var(--status-success);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -67,20 +67,27 @@
   flex-wrap: wrap;
 }
 
+.timesheet-export-btn {
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: var(--text-sm);
+}
+
 .period-picker-group {
   display: flex;
   align-items: center;
-  background: var(--bg-muted, #f8fafc);
-  border: 1px solid var(--border-color, #e2e8f0);
-  border-radius: 10px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
   padding: 4px 6px;
   gap: 4px;
+  box-shadow: var(--shadow-xs);
 }
 
 .period-arrow-btn {
   background: none;
   border: none;
-  color: #0d9488;
+  color: var(--status-success);
   width: 28px;
   height: 28px;
   border-radius: 6px;
@@ -94,7 +101,7 @@
 }
 
 .period-arrow-btn:hover {
-  background: rgba(13, 148, 136, 0.1);
+  background: var(--status-success-bg);
 }
 
 .period-input-field {
@@ -102,13 +109,18 @@
   background: transparent;
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-primary, #111827);
+  color: var(--text-primary);
   padding: 4px 6px;
   cursor: pointer;
+  color-scheme: light;
 }
 
 .period-input-field:focus {
   outline: none;
+}
+
+[data-theme="dark"] .period-input-field {
+  color-scheme: dark;
 }
 
 /* View Mode Tabs */
@@ -136,12 +148,12 @@
 }
 
 .timesheet-tab-item:hover {
-  color: #0d9488;
+  color: var(--status-success);
   background: rgba(13, 148, 136, 0.04);
 }
 
 .timesheet-tab-item.active {
-  color: #0d9488;
+  color: var(--status-success);
   background: rgba(13, 148, 136, 0.08);
 }
 
@@ -152,7 +164,7 @@
   left: 0;
   right: 0;
   height: 2px;
-  background: #0d9488;
+  background: var(--status-success);
 }
 
 /* ==========================================================================
@@ -280,7 +292,7 @@
 .metric-gauge-val {
   font-size: 16px;
   font-weight: 700;
-  color: #111827;
+  color: var(--text-primary);
   line-height: 1.1;
 }
 
@@ -309,13 +321,13 @@
 }
 
 .footer-stat-label {
-  color: #64748b;
+  color: var(--text-tertiary);
   font-size: 11px;
   margin-bottom: 2px;
 }
 
 .footer-stat-value {
-  color: #0f172a;
+  color: var(--text-primary);
   font-weight: 700;
   font-size: 12px;
 }
@@ -341,7 +353,7 @@
 
 .dual-column-label {
   font-size: 12px;
-  color: #64748b;
+  color: var(--text-tertiary);
   font-weight: 500;
 }
 
@@ -415,7 +427,7 @@
 .dual-column-value {
   font-size: 14px;
   font-weight: 700;
-  color: #111827;
+  color: var(--text-primary);
 }
 
 /* Big Typography Cards (Làm thêm, Công tác) */
@@ -430,14 +442,14 @@
 .metric-hero-number {
   font-size: 38px;
   font-weight: 700;
-  color: #2bb8a7;
+  color: var(--status-success);
   line-height: 1;
 }
 
 .metric-hero-unit {
   font-size: 16px;
   font-weight: 700;
-  color: #2bb8a7;
+  color: var(--status-success);
 }
 
 /* Card 8 Quỹ nghỉ bù */
@@ -449,13 +461,13 @@
   padding: 10px 4px 0 4px;
   border-top: 1px solid var(--border-color, #f1f5f9);
   font-size: 12px;
-  color: #64748b;
+  color: var(--text-tertiary);
   margin-top: auto;
 }
 
 .compensatory-row span:last-child {
   font-weight: 700;
-  color: #111827;
+  color: var(--text-primary);
   font-size: 13px;
 }
 
@@ -501,6 +513,83 @@
   gap: 10px;
 }
 
+.timesheet-status-filter {
+  width: auto;
+  min-width: 170px;
+  padding: 0 30px 0 12px;
+  font-size: var(--text-sm);
+}
+
+.timesheet-employee-search {
+  width: 220px;
+  font-size: var(--text-sm);
+}
+
+.timesheet-result-count {
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+}
+
+.timesheet-result-count strong,
+.table-cell-emphasis,
+.table-cell-strong,
+.table-employee-name {
+  color: var(--text-primary);
+}
+
+.table-cell-emphasis {
+  font-weight: 600;
+}
+
+.table-cell-strong {
+  font-weight: 700;
+}
+
+.table-employee-name {
+  font-weight: 600;
+}
+
+.table-shift-name {
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+
+.table-notes-cell {
+  max-width: 240px;
+  font-size: var(--text-xs) !important;
+  color: var(--text-tertiary) !important;
+}
+
+.zero-value {
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}
+
+.zero-value-success,
+.status-success {
+  color: var(--status-success) !important;
+}
+
+.status-danger {
+  color: var(--status-error) !important;
+}
+
+.status-warning {
+  color: var(--status-warning) !important;
+}
+
+.empty-value {
+  color: var(--text-muted);
+}
+
+.text-red {
+  color: var(--status-error) !important;
+}
+
+.text-amber {
+  color: var(--status-warning) !important;
+}
+
 /* Badge Styles */
 .badge-state {
   display: inline-flex;
@@ -513,21 +602,34 @@
 }
 
 .badge-state.normal {
-  background: rgba(16, 185, 129, 0.12);
-  color: #059669;
+  background: var(--status-success-bg);
+  color: var(--status-success);
 }
 
 .badge-state.late {
-  background: rgba(239, 68, 68, 0.12);
-  color: #dc2626;
+  background: var(--status-error-bg);
+  color: var(--status-error);
 }
 
 .badge-state.early {
-  background: rgba(245, 158, 11, 0.12);
-  color: #d97706;
+  background: var(--status-warning-bg);
+  color: var(--status-warning);
 }
 
 .badge-state.overtime {
-  background: rgba(139, 92, 246, 0.12);
-  color: #7c3aed;
+  background: var(--status-info-bg);
+  color: var(--status-info);
+}
+
+@media (max-width: 600px) {
+  .timesheet-export-btn,
+  .timesheet-status-filter,
+  .timesheet-employee-search {
+    width: 100%;
+  }
+
+  .timesheet-controls-section,
+  .filter-left-group {
+    width: 100%;
+  }
 }
