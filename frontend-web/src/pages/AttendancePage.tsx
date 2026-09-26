@@ -186,7 +186,7 @@ export function AttendancePage({ user }: AttendancePageProps) {
             <button className="period-arrow-btn" onClick={handleNextMonth} title="Tháng sau">›</button>
           </div>
 
-          <button className="btn-secondary" onClick={handleExportCSV} style={{ padding: '8px 14px', fontSize: '13px' }}>
+          <button className="btn btn-secondary timesheet-export-btn" onClick={handleExportCSV}>
             {Icons.download} Xuất báo cáo
           </button>
         </div>
@@ -285,7 +285,7 @@ export function AttendancePage({ user }: AttendancePageProps) {
             </div>
             <div className="footer-stat-box right">
               <span className="footer-stat-label">Tình trạng</span>
-              <span className="footer-stat-value" style={{ color: lateCount > 0 ? '#ef4444' : '#10b981' }}>
+              <span className={`footer-stat-value ${lateCount > 0 ? 'status-danger' : 'status-success'}`}>
                 {lateCount > 0 ? 'Có vi phạm' : 'Tốt'}
               </span>
             </div>
@@ -325,7 +325,7 @@ export function AttendancePage({ user }: AttendancePageProps) {
             </div>
             <div className="footer-stat-box right">
               <span className="footer-stat-label">Tình trạng</span>
-              <span className="footer-stat-value" style={{ color: earlyCount > 0 ? '#f59e0b' : '#10b981' }}>
+              <span className={`footer-stat-value ${earlyCount > 0 ? 'status-warning' : 'status-success'}`}>
                 {earlyCount > 0 ? 'Có về sớm' : 'Đúng giờ'}
               </span>
             </div>
@@ -455,8 +455,7 @@ export function AttendancePage({ user }: AttendancePageProps) {
           <div className="filter-left-group">
             <span className="filter-label-text">Lọc trạng thái:</span>
             <select
-              className="form-input"
-              style={{ width: 'auto', padding: '6px 12px', fontSize: '13px' }}
+              className="form-input timesheet-status-filter"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
             >
@@ -470,17 +469,16 @@ export function AttendancePage({ user }: AttendancePageProps) {
             {activeTab === 'team_timesheet' && (
               <input
                 type="text"
-                className="form-input"
+                className="form-input timesheet-employee-search"
                 placeholder="Tìm theo tên nhân sự..."
                 value={searchEmployee}
                 onChange={(e) => setSearchEmployee(e.target.value)}
-                style={{ width: '220px', fontSize: '13px' }}
               />
             )}
           </div>
 
           <div className="filter-right-actions">
-            <span style={{ fontSize: '13px', color: '#64748b' }}>
+            <span className="timesheet-result-count">
               Hiển thị{' '}
               <strong>
                 {activeTab === 'my_timesheet' ? filteredPersonalRecords.length : filteredTeamRecords.length}
@@ -518,26 +516,26 @@ export function AttendancePage({ user }: AttendancePageProps) {
                   <tr key={att.attendance_id}>
                     {activeTab === 'team_timesheet' && (
                       <td>
-                        <span style={{ fontWeight: 600, color: '#0f172a' }}>
+                        <span className="table-employee-name">
                           {att.employee_name || `Mã #${att.employee_id}`}
                         </span>
                       </td>
                     )}
                     <td>
-                      <span className="table-cell-mono" style={{ fontWeight: 600 }}>
+                      <span className="table-cell-mono table-cell-emphasis">
                         {formatDate(att.work_date)}
                       </span>
                     </td>
                     <td>
-                      <span style={{ fontSize: '13px' }}>{att.shift_name || 'Ca chuẩn (8h)'}</span>
+                      <span className="table-shift-name">{att.shift_name || 'Ca chuẩn (8h)'}</span>
                     </td>
                     <td>
-                      <span className={`table-cell-mono ${isLate ? 'text-red' : ''}`} style={{ fontWeight: 600 }}>
+                      <span className={`table-cell-mono table-cell-emphasis ${isLate ? 'text-red' : ''}`}>
                         {att.check_in_time ? formatTime(att.check_in_time) : '--:--'}
                       </span>
                     </td>
                     <td>
-                      <span className={`table-cell-mono ${isEarly ? 'text-amber' : ''}`} style={{ fontWeight: 600 }}>
+                      <span className={`table-cell-mono table-cell-emphasis ${isEarly ? 'text-amber' : ''}`}>
                         {att.check_out_time ? formatTime(att.check_out_time) : '--:--'}
                       </span>
                     </td>
@@ -545,18 +543,18 @@ export function AttendancePage({ user }: AttendancePageProps) {
                       {isLate ? (
                         <span className="badge-state late">{att.late_minutes} phút</span>
                       ) : (
-                        <span style={{ color: '#10b981', fontSize: '12px' }}>0p</span>
+                        <span className="zero-value zero-value-success">0p</span>
                       )}
                     </td>
                     <td>
                       {isEarly ? (
                         <span className="badge-state early">{att.early_minutes} phút</span>
                       ) : (
-                        <span style={{ color: '#64748b', fontSize: '12px' }}>0p</span>
+                        <span className="zero-value">0p</span>
                       )}
                     </td>
                     <td>
-                      <span className="table-cell-mono" style={{ fontWeight: 700 }}>
+                      <span className="table-cell-mono table-cell-strong">
                         {att.actual_work_hours || 0}h
                       </span>
                     </td>
@@ -564,7 +562,7 @@ export function AttendancePage({ user }: AttendancePageProps) {
                       {isOT ? (
                         <span className="badge-state overtime">+{att.overtime_hours}h</span>
                       ) : (
-                        <span style={{ color: '#94a3b8' }}>--</span>
+                        <span className="empty-value">--</span>
                       )}
                     </td>
                     <td>
@@ -576,7 +574,7 @@ export function AttendancePage({ user }: AttendancePageProps) {
                         {isLate ? 'Đi muộn' : isEarly ? 'Về sớm' : isOT ? 'Tăng ca' : 'Đúng giờ'}
                       </span>
                     </td>
-                    <td style={{ maxWidth: '240px', fontSize: '12px', color: '#64748b' }}>
+                    <td className="table-notes-cell">
                       {att.notes || '--'}
                     </td>
                   </tr>
