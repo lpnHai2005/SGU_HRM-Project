@@ -3,7 +3,8 @@ import { Icons } from '../components/common/Icons'
 import { StatCard } from '../components/common/StatCard'
 import { EmptyState } from '../components/common/EmptyState'
 import { formatCurrency, formatDate, formatTime, getInitials } from '../utils/formatters'
-import type { Attendance, LeaveBalance, Payroll, LeaveRequest, Employee } from '../types'
+import type { Attendance, LeaveBalance, Payroll, LeaveRequest, Employee, TodayAttendanceStatus } from '../types'
+import { attendanceApi } from '../services/api'
 
 export interface AttendanceHeroProps {
   attendance: Attendance | null
@@ -14,11 +15,35 @@ export interface AttendanceHeroProps {
 }
 
 export function AttendanceHero({
-  todayAttendance,
+  todayAttendance: initialAttendance,
   onCheckIn,
   onCheckOut,
   isLoading,
 }: AttendanceHeroProps) {
+  const [session, setSession] = useState<TodayAttendanceStatus | null>(null)
+  const [remaining, setRemaining] = useState(0)
+  const [statusError, setStatusError] = useState(false)
+  useEffect(() => {
+    let active = true
+    let deadline = 0
+    const refresh = async () => {
+      try {
+        const value = await attendanceApi.getTodayStatus()
+        if (!active) return
+        deadline = performance.now() + value.cooldown_seconds_remaining * 1000
+        setSession(value)
+        setRemaining(value.cooldown_seconds_remaining)
+        setStatusError(false)
+      } catch {
+        if (active) setStatusError(true)
+      }
+    }
+    void refresh()
+    const poll = window.setInterval(refresh, 15000)
+    const tick = window.setInterval(() => setRemaining(Math.max(0, Math.ceil((deadline - performance.now()) / 1000))), 1000)
+    return () => { active = false; clearInterval(poll); clearInterval(tick) }
+  }, [isLoading])
+  const todayAttendance = session || initialAttendance
   const status = todayAttendance?.check_in_time
     ? todayAttendance.check_out_time
       ? { text: 'Đã hoàn thành', class: 'checked-out' }
@@ -59,7 +84,7 @@ export function AttendanceHero({
             {todayAttendance?.shift_name || 'Chưa phân ca'}
           </div>
           <div className="attendance-time-sublabel">
-            {todayAttendance?.actual_work_hours
+            {todayAttendance?.actual_work_hours != null
               ? `${todayAttendance.actual_work_hours}h làm việc`
               : todayAttendance?.shift_id ? '8 tiếng' : 'Chưa có lịch'}
           </div>
@@ -70,20 +95,21 @@ export function AttendanceHero({
         <button
           className="check-btn check-in"
           onClick={onCheckIn}
-          disabled={!!todayAttendance?.check_in_time || isLoading}
+          disabled={!session || statusError || session.can_check_out || remaining > 0 || isLoading}
         >
           {Icons.zap}
-          Check-in
+          {remaining > 0 ? `Check-in sau ${remaining}s` : 'Check-in'}
         </button>
         <button
           className="check-btn check-out"
           onClick={onCheckOut}
-          disabled={!todayAttendance?.check_in_time || !!todayAttendance?.check_out_time || isLoading}
+          disabled={!session?.can_check_out || statusError || isLoading}
         >
           {Icons.logOut}
           Check-out
         </button>
       </div>
+      {statusError && <p role="status">Không tải được trạng thái chấm công. Hệ thống sẽ thử lại.</p>}
     </div>
   )
 }
@@ -206,6 +232,9 @@ export function DashboardPage({
   onCheckOut,
   attendanceLoading,
 }: DashboardPageProps) {
+  const canViewTeamAttendance = (user?.roles as string[] | undefined)?.some(
+    role => ['ADMIN', 'HR_MANAGER', 'STORE_MANAGER'].includes(role),
+  ) ?? false
   const [employees, setEmployees] = useState<Employee[]>([])
   const [attendancesToday, setAttendancesToday] = useState<Attendance[]>([])
   const [recentAttendance, setRecentAttendance] = useState<Attendance[]>([])
@@ -222,8 +251,8 @@ export function DashboardPage({
         const { attendanceApi, leaveApi, payrollApi, employeeApi } = await import('../services/api')
 
         const now = new Date()
-        const currentPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-        const todayStr = now.toISOString().split('T')[0]
+        const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }).format(now)
+        const currentPeriod = todayStr.slice(0, 7)
 
         const [
           empList,
@@ -234,7 +263,9 @@ export function DashboardPage({
           allLeavesList,
         ] = await Promise.all([
           employeeApi.getAll().catch(() => []),
-          attendanceApi.getAll({ work_date: todayStr }).catch(() => []),
+          canViewTeamAttendance
+            ? attendanceApi.getAll({ work_date: todayStr }).catch(() => [])
+            : Promise.resolve([]),
           user?.employee_id ? attendanceApi.getMyHistory(currentPeriod).catch(() => []) : Promise.resolve([]),
           leaveApi.getMyBalance().catch(() => null),
           payrollApi.getAll({ period: currentPeriod }).catch(() => []),
@@ -242,7 +273,9 @@ export function DashboardPage({
         ])
 
         setEmployees(empList || [])
-        setAttendancesToday(todayAttList || [])
+        setAttendancesToday(canViewTeamAttendance
+          ? todayAttList || []
+          : (myAttHistory || []).filter(att => att.work_date === todayStr))
         setRecentAttendance((myAttHistory || []).slice(0, 5))
         setLeaveBalance(balance)
         setPayrolls(allPayrollsList || [])
@@ -258,7 +291,7 @@ export function DashboardPage({
     }
 
     fetchData()
-  }, [user?.employee_id])
+  }, [user?.employee_id, canViewTeamAttendance])
 
   const todayAttendance = recentAttendance.find(a => a.work_date === new Date().toISOString().split('T')[0])
   const activeEmployees = employees.filter(e => e.employment_status === 'ACTIVE')
@@ -328,7 +361,7 @@ export function DashboardPage({
             <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 className="card-title">Điểm danh &amp; Ca làm việc hôm nay</h3>
               <span className={`badge-status ${attendancesToday.length > 0 ? 'running' : 'paused'}`}>
-                {attendancesToday.length > 0 ? `${attendancesToday.length} đã điểm danh` : 'Chưa có bản ghi hôm nay'}
+                {attendancesToday.length > 0 ? `${attendancesToday.length} lượt chấm công` : 'Chưa có bản ghi hôm nay'}
               </span>
             </div>
             <div className="table-container">
@@ -373,7 +406,7 @@ export function DashboardPage({
                           <td><span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{emp?.position_name || att.shift_name || 'Nhân viên'}</span></td>
                           <td>
                             <span className={`badge-status ${isLate ? 'paused' : 'running'}`}>
-                              {isLate ? `Đi muộn ${att.late_minutes}p` : 'Đang làm việc'}
+                              {att.check_out_time ? 'Đã check-out' : isLate ? `Đi muộn ${att.late_minutes}p` : 'Đang làm việc'}
                             </span>
                           </td>
                           <td><span className="table-cell-mono">{att.check_in_time ? formatTime(att.check_in_time) : '--:--'}</span></td>
@@ -387,7 +420,7 @@ export function DashboardPage({
               </table>
             </div>
             <div className="table-pagination">
-              <span>Hiển thị {attendancesToday.length} trên {employees.length} nhân sự</span>
+              <span>{attendancesToday.length} lượt chấm công · {canViewTeamAttendance ? 'Trong phạm vi quản lý' : 'Cá nhân của bạn'}</span>
             </div>
           </div>
         </div>

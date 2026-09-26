@@ -14,7 +14,7 @@ export interface TopbarProps {
 const PAGE_TITLES: Record<string, string> = {
   dashboard: 'Tổng quan',
   employees: 'Nhân sự',
-  attendance: 'Chấm công',
+  attendance: 'Bảng Công',
   leave: 'Nghỉ phép',
   payroll: 'Lương & Thưởng',
   reports: 'Báo cáo & Thống kê',

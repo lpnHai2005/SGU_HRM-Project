@@ -230,23 +230,109 @@ export interface Attendance {
   notes?: string | null;
 }
 
+export interface WorkShift {
+  shift_id: number;
+  shift_code?: string;
+  shift_name: string;
+  start_time: string;
+  end_time: string;
+  work_hours: number;
+}
+
 export interface CheckInRequest {
   employee_id?: number;
   shift_id?: number;
   notes?: string;
+  device_info?: string;
+  location?: string;
 }
 
 export interface CheckOutRequest {
-  attendance_id: number;
+  attendance_id?: number;
   notes?: string;
+  location?: string;
 }
 
 export interface CheckInResponse {
   message: string;
   attendance_id: number;
+  employee_name?: string;
   time: string;
   status: string;
   late_minutes: number;
+  shift_name?: string;
+}
+
+export interface CheckOutResponse {
+  message: string;
+  attendance_id: number;
+  check_out_time: string;
+  actual_work_hours: number;
+  overtime_hours: number;
+  early_minutes: number;
+  status: string;
+}
+
+export interface TodayAttendanceStatus {
+  can_check_in: boolean;
+  can_check_out: boolean;
+  cooldown_seconds_remaining: number;
+  next_check_in_at: string | null;
+  work_date: string;
+  has_checked_in: boolean;
+  has_checked_out: boolean;
+  attendance_id: number | null;
+  check_in_time: string | null;
+  check_out_time: string | null;
+  late_minutes: number;
+  early_minutes: number;
+  actual_work_hours: number;
+  overtime_hours: number;
+  status: string;
+  shift_id: number | null;
+  shift_name: string | null;
+  store_id?: number | null;
+  store_name?: string | null;
+  notes?: string | null;
+}
+
+export interface AttendanceSummary {
+  period: string;
+  month: number;
+  year: number;
+  employee_id?: number;
+  employee_name?: string;
+  working_days: {
+    standard_days: number;
+    actual_days: number;
+    total_hours: number;
+  };
+  leave_quota: {
+    annual_leave: number;
+    used_leave: number;
+    remaining_leave: number;
+  };
+  late_arrivals: {
+    count: number;
+    minutes: number;
+  };
+  early_departures: {
+    count: number;
+    minutes: number;
+  };
+  extra_work: {
+    hours: number;
+  };
+  business_trips: {
+    days: number;
+  };
+  overtime: {
+    shifts_count: number;
+    hours: number;
+  };
+  compensatory_leave: {
+    total: number;
+  };
 }
 
 export interface ShiftSchedule {
