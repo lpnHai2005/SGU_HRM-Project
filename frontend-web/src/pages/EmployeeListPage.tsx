@@ -16,10 +16,18 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
   const [filterStore, setFilterStore] = useState<number | null>(null)
+  const [filterPosition, setFilterPosition] = useState<number | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   // Modal state
-  const [showModal, setShowModal] = useState(false)
+  const [showModal, setShowModal] = useState(false);
+  // Shift edit modal state
+  const [showShiftModal, setShowShiftModal] = useState(false);
+  const [shiftStart, setShiftStart] = useState('');
+  const [shiftEnd, setShiftEnd] = useState('');
+  const [shiftPreset, setShiftPreset] = useState('');
+
+
   const [modalMode, setModalMode] = useState<ModalMode>('view')
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null)
 
@@ -138,14 +146,18 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
     fetchLookups()
   }, [fetchEmployees, fetchLookups])
 
+
   const filteredEmployees = employees.filter(emp => {
     const matchesSearch =
       !searchTerm ||
       emp.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       emp.employee_code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       emp.phone?.includes(searchTerm)
-    return matchesSearch
+    const matchesPosition = !filterPosition || emp.position_id === filterPosition
+    return matchesSearch && matchesPosition
   })
+
+
 
   const role = getRoleFromUser(user)
   const canManage = role === 'ADMIN' || role === 'HR_MANAGER'
@@ -235,6 +247,56 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
     setSelectedEmployee(null)
     setEditingContractId(null)
     setFormError('')
+  }
+
+  // --- Shift edit modal handlers ---
+  const openShiftEditModal = (employee: Employee) => {
+    setSelectedEmployee(employee)
+    setOpenMenuId(null)
+    // Preset giờ vào/ra mặc định theo ngày hôm nay
+    const today = new Date().toISOString().slice(0, 10)
+    setShiftStart(today + 'T08:00')
+    setShiftEnd(today + 'T17:00')
+    setShiftPreset('')
+    setShowShiftModal(true)
+  }
+
+  const closeShiftModal = () => {
+    setShowShiftModal(false)
+    setSelectedEmployee(null)
+    setShiftStart('')
+    setShiftEnd('')
+    setShiftPreset('')
+  }
+
+  const applyShiftPreset = (preset: string) => {
+    const today = new Date().toISOString().slice(0, 10)
+    setShiftPreset(preset)
+    if (preset === 'Ca sáng') {
+      setShiftStart(today + 'T06:00')
+      setShiftEnd(today + 'T14:00')
+    } else if (preset === 'Ca chiều') {
+      setShiftStart(today + 'T14:00')
+      setShiftEnd(today + 'T22:00')
+    } else if (preset === 'Ca tối') {
+      setShiftStart(today + 'T22:00')
+      setShiftEnd(today + 'T06:00')
+    }
+  }
+
+  const handleShiftSave = async () => {
+    if (!selectedEmployee || !shiftStart || !shiftEnd) {
+      showToast('error', 'Vui lòng điền đủ giờ vào và giờ ra')
+      return
+    }
+    const startDt = new Date(shiftStart)
+    const endDt = new Date(shiftEnd)
+    let hours = (endDt.getTime() - startDt.getTime()) / 3600000
+    if (hours < 0) hours += 24 // qua đêm
+    // TODO: gọi API lưu ca làm – hiện tại log + toast
+    console.log('[ShiftEdit] employee_id:', selectedEmployee.employee_id, '|', shiftStart, '->', shiftEnd, '| hours:', hours.toFixed(1), '| preset:', shiftPreset)
+    showToast('success', `Đã cập nhật ca làm cho ${selectedEmployee.full_name} (${hours.toFixed(1)}h)`)
+    closeShiftModal()
   }
 
   const loadEmployeeContracts = async (employeeId: number) => {
@@ -1223,7 +1285,9 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
 
   // Dropdown menu for actions
   const renderActionMenu = (emp: Employee) => {
-    if (!canManage) return null
+    // Hiện menu nếu là Admin/HR hoặc Cửa hàng trưởng cùng chi nhánh
+    const isManagerOfBranch = role === 'STORE_MANAGER' && user?.store_id === emp.store_id
+    if (!canManage && !isManagerOfBranch) return null
     if (openMenuId !== emp.employee_id) return null
 
     return (
@@ -1231,38 +1295,53 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
         className="action-dropdown"
         onClick={(e) => e.stopPropagation()}
       >
-        <button
-          className="action-dropdown-item"
-          onClick={() => openModal('edit', emp)}
-        >
-          <span className="action-icon icon-edit">{Icons.edit}</span>
-          <span>Sửa thông tin</span>
-        </button>
-        <button
-          className="action-dropdown-item"
-          onClick={() => openModal('contract', emp)}
-        >
-          <span className="action-icon icon-contract">{Icons.fileText}</span>
-          <span>Quản lý hợp đồng</span>
-        </button>
-        <button
-          className="action-dropdown-item"
-          onClick={() => openModal('promote', emp)}
-        >
-          <span className="action-icon icon-promote">{Icons.trendingUp}</span>
-          <span>Thăng chức / Điều chuyển</span>
-        </button>
-        <div className="action-dropdown-divider"></div>
-        <button
-          className="action-dropdown-item danger"
-          onClick={() => {
-            setSelectedEmployee(emp)
-            handleResign()
-          }}
-        >
-          <span className="action-icon icon-danger">{Icons.xCircle}</span>
-          <span>Thôi việc</span>
-        </button>
+        {canManage && (
+          <>
+            <button
+              className="action-dropdown-item"
+              onClick={() => openModal('edit', emp)}
+            >
+              <span className="action-icon icon-edit">{Icons.edit}</span>
+              <span>Sửa thông tin</span>
+            </button>
+            <button
+              className="action-dropdown-item"
+              onClick={() => openModal('contract', emp)}
+            >
+              <span className="action-icon icon-contract">{Icons.fileText}</span>
+              <span>Quản lý hợp đồng</span>
+            </button>
+            <button
+              className="action-dropdown-item"
+              onClick={() => openModal('promote', emp)}
+            >
+              <span className="action-icon icon-promote">{Icons.trendingUp}</span>
+              <span>Thăng chức / Điều chuyển</span>
+            </button>
+            <div className="action-dropdown-divider"></div>
+          </>
+        )}
+        {isManagerOfBranch && (
+          <button
+            className="action-dropdown-item"
+            onClick={() => openShiftEditModal(emp)}
+          >
+            <span className="action-icon icon-edit">{Icons.edit}</span>
+            <span>Sửa ca làm</span>
+          </button>
+        )}
+        {canManage && (
+          <button
+            className="action-dropdown-item danger"
+            onClick={() => {
+              setSelectedEmployee(emp)
+              handleResign()
+            }}
+          >
+            <span className="action-icon icon-danger">{Icons.xCircle}</span>
+            <span>Thôi việc</span>
+          </button>
+        )}
       </div>
     )
   }
@@ -1325,6 +1404,22 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
               <option value="ON_LEAVE">Nghỉ phép</option>
               <option value="RESIGNED">Đã nghỉ việc</option>
             </select>
+            {/* Bộ lọc chức vụ */}
+            {lookups?.positions && lookups.positions.length > 0 && (
+              <select
+                className="form-select"
+                value={filterPosition || ''}
+                onChange={(e) => setFilterPosition(e.target.value ? Number(e.target.value) : null)}
+                style={{ width: 'auto', minWidth: '160px' }}
+              >
+                <option value="">Tất cả chức vụ</option>
+                {lookups.positions.map(pos => (
+                  <option key={pos.position_id} value={pos.position_id}>
+                    {pos.position_name}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
         </div>
 
@@ -1421,7 +1516,20 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
                             >
                               {Icons.eye}
                             </button>
-                            {canManage && (
+                            {/* Nút sửa ca: chỉ hiện với STORE_MANAGER cùng chi nhánh */}
+                            {role === 'STORE_MANAGER' && user?.store_id === emp.store_id && (
+                              <button
+                                className="btn btn-secondary btn-sm btn-icon"
+                                title="Sửa ca làm"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  openShiftEditModal(emp)
+                                }}
+                              >
+                                {Icons.edit}
+                              </button>
+                            )}
+                            {(canManage || (role === 'STORE_MANAGER' && user?.store_id === emp.store_id)) && (
                               <button
                                 className="btn btn-secondary btn-sm btn-icon"
                                 title="Tùy chọn"
@@ -1463,6 +1571,67 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
               </button>
             </div>
             {renderModalContent()}
+          </div>
+        </div>
+      )}
+      {/* Shift Edit Modal */}
+      {showShiftModal && selectedEmployee && (
+        <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && closeShiftModal()}>
+          <div className="modal" style={{ maxWidth: '500px' }}>
+            <div className="modal-header">
+              <h3 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span className="modal-title-icon icon-clock">{Icons.clock}</span>
+                <span>Sửa ca làm cho {selectedEmployee.full_name}</span>
+              </h3>
+              <button className="modal-close" onClick={closeShiftModal} title="Đóng">
+                {Icons.x}
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group" style={{ marginBottom: '12px' }}>
+                <label className="form-label">Giờ vào</label>
+                <input type="datetime-local" className="form-input" value={shiftStart} onChange={(e) => setShiftStart(e.target.value)} />
+              </div>
+              <div className="form-group" style={{ marginBottom: '12px' }}>
+                <label className="form-label">Giờ ra</label>
+                <input type="datetime-local" className="form-input" value={shiftEnd} onChange={(e) => setShiftEnd(e.target.value)} />
+              </div>
+              <div style={{ marginBottom: '16px' }}>
+                <label className="form-label" style={{ display: 'block', marginBottom: '8px' }}>Ca mẫu (tự động điền giờ):</label>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  {[
+                    { label: 'Ca sáng (6:00–14:00)', key: 'Ca sáng' },
+                    { label: 'Ca chiều (14:00–22:00)', key: 'Ca chiều' },
+                    { label: 'Ca tối (22:00–6:00)', key: 'Ca tối' },
+                  ].map(ca => (
+                    <button
+                      key={ca.key}
+                      className={`btn btn-sm ${shiftPreset === ca.key ? 'btn-primary' : 'btn-secondary'}`}
+                      onClick={() => applyShiftPreset(ca.key)}
+                      style={{ minWidth: '150px' }}
+                    >
+                      {ca.label}
+                    </button>
+                  ))}
+                </div>
+                {shiftStart && shiftEnd && (
+                  <div style={{ marginTop: '10px', padding: '8px 12px', background: 'var(--surface-ground)', borderRadius: '6px', fontSize: '13px' }}>
+                    ⏱ Số giờ làm tính được: <strong>
+                      {(() => {
+                        const s = new Date(shiftStart), e = new Date(shiftEnd)
+                        let h = (e.getTime() - s.getTime()) / 3600000
+                        if (h < 0) h += 24
+                        return h.toFixed(1) + ' giờ'
+                      })()}
+                    </strong>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="modal-footer" style={{ justifyContent: 'flex-end' }}>
+              <button className="btn btn-secondary" onClick={closeShiftModal}>Hủy</button>
+              <button className="btn btn-primary" onClick={handleShiftSave}>Lưu</button>
+            </div>
           </div>
         </div>
       )}

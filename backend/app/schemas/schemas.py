@@ -308,15 +308,29 @@ class ShiftScheduleOut(ShiftScheduleCreate):
     model_config = ConfigDict(from_attributes=True)
 
 
+class WorkShiftOut(BaseModel):
+    shift_id: int
+    shift_code: Optional[str] = None
+    shift_name: str
+    start_time: Any
+    end_time: Any
+    work_hours: float
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class CheckInRequest(BaseModel):
-    employee_id: Optional[int] = None
-    shift_id: int = 1
+    employee_id: Optional[int] = Field(None, gt=0)
+    shift_id: int = Field(1, gt=0)
     notes: Optional[str] = None
+    device_info: Optional[str] = None
+    location: Optional[str] = None
 
 
 class CheckOutRequest(BaseModel):
-    attendance_id: int
+    attendance_id: Optional[int] = Field(None, gt=0)
     notes: Optional[str] = None
+    location: Optional[str] = None
 
 
 class AttendanceOut(BaseModel):
@@ -338,6 +352,72 @@ class AttendanceOut(BaseModel):
     notes: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class AttendanceWorkingDaysSummary(BaseModel):
+    standard_days: int = 26
+    actual_days: float = 0.0
+    total_hours: float = 0.0
+
+
+class AttendanceLeaveQuotaSummary(BaseModel):
+    annual_leave: float = 12.0
+    used_leave: float = 0.0
+    remaining_leave: float = 12.0
+
+
+class AttendanceCountAndMinutes(BaseModel):
+    count: int = 0
+    minutes: int = 0
+
+
+class AttendanceOvertimeSummary(BaseModel):
+    shifts_count: int = 0
+    hours: float = 0.0
+
+
+class AttendanceSingleValue(BaseModel):
+    value: float = 0.0
+
+
+class AttendanceSummaryOut(BaseModel):
+    period: str
+    month: int
+    year: int
+    employee_id: Optional[int] = None
+    employee_name: Optional[str] = None
+    working_days: AttendanceWorkingDaysSummary
+    leave_quota: AttendanceLeaveQuotaSummary
+    late_arrivals: AttendanceCountAndMinutes
+    early_departures: AttendanceCountAndMinutes
+    extra_work: dict
+    business_trips: dict
+    overtime: AttendanceOvertimeSummary
+    compensatory_leave: dict
+
+
+class TodayAttendanceStatusOut(BaseModel):
+    can_check_in: bool = True
+    can_check_out: bool = False
+    cooldown_seconds_remaining: int = 0
+    next_check_in_at: Optional[datetime] = None
+    work_date: date
+    has_checked_in: bool
+    has_checked_out: bool
+    attendance_id: Optional[int] = None
+    check_in_time: Optional[datetime] = None
+    check_out_time: Optional[datetime] = None
+    late_minutes: int = 0
+    early_minutes: int = 0
+    actual_work_hours: float = 0.0
+    overtime_hours: float = 0.0
+    status: str = "NOT_CHECKED_IN"
+    shift_id: Optional[int] = None
+    shift_name: Optional[str] = None
+    store_id: Optional[int] = None
+    store_name: Optional[str] = None
+    notes: Optional[str] = None
+
 
 
 # ===================================================================================

@@ -268,14 +268,36 @@ import type {
   CheckInRequest,
   CheckOutRequest,
   CheckInResponse,
+  CheckOutResponse,
   ShiftSchedule,
   ShiftScheduleCreate,
+  WorkShift,
+  AttendanceSummary,
+  TodayAttendanceStatus,
 } from '../types';
 
 export const attendanceApi = {
+  getShifts: async (): Promise<WorkShift[]> => {
+    return api.get<WorkShift[]>('/attendances/shifts');
+  },
+
+  getTodayStatus: async (employee_id?: number): Promise<TodayAttendanceStatus> => {
+    return api.get<TodayAttendanceStatus>('/attendances/today-status', employee_id ? { employee_id } : undefined);
+  },
+
+  getMySummary: async (period?: string, employee_id?: number): Promise<AttendanceSummary> => {
+    const params: Record<string, any> = {};
+    if (period) params.period = period;
+    if (employee_id) params.employee_id = employee_id;
+    return api.get<AttendanceSummary>('/attendances/my-summary', Object.keys(params).length ? params : undefined);
+  },
+
   getAll: async (params?: {
-    work_date?: string
-    store_id?: number
+    work_date?: string;
+    period?: string;
+    store_id?: number;
+    employee_id?: number;
+    status?: string;
   }): Promise<Attendance[]> => {
     return api.get<Attendance[]>('/attendances', params);
   },
@@ -288,13 +310,13 @@ export const attendanceApi = {
     return api.post<CheckInResponse>('/attendances/check-in', data || {});
   },
 
-  checkOut: async (data: CheckOutRequest): Promise<{ message: string; actual_hours: number; overtime_hours: number }> => {
-    return api.post('/attendances/check-out', data);
+  checkOut: async (data?: CheckOutRequest): Promise<CheckOutResponse> => {
+    return api.post<CheckOutResponse>('/attendances/check-out', data || {});
   },
 
   getShiftSchedules: async (params?: {
-    store_id?: number
-    work_date?: string
+    store_id?: number;
+    work_date?: string;
   }): Promise<ShiftSchedule[]> => {
     return api.get<ShiftSchedule[]>('/attendances/shift-schedules', params);
   },

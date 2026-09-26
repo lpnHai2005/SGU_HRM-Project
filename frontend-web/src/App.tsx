@@ -63,15 +63,7 @@ export function App() {
     setAttendanceLoading(true)
     try {
       const { attendanceApi } = await import('./services/api')
-      const history = await attendanceApi.getMyHistory()
-      const todayAtt = history.find(a => a.work_date === new Date().toISOString().split('T')[0])
-
-      if (!todayAtt) {
-        alert('Không tìm thấy bản ghi chấm công hôm nay')
-        return
-      }
-
-      const result = await attendanceApi.checkOut({ attendance_id: todayAtt.attendance_id })
+      const result = await attendanceApi.checkOut({})
       alert(result.message)
       window.location.reload()
     } catch (err: any) {

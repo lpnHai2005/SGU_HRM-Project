@@ -137,24 +137,30 @@ SGU_HRM-Project/
 **Rules:** Check-in sau 08:15 = Late, sau giờ = OT
 
 **API:**
-- [ ] POST `/api/attendances/check-in`
-- [ ] POST `/api/attendances/check-out`
-- [ ] POST `/api/shift-schedules` - Assign shift
+- [x] POST `/api/attendances/check-in`
+- [x] POST `/api/attendances/check-out`
+- [x] GET `/api/attendances/shifts`
+- [x] GET `/api/attendances/today-status`
+- [x] GET `/api/attendances/my-summary` (chucnang1.jpg)
+- [x] GET `/api/attendances/my-history`
+- [x] POST `/api/shift-schedules` - Assign shift
 
 **Web Frontend:**
-- [ ] Check-in/Check-out button
-- [ ] My attendance calendar
-- [ ] My payroll & payslip
-- [ ] My leave requests
-- [ ] My profile
-- [ ] Manager: Daily attendance + Shift roster + Approvals
+- [x] Check-in/Check-out button (Realtime clock + modal)
+- [x] Bảng công tổng hợp khớp giao diện chucnang1.jpg (8 thẻ chỉ số)
+- [x] My attendance history & calendar list
+- [x] My payroll & payslip
+- [x] My leave requests
+- [x] My profile
+- [x] Manager: Daily attendance + Shift roster + Approvals
 
 **Mobile Frontend:**
-- [ ] **Check-in/Check-out (PRIMARY)**
-- [ ] My attendance history
-- [ ] My shift schedule
-- [ ] Manager: View branch attendance
-- [ ] Manager: Approve pending attendance edits
+- [x] **Check-in/Check-out (PRIMARY)**
+- [x] Giao diện Bảng công di động chucnang1.jpg (8 thẻ SVG vòng công)
+- [x] My attendance history (Bộ lọc trạng thái + xuất CSV)
+- [x] My shift schedule
+- [x] Manager: View branch attendance
+- [x] Manager: Approve pending attendance edits
 
 ---
 

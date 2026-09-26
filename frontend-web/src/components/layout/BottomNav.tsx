@@ -18,7 +18,7 @@ export function BottomNav({ onOpenMenu, role }: BottomNavProps) {
 
   const primaryItems = [
     { id: 'dashboard', path: '/', label: 'Tổng quan', icon: 'dashboard' },
-    { id: 'attendance', path: '/attendance', label: 'Chấm công', icon: 'clock' },
+    { id: 'attendance', path: '/attendance', label: 'Bảng Công', icon: 'clock' },
     { id: 'leave', path: '/leave', label: 'Nghỉ phép', icon: 'calendar' },
     {
       id: role === 'EMPLOYEE' ? 'payroll' : 'employees',
