@@ -1,10 +1,24 @@
 """Attendance clock and session rules (Vietnam business timezone)."""
 from datetime import datetime, timedelta, timezone
 from math import ceil
+import json
 from fastapi import HTTPException
 
 VIETNAM_TZ = timezone(timedelta(hours=7))
 COOLDOWN_SECONDS = 60
+
+def late_minutes(now, shift_start):
+    # Count started minutes so 15m01s is outside the 15-minute grace period.
+    return max(0, ceil((now - shift_start).total_seconds() / 60))
+
+def attendance_context(shift, schedule, store_id):
+    comparison = ('UNSCHEDULED' if not schedule else
+                  'MATCHED' if schedule['shift_id'] == shift['shift_id'] and schedule['store_id'] == store_id
+                  else 'SHIFT_MISMATCH')
+    return dict(version=1, schedule_status=comparison,
+                planned=dict(schedule) if schedule else None,
+                actual=dict(shift_id=shift['shift_id'], start_time=shift['start_time'].isoformat(),
+                            end_time=shift['end_time'].isoformat(), work_hours=float(shift['work_hours'])))
 
 def local_now():
     return datetime.now(VIETNAM_TZ)
@@ -30,6 +44,14 @@ def require_available(last, now):
                             headers={'Retry-After': str(seconds)})
 
 def session_metrics(att, now):
+    from datetime import time
+    context = att.get('attendance_context')
+    if isinstance(context, str):
+        context = json.loads(context)
+    if context:
+        snapshot = context['actual']
+        att = dict(att, start_time=time.fromisoformat(snapshot['start_time']),
+                   end_time=time.fromisoformat(snapshot['end_time']), work_hours=snapshot['work_hours'])
     start = local_time(att['check_in_time'])
     if now < start:
         raise HTTPException(409, 'Thời gian check-out không được trước check-in.')

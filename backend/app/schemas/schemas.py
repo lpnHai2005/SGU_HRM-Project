@@ -333,7 +333,18 @@ class CheckOutRequest(BaseModel):
     location: Optional[str] = None
 
 
-class AttendanceOut(BaseModel):
+class AttendanceContextOut(BaseModel):
+    schedule_status: str = "LEGACY_UNKNOWN"
+    attendance_context: Optional[Dict[str, Any]] = None
+
+    @field_validator('attendance_context', mode='before')
+    @classmethod
+    def parse_attendance_context(cls, value):
+        import json
+        return json.loads(value) if isinstance(value, str) else value
+
+
+class AttendanceOut(AttendanceContextOut):
     attendance_id: int
     employee_id: int
     employee_name: Optional[str] = None
@@ -396,7 +407,7 @@ class AttendanceSummaryOut(BaseModel):
     compensatory_leave: dict
 
 
-class TodayAttendanceStatusOut(BaseModel):
+class TodayAttendanceStatusOut(AttendanceContextOut):
     can_check_in: bool = True
     can_check_out: bool = False
     cooldown_seconds_remaining: int = 0

@@ -2,8 +2,8 @@
 
 > **Dự án:** Hệ thống quản lý nhân sự đa nền tảng TechZone  
 > **Người phụ trách:** Đoàn Trung Kiên — MSSV 3123411166  
-> **Phiên bản:** 4.1 — Khôi phục thẻ chấm công cho Nhân viên và căn giữa nội dung thẻ chỉ số  
-> **Ngày cập nhật:** 26/09/2026
+> **Phiên bản:** 4.2 — Chốt quy tắc đối chiếu phân ca và bảo toàn bản chụp chấm công  
+> **Ngày cập nhật:** 01/10/2026
 
 ## 1. Mục tiêu và kết quả thực hiện
 
@@ -24,6 +24,8 @@ Hoàn thiện chu trình **Check-in → Check-out → Lưu dữ liệu → Truy 
 | Kiểm thử | 13 test offline đạt, luồng API PostgreSQL đạt, TypeScript đạt |
 
 ## 2. Quy tắc nghiệp vụ
+
+> **Bổ sung ngày 01/10/2026:** Quy tắc đối chiếu lịch, bản chụp ca, trạng thái kết hợp và bộ 18 test được chốt tại mục 11. Các mục kiểm thử 13 test trước đó là kết quả lịch sử của bản 4.x.
 
 ### 2.1. Vòng đời một lượt
 
@@ -47,7 +49,7 @@ Hoàn thiện chu trình **Check-in → Check-out → Lưu dữ liệu → Truy 
 | work_date | Ngày bắt đầu ca; ca đêm vào sau 00:00 và trước giờ kết thúc thuộc ngày trước |
 | Giờ thực tế | `round((check_out - check_in).total_seconds() / 3600, 2)` |
 | Giờ OT của lượt | `round(max(0, actual_work_hours - shift.work_hours), 2)` |
-| Phút muộn | Phút nguyên sau giờ bắt đầu ca; trên 15 phút mới phân loại LATE |
+| Phút muộn | Làm tròn lên số phút sau giờ bắt đầu ca; đúng 15 phút không muộn, 15 phút 01 giây được phân loại LATE |
 | Phút về sớm | Phút nguyên trước giờ kết thúc; ca đêm cộng một ngày vào mốc kết thúc |
 | Ngày có mặt | Số work_date khác nhau có check-in, không phải công lương quy đổi theo giờ |
 | Tổng giờ tháng | Tổng actual_work_hours của các lượt trong tháng |
@@ -423,3 +425,74 @@ Danh sách này là hướng dẫn nghiệm thu thủ công; không thay thế b
 > **Kiểm tra đã chạy:** 13 test offline đạt; luồng API PostgreSQL đạt; build frontend thành công. Chưa kiểm thử trực quan trình duyệt.
 >
 > **Lưu ý rà soát:** Checklist trong `HRM-Project-Workflow.md` có thay đổi từ trước; các mục mobile/phê duyệt cần đối chiếu riêng, không được xem là đã nghiệm thu bởi bộ test Attendance. Modal sửa ca mới được mô tả ở phạm vi giao diện, không khẳng định đã hoàn thiện lưu phân ca.
+
+## 11. Chốt quy tắc liên kết Work Schedule — 01/10/2026
+
+### 11.1. Không có lịch và sai ca
+
+Check-in đối chiếu `work_schedules` theo nhân viên và `work_date` của ca thực tế. Cho phép ghi nhận kể cả không có lịch/sai ca, trả nhãn độc lập `schedule_status`:
+
+| Nhãn | Ý nghĩa |
+|---|---|
+| MATCHED | Ca và cửa hàng thực tế khớp lịch |
+| UNSCHEDULED | Chưa có lịch phân ca cho ngày nghiệp vụ |
+| SHIFT_MISMATCH | Ca hoặc cửa hàng thực tế khác lịch |
+| LEGACY_UNKNOWN | Bản ghi cũ chưa có bản chụp, không suy diễn từ lịch mới |
+
+`shift_id` trong request là ca thực tế; mặc định ID 1 được giữ để tương thích client cũ. Client nên gửi rõ ca được chọn. Không có lịch vẫn là UNSCHEDULED, dù request dùng ca mặc định. Các nhãn này không thay thế `status` NORMAL/LATE/EARLY/OVERTIME.
+
+### 11.2. Hợp đồng API bổ sung
+
+Check-in trả `schedule_status` và `attendance_context`; lịch sử, danh sách quản lý và today-status cũng trả các trường này cho bản ghi được tìm thấy. Không có bản ghi hôm nay thì context là null; không suy diễn kết quả đối chiếu cho một lượt chưa phát sinh.
+
+Ví dụ phần dữ liệu bổ sung khi chưa có lịch:
+
+```json
+{
+  "status": "LATE",
+  "schedule_status": "UNSCHEDULED",
+  "attendance_context": {
+    "version": 1,
+    "schedule_status": "UNSCHEDULED",
+    "planned": null,
+    "actual": {
+      "shift_id": 1,
+      "start_time": "08:00:00",
+      "end_time": "16:00:00",
+      "work_hours": 8.0
+    }
+  }
+}
+```
+
+Khi có lịch, `planned` chứa schedule_id, shift_id, store_id lúc check-in. Các giờ trên là ví dụ; API lấy cấu hình ca thực tế từ database.
+
+### 11.3. Bản chụp và sửa lịch sau check-in
+
+Cột JSONB `attendance_context` lưu ca thực tế, ca phân công và kết quả đối chiếu tại thời điểm vào. Check-out dùng giờ bắt đầu/kết thúc và work_hours đã chụp. Sửa work_schedules/work_shifts không làm thay đổi kết quả cũ hoặc mất dấu sai ca. API phân ca dùng cùng khóa hàng nhân viên với check-in.
+
+Bản ghi cũ không được gán lịch hồi tố. Nếu context null, check-out tương thích bằng định nghĩa ca hiện tại; cần đối soát riêng các lượt cũ nếu ca đã bị thay đổi.
+
+Migration mới đã áp dụng thành công trong môi trường thực hiện:
+
+```powershell
+.\backend\venv\Scripts\python.exe backend\migrate_attendance.py --migration 20261001_attendance_schedule_snapshot.sql
+```
+
+Triển khai môi trường khác: chạy migration nền ngày 26/09 trước, rồi migration này trước khi chạy API mới.
+
+### 11.4. Ân hạn, nhãn kết hợp và dữ liệu cho Payroll
+
+- Ân hạn tính từ giờ bắt đầu **từng ca**: ca 08:00 muộn sau 08:15, ca 13:00 muộn sau 13:15. Không có quy tắc 08:15 cố định cho mọi ca.
+- Phút muộn làm tròn lên: đúng 15 phút vẫn NORMAL; 15 phút 01 giây thành 16 phút và LATE.
+- Status ưu tiên LATE_AND_EARLY, LATE, EARLY, OVERTIME, NORMAL. Người vừa muộn vừa OT giữ nhãn LATE và vẫn giữ giờ OT.
+- Các trường số là nguồn tính nghiệp vụ. Payroll phải đọc late_minutes, early_minutes, actual_work_hours, overtime_hours, không suy ra mọi quyền lợi/khấu trừ chỉ từ status. Chưa nghiệm thu lại stored procedure Payroll trong lần này.
+- Location/device chỉ là **ghi nhận thông tin client gửi**, chưa phải xác thực GPS/thiết bị hoặc chứng minh vị trí có mặt.
+
+### 11.5. Bằng chứng kiểm thử và phạm vi hoàn thành
+
+**18/18 test offline PASS**, gồm 13 test cũ và 5 test bổ sung: không có schedule; sai ca; ca chiều tại biên 15 phút; vừa LATE vừa OT; sửa lịch/ca sau check-in.
+
+**PostgreSQL integration PASS:** bảng tạm cho attendance, lịch và danh mục ca; kiểm tra UNSCHEDULED/SHIFT_MISMATCH, lưu/trả snapshot, sửa lịch và giờ chuẩn sau check-in rồi check-out vẫn dùng bản chụp. Giữ kiểm thử mốc 59/60 giây, lịch sử nhiều lượt và tổng hợp ngày. Dữ liệu test rollback, không sửa các hàng nghiệp vụ thật.
+
+Bộ test chứng minh các tình huống nêu trên; chưa phải stress test request đồng thời. Nhiệm vụ 1 đã có đủ quy tắc và test để bàn giao dữ liệu sang Nhiệm vụ 5. Giao diện đối soát/duyệt bất thường và nghiệm thu Payroll là phạm vi tích hợp tiếp theo. Báo cáo tổng hợp cập nhật tại `mission.md`.

@@ -48,7 +48,7 @@ The HRM system built for retail tech chains — where attendance happens on the 
 - Ca Chiều: 13:00–21:00
 - Ca Full: 08:00–21:00
 
-Late check-in threshold: 08:15.
+Late check-in threshold: strictly after each shift's start + 15 minutes (08:00 → after 08:15; 13:00 → after 13:15). Exactly 15 minutes is within grace.
 
 **Commission categories (TechZone):**
 - Phone & Laptop: 1%
@@ -76,7 +76,7 @@ NET = GROSS − Insurance (10.5%)
   Insurance = BHXH 8% + BHYT 1.5% + BHTN 1%
 ```
 
-**Attendance rules:** Check-in after 08:15 = Late; late arrivals count as OT. Commission tracked per sales category.
+**Attendance rules:** Check-in after the shift start + 15 minutes is Late. OT is max(0, actual hours minus snapshotted standard hours); lateness does not itself count as OT. Numeric attendance fields are authoritative for payroll; status is a summary label. Missing assignments are allowed and marked UNSCHEDULED; differing shifts/stores are marked SHIFT_MISMATCH. Capture the assignment and actual shift at check-in so later schedule edits do not rewrite history. Device/location data is client-reported, not verified GPS evidence. Commission tracked per sales category.
 
 **Mobile scope:** Web and mobile share the same API. Mobile is not offline-first — check-in/check-out requires connectivity. No local caching or offline sync.
 

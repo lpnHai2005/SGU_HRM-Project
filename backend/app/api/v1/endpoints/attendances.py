@@ -1,4 +1,5 @@
 from typing import Optional, List, Dict, Any
+import json
 from datetime import date, datetime, time, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,7 +12,7 @@ from app.schemas.schemas import (
     AttendanceSummaryOut, TodayAttendanceStatusOut
 )
 
-from app.core.attendance import local_now, VIETNAM_TZ, availability, require_available, session_metrics
+from app.core.attendance import local_now, VIETNAM_TZ, availability, require_available, session_metrics, late_minutes, attendance_context
 
 router = APIRouter()
 
@@ -90,7 +91,8 @@ async def get_today_attendance_status(
                a.shift_id, ws.shift_name, a.work_date,
                a.check_in_time, a.check_out_time,
                a.late_minutes, a.early_minutes, a.overtime_hours, a.actual_work_hours,
-               a.status, a.notes
+               a.status, a.notes, a.attendance_context,
+               COALESCE(a.attendance_context->>'schedule_status', 'LEGACY_UNKNOWN') AS schedule_status
         FROM attendances a
         LEFT JOIN stores s ON a.store_id = s.store_id
         LEFT JOIN work_shifts ws ON a.shift_id = ws.shift_id
@@ -156,7 +158,7 @@ async def get_today_attendance_status(
         shift_name=att["shift_name"],
         store_id=att["store_id"],
         store_name=att["store_name"],
-        notes=att["notes"]
+        attendance_context=att["attendance_context"], schedule_status=att["schedule_status"], notes=att["notes"]
     )
 
 
@@ -358,7 +360,8 @@ async def list_attendances(
                a.store_id, s.store_name, a.shift_id, ws.shift_name,
                a.work_date, a.check_in_time, a.check_out_time,
                a.late_minutes, a.early_minutes, a.overtime_hours, a.actual_work_hours,
-               a.status, a.notes
+               a.status, a.notes, a.attendance_context,
+               COALESCE(a.attendance_context->>'schedule_status', 'LEGACY_UNKNOWN') AS schedule_status
         FROM attendances a
         JOIN employees e ON a.employee_id = e.employee_id
         LEFT JOIN stores s ON a.store_id = s.store_id
@@ -413,7 +416,8 @@ async def get_my_attendance_history(
                a.store_id, s.store_name, a.shift_id, ws.shift_name,
                a.work_date, a.check_in_time, a.check_out_time,
                a.late_minutes, a.early_minutes, a.overtime_hours, a.actual_work_hours,
-               a.status, a.notes
+               a.status, a.notes, a.attendance_context,
+               COALESCE(a.attendance_context->>'schedule_status', 'LEGACY_UNKNOWN') AS schedule_status
         FROM attendances a
         JOIN employees e ON a.employee_id = e.employee_id
         LEFT JOIN stores s ON a.store_id = s.store_id
@@ -452,24 +456,30 @@ async def check_in(req: CheckInRequest, current_user: dict = Depends(get_current
     if shift["end_time"] <= shift["start_time"] and now.time() < shift["end_time"]:
         work_date -= timedelta(days=1)
     start = datetime.combine(work_date, shift["start_time"], VIETNAM_TZ)
-    late = max(0, int((now - start).total_seconds() / 60))
+    schedule = (await db.execute(text("""
+        SELECT schedule_id, shift_id, store_id FROM work_schedules
+        WHERE employee_id = :emp AND work_date = :day
+    """), dict(emp=emp_id, day=work_date))).mappings().first()
+    context = attendance_context(shift, schedule, employee["store_id"])
+    late = late_minutes(now, start)
     attendance_status = "LATE" if late > 15 else "NORMAL"
     notes = " | ".join(filter(None, [req.notes,
         f"Vị trí: {req.location}" if req.location else None,
         f"Thiết bị: {req.device_info}" if req.device_info else None]))
     result = await db.execute(text("""
         INSERT INTO attendances (employee_id, store_id, shift_id, work_date,
-            check_in_time, late_minutes, early_minutes, actual_work_hours, overtime_hours, status, notes)
-        VALUES (:emp, :store, :shift, :day, :now, :late, 0, 0, 0, :status, :notes)
+            check_in_time, late_minutes, early_minutes, actual_work_hours, overtime_hours, status, notes, attendance_context)
+        VALUES (:emp, :store, :shift, :day, :now, :late, 0, 0, 0, :status, :notes, CAST(:context AS jsonb))
         RETURNING attendance_id
     """), dict(emp=emp_id, store=employee["store_id"], shift=req.shift_id,
-               day=work_date, now=now, late=late, status=attendance_status, notes=notes))
+               day=work_date, now=now, late=late, status=attendance_status, notes=notes, context=json.dumps(context)))
     attendance_id = result.scalar_one()
     await db.commit()
     return dict(message="Check-in thành công.", attendance_id=attendance_id,
                 employee_name=employee["full_name"], time=now.strftime("%H:%M:%S"),
                 check_in_time=now, work_date=work_date, status=attendance_status,
-                late_minutes=late, shift_name=shift["shift_name"])
+                late_minutes=late, shift_name=shift["shift_name"],
+                schedule_status=context['schedule_status'], attendance_context=context)
 
 
 @router.post("/check-out", summary="Đóng lượt chấm công đang mở")
@@ -546,6 +556,15 @@ async def assign_shift_schedule(
     current_user: dict = Depends(require_roles(["STORE_MANAGER", "HR_MANAGER", "ADMIN"])),
     db: AsyncSession = Depends(get_db)
 ):
+    employee = await authorize_employee(db, current_user, req.employee_id, lock=True)
+    store_id = req.store_id or employee["store_id"]
+    if not store_id:
+        raise HTTPException(400, "Nhân viên chưa được phân cửa hàng.")
+    shift = (await db.execute(text("SELECT shift_id, shift_name FROM work_shifts WHERE shift_id = :id"),
+                             {"id": req.shift_id})).mappings().first()
+    if not shift:
+        raise HTTPException(404, "Không tìm thấy ca làm việc.")
+
     await db.execute(text("""
         INSERT INTO work_schedules (employee_id, store_id, shift_id, work_date, notes)
         VALUES (:emp_id, :store_id, :shift_id, :work_date, :notes)
@@ -554,9 +573,9 @@ async def assign_shift_schedule(
                       shift_id = EXCLUDED.shift_id,
                       notes = EXCLUDED.notes;
     """), {
-        "emp_id": req.employee_id, "store_id": req.store_id,
+        "emp_id": req.employee_id, "store_id": store_id,
         "shift_id": req.shift_id, "work_date": req.work_date,
         "notes": req.notes or "Phân ca theo kế hoạch tuần"
     })
     await db.commit()
-    return {"message": "Phân ca làm việc thành công!", "employee_id": req.employee_id, "work_date": str(req.work_date)}
+    return {"message": "Phân ca làm việc thành công!", "employee_id": req.employee_id, "shift_name": shift["shift_name"], "work_date": str(req.work_date)}

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Icons } from '../components/common/Icons'
+import { StatCard } from '../components/common/StatCard'
 import { EmptyState } from '../components/common/EmptyState'
 import { formatDate, formatTime } from '../utils/formatters'
 import type { Attendance, AttendanceSummary } from '../types'
@@ -38,7 +39,7 @@ export function AttendancePage({ user }: AttendancePageProps) {
   const fetchTimesheetData = async () => {
     setIsLoading(true)
     try {
-      // 1. Lấy dữ liệu 8 chỉ số tổng hợp tháng (Khớp chức năng nghiệp vụ chucnang1.jpg)
+      // 1. Lấy dữ liệu 8 chỉ số tổng hợp tháng (Khớp chức năng nghiệp vụ)
       const summaryRes = await attendanceApi.getMySummary(selectedPeriod)
       setSummaryData(summaryRes)
 
@@ -105,15 +106,10 @@ export function AttendancePage({ user }: AttendancePageProps) {
     })
   }, [teamAttendances, searchEmployee, statusFilter])
 
-  // Tính toán vạch đo SVG Vòng tròn ngày công
+  // 8 Chỉ số công
   const actualDays = summaryData?.working_days?.actual_days || 0
   const standardDays = summaryData?.working_days?.standard_days || 26
   const totalHours = summaryData?.working_days?.total_hours || 0
-
-  const radius = 38
-  const circumference = 2 * Math.PI * radius
-  const daysRatio = Math.min(1, actualDays / standardDays)
-  const strokeDashoffset = circumference - daysRatio * circumference
 
   // Quỹ phép
   const annualLeave = summaryData?.leave_quota?.annual_leave || 0
@@ -162,302 +158,150 @@ export function AttendancePage({ user }: AttendancePageProps) {
   }
 
   return (
-    <div className="timesheet-page-wrapper">
-      {/* 1. Header Bar: Tiêu đề trang & Bộ điều khiển kỳ công */}
-      <div className="timesheet-header-bar">
-        <div className="timesheet-title-section">
-          <div className="timesheet-icon-badge">{Icons.clock}</div>
-          <div className="timesheet-title-text">
-            <h1>Bảng Công</h1>
-            <p>Bảng tổng hợp ngày công, thời gian làm việc & dữ liệu chấm công chi tiết TechZone</p>
-          </div>
+    <div className="page-container">
+      {/* 1. Header Bar: Tiêu đề trang & Bộ điều khiển kỳ công đồng bộ chuẩn hệ thống */}
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+        <div>
+          <h1 className="page-title">Bảng Công</h1>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginTop: '4px' }}>
+            Bảng tổng hợp ngày công, thời gian làm việc & dữ liệu chấm công chi tiết TechZone
+          </p>
         </div>
 
-        <div className="timesheet-controls-section">
-          <div className="period-picker-group">
-            <button className="period-arrow-btn" onClick={handlePrevMonth} title="Tháng trước">‹</button>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--surface-subtle)', padding: '3px 6px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)' }}>
+            <button className="btn btn-secondary btn-sm" onClick={handlePrevMonth} title="Tháng trước" style={{ border: 'none', background: 'transparent', padding: '4px 8px' }}>‹</button>
             <input
               type="month"
-              className="period-input-field"
+              className="form-input"
               value={selectedPeriod}
               onChange={(e) => setSelectedPeriod(e.target.value)}
               title="Chọn tháng"
+              style={{ border: 'none', background: 'transparent', height: '30px', padding: '0 4px', fontSize: '13px', fontWeight: 600 }}
             />
-            <button className="period-arrow-btn" onClick={handleNextMonth} title="Tháng sau">›</button>
+            <button className="btn btn-secondary btn-sm" onClick={handleNextMonth} title="Tháng sau" style={{ border: 'none', background: 'transparent', padding: '4px 8px' }}>›</button>
           </div>
 
-          <button className="btn btn-secondary timesheet-export-btn" onClick={handleExportCSV}>
-            {Icons.download} Xuất báo cáo
+          <button className="btn btn-secondary" onClick={handleExportCSV} style={{ height: '38px' }}>
+            {Icons.download}
+            <span>Xuất báo cáo</span>
           </button>
         </div>
       </div>
 
-      {/* 2. DASHBOARD 8 THẺ CHỈ SỐ THEO CHUẨN NGHIỆP VỤ chucnang1.jpg (GIAO DIỆN WEB HIỆN ĐẠI LOGIC) */}
-      <div className="timesheet-metrics-grid">
+      {/* 2. 8 THẺ CHỈ SỐ ĐỒNG BỘ LAYOUT STAT-GRID VÀ STYLE CHUẨN VERO DESIGN SYSTEM */}
+      <div className="stat-grid-4">
         {/* Card 1: Ngày công */}
-        <div className="timesheet-metric-card">
-          <div className="metric-header-pill">Ngày công</div>
-          <div className="metric-gauge-wrapper">
-            <svg className="metric-gauge-svg" viewBox="0 0 90 90">
-              <circle className="metric-gauge-track" cx="45" cy="45" r={radius} />
-              {actualDays > 0 && (
-                <circle
-                  className="metric-gauge-fill"
-                  cx="45"
-                  cy="45"
-                  r={radius}
-                  strokeDasharray={circumference}
-                  strokeDashoffset={strokeDashoffset}
-                />
-              )}
-            </svg>
-            <div className="metric-gauge-dot" />
-            <div className="metric-gauge-center">
-              <span className="metric-gauge-val">{actualDays} công</span>
-            </div>
-          </div>
-          <div className="metric-footer-stats">
-            <div className="footer-stat-box left">
-              <span className="footer-stat-label">Công tháng</span>
-              <span className="footer-stat-value">{standardDays} công</span>
-            </div>
-            <div className="footer-stat-box right">
-              <span className="footer-stat-label">Số giờ</span>
-              <span className="footer-stat-value">{totalHours} giờ</span>
-            </div>
-          </div>
-        </div>
+        <StatCard
+          icon={Icons.checkCircle}
+          iconColor="green"
+          label="NGÀY CÔNG THỰC TẾ"
+          value={`${actualDays} công`}
+          footerNote={`Công chuẩn: ${standardDays} công | Tổng: ${totalHours}h`}
+        />
 
         {/* Card 2: Quỹ phép */}
-        <div className="timesheet-metric-card">
-          <div className="metric-header-pill">Quỹ phép</div>
-          <div className="metric-gauge-wrapper">
-            <svg className="metric-gauge-svg" viewBox="0 0 90 90">
-              <circle className="metric-gauge-track" cx="45" cy="45" r={radius} />
-            </svg>
-            <div className="metric-gauge-dot" />
-            <div className="metric-gauge-center">
-              <span className="metric-gauge-val">{remainingLeave} ngày</span>
-            </div>
-          </div>
-          <div className="metric-footer-stats">
-            <div className="footer-stat-box left">
-              <span className="footer-stat-label">Phép năm</span>
-              <span className="footer-stat-value">{annualLeave} ngày</span>
-            </div>
-            <div className="footer-stat-box right">
-              <span className="footer-stat-label">Nghỉ thực tế</span>
-              <span className="footer-stat-value">{usedLeave} ngày</span>
-            </div>
-          </div>
-        </div>
+        <StatCard
+          icon={Icons.calendar}
+          iconColor="blue"
+          label="QUỸ PHÉP NĂM CÒN LẠI"
+          value={`${remainingLeave} ngày`}
+          footerNote={`Phép năm: ${annualLeave} ngày | Đã nghỉ: ${usedLeave} ngày`}
+        />
 
         {/* Card 3: Đi muộn */}
-        <div className="timesheet-metric-card">
-          <div className="metric-header-pill">Đi muộn</div>
-          <div className="metric-dual-columns">
-            <div className="dual-column-box">
-              <span className="dual-column-label">Số lần</span>
-              <div className="dual-icon-cal">
-                <div className="dual-icon-cal-top" />
-                <div className="dual-icon-cal-mid">
-                  <div className="dual-icon-cal-grid" />
-                </div>
-              </div>
-              <span className="dual-column-value">{lateCount} lần</span>
-            </div>
-
-            <div className="dual-column-box">
-              <span className="dual-column-label">Số phút</span>
-              <div className="dual-icon-clock">
-                <div className="dual-clock-dial">
-                  <div className="dual-clock-hand-v" />
-                  <div className="dual-clock-hand-h" />
-                </div>
-              </div>
-              <span className="dual-column-value">{lateMinutes} phút</span>
-            </div>
-          </div>
-          <div className="metric-footer-stats">
-            <div className="footer-stat-box left">
-              <span className="footer-stat-label">Quy chế trễ</span>
-              <span className="footer-stat-value">&gt; 15 phút phạt</span>
-            </div>
-            <div className="footer-stat-box right">
-              <span className="footer-stat-label">Tình trạng</span>
-              <span className={`footer-stat-value ${lateCount > 0 ? 'status-danger' : 'status-success'}`}>
-                {lateCount > 0 ? 'Có vi phạm' : 'Tốt'}
-              </span>
-            </div>
-          </div>
-        </div>
+        <StatCard
+          icon={Icons.clock}
+          iconColor={lateCount > 0 ? 'red' : 'green'}
+          label="ĐI MUỘN (LATE)"
+          value={`${lateCount} lần (${lateMinutes}p)`}
+          trend={lateCount > 0 ? 'Có vi phạm' : 'Tốt'}
+          trendDirection={lateCount > 0 ? 'warning' : 'up'}
+          footerNote={lateCount > 0 ? 'Có vi phạm quy chế trễ (>15p)' : 'Đúng giờ theo phân ca'}
+        />
 
         {/* Card 4: Về sớm */}
-        <div className="timesheet-metric-card">
-          <div className="metric-header-pill">Về sớm</div>
-          <div className="metric-dual-columns">
-            <div className="dual-column-box">
-              <span className="dual-column-label">Số lần</span>
-              <div className="dual-icon-cal">
-                <div className="dual-icon-cal-top" />
-                <div className="dual-icon-cal-mid">
-                  <div className="dual-icon-cal-grid" />
-                </div>
-              </div>
-              <span className="dual-column-value">{earlyCount} lần</span>
-            </div>
-
-            <div className="dual-column-box">
-              <span className="dual-column-label">Số phút</span>
-              <div className="dual-icon-clock">
-                <div className="dual-clock-dial">
-                  <div className="dual-clock-hand-v" />
-                  <div className="dual-clock-hand-h" />
-                </div>
-              </div>
-              <span className="dual-column-value">{earlyMinutes} phút</span>
-            </div>
-          </div>
-          <div className="metric-footer-stats">
-            <div className="footer-stat-box left">
-              <span className="footer-stat-label">Giờ tan ca</span>
-              <span className="footer-stat-value">Theo phân ca</span>
-            </div>
-            <div className="footer-stat-box right">
-              <span className="footer-stat-label">Tình trạng</span>
-              <span className={`footer-stat-value ${earlyCount > 0 ? 'status-warning' : 'status-success'}`}>
-                {earlyCount > 0 ? 'Có về sớm' : 'Đúng giờ'}
-              </span>
-            </div>
-          </div>
-        </div>
+        <StatCard
+          icon={Icons.logOut}
+          iconColor={earlyCount > 0 ? 'amber' : 'green'}
+          label="VỀ SỚM (EARLY)"
+          value={`${earlyCount} lần (${earlyMinutes}p)`}
+          trend={earlyCount > 0 ? 'Có về sớm' : 'Đúng giờ'}
+          trendDirection={earlyCount > 0 ? 'warning' : 'up'}
+          footerNote={earlyCount > 0 ? 'Có về sớm trước giờ tan ca' : 'Tuân thủ giờ ca làm việc'}
+        />
 
         {/* Card 5: Làm thêm */}
-        <div className="timesheet-metric-card">
-          <div className="metric-header-pill">Làm thêm</div>
-          <div className="metric-hero-display">
-            <span className="metric-hero-number">{extraHours}</span>
-            <span className="metric-hero-unit">giờ</span>
-          </div>
-          <div className="metric-footer-stats">
-            <div className="footer-stat-box left">
-              <span className="footer-stat-label">Loại làm thêm</span>
-              <span className="footer-stat-value">Ngoài ca chuẩn</span>
-            </div>
-            <div className="footer-stat-box right">
-              <span className="footer-stat-label">Phê duyệt</span>
-              <span className="footer-stat-value">Cửa hàng trưởng</span>
-            </div>
-          </div>
-        </div>
+        <StatCard
+          icon={Icons.zap}
+          iconColor="blue"
+          label="LÀM THÊM (EXTRA WORK)"
+          value={`${extraHours} giờ`}
+          footerNote="Ngoài ca chuẩn, duyệt bởi CHT"
+        />
 
         {/* Card 6: Công tác */}
-        <div className="timesheet-metric-card">
-          <div className="metric-header-pill">Công tác</div>
-          <div className="metric-hero-display">
-            <span className="metric-hero-number">{businessTripDays}</span>
-            <span className="metric-hero-unit">ngày</span>
-          </div>
-          <div className="metric-footer-stats">
-            <div className="footer-stat-box left">
-              <span className="footer-stat-label">Chế độ</span>
-              <span className="footer-stat-value">Hưởng 100% lương</span>
-            </div>
-            <div className="footer-stat-box right">
-              <span className="footer-stat-label">Phụ cấp</span>
-              <span className="footer-stat-value">Theo chuyến</span>
-            </div>
-          </div>
-        </div>
+        <StatCard
+          icon={Icons.briefcase}
+          iconColor="blue"
+          label="CÔNG TÁC (TRIP)"
+          value={`${businessTripDays} ngày`}
+          footerNote="Hưởng 100% lương & phụ cấp chuyến"
+        />
 
         {/* Card 7: Tăng ca */}
-        <div className="timesheet-metric-card">
-          <div className="metric-header-pill">Tăng ca</div>
-          <div className="metric-dual-columns">
-            <div className="dual-column-box">
-              <span className="dual-column-label">Số công</span>
-              <div className="dual-icon-cal">
-                <div className="dual-icon-cal-top" />
-                <div className="dual-icon-cal-mid">
-                  <div className="dual-icon-cal-grid" />
-                </div>
-              </div>
-              <span className="dual-column-value">{otShifts} công</span>
-            </div>
-
-            <div className="dual-column-box">
-              <span className="dual-column-label">Số giờ</span>
-              <div className="dual-icon-clock">
-                <div className="dual-clock-dial">
-                  <div className="dual-clock-hand-v" />
-                  <div className="dual-clock-hand-h" />
-                </div>
-              </div>
-              <span className="dual-column-value">{otHours} giờ</span>
-            </div>
-          </div>
-          <div className="metric-footer-stats">
-            <div className="footer-stat-box left">
-              <span className="footer-stat-label">Hệ số lương OT</span>
-              <span className="footer-stat-value">1.5x đơn giá</span>
-            </div>
-            <div className="footer-stat-box right">
-              <span className="footer-stat-label">Ghi nhận</span>
-              <span className="footer-stat-value">Vào bảng lương</span>
-            </div>
-          </div>
-        </div>
+        <StatCard
+          icon={Icons.trendingUp}
+          iconColor="green"
+          label="TĂNG CA (OVERTIME)"
+          value={`${otHours} giờ`}
+          footerNote={`${otShifts} công OT | Hệ số lương 1.5x`}
+        />
 
         {/* Card 8: Quỹ nghỉ bù */}
-        <div className="timesheet-metric-card">
-          <div className="metric-header-pill">Quỹ nghỉ bù</div>
-          <div className="metric-gauge-wrapper">
-            <svg className="metric-gauge-svg" viewBox="0 0 90 90">
-              <circle className="metric-gauge-track" cx="45" cy="45" r={radius} />
-            </svg>
-            <div className="metric-gauge-dot" />
-            <div className="metric-gauge-center">
-              <span className="metric-gauge-val">{compensatoryDays} ngày</span>
-            </div>
-          </div>
-          <div className="compensatory-row">
-            <span>Tổng số ngày nghỉ bù khả dụng</span>
-            <span>{compensatoryDays} ngày</span>
-          </div>
-        </div>
+        <StatCard
+          icon={Icons.shield}
+          iconColor="amber"
+          label="QUỸ NGHỈ BÙ"
+          value={`${compensatoryDays} ngày`}
+          footerNote="Tổng số ngày nghỉ bù khả dụng"
+        />
       </div>
 
-      {/* 3. TABS CHỌN CHẾ ĐỘ XEM: Cá nhân vs Chi nhánh */}
-      <div className="timesheet-tab-nav">
-        <button
-          className={`timesheet-tab-item ${activeTab === 'my_timesheet' ? 'active' : ''}`}
+      {/* 3. TABS CHỌN CHẾ ĐỘ XEM ĐỒNG BỘ PHONG CÁCH CÁC TRANG TRƯỚC */}
+      <div className="tabs" style={{ marginBottom: '16px' }}>
+        <div
+          className={`tab ${activeTab === 'my_timesheet' ? 'active' : ''}`}
           onClick={() => setActiveTab('my_timesheet')}
+          style={{ cursor: 'pointer' }}
         >
-          <span>{Icons.calendar}</span>
-          <span>Bảng công cá nhân ({attendanceHistory.length} ca trong {periodDisplay})</span>
-        </button>
+          {Icons.calendar}
+          <span style={{ marginLeft: '6px' }}>Bảng công cá nhân ({attendanceHistory.length} ca trong {periodDisplay})</span>
+        </div>
 
         {isManager && (
-          <button
-            className={`timesheet-tab-item ${activeTab === 'team_timesheet' ? 'active' : ''}`}
+          <div
+            className={`tab ${activeTab === 'team_timesheet' ? 'active' : ''}`}
             onClick={() => setActiveTab('team_timesheet')}
+            style={{ cursor: 'pointer' }}
           >
-            <span>{Icons.users}</span>
-            <span>Quản lý bảng công toàn chi nhánh ({teamAttendances.length} bản ghi)</span>
-          </button>
+            {Icons.users}
+            <span style={{ marginLeft: '6px' }}>Quản lý bảng công toàn chi nhánh ({teamAttendances.length} bản ghi)</span>
+          </div>
         )}
       </div>
 
       {/* 4. BẢNG DỮ LIỆU NHẬT KÝ CHI TIẾT */}
-      <div className="timesheet-table-card">
+      <div className="card">
         {/* Thanh công cụ lọc */}
-        <div className="timesheet-filter-toolbar">
-          <div className="filter-left-group">
-            <span className="filter-label-text">Lọc trạng thái:</span>
+        <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>Lọc trạng thái:</span>
             <select
-              className="form-input timesheet-status-filter"
+              className="form-select"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
+              style={{ width: 'auto', minWidth: '170px' }}
             >
               <option value="ALL">Tất cả ca làm việc</option>
               <option value="NORMAL">Đúng giờ</option>
@@ -467,18 +311,22 @@ export function AttendancePage({ user }: AttendancePageProps) {
             </select>
 
             {activeTab === 'team_timesheet' && (
-              <input
-                type="text"
-                className="form-input timesheet-employee-search"
-                placeholder="Tìm theo tên nhân sự..."
-                value={searchEmployee}
-                onChange={(e) => setSearchEmployee(e.target.value)}
-              />
+              <div className="search-box" style={{ minWidth: '220px' }}>
+                <span className="search-icon">{Icons.search}</span>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="Tìm theo tên nhân sự..."
+                  value={searchEmployee}
+                  onChange={(e) => setSearchEmployee(e.target.value)}
+                  style={{ height: '36px' }}
+                />
+              </div>
             )}
           </div>
 
-          <div className="filter-right-actions">
-            <span className="timesheet-result-count">
+          <div>
+            <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>
               Hiển thị{' '}
               <strong>
                 {activeTab === 'my_timesheet' ? filteredPersonalRecords.length : filteredTeamRecords.length}
@@ -507,7 +355,13 @@ export function AttendancePage({ user }: AttendancePageProps) {
               </tr>
             </thead>
             <tbody>
-              {(activeTab === 'my_timesheet' ? filteredPersonalRecords : filteredTeamRecords).map((att) => {
+              {isLoading ? (
+                <tr>
+                  <td colSpan={activeTab === 'team_timesheet' ? 11 : 10} style={{ textAlign: 'center', padding: '40px' }}>
+                    Đang tải dữ liệu chấm công...
+                  </td>
+                </tr>
+              ) : (activeTab === 'my_timesheet' ? filteredPersonalRecords : filteredTeamRecords).map((att) => {
                 const isLate = (att.late_minutes || 0) > 0
                 const isEarly = (att.early_minutes || 0) > 0
                 const isOT = (att.overtime_hours || 0) > 0
@@ -516,72 +370,72 @@ export function AttendancePage({ user }: AttendancePageProps) {
                   <tr key={att.attendance_id}>
                     {activeTab === 'team_timesheet' && (
                       <td>
-                        <span className="table-employee-name">
+                        <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
                           {att.employee_name || `Mã #${att.employee_id}`}
                         </span>
                       </td>
                     )}
                     <td>
-                      <span className="table-cell-mono table-cell-emphasis">
+                      <span className="table-cell-mono" style={{ fontWeight: 600 }}>
                         {formatDate(att.work_date)}
                       </span>
                     </td>
                     <td>
-                      <span className="table-shift-name">{att.shift_name || 'Ca chuẩn (8h)'}</span>
+                      <span>{att.shift_name || 'Ca chuẩn (8h)'}</span>
                     </td>
                     <td>
-                      <span className={`table-cell-mono table-cell-emphasis ${isLate ? 'text-red' : ''}`}>
+                      <span className={`table-cell-mono ${isLate ? 'text-red' : ''}`} style={{ fontWeight: 600 }}>
                         {att.check_in_time ? formatTime(att.check_in_time) : '--:--'}
                       </span>
                     </td>
                     <td>
-                      <span className={`table-cell-mono table-cell-emphasis ${isEarly ? 'text-amber' : ''}`}>
+                      <span className={`table-cell-mono ${isEarly ? 'text-amber' : ''}`} style={{ fontWeight: 600 }}>
                         {att.check_out_time ? formatTime(att.check_out_time) : '--:--'}
                       </span>
                     </td>
                     <td>
                       {isLate ? (
-                        <span className="badge-state late">{att.late_minutes} phút</span>
+                        <span className="status-pill rejected">{att.late_minutes} phút</span>
                       ) : (
-                        <span className="zero-value zero-value-success">0p</span>
+                        <span style={{ color: 'var(--status-success)', fontSize: '12px' }}>0p</span>
                       )}
                     </td>
                     <td>
                       {isEarly ? (
-                        <span className="badge-state early">{att.early_minutes} phút</span>
+                        <span className="status-pill pending">{att.early_minutes} phút</span>
                       ) : (
-                        <span className="zero-value">0p</span>
+                        <span style={{ color: 'var(--text-tertiary)', fontSize: '12px' }}>0p</span>
                       )}
                     </td>
                     <td>
-                      <span className="table-cell-mono table-cell-strong">
+                      <span className="table-cell-mono" style={{ fontWeight: 700 }}>
                         {att.actual_work_hours || 0}h
                       </span>
                     </td>
                     <td>
                       {isOT ? (
-                        <span className="badge-state overtime">+{att.overtime_hours}h</span>
+                        <span className="status-pill active">+{att.overtime_hours}h</span>
                       ) : (
-                        <span className="empty-value">--</span>
+                        <span style={{ color: 'var(--text-muted)' }}>--</span>
                       )}
                     </td>
                     <td>
                       <span
-                        className={`badge-state ${
-                          isLate ? 'late' : isEarly ? 'early' : isOT ? 'overtime' : 'normal'
+                        className={`status-pill ${
+                          isLate ? 'rejected' : isEarly ? 'pending' : isOT ? 'active' : 'active'
                         }`}
                       >
                         {isLate ? 'Đi muộn' : isEarly ? 'Về sớm' : isOT ? 'Tăng ca' : 'Đúng giờ'}
                       </span>
                     </td>
-                    <td className="table-notes-cell">
+                    <td style={{ maxWidth: '240px', fontSize: '12px', color: 'var(--text-tertiary)' }}>
                       {att.notes || '--'}
                     </td>
                   </tr>
                 )
               })}
 
-              {(activeTab === 'my_timesheet' ? filteredPersonalRecords : filteredTeamRecords).length === 0 && (
+              {!isLoading && (activeTab === 'my_timesheet' ? filteredPersonalRecords : filteredTeamRecords).length === 0 && (
                 <tr>
                   <td colSpan={activeTab === 'team_timesheet' ? 11 : 10}>
                     <EmptyState
