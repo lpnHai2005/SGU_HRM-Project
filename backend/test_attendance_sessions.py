@@ -72,7 +72,8 @@ class Endpoints(unittest.IsolatedAsyncioTestCase):
     async def test_new_session_insert_not_overwrite(self):
         self.db.execute.side_effect = [result(dict(employee_id=3, store_id=1, full_name='Test')),
             result(dict(check_in_time=NOW-timedelta(hours=1), check_out_time=NOW-timedelta(seconds=60))),
-            result(dict(start_time=time(8), end_time=time(16), shift_name='Morning')), result(scalar=99)]
+            result(dict(shift_id=1, start_time=time(8), end_time=time(16), work_hours=8, shift_name='Morning')),
+            result(None), result(scalar=99)]
         response = await self.client.post('/attendances/check-in', json={'shift_id':1})
         self.assertEqual(response.status_code, 201, response.text)
         self.assertEqual(response.json()['attendance_id'], 99)
@@ -127,6 +128,66 @@ class Endpoints(unittest.IsolatedAsyncioTestCase):
         query, params = self.db.execute.call_args.args
         self.assertIn('a.employee_id = :emp_id', str(query))
         self.assertEqual(params, dict(emp_id=3, period='2026-09'))
+
+    async def check_in_for_schedule(self, schedule):
+        self.db.execute.side_effect = [result(dict(employee_id=3, store_id=1, full_name='Test')),
+            result(None), result(dict(shift_id=1, start_time=time(8), end_time=time(16), work_hours=8, shift_name='Morning')),
+            result(schedule), result(scalar=99)]
+        response = await self.client.post('/attendances/check-in', json={'shift_id':1})
+        self.assertEqual(response.status_code, 201, response.text)
+        return response.json()
+
+    async def test_no_schedule_allowed_and_marked_unscheduled(self):
+        body = await self.check_in_for_schedule(None)
+        self.assertEqual(body['schedule_status'], 'UNSCHEDULED')
+        self.assertIsNone(body['attendance_context']['planned'])
+        import json
+        saved = json.loads(self.db.execute.call_args.args[1]['context'])
+        self.assertEqual(saved, body['attendance_context'])
+
+    async def test_wrong_assigned_shift_preserves_both_ids(self):
+        body = await self.check_in_for_schedule(dict(schedule_id=10, shift_id=2, store_id=1))
+        self.assertEqual(body['schedule_status'], 'SHIFT_MISMATCH')
+        self.assertEqual(body['attendance_context']['planned']['shift_id'], 2)
+        self.assertEqual(body['attendance_context']['actual']['shift_id'], 1)
+
+    async def test_afternoon_grace_boundary(self):
+        start = NOW.replace(hour=13, minute=0, second=0)
+        for seconds, expected in [(899, 'NORMAL'), (900, 'NORMAL'), (901, 'LATE'), (960, 'LATE')]:
+            with self.subTest(seconds=seconds), patch.object(api, 'local_now', return_value=start+timedelta(seconds=seconds)):
+                self.db.execute.side_effect = [result(dict(employee_id=3, store_id=1, full_name='Test')),
+                    result(None), result(dict(shift_id=2, start_time=time(13), end_time=time(21), work_hours=8, shift_name='Afternoon')),
+                    result(dict(schedule_id=10, shift_id=2, store_id=1)), result(scalar=99)]
+                response = await self.client.post('/attendances/check-in', json={'shift_id':2})
+                self.assertEqual(response.status_code, 201, response.text)
+                self.assertEqual(response.json()['status'], expected)
+                self.assertEqual(response.json()['schedule_status'], 'MATCHED')
+
+    async def test_late_and_overtime_preserve_numbers(self):
+        att = dict(attendance_id=1, check_in_time=NOW.replace(hour=9), check_out_time=None,
+                   work_date=NOW.date(), start_time=time(8), end_time=time(16), work_hours=8, late_minutes=60)
+        self.db.execute.side_effect = [result(dict(employee_id=3, store_id=1)), result(att), result()]
+        with patch.object(api, 'local_now', return_value=NOW.replace(hour=18)):
+            response = await self.client.post('/attendances/check-out', json={})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['status'], 'LATE')
+        self.assertEqual(response.json()['overtime_hours'], 1)
+        self.assertEqual(self.db.execute.call_args.args[1]['overtime_hours'], 1)
+        self.assertNotIn('late_minutes =', str(self.db.execute.call_args.args[0]))
+
+    async def test_schedule_edited_after_checkin_uses_snapshot(self):
+        body = await self.check_in_for_schedule(dict(schedule_id=10, shift_id=1, store_id=1))
+        # Simulate current shift now being 13:00-21:00/7h; original was 08:00-16:00/8h.
+        att = dict(attendance_id=99, check_in_time=NOW.replace(hour=8), check_out_time=None,
+                   work_date=NOW.date(), start_time=time(13), end_time=time(21), work_hours=7,
+                   late_minutes=0, attendance_context=body['attendance_context'])
+        self.db.execute.side_effect = [result(dict(employee_id=3, store_id=1)), result(att), result()]
+        with patch.object(api, 'local_now', return_value=NOW.replace(hour=16)):
+            response = await self.client.post('/attendances/check-out', json={})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['early_minutes'], 0)
+        self.assertEqual(response.json()['overtime_hours'], 0)
+        self.assertEqual(response.json()['status'], 'NORMAL')
 
 if __name__ == '__main__':
     unittest.main()

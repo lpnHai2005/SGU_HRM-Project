@@ -134,7 +134,7 @@ SGU_HRM-Project/
 
 **Shifts:** Ca Sáng (08h-16h), Ca Chiều (13h-21h), Ca Full (08h-21h)
 
-**Rules:** Check-in sau 08:15 = Late, sau giờ = OT
+**Rules:** Check-in sau giờ bắt đầu của từng ca + 15 phút = Late (08:00 → sau 08:15; 13:00 → sau 13:15). OT = max(0, giờ thực tế - giờ chuẩn trong bản chụp ca); đi muộn không tự trở thành OT. Không có lịch: cho phép và gắn schedule_status=UNSCHEDULED; sai ca/cửa hàng: SHIFT_MISMATCH. Payroll dùng các trường số, status chỉ là nhãn tóm tắt.
 
 **API:**
 - [x] POST `/api/attendances/check-in`
@@ -345,7 +345,7 @@ NET = GROSS - Insurance (10.5%) - Penalty
 ## Key Business Rules
 
 1. **Work Shifts:** Sáng (08h-16h), Chiều (13h-21h), Full (08h-21h)
-2. **Late Detection:** Check-in after 08:15
+2. **Late Detection:** Check-in strictly after the selected shift start + 15 minutes; exactly 15 minutes is within grace. Use the check-in shift snapshot, not a fixed 08:15 cutoff.
 3. **OT Rate:** 1.5x hourly rate
 4. **Commission:** Phone/Laptop 1%, Accessories 3%
 5. **KPI Bonus:** >=100% → 1M, >=120% → 2M
