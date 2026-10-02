@@ -31,8 +31,17 @@ def availability(last, now):
     active = bool(last and last['check_in_time'] and not last['check_out_time'])
     next_at = local_time(last['check_out_time']) + timedelta(seconds=COOLDOWN_SECONDS) if last and last['check_out_time'] else None
     remaining = max(0, ceil((next_at - now).total_seconds())) if next_at else 0
+    checkout_remaining = max(0, ceil((local_time(last['check_in_time']) + timedelta(seconds=60) - now).total_seconds())) if active else 0
     return dict(can_check_in=not active and remaining == 0, can_check_out=active,
+                checkout_seconds_remaining=checkout_remaining,
                 cooldown_seconds_remaining=remaining, next_check_in_at=next_at)
+
+
+def require_checkout_ready(check_in_time, now):
+    remaining = max(0, ceil((local_time(check_in_time) + timedelta(seconds=60) - now).total_seconds()))
+    if remaining:
+        raise HTTPException(429, f'Vui lòng đợi ít nhất 60 giây sau check-in. Còn {remaining} giây.',
+                            headers={'Retry-After': str(remaining)})
 
 def require_available(last, now):
     state = availability(last, now)

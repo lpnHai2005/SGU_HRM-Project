@@ -4,10 +4,11 @@ from sqlalchemy import text
 from app.core.database import get_db
 from app.api.v1.endpoints import (
     auth, users, roles, audit_logs,
-    employees, attendances, leaves, payrolls, reports, ai_copilot
+    employees, attendances, leaves, payrolls, reports, ai_copilot, mobile_attendance
 )
 
 api_router = APIRouter()
+api_router.include_router(mobile_attendance.router, prefix="/mobile-attendance", tags=["Mobile Attendance"])
 
 # 1. Mount các phân hệ API
 api_router.include_router(auth.router, prefix="/auth", tags=["Xác thực & Tài khoản (Auth)"])

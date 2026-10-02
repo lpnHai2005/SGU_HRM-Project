@@ -121,6 +121,23 @@ class Endpoints(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(persisted['actual_work_hours'], 1)
         self.assertEqual(response.json()['next_check_in_at'], (NOW+timedelta(seconds=60)).isoformat())
 
+    async def test_checkout_minimum_sixty_seconds(self):
+        for elapsed in [0, 59, 59.9, 60, 61]:
+            with self.subTest(elapsed=elapsed):
+                self.db.reset_mock()
+                att = dict(attendance_id=1, check_in_time=NOW-timedelta(seconds=elapsed), check_out_time=None,
+                           work_date=NOW.date(), start_time=time(8), end_time=time(16), work_hours=8, late_minutes=0)
+                self.db.execute.side_effect = [result(dict(employee_id=3,store_id=1)), result(att), result()]
+                response = await self.client.post('/attendances/check-out',json={})
+                if elapsed < 60:
+                    self.assertEqual(response.status_code,429,response.text)
+                    self.assertGreaterEqual(int(response.headers['Retry-After']),1)
+                    self.db.commit.assert_not_awaited()
+                    self.assertEqual(self.db.execute.await_count,2)
+                else:
+                    self.assertEqual(response.status_code,200,response.text)
+                    self.db.commit.assert_awaited_once()
+
     async def test_history_scoped_and_all_sessions(self):
         self.db.execute.return_value = result(rows=[])
         response = await self.client.get('/attendances/my-history?period=2026-09')

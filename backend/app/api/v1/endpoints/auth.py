@@ -9,6 +9,36 @@ from app.schemas.schemas import LoginRequest, TokenResponse, UserProfile, TestAc
 
 router = APIRouter()
 
+
+from pydantic import BaseModel, SecretStr
+from app.core.security import get_password_hash
+import bcrypt
+import hmac
+
+
+class PasswordChange(BaseModel):
+    current_password: SecretStr
+    new_password: SecretStr
+
+
+@router.post('/change-password')
+async def change_password(req: PasswordChange, current_user=Depends(get_current_user), db: AsyncSession=Depends(get_db)):
+    current, new = req.current_password.get_secret_value(), req.new_password.get_secret_value()
+    if len(new) < 8 or len(new.encode('utf-8')) > 72 or new != new.strip():
+        raise HTTPException(422, 'Mật khẩu mới cần ít nhất 8 ký tự, tối đa 72 byte và không có khoảng trắng đầu/cuối.')
+    if new == current:
+        raise HTTPException(422, 'Mật khẩu mới phải khác mật khẩu hiện tại.')
+    stored = (await db.execute(text('SELECT password_hash FROM users WHERE user_id=:id FOR UPDATE'), {'id':current_user['user_id']})).scalar_one_or_none()
+    try:
+        valid = bool(stored) and (bcrypt.checkpw(current.encode(), stored.encode()) if stored.startswith('$2') else hmac.compare_digest(current.encode(), stored.encode()))
+    except (ValueError, TypeError):
+        valid = False
+    if not valid:
+        raise HTTPException(400, 'Mật khẩu hiện tại không chính xác.')
+    await db.execute(text('UPDATE users SET password_hash=:hash WHERE user_id=:id'), {'hash':get_password_hash(new), 'id':current_user['user_id']})
+    await db.commit()
+    return {'message':'Đã đổi mật khẩu. Vui lòng đăng nhập lại.'}
+
 @router.post(
     "/login",
     response_model=TokenResponse,

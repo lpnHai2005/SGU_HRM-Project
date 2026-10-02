@@ -1,0 +1,9 @@
+const {test}=require('node:test');const assert=require('node:assert/strict');const ts=require('typescript');const fs=require('node:fs');const vm=require('node:vm');const path=require('node:path');
+const source=ts.transpileModule(fs.readFileSync(path.join(__dirname,'../src/services/pending-attendance.ts'),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
+function client(store,fail=false){const api={};vm.runInNewContext(source,{exports:api,require:name=>name==='react-native'?{Platform:{OS:'android'}}:{getItemAsync:async k=>store.get(k)||null,setItemAsync:async(k,v)=>{if(fail)throw Error('storage unavailable');store.set(k,v);},deleteItemAsync:async k=>store.delete(k)}});return api;}
+const command={createdAt:123,path:'/mobile-attendance/check-in',body:{request_id:'same-request',photo_token:'proof'}};
+test('pending survives new JS runtime without changing request id',async()=>{const storage=new Map();await client(storage).savePending(1,command);assert.equal((await client(storage).loadPending(1)).body.request_id,'same-request');});
+test('pending is isolated per employee',async()=>{const storage=new Map();const api=client(storage);await api.savePending(1,command);assert.equal(await api.loadPending(2),null);});
+test('completed request is removed from secure storage',async()=>{const storage=new Map();const api=client(storage);await api.savePending(1,command);await api.clearPending(1);assert.equal(await client(storage).loadPending(1),null);});
+test('storage failure propagates before caller sends POST',async()=>{await assert.rejects(client(new Map(),true).savePending(1,command),/storage unavailable/);});
+test('corrupt pending request fails closed',async()=>{const storage=new Map([['techzone.pending.1','{"path":"/arbitrary"}']]);await assert.rejects(client(storage).loadPending(1));});

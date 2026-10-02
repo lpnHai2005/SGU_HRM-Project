@@ -1,0 +1,13 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const ts = require('typescript');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const path = require('node:path');
+const api = {};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(__dirname, '../src/services/geofence.ts'), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, { exports: api });
+const store = { latitude: 10.779356986985812, longitude: 106.68418923912378 };
+test('GPS at store has zero distance', () => assert.equal(api.distanceMeters(store, store), 0));
+test('GPS outside 100m is rejected by distance check', () => assert.ok(api.distanceMeters(store, { ...store, latitude: store.latitude + .002 }) > 100));
+test('GPS within 100m passes distance check', () => assert.ok(api.distanceMeters(store, { ...store, latitude: store.latitude + .0002 }) < 100));
+test('distance handles opposite sides of date line', () => assert.ok(api.distanceMeters({ latitude: 0, longitude: 179.9999 }, { latitude: 0, longitude: -179.9999 }) < 25));

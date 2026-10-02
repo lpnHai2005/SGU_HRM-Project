@@ -28,6 +28,9 @@ Desktop.ini
 .DS_Store
 
 # Temporary scratch & logs
+tmp/pdf-deps/
+tmp/ui-check/
+tmp/mobile-*.png
 *.log
 .agents
 .agent

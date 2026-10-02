@@ -11,6 +11,9 @@ BACKEND_DIR = os.path.dirname(APP_DIR)
 ENV_PATH = os.path.join(BACKEND_DIR, ".env")
 
 class Settings(BaseSettings):
+    CLOUDINARY_CLOUD_NAME: str = ""
+    CLOUDINARY_API_KEY: str = ""
+    CLOUDINARY_API_SECRET: str = ""
     PROJECT_NAME: str = "TechZone HRM API"
     API_V1_STR: str = "/api/v1"
     
