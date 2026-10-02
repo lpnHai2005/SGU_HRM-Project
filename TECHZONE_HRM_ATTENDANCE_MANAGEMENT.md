@@ -747,13 +747,10 @@ Triển khai môi trường khác: chạy migration nền ngày 26/09 trước, 
 
 Bộ test chứng minh các tình huống nêu trên; chưa phải stress test request đồng thời. Nhiệm vụ 1 đã có đủ quy tắc và test để bàn giao dữ liệu sang Nhiệm vụ 5. Giao diện đối soát/duyệt bất thường và nghiệm thu Payroll là phạm vi tích hợp tiếp theo. Báo cáo tổng hợp cập nhật tại `mission.md`.
 
-## 12. Attendance Mobile và bổ sung luật — 02/10/2026
+## 12. Liên kết Nhiệm vụ 2 — Attendance Mobile (01/10/2026)
 
-Báo cáo nghiệm thu chi tiết tại [mission2.md](mission2.md): **82%**, gồm giao diện Vero đồng bộ web, Be Vietnam Pro, loading ngang, hồ sơ/chỉ số công, bảng công tháng, lịch sử và bản đồ sai vị trí theo `chucnang2.jpg`.
+Ứng dụng mobile đã có check-in, check-out, lịch sử theo tháng và kết nối API, dùng lại toàn bộ luật Nhiệm vụ 1. API addon `/mobile-attendance` bổ sung GPS theo vùng cửa hàng, selfie Cloudinary, photo token và request_id chống gửi trùng; dữ liệu proof lưu ở bảng riêng, không sửa cấu trúc bảng Attendance.
 
-- Nhiệm vụ 1: **100% phạm vi API**, 19 test Attendance; cùng addon là **31/31 backend test PASS**. Bổ sung checkout tối thiểu 60 giây sau check-in, giữ 60 giây từ checkout tới lượt mới. Máy chủ trả 429/Retry-After khi quá sớm.
-- Mobile: **16/16 test PASS**, lint/TypeScript và Android Hermes export đạt. Expo LAN manifest HTTP 200, API health HTTP 200 và DB connected.
-- API dev: `http://192.168.1.225:8000/api/v1`; Expo Go: `exp://192.168.1.225:8081`. Chạy lại bằng `start-mobile-dev.ps1`.
-- Mobile đọc `.env.local`; Track Asia HTTP 200. Backend còn thiếu `CLOUDINARY_API_SECRET`; cả 5 cửa hàng chưa có geofence. Chờ chọn đúng cửa hàng cho tọa độ đã cung cấp; chưa nghiệm thu ảnh/GPS trên điện thoại.
+**Tiến độ nghiệm thu Nhiệm vụ 2: 80%** theo trọng số công việc trong [mission2.md](mission2.md). Đã đạt 30 test backend, 8 test client, integration PostgreSQL, lint/typecheck và bundle Android. Chưa nghiệm thu Track Asia/Cloudinary với cấu hình thật hoặc tương tác camera/GPS trên thiết bị; không đồng nhất build thành công với hoàn thành 100%.
 
-> **Khung thay đổi:** `mobile/src/app/index.tsx` (hồ sơ, trạng thái, GPS modal); `summary.tsx` (bảng công tháng); `attendance-ui.tsx` và `assets/fonts` (style/font đồng bộ web); `loading-bar.tsx` (loading); `attendance-map.tsx` (marker/vòng vùng/lỗi); services/tests (API, quyền, khoảng cách); `backend/check_mobile_setup.py` (kiểm tra môi trường); `configure_mobile_geofence.py` (cấu hình đúng store); `start-mobile-dev.ps1` (chạy dev); `mission1.md`/`mission2.md` (luật, tiến độ và quy trình nghiệm thu).
+Các API Web cũ giữ hợp đồng Nhiệm vụ 1. GPS bắt buộc trên tuyến mobile mới, chưa là chính sách bắt buộc cho tất cả kênh. Quy trình, cấu hình Expo Go/Android Studio, file thay đổi và checklist còn lại nằm trong mission2.md.
