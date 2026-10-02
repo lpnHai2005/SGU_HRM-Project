@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "mobile",
+    "name": "TechZone HRM",
     "slug": "mobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -33,7 +33,10 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
-      ]
+      ],
+      "expo-secure-store",
+      ["expo-image-picker", { "cameraPermission": "Cho phép TechZone chụp selfie minh chứng chấm công.", "microphonePermission": false, "photosPermission": false }],
+      ["expo-location", { "locationWhenInUsePermission": "Cho phép TechZone lấy vị trí khi bạn gửi chấm công." }]
     ],
     "experiments": {
       "typedRoutes": true,

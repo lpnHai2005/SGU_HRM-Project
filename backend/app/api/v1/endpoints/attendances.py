@@ -12,7 +12,7 @@ from app.schemas.schemas import (
     AttendanceSummaryOut, TodayAttendanceStatusOut
 )
 
-from app.core.attendance import local_now, VIETNAM_TZ, availability, require_available, session_metrics, late_minutes, attendance_context
+from app.core.attendance import local_now, VIETNAM_TZ, availability, require_available, session_metrics, late_minutes, attendance_context, require_checkout_ready
 
 router = APIRouter()
 
@@ -131,8 +131,9 @@ async def get_today_attendance_status(
             actual_work_hours=0.0,
             overtime_hours=0.0,
             status="NOT_CHECKED_IN",
-            shift_id=sched["shift_id"] if sched else 1,
-            shift_name=sched["shift_name"] if sched else "Ca Sáng (08:00 - 16:00)",
+            shift_id=sched["shift_id"] if sched else None,
+            shift_name=sched["shift_name"] if sched else None,
+            schedule_status="MATCHED" if sched else "UNSCHEDULED",
             store_id=sched["store_id"] if sched else target_employee["store_id"],
             store_name=sched["store_name"] if sched else None,
             notes=None
@@ -504,6 +505,7 @@ async def check_out(req: CheckOutRequest, current_user: dict = Depends(get_curre
     if not att["check_in_time"] or att["check_out_time"]:
         raise HTTPException(409, "Lượt này chưa check-in hoặc đã check-out.")
     now = local_now()
+    require_checkout_ready(att['check_in_time'], now)
     metrics = session_metrics(att, now)
     notes = " | ".join(filter(None, [req.notes, f"Vị trí: {req.location}" if req.location else None]))
     await db.execute(text("""

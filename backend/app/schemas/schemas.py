@@ -411,6 +411,7 @@ class TodayAttendanceStatusOut(AttendanceContextOut):
     can_check_in: bool = True
     can_check_out: bool = False
     cooldown_seconds_remaining: int = 0
+    checkout_seconds_remaining: int = 0
     next_check_in_at: Optional[datetime] = None
     work_date: date
     has_checked_in: bool

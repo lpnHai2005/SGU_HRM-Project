@@ -14,6 +14,6 @@ async def main(migration='20260926_attendance_sessions.sql'):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--migration', choices=['20260926_attendance_sessions.sql', '20261001_attendance_schedule_snapshot.sql'],
+    parser.add_argument('--migration', choices=['20260926_attendance_sessions.sql', '20261001_attendance_schedule_snapshot.sql', '20261001_mobile_attendance.sql'],
                         default='20260926_attendance_sessions.sql')
     asyncio.run(main(parser.parse_args().migration))
