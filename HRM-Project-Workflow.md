@@ -124,11 +124,11 @@ SGU_HRM-Project/
 - [x] Calendar view of leaves
 
 **Mobile Frontend:**
-- [ ] Submit leave request form
-- [ ] Leave balance display
-- [ ] My leave requests list
-- [ ] Manager: Pending requests list + Approve/Reject
-- [ ] Push notifications for status updates
+- [x] Submit leave request form
+- [x] Leave balance display
+- [x] My leave requests list
+- [x] Manager: Pending requests list + Approve/Reject
+- [x] Push notifications for status updates
 
 ### 2.3 Attendance
 
