@@ -259,7 +259,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
           employee_code: printData.employee?.employee_code || payroll.employee_code,
           position: printData.employee?.position || printData.employee?.position_name || payroll.position_name,
           position_name: printData.employee?.position_name || printData.employee?.position || payroll.position_name,
-          store_name: printData.employee?.store_name || payroll.store_name || 'TechZone - Flagship Store',
+          store_name: printData.employee?.store_name || payroll.store_name || 'TechZone - TECHZONE Store',
           bank_account: printData.employee?.bank_account || printData.employee?.bank_account_no || '19036788899999',
           bank_account_no: printData.employee?.bank_account_no || printData.employee?.bank_account || '19036788899999',
           bank_name: printData.employee?.bank_name || 'Techcombank CN Tân Bình',
@@ -1304,7 +1304,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                   <div>Họ và tên: <strong>{monthlyPrintData.employee?.full_name || selectedPayroll?.employee_name}</strong></div>
                   <div>Mã nhân viên: <strong>{monthlyPrintData.employee?.employee_code || selectedPayroll?.employee_code}</strong></div>
                   <div>Vị trí công việc: <strong>{monthlyPrintData.employee?.position || monthlyPrintData.employee?.position_name || selectedPayroll?.position_name}</strong></div>
-                  <div>Chi nhánh làm việc: <strong>{monthlyPrintData.employee?.store_name || selectedPayroll?.store_name || 'TechZone - Flagship Store'}</strong></div>
+                  <div>Chi nhánh làm việc: <strong>{monthlyPrintData.employee?.store_name || selectedPayroll?.store_name || 'TechZone - TECHZONE Store'}</strong></div>
                   <div>Số tài khoản: <strong>{monthlyPrintData.employee?.bank_account_no || monthlyPrintData.employee?.bank_account || '19036788899999'}</strong></div>
                   <div>Ngân hàng: <strong>{monthlyPrintData.employee?.bank_name || 'Techcombank'}</strong></div>
                 </div>

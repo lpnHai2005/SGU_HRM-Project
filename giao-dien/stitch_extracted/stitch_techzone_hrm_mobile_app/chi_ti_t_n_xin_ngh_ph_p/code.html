@@ -1,0 +1,306 @@
+<!DOCTYPE html><html class="h-full" lang="vi"><head><meta charset="utf-8"><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"><meta content="mobile_stack" name="shell-type"><title>TechZone HRM</title><link href="https://fonts.googleapis.com" rel="preconnect"><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"><link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,400;0,500;0,600;0,700;1,400&amp;display=swap" rel="stylesheet"><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config = { darkMode: "class", theme: { extend: { "colors": { "primary-fixed-dim": "#c8c6c8", "primary-fixed": "#e5e1e4", "secondary": "#5e5e67", "surface-container-highest": "#e2e2e4", "on-surface": "#1a1c1d", "secondary-fixed": "#e3e1ec", "inverse-surface": "#2f3132", "error": "#ba1a1a", "tertiary": "#000000", "surface-container": "#edeef0", "surface-tint": "#5f5e60", "error-container": "#ffdad6", "primary": "#000000", "on-primary-fixed-variant": "#474649", "on-primary-container": "#858386", "on-tertiary-fixed": "#00174b", "surface-container-lowest": "#ffffff", "on-secondary-fixed": "#1a1b23", "secondary-fixed-dim": "#c7c5d0", "on-secondary-container": "#62626b", "on-secondary": "#ffffff", "surface-bright": "#f9f9fb", "on-primary": "#ffffff", "surface-container-high": "#e8e8ea", "inverse-on-surface": "#f0f0f2", "outline": "#78767b", "primary-container": "#1c1b1d", "surface-variant": "#e2e2e4", "background": "#f9f9fb", "tertiary-container": "#00174b", "surface": "#f9f9fb", "on-error-container": "#93000a", "on-tertiary": "#ffffff", "surface-container-low": "#f3f3f5", "outline-variant": "#c8c5ca", "inverse-primary": "#c8c6c8", "on-surface-variant": "#47464a", "tertiary-fixed": "#dbe1ff", "on-tertiary-container": "#497cff", "on-tertiary-fixed-variant": "#003ea8", "on-background": "#1a1c1d", "on-secondary-fixed-variant": "#46464f", "on-primary-fixed": "#1c1b1d", "on-error": "#ffffff", "tertiary-fixed-dim": "#b4c5ff", "secondary-container": "#e0dee9", "surface-dim": "#d9dadc" }, "borderRadius": { "DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px" }, "spacing": { "space-md": "1rem", "space-xl": "2rem", "margin": "1rem", "space-xs": "0.25rem", "space-lg": "1.5rem", "space-sm": "0.5rem", "gutter": "1rem" }, "fontFamily": { "headline-md": ["Be Vietnam Pro"], "headline-xl": ["Be Vietnam Pro"], "body-lg-medium": ["Be Vietnam Pro"], "body-md": ["Be Vietnam Pro"], "headline-lg": ["Be Vietnam Pro"], "label-xs": ["Be Vietnam Pro"], "headline-sm": ["Be Vietnam Pro"], "label-md": ["Be Vietnam Pro"], "label-sm": ["Be Vietnam Pro"], "body-md-medium": ["Be Vietnam Pro"], "body-lg": ["Be Vietnam Pro"] }, "fontSize": { "headline-md": ["20px", { "lineHeight": "28px", "fontWeight": "600" }], "headline-xl": ["32px", { "lineHeight": "40px", "fontWeight": "700" }], "body-lg-medium": ["16px", { "lineHeight": "24px", "fontWeight": "500" }], "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }], "headline-lg": ["24px", { "lineHeight": "32px", "fontWeight": "600" }], "label-xs": ["11px", { "lineHeight": "14px", "fontWeight": "600" }], "headline-sm": ["18px", { "lineHeight": "24px", "fontWeight": "600" }], "label-md": ["13px", { "lineHeight": "18px", "fontWeight": "500" }], "label-sm": ["12px", { "lineHeight": "16px", "fontWeight": "500" }], "body-md-medium": ["14px", { "lineHeight": "20px", "fontWeight": "500" }], "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "400" }] } } } };</script><style>@layer base { html, body { min-height: 100%; margin: 0; padding: 0; } .pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); } .pt-safe { padding-top: env(safe-area-inset-top, 0px); } } .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }</style><style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+</head><body class="bg-background font-body-md text-body-md text-on-surface antialiased flex flex-col min-h-screen"><header class="fixed top-0 inset-x-0 z-50 bg-surface/90 backdrop-blur-xl pt-safe shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><div class="h-16 px-margin flex items-center justify-between gap-space-sm"><div class="flex items-center gap-space-xs min-w-0"><button aria-label="Back" class="w-11 h-11 flex items-center justify-center rounded-full text-on-surface hover:bg-surface-container-high transition-colors shrink-0" onclick="history.back()"><span class="material-symbols-outlined text-[24px]">arrow_back</span></button><img alt="TechZone HRM Logo" class="h-7 w-auto object-contain shrink-0 hidden sm:block" src="https://lh3.googleusercontent.com/aida/AEtjO1WFkiz5lCVOKo3tlS8nEXIHDrcwLSwShhgrXPSUKt2BMdfRpwBYOVNSlnA_hxgGePfx5ofSpsXRBsUU5WUf37tdx1-DvOzYiwaau9glqfzQXnZlMuR3uRtJ2JsReXDG8fIqyUua3mqGFZyLcjb2mtsLxNnqS1UMBP3_Qblf1wOZUwLvkDLEIUZA1BN0vB1LRGsD7x4r-tUHVUazDJG5CslsC1CJhpmvoZ9BmGURZPSP8YFCCVLuQNow5NY"><h1 class="font-headline-sm text-headline-sm text-on-surface truncate">Chi Tiết Chấm Công</h1></div><div class="flex items-center gap-space-xs shrink-0"><button aria-label="Profile" class="w-11 h-11 flex items-center justify-center"><img alt="Profile" class="w-8 h-8 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDLfLwNUNT75gpUNhEl_91wSYU3y394fvsWL-Mkhjexi55NYTzwsPw7Rx29KTpNYiLh_5yb8qmGJJ1OYLXIwZ3NlMJzoMgMt5cyWASFZT-6RcAd5cgyBm_BuvLYYzNFcgHqGT3KrDeDigDyD2TLjOHKSdOJkqvLek2ei_geNM-fQ0DkOGQjSftFjGRTLfJsTckwiMUwdNERp5LnowEpG1IAreAfOnRMubchIbiSBO9kEpqVogOlpst9rw"></button></div></div></header><main class="flex-1 w-full bg-background pt-16 pb-safe"><div class="flex flex-col w-full pb-10">
+<!-- Top Utility Context Bar -->
+<div class="px-margin pt-space-sm pb-space-xs flex items-center justify-between gap-space-sm">
+<div class="flex items-center gap-space-xs min-w-0">
+<span class="font-label-sm text-label-sm text-on-surface-variant font-mono tracking-wider">MÃ ĐƠN:</span>
+<span class="font-body-md-medium text-body-md-medium text-on-surface font-semibold">#NP-2026-089</span>
+</div>
+<div class="flex items-center gap-space-xs shrink-0">
+<button aria-label="Sao chép liên kết" class="w-9 h-9 rounded-full bg-surface-container flex items-center justify-center text-on-surface hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined text-[19px]">link</span>
+</button>
+<button aria-label="In hoặc xuất PDF" class="w-9 h-9 rounded-full bg-surface-container flex items-center justify-center text-on-surface hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined text-[19px]">share</span>
+</button>
+</div>
+</div>
+<div class="px-margin flex flex-col gap-space-md mt-space-xs">
+<!-- 1. STATUS OVERVIEW HERO CARD -->
+<div class="bg-surface-container-lowest rounded-2xl shadow-sm p-space-md flex flex-col gap-space-md">
+<!-- Status Badge & Date -->
+<div class="flex flex-wrap items-center justify-between gap-space-xs">
+<div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-secondary-container/80 text-on-surface font-label-sm text-label-sm">
+<span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+<span class="text-amber-800 font-semibold tracking-tight">ĐANG CHỜ DUYỆT (CẤP 2 - HR)</span>
+</div>
+<span class="font-label-xs text-label-xs text-on-surface-variant">24/10/2026 • 09:15</span>
+</div>
+<!-- Title & Leave Type -->
+<div>
+<h2 class="font-headline-sm text-headline-sm text-on-surface font-bold tracking-tight">
+          Nghỉ phép năm cá nhân
+        </h2>
+<div class="flex items-center gap-1.5 mt-1 text-on-surface-variant">
+<span class="material-symbols-outlined text-[16px] text-emerald-600" style="font-variation-settings: 'FILL' 1;">payments</span>
+<span class="font-body-md text-body-md text-emerald-800 font-medium">Hưởng nguyên lương (100%)</span>
+</div>
+</div>
+<!-- Employee Metadata Cardlet -->
+<div class="bg-surface-container-low rounded-xl p-3 flex items-center gap-3">
+<img class="w-12 h-12 rounded-full object-cover shrink-0 shadow-sm" data-alt="Chân dung thực tế nhân viên tư vấn bán lẻ Đoàn Trung Kiên, nam thanh niên người Việt, nụ cười nhẹ lịch sự, mặc đồng phục áo polo màu đen TechZone HRM trong không gian cửa hàng điện máy cao cấp hiện đại ánh sáng chuyên nghiệp." src="https://lh3.googleusercontent.com/aida-public/AB6AXuC1YOi0wayZbtz6TrFEUnZmfgKRRCOIPgQjkSq-8bh7uCY_-XUiZU0sgeG3_4l6KC2mTSZ398ro_cS5JlOxR3B4FxVjNqmlwNOfZskuJs0R-VDnlJ3rsGlcCkwYuKssGugd4qtcvdK-Imjfv7xNNiBKJcVk6i8PQl5Ah0rFP3Dx0ZiH-ZDc1ElEarPi1Vd0FYb25AnLlsBGrmm_RH_Zw5WTTu65Mp44u5nb3UavkUlVygILNxiXwvpkew">
+<div class="min-w-0 flex-1">
+<div class="flex items-center gap-2">
+<span class="font-body-md-medium text-body-md-medium text-on-surface font-bold truncate">Đoàn Trung Kiên</span>
+<span class="font-label-xs text-label-xs px-2 py-0.5 rounded bg-surface-container text-on-surface-variant font-mono">TZ-0198</span>
+</div>
+<p class="font-label-sm text-label-sm text-on-surface-variant truncate mt-0.5">Chuyên viên Tư vấn Sản phẩm Apple &amp; Phụ kiện</p>
+<div class="flex items-center gap-1 mt-1 text-on-surface-variant">
+<span class="material-symbols-outlined text-[14px]">storefront</span>
+<span class="font-label-xs text-label-xs text-on-surface-variant font-medium">Flagship TechZone Q.1 (TP.HCM)</span>
+</div>
+</div>
+</div>
+</div>
+<!-- 2. SCHEDULE & TIME BREAKDOWN -->
+<div class="bg-surface-container-lowest rounded-2xl shadow-sm p-space-md flex flex-col gap-space-md">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="w-1.5 h-4 bg-primary rounded-full"></span>
+<h3 class="font-body-lg-medium text-body-lg-medium text-on-surface font-bold">Lịch trình &amp; Quỹ phép</h3>
+</div>
+<span class="font-label-sm text-label-sm px-2.5 py-0.5 rounded-full bg-primary-fixed text-on-primary-fixed font-semibold">
+          Tổng 2.0 Ngày
+        </span>
+</div>
+<!-- Date Range Split Display -->
+<div class="grid grid-cols-2 gap-space-sm">
+<div class="bg-surface-container-low p-3 rounded-xl flex flex-col">
+<span class="font-label-xs text-label-xs text-on-surface-variant uppercase font-medium">Bắt đầu nghỉ</span>
+<span class="font-headline-sm text-headline-sm text-on-surface font-bold mt-1">28/10</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Thứ Tư • Cả ngày</span>
+</div>
+<div class="bg-surface-container-low p-3 rounded-xl flex flex-col">
+<span class="font-label-xs text-label-xs text-on-surface-variant uppercase font-medium">Kết thúc nghỉ</span>
+<span class="font-headline-sm text-headline-sm text-on-surface font-bold mt-1">29/10</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Thứ Năm • Cả ngày</span>
+</div>
+</div>
+<!-- Quota Impact Progress Bar -->
+<div class="bg-surface-container-low rounded-xl p-3 flex flex-col gap-2">
+<div class="flex items-center justify-between text-on-surface">
+<span class="font-label-md text-label-md font-medium">Biến động quỹ phép năm 2026</span>
+<span class="font-label-md text-label-md font-bold text-on-surface">8.0 → 6.0 ngày</span>
+</div>
+<!-- Progress track -->
+<div class="w-full h-2.5 bg-surface-container rounded-full overflow-hidden flex">
+<div class="h-full bg-emerald-600 rounded-l-full" style="width: 50%;"></div>
+<div class="h-full bg-amber-400" style="width: 16.6%;"></div>
+<div class="h-full bg-surface-container-highest" style="width: 33.4%;"></div>
+</div>
+<div class="flex items-center justify-between font-label-xs text-label-xs text-on-surface-variant pt-1">
+<div class="flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-emerald-600"></span>
+<span>Khả dụng sau duyệt: <strong>6.0 ngày</strong></span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-amber-400"></span>
+<span>Đang giữ: <strong>2.0 ngày</strong></span>
+</div>
+</div>
+</div>
+</div>
+<!-- 3. REASON & HANDOVER DETAILS -->
+<div class="bg-surface-container-lowest rounded-2xl shadow-sm p-space-md flex flex-col gap-space-md">
+<div class="flex items-center gap-2">
+<span class="w-1.5 h-4 bg-primary rounded-full"></span>
+<h3 class="font-body-lg-medium text-body-lg-medium text-on-surface font-bold">Lý do &amp; Bàn giao ca</h3>
+</div>
+<!-- Reason text -->
+<div class="flex flex-col gap-1">
+<span class="font-label-xs text-label-xs text-on-surface-variant font-medium uppercase">Mục đích nghỉ phép</span>
+<p class="font-body-md text-body-md text-on-surface bg-surface-container-low p-3.5 rounded-xl leading-relaxed">
+          Giải quyết việc gia đình tại quê (Đồng Nai), đã bàn giao ca trực thu ngân và đối soát két bán hàng cho bạn Hoàng Minh. Đảm bảo thông ca bán hàng liên tục.
+        </p>
+</div>
+<!-- Handover person card -->
+<div class="flex flex-col gap-1.5">
+<span class="font-label-xs text-label-xs text-on-surface-variant font-medium uppercase">Nhân sự tiếp nhận bàn giao</span>
+<div class="bg-surface-container-low p-3 rounded-xl flex items-center justify-between gap-3">
+<div class="flex items-center gap-2.5 min-w-0">
+<img class="w-10 h-10 rounded-full object-cover shrink-0" data-alt="Chân dung thực tế nhân viên nam bán lẻ Nguyễn Hoàng Minh TechZone, nhân sự thu ngân tại cửa hàng điện thoại công nghệ, tươi vui và tác phong chuẩn mực trong môi trường bán lẻ hiện đại." src="https://lh3.googleusercontent.com/aida-public/AB6AXuB6D-flcCzK-G90fsTT7rdGIfW1fVnRuLmo-3aFXTIbuFC64LScrWPRFShSlC7G_de8PWHve1hDhztGci-Zixqz1ID1S86Z-t23uH2o6xigqGrmHegQ2bKJqiKETOGzOeRScSnk-Vzxi5sUrhVc9pKk4gPXULJ7z_X1-lNZC-UFdommuR2s73r9ow9WUweL_HjciusNWLTcX3Balo-3PLPUDK1-m18T-8hm3dk_Vtum3YoNTglaTdmiLg">
+<div class="min-w-0">
+<div class="flex items-center gap-1.5">
+<span class="font-body-md-medium text-body-md-medium text-on-surface font-semibold truncate">Nguyễn Hoàng Minh</span>
+<span class="font-label-xs text-label-xs text-on-surface-variant font-mono">TZ-0215</span>
+</div>
+<p class="font-label-xs text-label-xs text-on-surface-variant truncate">NV Tư vấn Bán lẻ &amp; Thu ngân ca 2</p>
+</div>
+</div>
+<div class="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-label-xs text-label-xs font-semibold">
+<span class="material-symbols-outlined text-[14px]">check_circle</span>
+<span>Đã xác nhận</span>
+</div>
+</div>
+</div>
+<!-- Attachment File Preview -->
+<div class="flex flex-col gap-1.5">
+<span class="font-label-xs text-label-xs text-on-surface-variant font-medium uppercase">Tệp đính kèm / Biên bản</span>
+<div class="bg-surface-container-low p-3 rounded-xl flex items-center justify-between gap-2 hover:bg-surface-container transition-colors cursor-pointer">
+<div class="flex items-center gap-2.5 min-w-0">
+<div class="w-9 h-9 rounded-lg bg-red-100 text-red-700 flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[20px]">picture_as_pdf</span>
+</div>
+<div class="min-w-0">
+<span class="font-body-md-medium text-body-md-medium text-on-surface font-medium truncate block">bien_ban_ban_giao_ca.pdf</span>
+<span class="font-label-xs text-label-xs text-on-surface-variant">1.2 MB • Định dạng văn bản ký số</span>
+</div>
+</div>
+<button aria-label="Xem tệp" class="w-8 h-8 rounded-full bg-surface-container-lowest flex items-center justify-center text-on-surface hover:text-primary transition-colors shrink-0">
+<span class="material-symbols-outlined text-[18px]">visibility</span>
+</button>
+</div>
+</div>
+</div>
+<!-- 4. VISUAL MULTI-LEVEL APPROVAL TIMELINE -->
+<div class="bg-surface-container-lowest rounded-2xl shadow-sm p-space-md flex flex-col gap-space-md">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="w-1.5 h-4 bg-primary rounded-full"></span>
+<h3 class="font-body-lg-medium text-body-lg-medium text-on-surface font-bold">Quy trình duyệt (2 Cấp)</h3>
+</div>
+<span class="font-label-xs text-label-xs text-on-surface-variant font-mono">2 / 3 HOÀN TẤT</span>
+</div>
+<!-- Timeline Component -->
+<div class="relative pl-7 flex flex-col gap-6">
+<!-- Vertical Timeline Line -->
+<div class="absolute left-[11px] top-3 bottom-3 w-0.5 bg-surface-container-highest"></div>
+<!-- Step 1: Employee Created -->
+<div class="relative flex flex-col gap-1">
+<!-- Step Marker -->
+<div class="absolute -left-7 top-0 w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center ring-4 ring-surface-container-lowest">
+<span class="material-symbols-outlined text-[15px]">done</span>
+</div>
+<div class="flex items-center justify-between">
+<span class="font-body-md-medium text-body-md-medium text-on-surface font-bold">1. Tạo &amp; Nộp đơn xin nghỉ</span>
+<span class="font-label-xs text-label-xs text-emerald-800 font-semibold px-2 py-0.5 rounded-full bg-emerald-100">Hoàn tất</span>
+</div>
+<p class="font-label-sm text-label-sm text-on-surface-variant">
+            Người nộp: Đoàn Trung Kiên • 24/10/2026, 09:15
+          </p>
+</div>
+<!-- Step 2: Store Manager Approved -->
+<div class="relative flex flex-col gap-1.5">
+<!-- Step Marker -->
+<div class="absolute -left-7 top-0 w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center ring-4 ring-surface-container-lowest">
+<span class="material-symbols-outlined text-[15px]">check</span>
+</div>
+<div class="flex items-center justify-between">
+<span class="font-body-md-medium text-body-md-medium text-on-surface font-bold">2. Cấp 1: Cửa hàng trưởng phê duyệt</span>
+<span class="font-label-xs text-label-xs text-emerald-800 font-semibold px-2 py-0.5 rounded-full bg-emerald-100">Đã phê duyệt</span>
+</div>
+<div class="flex items-center gap-2 mt-0.5">
+<img class="w-6 h-6 rounded-full object-cover shrink-0" data-alt="Chân dung thực tế Cửa hàng trưởng Trần Văn Tuấn, nam giới trưởng thành đĩnh đạc mang áo sơ mi quản lý TechZone chuỗi công nghệ, phong thái chuyên nghiệp tin cậy." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDYTS65k88O5H3VW0vLpKt4dDC2f_gun5XM8f5QPe-MSP3V2JstmA3Eu7CSSZSaySyavhACNtV7Dcf86dmP4EEutkxWz6AqXuFIorn5zZiTx5PpP8p3ynFAmfbpLDL-Y_S6dm1pw9wz0HLgo3WoXOr25Sp6ESPr09ZiwX5hIzbol_v43LPsreNH5y_LbSgQ1sTI_3FvBzOIP8rN6jOiBZoJAycGNaAStjq-3eeeaIU9qu4Dq2JtaXSnkw">
+<span class="font-label-sm text-label-sm text-on-surface font-medium">Trần Văn Tuấn (CHT Chi nhánh Flagship)</span>
+</div>
+<span class="font-label-xs text-label-xs text-on-surface-variant">25/10/2026 lúc 08:30</span>
+<!-- Manager Note -->
+<div class="mt-1 bg-surface-container-low rounded-xl p-2.5 text-on-surface-variant flex items-start gap-2">
+<span class="material-symbols-outlined text-[16px] text-primary shrink-0 mt-0.5">comment</span>
+<p class="font-label-sm text-label-sm italic text-on-surface">
+              "Đã thống nhất đổi ca trực tuần với bạn Minh. Đồng ý cho Kiên nghỉ 2 ngày theo nguyện vọng."
+            </p>
+</div>
+</div>
+<!-- Step 3: HR Ops Review (Pending) -->
+<div class="relative flex flex-col gap-1.5">
+<!-- Step Marker -->
+<div class="absolute -left-7 top-0 w-6 h-6 rounded-full bg-amber-500 text-white flex items-center justify-center ring-4 ring-surface-container-lowest animate-pulse">
+<span class="material-symbols-outlined text-[15px]">hourglass_top</span>
+</div>
+<div class="flex items-center justify-between">
+<span class="font-body-md-medium text-body-md-medium text-on-surface font-bold">3. Cấp 2: Phòng Nhân sự (HR Ops)</span>
+<span class="font-label-xs text-label-xs text-amber-800 font-semibold px-2 py-0.5 rounded-full bg-amber-100">Đang thẩm định</span>
+</div>
+<div class="flex items-center gap-2 mt-0.5">
+<img class="w-6 h-6 rounded-full object-cover shrink-0" data-alt="Chân dung thực tế nữ chuyên viên nhân sự Lê Thị Ngọc Bích, diện trang phục công sở hiện đại văn phòng TechZone HRM, nét mặt hòa nhã, chuyên nghiệp và thanh lịch." src="https://lh3.googleusercontent.com/aida-public/AB6AXuA3aWY3-Zj0n81QcEy9fTdQSSQpSNn0AK417YNtPSKZIxzROlM5pHtWy9N3_Hm0OwxhRM0wfKIvAjW3aa7Ud5abcZqv9i7uopghXs40jEGcGK2Qfrzlo5YoleMQKWTYqvVrK_1VcuoSsrzyTVFiwouYJFLFaLIEwwXcU2q8BdBq5sBndTBevnz_nSs7eh3-7m4qwuu_p4-7vHHJYZi8N--2LTbbhJP9tVHQegFvZOidZ0HMeWEpkzYMIA">
+<span class="font-label-sm text-label-sm text-on-surface font-medium">Lê Thị Ngọc Bích (HR Specialist)</span>
+</div>
+<p class="font-label-xs text-label-xs text-on-surface-variant">
+            Đang kiểm tra số dư phép &amp; chính sách công ty.
+          </p>
+<div class="flex items-center gap-1.5 mt-1 text-amber-700">
+<span class="material-symbols-outlined text-[15px]">schedule</span>
+<span class="font-label-xs text-label-xs font-semibold">Hạn xử lý dự kiến: Trước 17:00, 26/10/2026</span>
+</div>
+</div>
+</div>
+</div>
+<!-- 5. MANAGER / EMPLOYEE ACTION AREA -->
+<!-- Tab Toggle to switch simulation mode -->
+<div class="bg-surface-container p-1 rounded-xl flex items-center">
+<button class="flex-1 py-2 text-center rounded-lg font-label-md text-label-md font-semibold bg-surface-container-lowest text-on-surface shadow-sm transition-all" id="btn-view-emp" onclick="switchView('emp')">
+        Góc nhìn Nhân viên
+      </button>
+<button class="flex-1 py-2 text-center rounded-lg font-label-md text-label-md font-medium text-on-surface-variant hover:text-on-surface transition-all" id="btn-view-mgr" onclick="switchView('mgr')">
+        Chế độ Cửa Hàng Trưởng
+      </button>
+</div>
+<!-- Employee Actions Section -->
+<div class="flex flex-col gap-space-sm transition-all duration-300" id="section-emp-actions">
+<button class="w-full h-12 rounded-xl bg-surface-container-lowest text-on-surface font-body-md-medium text-body-md-medium font-semibold flex items-center justify-center gap-2 hover:bg-surface-container-high transition-colors shadow-sm">
+<span class="material-symbols-outlined text-[20px]">notifications_active</span>
+<span>Gửi tin nhắn nhắc duyệt cho HR</span>
+</button>
+<button class="w-full h-12 rounded-xl bg-red-50 text-error font-body-md-medium text-body-md-medium font-semibold flex items-center justify-center gap-2 hover:bg-red-100 transition-colors">
+<span class="material-symbols-outlined text-[20px]">cancel</span>
+<span>Rút lại đơn xin nghỉ này</span>
+</button>
+<p class="text-center font-label-xs text-label-xs text-on-surface-variant">
+        Lưu ý: Chỉ có thể rút lại đơn khi Cấp 2 (HR) chưa xác nhận duyệt chính thức.
+      </p>
+</div>
+<!-- Manager Actions Simulation Section (Hidden by default) -->
+<div class="hidden flex-col gap-space-sm bg-surface-container-lowest p-space-md rounded-2xl shadow-sm transition-all duration-300" id="section-mgr-actions">
+<div class="flex items-start gap-3 bg-surface-container-low p-3 rounded-xl mb-1">
+<span class="material-symbols-outlined text-primary text-[22px] shrink-0">admin_panel_settings</span>
+<div class="flex flex-col">
+<span class="font-body-md-medium text-body-md-medium text-on-surface font-bold">Thao tác Quản lý chi nhánh</span>
+<p class="font-label-xs text-label-xs text-on-surface-variant mt-0.5 leading-normal">
+            Bạn có thẩm quyền xem xét thay đổi duyệt bổ sung hoặc yêu cầu cập nhật lại lịch trực với nhân sự cửa hàng.
+          </p>
+</div>
+</div>
+<button class="w-full h-12 rounded-xl bg-primary text-on-primary font-body-md-medium text-body-md-medium font-semibold flex items-center justify-center gap-2 shadow hover:bg-primary/90 transition-colors">
+<span class="material-symbols-outlined text-[20px]">check_circle</span>
+<span>Xác nhận duyệt chuyển HR tiếp theo</span>
+</button>
+<button class="w-full h-12 rounded-xl bg-surface-container-high text-on-surface font-body-md-medium text-body-md-medium font-semibold flex items-center justify-center gap-2 hover:bg-surface-variant transition-colors">
+<span class="material-symbols-outlined text-[20px]">assignment_return</span>
+<span>Yêu cầu bổ sung thông tin / Đổi ca</span>
+</button>
+</div>
+</div>
+</div>
+<script>
+  function switchView(mode) {
+    const empSection = document.getElementById('section-emp-actions');
+    const mgrSection = document.getElementById('section-mgr-actions');
+    const btnEmp = document.getElementById('btn-view-emp');
+    const btnMgr = document.getElementById('btn-view-mgr');
+
+    if (mode === 'emp') {
+      empSection.classList.remove('hidden');
+      empSection.classList.add('flex');
+      mgrSection.classList.add('hidden');
+      mgrSection.classList.remove('flex');
+
+      btnEmp.className = 'flex-1 py-2 text-center rounded-lg font-label-md text-label-md font-semibold bg-surface-container-lowest text-on-surface shadow-sm transition-all';
+      btnMgr.className = 'flex-1 py-2 text-center rounded-lg font-label-md text-label-md font-medium text-on-surface-variant hover:text-on-surface transition-all';
+    } else {
+      empSection.classList.add('hidden');
+      empSection.classList.remove('flex');
+      mgrSection.classList.remove('hidden');
+      mgrSection.classList.add('flex');
+
+      btnMgr.className = 'flex-1 py-2 text-center rounded-lg font-label-md text-label-md font-semibold bg-surface-container-lowest text-on-surface shadow-sm transition-all';
+      btnEmp.className = 'flex-1 py-2 text-center rounded-lg font-label-md text-label-md font-medium text-on-surface-variant hover:text-on-surface transition-all';
+    }
+  }
+</script></main></body></html>

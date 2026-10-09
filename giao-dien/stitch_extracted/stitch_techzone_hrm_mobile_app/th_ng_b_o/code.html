@@ -1,0 +1,322 @@
+<!DOCTYPE html><html class="h-full" lang="vi"><head><meta charset="utf-8"><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"><meta content="mobile_stack" name="shell-type"><title>TechZone HRM</title><link href="https://fonts.googleapis.com" rel="preconnect"><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"><link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,400;0,500;0,600;0,700;1,400&amp;display=swap" rel="stylesheet"><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config = { darkMode: "class", theme: { extend: { "colors": { "primary-fixed-dim": "#c8c6c8", "primary-fixed": "#e5e1e4", "secondary": "#5e5e67", "surface-container-highest": "#e2e2e4", "on-surface": "#1a1c1d", "secondary-fixed": "#e3e1ec", "inverse-surface": "#2f3132", "error": "#ba1a1a", "tertiary": "#000000", "surface-container": "#edeef0", "surface-tint": "#5f5e60", "error-container": "#ffdad6", "primary": "#000000", "on-primary-fixed-variant": "#474649", "on-primary-container": "#858386", "on-tertiary-fixed": "#00174b", "surface-container-lowest": "#ffffff", "on-secondary-fixed": "#1a1b23", "secondary-fixed-dim": "#c7c5d0", "on-secondary-container": "#62626b", "on-secondary": "#ffffff", "surface-bright": "#f9f9fb", "on-primary": "#ffffff", "surface-container-high": "#e8e8ea", "inverse-on-surface": "#f0f0f2", "outline": "#78767b", "primary-container": "#1c1b1d", "surface-variant": "#e2e2e4", "background": "#f9f9fb", "tertiary-container": "#00174b", "surface": "#f9f9fb", "on-error-container": "#93000a", "on-tertiary": "#ffffff", "surface-container-low": "#f3f3f5", "outline-variant": "#c8c5ca", "inverse-primary": "#c8c6c8", "on-surface-variant": "#47464a", "tertiary-fixed": "#dbe1ff", "on-tertiary-container": "#497cff", "on-tertiary-fixed-variant": "#003ea8", "on-background": "#1a1c1d", "on-secondary-fixed-variant": "#46464f", "on-primary-fixed": "#1c1b1d", "on-error": "#ffffff", "tertiary-fixed-dim": "#b4c5ff", "secondary-container": "#e0dee9", "surface-dim": "#d9dadc" }, "borderRadius": { "DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px" }, "spacing": { "space-md": "1rem", "space-xl": "2rem", "margin": "1rem", "space-xs": "0.25rem", "space-lg": "1.5rem", "space-sm": "0.5rem", "gutter": "1rem" }, "fontFamily": { "headline-md": ["Be Vietnam Pro"], "headline-xl": ["Be Vietnam Pro"], "body-lg-medium": ["Be Vietnam Pro"], "body-md": ["Be Vietnam Pro"], "headline-lg": ["Be Vietnam Pro"], "label-xs": ["Be Vietnam Pro"], "headline-sm": ["Be Vietnam Pro"], "label-md": ["Be Vietnam Pro"], "label-sm": ["Be Vietnam Pro"], "body-md-medium": ["Be Vietnam Pro"], "body-lg": ["Be Vietnam Pro"] }, "fontSize": { "headline-md": ["20px", { "lineHeight": "28px", "fontWeight": "600" }], "headline-xl": ["32px", { "lineHeight": "40px", "fontWeight": "700" }], "body-lg-medium": ["16px", { "lineHeight": "24px", "fontWeight": "500" }], "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }], "headline-lg": ["24px", { "lineHeight": "32px", "fontWeight": "600" }], "label-xs": ["11px", { "lineHeight": "14px", "fontWeight": "600" }], "headline-sm": ["18px", { "lineHeight": "24px", "fontWeight": "600" }], "label-md": ["13px", { "lineHeight": "18px", "fontWeight": "500" }], "label-sm": ["12px", { "lineHeight": "16px", "fontWeight": "500" }], "body-md-medium": ["14px", { "lineHeight": "20px", "fontWeight": "500" }], "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "400" }] } } } };</script><style>@layer base { html, body { min-height: 100%; margin: 0; padding: 0; } .pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); } .pt-safe { padding-top: env(safe-area-inset-top, 0px); } } .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }</style><style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+</head><body class="bg-background font-body-md text-body-md text-on-surface antialiased flex flex-col min-h-screen"><header class="fixed top-0 inset-x-0 z-50 bg-surface/90 backdrop-blur-xl pt-safe shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><div class="h-16 px-margin flex items-center justify-between gap-space-sm"><div class="flex items-center gap-space-xs min-w-0"><button aria-label="Back" class="w-11 h-11 flex items-center justify-center rounded-full text-on-surface hover:bg-surface-container-high transition-colors shrink-0" onclick="history.back()"><span class="material-symbols-outlined text-[24px]">arrow_back</span></button><img alt="TechZone HRM Logo" class="h-7 w-auto object-contain shrink-0 hidden sm:block" src="https://lh3.googleusercontent.com/aida/AEtjO1WFkiz5lCVOKo3tlS8nEXIHDrcwLSwShhgrXPSUKt2BMdfRpwBYOVNSlnA_hxgGePfx5ofSpsXRBsUU5WUf37tdx1-DvOzYiwaau9glqfzQXnZlMuR3uRtJ2JsReXDG8fIqyUua3mqGFZyLcjb2mtsLxNnqS1UMBP3_Qblf1wOZUwLvkDLEIUZA1BN0vB1LRGsD7x4r-tUHVUazDJG5CslsC1CJhpmvoZ9BmGURZPSP8YFCCVLuQNow5NY"><h1 class="font-headline-sm text-headline-sm text-on-surface truncate">Lịch Được Phân Công</h1></div><div class="flex items-center gap-space-xs shrink-0"><button aria-label="Profile" class="w-11 h-11 flex items-center justify-center rounded-full hover:bg-surface-container-high transition-colors"><img alt="Profile" class="w-8 h-8 rounded-full object-cover ring-1 ring-outline-variant/40" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDLfLwNUNT75gpUNhEl_91wSYU3y394fvsWL-Mkhjexi55NYTzwsPw7Rx29KTpNYiLh_5yb8qmGJJ1OYLXIwZ3NlMJzoMgMt5cyWASFZT-6RcAd5cgyBm_BuvLYYzNFcgHqGT3KrDeDigDyD2TLjOHKSdOJkqvLek2ei_geNM-fQ0DkOGQjSftFjGRTLfJsTckwiMUwdNERp5LnowEpG1IAreAfOnRMubchIbiSBO9kEpqVogOlpst9rw"></button></div></div></header><main class="flex-1 w-full bg-background pt-16 pb-safe"><div class="flex flex-col w-full pb-8">
+<!-- Top Operational Subheader / Quick Actions -->
+<section class="px-margin pt-space-sm pb-space-xs flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<span class="font-headline-sm text-headline-sm text-on-surface">Hộp thư</span>
+<span class="inline-flex items-center justify-center px-2 py-0.5 rounded-full bg-primary text-on-primary font-label-xs text-label-xs" id="unreadBadgeCounter">
+        3 chưa đọc
+      </span>
+</div>
+<!-- Mark all as read micro-interaction -->
+<button class="group flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-surface-container hover:bg-surface-container-high transition-colors text-on-surface-variant font-label-sm text-label-sm active:scale-95" id="markAllReadBtn" type="button">
+<span class="material-symbols-outlined text-[18px] text-on-surface group-hover:scale-110 transition-transform">done_all</span>
+<span>Đọc tất cả</span>
+</button>
+</section>
+<!-- Horizontal Filter Pills (Scrollable with hidden scrollbar) -->
+<section class="w-full pt-space-xs pb-space-sm">
+<div class="flex items-center gap-space-xs overflow-x-auto px-margin no-scrollbar text-nowrap">
+<button class="filter-tab active-tab px-3.5 py-2 rounded-xl bg-primary text-on-primary font-label-sm text-label-sm transition-all shadow-sm flex items-center gap-1.5" data-filter="all">
+<span>Tất cả</span>
+<span class="opacity-80 font-label-xs text-label-xs bg-white/20 px-1.5 py-0.2 rounded-full">8</span>
+</button>
+<button class="filter-tab px-3.5 py-2 rounded-xl bg-surface-container text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high font-label-sm text-label-sm transition-all flex items-center gap-1.5" data-filter="leave">
+<span>Đơn từ &amp; Phép</span>
+<span class="font-label-xs text-label-xs bg-surface-variant px-1.5 py-0.2 rounded-full text-on-surface-variant">3</span>
+</button>
+<button class="filter-tab px-3.5 py-2 rounded-xl bg-surface-container text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high font-label-sm text-label-sm transition-all flex items-center gap-1.5" data-filter="shift">
+<span>Ca làm việc</span>
+<span class="font-label-xs text-label-xs bg-surface-variant px-1.5 py-0.2 rounded-full text-on-surface-variant">3</span>
+</button>
+<button class="filter-tab px-3.5 py-2 rounded-xl bg-surface-container text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high font-label-sm text-label-sm transition-all flex items-center gap-1.5" data-filter="payroll">
+<span>Bảng công &amp; Lương</span>
+<span class="font-label-xs text-label-xs bg-surface-variant px-1.5 py-0.2 rounded-full text-on-surface-variant">2</span>
+</button>
+</div>
+</section>
+<!-- Main Notification Feed -->
+<div class="px-margin flex flex-col gap-space-lg mt-space-xs">
+<!-- Section: Hôm nay -->
+<div class="feed-group flex flex-col gap-space-sm" data-group="today">
+<div class="flex items-center justify-between px-1">
+<span class="font-label-xs text-label-xs uppercase tracking-wider text-on-surface-variant font-semibold">Hôm nay</span>
+<span class="font-label-xs text-label-xs text-secondary">3 thông báo mới</span>
+</div>
+<!-- Item 1: Leave Approved (Unread) -->
+<article class="notification-item unread-item relative p-space-md rounded-xl bg-surface-container-lowest shadow-sm transition-all flex flex-col gap-space-sm" data-category="leave">
+<div class="flex items-start gap-space-sm">
+<div class="w-10 h-10 rounded-xl bg-surface-container flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[22px] text-on-surface" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+</div>
+<div class="flex-1 min-w-0 pr-4">
+<div class="flex items-center gap-1.5 mb-1">
+<span class="font-label-xs text-label-xs text-on-surface-variant">10 phút trước • Đơn từ</span>
+</div>
+<h2 class="font-body-md-medium text-body-md-medium text-on-surface leading-tight">Đơn xin nghỉ phép đã được phê duyệt</h2>
+<p class="font-body-md text-body-md text-on-surface-variant mt-1 line-clamp-2">Cửa hàng trưởng Trần Văn Tuấn đã duyệt đơn #NP-2026-089 (28/10 - 29/10). Đang chuyển tiếp thẩm định HR.</p>
+</div>
+<!-- Unread Dot Indicator -->
+<div class="unread-dot absolute top-4 right-4 w-2 h-2 rounded-full bg-primary"></div>
+</div>
+<div class="flex items-center justify-between pt-1 pl-12">
+<a class="inline-flex items-center gap-1 font-label-md text-label-md text-primary font-semibold hover:underline" href="#">
+<span>Xem chi tiết đơn</span>
+<span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+</a>
+<span class="font-label-xs text-label-xs text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-full">#NP-2026-089</span>
+</div>
+</article>
+<!-- Item 2: Shift Swap Request (Unread) -->
+<article class="notification-item unread-item relative p-space-md rounded-xl bg-surface-container-lowest shadow-sm transition-all flex flex-col gap-space-sm" data-category="shift">
+<div class="flex items-start gap-space-sm">
+<div class="w-10 h-10 rounded-xl bg-secondary-container flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[22px] text-on-secondary-container">sync_alt</span>
+</div>
+<div class="flex-1 min-w-0 pr-4">
+<div class="flex items-center gap-1.5 mb-1">
+<span class="font-label-xs text-label-xs text-on-surface-variant">45 phút trước • Lịch biểu</span>
+</div>
+<h2 class="font-body-md-medium text-body-md-medium text-on-surface leading-tight">Yêu cầu đổi ca làm việc từ Nguyễn Hoàng Minh</h2>
+<p class="font-body-md text-body-md text-on-surface-variant mt-1">Minh muốn đổi ca Tối 27/10 với ca Sáng 28/10 của bạn. Thưởng ca: +100.000đ.</p>
+</div>
+<!-- Unread Dot Indicator -->
+<div class="unread-dot absolute top-4 right-4 w-2 h-2 rounded-full bg-primary"></div>
+</div>
+<!-- Shift details cardlet -->
+<div class="ml-12 p-3 rounded-lg bg-surface-container-low flex items-center justify-between">
+<div class="flex flex-col">
+<span class="font-label-xs text-label-xs text-on-surface-variant">Ca yêu cầu đổi</span>
+<span class="font-body-md-medium text-body-md-medium text-on-surface">Tối 27/10 ⇄ Sáng 28/10</span>
+</div>
+<span class="font-label-xs text-label-xs bg-surface-container-highest text-on-surface px-2 py-1 rounded-md font-semibold">+100.000đ</span>
+</div>
+<!-- Inline Quick Actions -->
+<div class="flex items-center gap-2 pt-1 pl-12" id="shiftActionContainer">
+<button class="flex-1 h-10 rounded-xl bg-primary text-on-primary font-label-md text-label-md font-medium active:scale-95 transition-transform flex items-center justify-center gap-1 shadow-sm" onclick="handleShiftAction(this, 'accepted')" type="button">
+<span class="material-symbols-outlined text-[18px]">check</span>
+<span>Chấp nhận</span>
+</button>
+<button class="flex-1 h-10 rounded-xl bg-surface-container text-on-surface font-label-md text-label-md font-medium hover:bg-surface-container-high active:scale-95 transition-transform flex items-center justify-center gap-1" onclick="handleShiftAction(this, 'declined')" type="button">
+<span class="material-symbols-outlined text-[18px]">close</span>
+<span>Từ chối</span>
+</button>
+</div>
+</article>
+<!-- Item 3: Attendance Alert (Unread) -->
+<article class="notification-item unread-item relative p-space-md rounded-xl bg-surface-container-lowest shadow-sm transition-all flex flex-col gap-space-sm" data-category="payroll">
+<div class="flex items-start gap-space-sm">
+<div class="w-10 h-10 rounded-xl bg-surface-container-high flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[22px] text-on-surface" style="font-variation-settings: 'FILL' 1;">warning</span>
+</div>
+<div class="flex-1 min-w-0 pr-4">
+<div class="flex items-center gap-1.5 mb-1">
+<span class="font-label-xs text-label-xs text-on-surface-variant">2 giờ trước • Chấm công</span>
+</div>
+<h2 class="font-body-md-medium text-body-md-medium text-on-surface leading-tight">Nhắc nhở chấm công &amp; Giải trình công</h2>
+<p class="font-body-md text-body-md text-on-surface-variant mt-1">Bạn có 1 phiên vào trễ 8 phút vào Thứ Tư 22/10. Vui lòng gửi giải trình trước ngày 26/10.</p>
+</div>
+<!-- Unread Dot Indicator -->
+<div class="unread-dot absolute top-4 right-4 w-2 h-2 rounded-full bg-primary"></div>
+</div>
+<div class="flex items-center justify-between pt-1 pl-12">
+<a class="inline-flex items-center gap-1 font-label-md text-label-md text-on-surface font-semibold underline underline-offset-4 decoration-primary/40 hover:decoration-primary" href="#">
+<span>Gửi giải trình ngay</span>
+<span class="material-symbols-outlined text-[16px]">edit_calendar</span>
+</a>
+<span class="font-label-xs text-label-xs text-secondary">Hạn: 26/10</span>
+</div>
+</article>
+</div>
+<!-- Section: Hôm qua -->
+<div class="feed-group flex flex-col gap-space-sm" data-group="yesterday">
+<div class="flex items-center justify-between px-1">
+<span class="font-label-xs text-label-xs uppercase tracking-wider text-on-surface-variant font-semibold">Hôm qua</span>
+<span class="font-label-xs text-label-xs text-secondary">1 thông báo</span>
+</div>
+<!-- Item 4: HR Announcement (Read) -->
+<article class="notification-item p-space-md rounded-xl bg-surface-container-lowest/80 shadow-sm transition-all flex flex-col gap-space-sm opacity-90" data-category="payroll">
+<div class="flex items-start gap-space-sm">
+<div class="w-10 h-10 rounded-xl bg-surface-container flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[22px] text-on-surface">campaign</span>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex items-center gap-1.5 mb-1">
+<span class="font-label-xs text-label-xs text-on-surface-variant">Hôm qua, 15:30 • Nhân sự</span>
+</div>
+<h2 class="font-body-md-medium text-body-md-medium text-on-surface leading-tight">Thông báo chốt kỳ công Tháng 10/2026</h2>
+<p class="font-body-md text-body-md text-on-surface-variant mt-1">Dữ liệu chấm công kỳ K2 sẽ được khóa vào 23:59 ngày 26/10. Nhân viên vui lòng kiểm tra Bảng công cá nhân.</p>
+</div>
+</div>
+<div class="flex items-center justify-between pt-1 pl-12">
+<a class="inline-flex items-center gap-1 font-label-sm text-label-sm text-on-surface-variant hover:text-on-surface" href="#">
+<span>Mở bảng công K2</span>
+<span class="material-symbols-outlined text-[14px]">open_in_new</span>
+</a>
+<span class="font-label-xs text-label-xs bg-surface-container-high px-2 py-0.5 rounded-full text-on-surface-variant">Hệ thống</span>
+</div>
+</article>
+</div>
+<!-- Section: Trước đó -->
+<div class="feed-group flex flex-col gap-space-sm" data-group="earlier">
+<div class="flex items-center justify-between px-1">
+<span class="font-label-xs text-label-xs uppercase tracking-wider text-on-surface-variant font-semibold">Trước đó</span>
+<span class="font-label-xs text-label-xs text-secondary">Tháng 08/2026</span>
+</div>
+<!-- Item 5: Leave Rejected (Read) -->
+<article class="notification-item p-space-md rounded-xl bg-surface-container-lowest/80 shadow-sm transition-all flex flex-col gap-space-sm opacity-90" data-category="leave">
+<div class="flex items-start gap-space-sm">
+<div class="w-10 h-10 rounded-xl bg-surface-container flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[22px] text-secondary">cancel</span>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex items-center gap-1.5 mb-1">
+<span class="font-label-xs text-label-xs text-on-surface-variant">28/08/2026 • Đơn từ</span>
+</div>
+<h2 class="font-body-md-medium text-body-md-medium text-on-surface leading-tight">Đơn xin nghỉ phép bị từ chối</h2>
+<p class="font-body-md text-body-md text-on-surface-variant mt-1">Đơn #NP-2026-052 ngày 02/09 không được phê duyệt do trùng lịch cao điểm Lễ 02/09.</p>
+</div>
+</div>
+<div class="flex items-center justify-between pt-1 pl-12">
+<span class="font-label-xs text-label-xs text-on-surface-variant">Người duyệt: Quản lý chi nhánh</span>
+<a class="font-label-sm text-label-sm text-on-surface underline hover:opacity-80" href="#">Xem phản hồi</a>
+</div>
+</article>
+</div>
+<!-- Empty State Container (Hidden by default, shown when filters match nothing) -->
+<div class="hidden flex-col items-center justify-center py-12 px-margin text-center" id="filterEmptyState">
+<div class="w-14 h-14 rounded-full bg-surface-container-high flex items-center justify-center mb-3 text-secondary">
+<span class="material-symbols-outlined text-[28px]">notifications_off</span>
+</div>
+<h3 class="font-body-lg-medium text-body-lg-medium text-on-surface">Không có thông báo</h3>
+<p class="font-body-md text-body-md text-on-surface-variant mt-1 max-w-[240px]">Danh mục này hiện chưa có cập nhật phát sinh mới nào.</p>
+</div>
+<!-- Notification Settings Footer Card -->
+<section class="mt-space-sm p-space-md rounded-2xl bg-surface-container-low shadow-sm flex items-center justify-between gap-space-sm">
+<div class="flex items-center gap-space-sm min-w-0">
+<div class="w-10 h-10 rounded-xl bg-surface-container-lowest flex items-center justify-center shrink-0 text-primary shadow-xs">
+<span class="material-symbols-outlined text-[22px]">tune</span>
+</div>
+<div class="min-w-0">
+<h4 class="font-body-md-medium text-body-md-medium text-on-surface truncate">Cài đặt thông báo đẩy</h4>
+<p class="font-label-sm text-label-sm text-on-surface-variant line-clamp-1">Tùy chỉnh lịch ca, duyệt phép &amp; hạn nộp bảng công</p>
+</div>
+</div>
+<button aria-label="Tùy chỉnh thông báo" class="w-10 h-10 rounded-xl bg-surface-container-lowest hover:bg-surface-container-highest transition-colors flex items-center justify-center shrink-0 text-on-surface shadow-xs active:scale-95" type="button">
+<span class="material-symbols-outlined text-[20px]">chevron_right</span>
+</button>
+</section>
+</div>
+</div>
+<script>
+  // Mark all as read micro-interaction
+  const markAllBtn = document.getElementById('markAllReadBtn');
+  const badgeCounter = document.getElementById('unreadBadgeCounter');
+
+  if (markAllBtn) {
+    markAllBtn.addEventListener('click', () => {
+      const unreadDots = document.querySelectorAll('.unread-dot');
+      unreadDots.forEach(dot => {
+        dot.classList.add('transition-opacity', 'duration-300', 'opacity-0');
+        setTimeout(() => dot.remove(), 300);
+      });
+
+      const unreadItems = document.querySelectorAll('.unread-item');
+      unreadItems.forEach(item => {
+        item.classList.remove('unread-item');
+        item.classList.add('opacity-90');
+      });
+
+      if (badgeCounter) {
+        badgeCounter.textContent = '0 chưa đọc';
+        badgeCounter.classList.remove('bg-primary');
+        badgeCounter.classList.add('bg-surface-container-high', 'text-on-surface-variant');
+      }
+
+      markAllBtn.disabled = true;
+      markAllBtn.innerHTML = `
+        <span class="material-symbols-outlined text-[18px]">check</span>
+        <span>Đã đọc xong</span>
+      `;
+      markAllBtn.classList.add('opacity-60', 'cursor-not-allowed');
+    });
+  }
+
+  // Interactive filter tabs
+  const tabs = document.querySelectorAll('.filter-tab');
+  const items = document.querySelectorAll('.notification-item');
+  const groups = document.querySelectorAll('.feed-group');
+  const emptyState = document.getElementById('filterEmptyState');
+
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      tabs.forEach(t => {
+        t.classList.remove('bg-primary', 'text-on-primary', 'active-tab');
+        t.classList.add('bg-surface-container', 'text-on-surface-variant');
+      });
+      tab.classList.remove('bg-surface-container', 'text-on-surface-variant');
+      tab.classList.add('bg-primary', 'text-on-primary', 'active-tab');
+
+      const filterVal = tab.getAttribute('data-filter');
+      let visibleCount = 0;
+
+      items.forEach(item => {
+        const cat = item.getAttribute('data-category');
+        if (filterVal === 'all' || cat === filterVal) {
+          item.style.display = 'flex';
+          visibleCount++;
+        } else {
+          item.style.display = 'none';
+        }
+      });
+
+      // Show/hide empty state
+      if (visibleCount === 0) {
+        emptyState.classList.remove('hidden');
+        emptyState.classList.add('flex');
+        groups.forEach(g => g.style.display = 'none');
+      } else {
+        emptyState.classList.add('hidden');
+        emptyState.classList.remove('flex');
+        
+        // Hide date section headers if no child items visible
+        groups.forEach(g => {
+          const visibleChildren = g.querySelectorAll('.notification-item:not([style*="display: none"])');
+          if (visibleChildren.length === 0) {
+            g.style.display = 'none';
+          } else {
+            g.style.display = 'flex';
+          }
+        });
+      }
+    });
+  });
+
+  // Shift action buttons (Accept / Decline)
+  window.handleShiftAction = function(btn, action) {
+    const container = document.getElementById('shiftActionContainer');
+    if (!container) return;
+
+    if (action === 'accepted') {
+      container.innerHTML = `
+        <div class="w-full py-2 px-3 bg-surface-container rounded-xl flex items-center justify-center gap-1.5 text-on-surface font-label-sm text-label-sm">
+          <span class="material-symbols-outlined text-[18px]">check_circle</span>
+          <span>Đã chấp nhận đổi ca. Đang cập nhật lịch biểu.</span>
+        </div>
+      `;
+    } else {
+      container.innerHTML = `
+        <div class="w-full py-2 px-3 bg-surface-container rounded-xl flex items-center justify-center gap-1.5 text-secondary font-label-sm text-label-sm">
+          <span class="material-symbols-outlined text-[18px]">cancel</span>
+          <span>Đã từ chối yêu cầu đổi ca.</span>
+        </div>
+      `;
+    }
+  };
+</script></main></body></html>

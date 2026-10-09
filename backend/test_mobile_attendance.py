@@ -81,7 +81,7 @@ class Workflow(unittest.IsolatedAsyncioTestCase):
 
     async def test_success_commits_after_proof(self):
         empty = result(); empty.first.return_value=None
-        self.db.execute.side_effect=[result(),empty,result()]
+        self.db.execute.side_effect=[result(),empty,result(dict(shift_id=1,store_id=1)),result()]
         async def core(req,user,db):
             await db.commit()
             self.db.commit.assert_not_awaited()
@@ -93,9 +93,17 @@ class Workflow(unittest.IsolatedAsyncioTestCase):
 
     async def test_core_conflict_does_not_write_proof(self):
         empty = result(); empty.first.return_value=None
-        self.db.execute.side_effect=[result(),empty]
+        self.db.execute.side_effect=[result(),empty,result(dict(shift_id=1,store_id=1))]
         with patch.object(api.attendances,'check_in',AsyncMock(side_effect=HTTPException(429,'wait'))):
             with self.assertRaises(HTTPException): await api.perform('CHECK_IN',body(),USER,self.db)
+        self.db.commit.assert_not_awaited()
+
+    async def test_assignment_required_and_cannot_be_changed(self):
+        for schedule, shift in [(None, 1), (dict(shift_id=2,store_id=1), 1), (dict(shift_id=1,store_id=2), 1)]:
+            self.db.execute.return_value = result(schedule)
+            with self.assertRaises(HTTPException) as caught:
+                await api.require_assigned_shift(self.db, USER, shift)
+            self.assertEqual(caught.exception.status_code, 409)
         self.db.commit.assert_not_awaited()
 
 if __name__ == '__main__': unittest.main()

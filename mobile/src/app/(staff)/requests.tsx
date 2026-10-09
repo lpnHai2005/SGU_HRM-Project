@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
+import { AppText as Text } from '@/components/app-icon';
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useRef, useState, useMemo } from 'react';
 import {
   Alert,
   Modal,
   Pressable,
   ScrollView,
-  Text,
   TextInput,
   View,
 } from 'react-native';
@@ -12,8 +13,9 @@ import { Button, Card, Input, Label, styles, usePalette } from '@/components/att
 import { LoadingBar } from '@/components/loading-bar';
 import { EyeIcon } from '@/components/eye-icon';
 import { useSession } from '@/contexts/session';
-import { ApiError } from '@/services/attendance';
+import { ApiError, request } from '@/services/attendance';
 import type { Profile } from '@/services/staff';
+import { storeLabel } from '@/services/presentation';
 import {
   fetchLeaveTypes,
   fetchLeaveBalance,
@@ -30,7 +32,6 @@ import {
   type LeaveRequestItem,
   type LeaveStatusNotification,
 } from '@/services/leaves';
-import { request } from '@/services/attendance';
 
 // Helper: Format YYYY-MM-DD or ISO timestamp to dd-mm-yyyy
 export function formatDateDMY(dateStr: string | null | undefined): string {
@@ -169,7 +170,6 @@ export default function RequestsScreen() {
   const [totalDays, setTotalDays] = useState('1');
   const [reason, setReason] = useState('');
   const [attachmentUrl, setAttachmentUrl] = useState('');
-  const [formValidationMsg, setFormValidationMsg] = useState('');
 
   // Calendar Picker State inside Create Modal
   const [calYear, setCalYear] = useState(() => new Date().getFullYear());
@@ -299,9 +299,9 @@ export default function RequestsScreen() {
     setError('');
     try {
       const [typeList, userBalance, myItems] = await Promise.all([
-        fetchLeaveTypes(token).catch(() => []),
-        fetchLeaveBalance(token).catch(() => null),
-        fetchMyLeaves(token, profile?.employee_id).catch(() => []),
+        fetchLeaveTypes(token),
+        fetchLeaveBalance(token),
+        fetchMyLeaves(token, profile?.employee_id),
       ]);
 
       setTypes(typeList);
@@ -355,7 +355,7 @@ export default function RequestsScreen() {
 
       // If manager: fetch pending manager requests
       if (isManager) {
-        const mgrItems = await fetchManagerPendingLeaves(token).catch(() => []);
+        const mgrItems = await fetchManagerPendingLeaves(token);
         setManagerLeaves(mgrItems);
       }
     } catch (e) {
@@ -364,17 +364,11 @@ export default function RequestsScreen() {
     } finally {
       setLoading(false);
     }
-  }, [token, profile?.employee_id, selectedTypeId, isManager, signOut]);
+  }, [token, profile, selectedTypeId, isManager, signOut]);
 
-  useEffect(() => {
-    void loadProfile();
-  }, [loadProfile]);
+  useFocusEffect(useCallback(() => { void loadProfile(); }, [loadProfile]));
 
-  useEffect(() => {
-    if (profile) {
-      void loadLeaveData();
-    }
-  }, [profile, loadLeaveData]);
+  useFocusEffect(useCallback(() => { if (profile) void loadLeaveData(); }, [profile, loadLeaveData]));
 
   // Auto calculate total days when dates change (DD-MM-YYYY)
   const calculateDays = (startStr: string, endStr: string) => {
@@ -437,52 +431,44 @@ export default function RequestsScreen() {
   };
 
   // Validate form in real time (DD-MM-YYYY)
-  useEffect(() => {
-    setFormValidationMsg('');
-    if (!startDate || !endDate) return;
+  const formValidationMsg = useMemo(() => {
+    if (!startDate || !endDate) return '';
 
     const p1 = parseDMY(startDate);
     const p2 = parseDMY(endDate);
 
     if (startDate.length === 10 && !p1) {
-      setFormValidationMsg('Ngày bắt đầu không hợp lệ (định dạng DD-MM-YYYY).');
-      return;
+      return 'Ngày bắt đầu không hợp lệ (định dạng DD-MM-YYYY).';
     }
     if (endDate.length === 10 && !p2) {
-      setFormValidationMsg('Ngày kết thúc không hợp lệ (định dạng DD-MM-YYYY).');
-      return;
+      return 'Ngày kết thúc không hợp lệ (định dạng DD-MM-YYYY).';
     }
 
     if (p1 && p2) {
       const d1 = new Date(p1.year, p1.month, p1.day);
       const d2 = new Date(p2.year, p2.month, p2.day);
       if (d1 > d2) {
-        setFormValidationMsg('Ngày bắt đầu không được lớn hơn ngày kết thúc.');
-        return;
+        return 'Ngày bắt đầu không được lớn hơn ngày kết thúc.';
       }
     }
 
     const numDays = Number(totalDays);
     if (!(numDays > 0)) {
-      setFormValidationMsg('Số ngày xin nghỉ phải lớn hơn 0.');
-      return;
+      return 'Số ngày xin nghỉ phải lớn hơn 0.';
     }
 
     if (selectedTypeInfo) {
       if (selectedTypeInfo.type_code === 'PHEP_NAM' && balance) {
         if (numDays > balance.annual_leave_remaining) {
-          setFormValidationMsg(
-            `Số ngày xin nghỉ (${numDays} ngày) vượt quá số dư phép năm còn lại (${balance.annual_leave_remaining} ngày).`
-          );
-          return;
+          return `Số ngày xin nghỉ (${numDays} ngày) vượt quá số dư phép năm còn lại (${balance.annual_leave_remaining} ngày).`;
         }
       }
       const maxAllowed = selectedTypeInfo.max_days_allowed;
       if (maxAllowed && maxAllowed > 0 && numDays > maxAllowed) {
-        setFormValidationMsg(`Loại nghỉ '${selectedTypeInfo.type_name}' chỉ được tối đa ${maxAllowed} ngày theo quy định.`);
-        return;
+        return `Loại nghỉ '${selectedTypeInfo.type_name}' chỉ được tối đa ${maxAllowed} ngày theo quy định.`;
       }
     }
+    return '';
   }, [startDate, endDate, totalDays, selectedTypeInfo, balance]);
 
   // Submit Leave Request
@@ -827,7 +813,7 @@ export default function RequestsScreen() {
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <View style={{ flex: 1 }}>
           <Label large>Quản lý Nghỉ phép</Label>
-          <Label muted>{profile?.full_name || 'Nhân viên TechZone'} · {profile?.department_name || profile?.store_name || 'Chi nhánh'}</Label>
+          <Label muted>{profile?.full_name || 'Nhân viên TechZone'} · {storeLabel(profile?.department_name || profile?.store_name)}</Label>
         </View>
         <Pressable
           accessibilityRole="button"
@@ -1398,7 +1384,7 @@ export default function RequestsScreen() {
                       {item.employee_name || 'Nhân viên'}
                     </Text>
                     <Label muted>
-                      {item.employee_code || `#${item.employee_id}`} · {item.store_name || item.department_name || 'Chi nhánh'}
+                      {item.employee_code || `#${item.employee_id}`} · {storeLabel(item.store_name || item.department_name)}
                     </Label>
                   </View>
                   <View style={{ backgroundColor: meta.bg, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, flexShrink: 0 }}>
@@ -2121,7 +2107,7 @@ export default function RequestsScreen() {
                       <View style={{ flex: 1, backgroundColor: p.bg, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: p.line }}>
                         <Text style={{ fontSize: 11, color: p.muted, fontFamily: 'BeVietnam' }}>Đơn vị / Chi nhánh</Text>
                         <Text style={{ fontSize: 14, fontFamily: 'BeVietnamBold', color: p.text, marginTop: 3 }}>
-                          {detailItem.store_name || detailItem.department_name || 'TechZone'}
+                          {storeLabel(detailItem.store_name || detailItem.department_name)}
                         </Text>
                         <Text style={{ fontSize: 11, color: p.muted, marginTop: 2 }}>
                           {detailItem.position_name || 'Nhân viên'}
@@ -2198,7 +2184,7 @@ export default function RequestsScreen() {
                             </Text>
                             {!!detailItem.store_manager_note && (
                               <Text style={{ fontSize: 12, color: p.text, fontStyle: 'italic', backgroundColor: p.card, padding: 8, borderRadius: 6, marginTop: 2, borderWidth: 1, borderColor: p.line }}>
-                                Ghi chú: "{detailItem.store_manager_note}"
+                                {`Ghi chú: "${detailItem.store_manager_note}"`}
                               </Text>
                             )}
                           </View>

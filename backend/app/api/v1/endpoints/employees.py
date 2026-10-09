@@ -266,6 +266,8 @@ async def update_employee(
     db: AsyncSession = Depends(get_db)
 ):
     await get_employee(employee_id, current_user, db)
+    from app.core.employee_transfers import sync_transfer_schedules
+    old_store_id = (await db.execute(text('SELECT store_id FROM employees WHERE employee_id=:id FOR UPDATE'), {'id': employee_id})).scalar_one()
     update_fields = []
     params = {"id": employee_id}
     data = emp.model_dump(exclude_unset=True)
@@ -290,6 +292,8 @@ async def update_employee(
         update_fields.append("updated_at = CURRENT_TIMESTAMP")
         q = f"UPDATE employees SET {', '.join(update_fields)} WHERE employee_id = :id"
         await db.execute(text(q), params)
+        if 'store_id' in data:
+            await sync_transfer_schedules(db, employee_id, old_store_id, data['store_id'])
         await db.commit()
 
     return await get_employee(employee_id, current_user, db)
@@ -336,7 +340,7 @@ async def promote_employee(
     db: AsyncSession = Depends(get_db)
 ):
     # Lấy chức vụ và store hiện tại
-    emp_query = text("SELECT position_id, store_id FROM employees WHERE employee_id = :id")
+    emp_query = text("SELECT position_id, store_id FROM employees WHERE employee_id = :id FOR UPDATE")
     emp = (await db.execute(emp_query, {"id": employee_id})).mappings().first()
     if not emp:
         raise HTTPException(status_code=404, detail="Không tìm thấy nhân viên")
@@ -366,6 +370,8 @@ async def promote_employee(
         SET position_id = :new_pos, store_id = :new_store, updated_at = CURRENT_TIMESTAMP
         WHERE employee_id = :id
     """), {"id": employee_id, "new_pos": new_position_id, "new_store": target_store_id})
+    from app.core.employee_transfers import sync_transfer_schedules
+    await sync_transfer_schedules(db, employee_id, old_store_id, target_store_id)
 
     # 3. Tự động đổi User Role tương ứng nếu thăng lên Cửa hàng trưởng (STORE_MANAGER)
     pos_code = (await db.execute(text("SELECT position_code FROM positions WHERE position_id = :id"), {"id": new_position_id})).scalar()
