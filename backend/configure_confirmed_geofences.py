@@ -4,7 +4,7 @@ from sqlalchemy import text
 from app.core.database import AsyncSessionLocal, engine
 
 LOCATIONS = [(1,10.776,106.703),(2,10.779356986985812,106.68418923912378),
-             (3,10.748,106.635),(4,10.802,106.711),(5,10.798,106.654)]
+             (3,10.748,106.635),(4,10.802,106.711),(5,10.749194,106.680100)]
 
 async def main():
     try:

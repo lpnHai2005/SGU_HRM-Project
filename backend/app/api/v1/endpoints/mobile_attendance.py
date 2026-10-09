@@ -117,6 +117,18 @@ class AtomicSession:
     async def commit(self): pass
 
 
+async def require_assigned_shift(db, employee, shift_id):
+    schedule = (await db.execute(text('''SELECT shift_id, store_id FROM work_schedules
+        WHERE employee_id=:emp AND work_date=:day ORDER BY schedule_id LIMIT 1 FOR SHARE'''),
+        {'emp': employee['employee_id'], 'day': attendances.local_now().date()})).mappings().first()
+    if not schedule:
+        raise HTTPException(409, 'Chưa có ca được phân công hôm nay. Liên hệ cửa hàng trưởng.')
+    if schedule['shift_id'] != shift_id:
+        raise HTTPException(409, 'Ca được phân công đã thay đổi. Tải lại lịch chấm công, không tự chọn ca.')
+    if schedule['store_id'] != employee['store_id']:
+        raise HTTPException(409, 'Cửa hàng phân công chưa khớp hồ sơ nhân viên. Liên hệ cửa hàng trưởng cập nhật.')
+
+
 async def perform(kind, req, user, db):
     employee = await attendances.authorize_employee(db, user, user.get('employee_id'), lock=True)
     previous = (await db.execute(text('SELECT check_type, result, verification_status FROM mobile_attendance_proofs WHERE employee_id=:emp AND request_id=:request'),
@@ -139,6 +151,7 @@ async def perform(kind, req, user, db):
     result = None
     if valid:
         if kind == 'CHECK_IN':
+            await require_assigned_shift(db, employee, req.shift_id)
             result = await attendances.check_in(CheckInRequest(shift_id=req.shift_id), user, AtomicSession(db))
         else:
             result = await attendances.check_out(CheckOutRequest(), user, AtomicSession(db))

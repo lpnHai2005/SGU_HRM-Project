@@ -19,6 +19,7 @@ function createClient(fetchFn, url = 'https://test.local/api/v1') {
   const attExports = {};
   vm.runInNewContext(attSource, {
     exports: attExports,
+    require: name => name === 'react-native' ? { Platform: { OS: 'web' } } : { isDevice: true },
     process: { env: { EXPO_PUBLIC_API_URL: url } },
     fetch: fetchFn,
     AbortController,

@@ -45,11 +45,17 @@ async def main():
                     outside=await client.post('/mobile-attendance/check-in',json=payload(11))
                     assert outside.status_code==422, outside.text
                     assert (await connection.execute(text('SELECT count(*) FROM pg_temp.attendances'))).scalar_one()==0
+                    missing = await client.post('/mobile-attendance/check-in',json=payload())
+                    assert missing.status_code == 409, missing.text
+                    await connection.execute(text('''INSERT INTO pg_temp.work_schedules(schedule_id,employee_id,store_id,shift_id,work_date)
+                        VALUES(1,:emp,:store,:shift,:day)'''), {'emp':user['employee_id'],'store':user['store_id'],'shift':shift,'day':now.date()})
+                    mismatch = payload(); mismatch['shift_id'] = shift + 10000
+                    assert (await client.post('/mobile-attendance/check-in',json=mismatch)).status_code == 409
                     command=payload()
                     response=await client.post('/mobile-attendance/check-in',json=command)
                     assert response.status_code==201,response.text
                     first=response.json()['attendance_id']
-                    assert response.json()['schedule_status']=='UNSCHEDULED'
+                    assert response.json()['schedule_status']=='MATCHED'
                     retry=await client.post('/mobile-attendance/check-in',json=command)
                     assert retry.status_code==201,retry.text
                     assert retry.json()['attendance_id']==first

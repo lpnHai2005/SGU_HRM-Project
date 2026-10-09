@@ -1,8 +1,9 @@
 import { useCallback, useState } from 'react';
+import { AppState } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useSession } from '@/contexts/session';
 import { ApiError, request } from '@/services/attendance';
-export function useResource<T>(path: string | null) {
+export function useResource<T>(path: string | null, refreshInterval = 0) {
   const { token, signOut } = useSession();
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState('');
@@ -11,13 +12,32 @@ export function useResource<T>(path: string | null) {
   useFocusEffect(useCallback(() => {
     if (!token || !path) return;
     let active = true;
-    setLoading(true); setError(''); setData(null);
-    const revision = version; // Every explicit refresh gets its own effect lifetime.
-    request<T>(path, token).then(value => { if (active && revision === version) setData(value); }).catch(e => {
-      if (active) setError(e instanceof Error ? e.message : 'Không tải được dữ liệu.');
-      if (e instanceof ApiError && e.status === 401) void signOut();
-    }).finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, [path, token, signOut, version]));
+    const revision = version; // Explicit reload starts a new request lifetime.
+    let fetching = false;
+    const load = async (foreground = false) => {
+      if (!active || fetching) return;
+      fetching = true;
+      if (foreground) setLoading(true);
+      try {
+        const value = await request<T>(path, token);
+        if (active && revision === version) { setData(value); setError(''); }
+      } catch (e) {
+        if (active) setError(e instanceof Error ? e.message : 'Không tải được dữ liệu.');
+        if (active && e instanceof ApiError && e.status === 401) void signOut();
+      } finally {
+        fetching = false;
+        if (active) setLoading(false);
+      }
+    };
+    setData(null);
+    void load(true);
+    const subscription = AppState.addEventListener('change', state => {
+      if (state === 'active') void load();
+    });
+    const timer = refreshInterval > 0 ? setInterval(() => {
+      if (AppState.currentState === 'active') void load();
+    }, refreshInterval) : undefined;
+    return () => { active = false; subscription.remove(); clearInterval(timer); };
+  }, [path, token, signOut, version, refreshInterval]));
   return { data, loading, error, reload: () => setVersion(v => v + 1) };
 }

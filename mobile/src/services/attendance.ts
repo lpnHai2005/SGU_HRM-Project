@@ -1,3 +1,6 @@
+import { Platform } from 'react-native';
+import * as Device from 'expo-device';
+
 export interface Attendance {
   attendance_id: number; work_date: string; shift_name: string | null;
   check_in_time: string | null; check_out_time: string | null;
@@ -11,29 +14,35 @@ export interface Today extends Attendance {
   cooldown_seconds_remaining: number; checkout_seconds_remaining: number; shift_id: number | null;
 }
 export interface Shift { shift_id: number; shift_name: string; start_time: string; end_time: string }
-export interface Fence { store_name: string; latitude: number; longitude: number; radius_meters: number }
+export interface Fence { store_name: string; store_address?: string; latitude: number; longitude: number; radius_meters: number }
 export class ApiError extends Error {
   constructor(message: string, public status: number, public retryAfter = 0) { super(message); }
 }
-export const baseUrl = (process.env.EXPO_PUBLIC_API_URL || '').replace(/\/$/, '');
-export async function request<T>(path: string, token?: string, body?: unknown, form?: FormData): Promise<T> {
+export const baseUrl = ((Platform.OS === 'android' && !Device.isDevice
+  ? process.env.EXPO_PUBLIC_ANDROID_API_URL || process.env.EXPO_PUBLIC_API_URL
+  : process.env.EXPO_PUBLIC_API_URL) || '').trim().replace(/\/$/, '');
+export async function request<T>(path: string, token?: string, body?: unknown, form?: FormData, timeoutMs?: number): Promise<T> {
   if (!baseUrl) throw new Error('Chưa cấu hình EXPO_PUBLIC_API_URL.');
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), form ? 45000 : 20000);
+  const timer = setTimeout(() => controller.abort(), timeoutMs ?? (form ? 45000 : 20000));
   try {
     const res = await fetch(`${baseUrl}${path}`, {
       method: body !== undefined || form ? 'POST' : 'GET', signal: controller.signal,
       headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(!form ? { 'Content-Type': 'application/json' } : {}) },
       body: form || (body !== undefined ? JSON.stringify(body) : undefined),
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new ApiError(typeof data.detail === 'string' ? data.detail : 'Yêu cầu không hợp lệ. Vui lòng thử lại.', res.status, Number(res.headers.get('Retry-After')) || 0);
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw new ApiError(typeof data?.detail === 'string' ? data.detail : `Máy chủ trả lỗi HTTP ${res.status}${res.status >= 500 ? '. Dịch vụ đang gặp lỗi, vui lòng thử lại sau.' : '. Vui lòng kiểm tra dữ liệu và thử lại.'}`, res.status, Number(res.headers.get('Retry-After')) || 0);
+    if (data === null) throw new ApiError('Máy chủ trả dữ liệu không hợp lệ. Kiểm tra địa chỉ API và dịch vụ backend.', res.status);
     return data;
   } catch (e) {
     if (e instanceof ApiError) throw e;
+    if (e instanceof Error && /FormData|serialize|Unsupported.*(?:body|part)/i.test(e.message)) {
+      throw new Error('Không đóng gói được ảnh trên thiết bị. Hãy cập nhật/tải lại app rồi chụp lại; đây không phải lỗi kết nối máy chủ.');
+    }
     throw new Error(controller.signal.aborted
       ? 'Máy chủ phản hồi quá lâu. Kiểm tra mạng rồi thử lại yêu cầu.'
-      : `Không kết nối được máy chủ ${baseUrl}. Điện thoại và máy chủ cần cùng Wi-Fi; máy chủ phải đang chạy. Tải lại trạng thái trước khi thử lại.`);
+      : `Không kết nối được máy chủ ${baseUrl}. Kiểm tra kết nối và địa chỉ API. ${Platform.OS === 'android' && !Device.isDevice ? 'Android Emulator dùng 10.0.2.2 để truy cập backend trên máy tính; không yêu cầu cùng Wi-Fi.' : 'Máy chủ cần đang chạy và truy cập được từ thiết bị.'} Tải lại trạng thái trước khi thử lại.`);
   } finally { clearTimeout(timer); }
 }
 export function vietnamPeriod() {

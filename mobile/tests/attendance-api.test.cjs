@@ -5,12 +5,20 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 const source = ts.transpileModule(fs.readFileSync(path.join(__dirname, '../src/services/attendance.ts'), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-function client(fetch, url = 'https://test.local/api/v1') {
+function client(fetch, url = 'https://test.local/api/v1', os = 'web', isDevice = true) {
   const exports = {};
-  vm.runInNewContext(source, { exports, process: { env: { EXPO_PUBLIC_API_URL: url } }, fetch, AbortController, setTimeout, clearTimeout, Intl, Date });
+  vm.runInNewContext(source, { exports, require: name => name === 'react-native' ? { Platform: { OS: os } } : { isDevice }, process: { env: { EXPO_PUBLIC_API_URL: url, EXPO_PUBLIC_ANDROID_API_URL: 'http://10.0.2.2:8000/api/v1' } }, fetch, AbortController, setTimeout, clearTimeout, Intl, Date });
   return exports;
 }
 function response(status, data, retry = null) { return { ok: status < 400, status, headers: { get: () => retry }, json: async () => data }; }
+test('emulator uses host alias; real devices keep configured URL', () => {
+  assert.equal(client(null, 'https://api.example/api/v1', 'android', false).baseUrl, 'http://10.0.2.2:8000/api/v1');
+  assert.equal(client(null, 'https://api.example/api/v1', 'android', true).baseUrl, 'https://api.example/api/v1');
+});
+test('HTTP service failure is not a Wi-Fi requirement', async () => {
+  const api = client(async () => response(502, {}));
+  await assert.rejects(api.request('/mobile-attendance/photo'), e => e.status === 502 && e.message.includes('502') && !e.message.includes('Wi-Fi'));
+});
 test('authenticated history uses GET and Bearer', async () => {
   const api = client(async (url, options) => {
     assert.equal(url, 'https://test.local/api/v1/attendances/my-history?period=2026-10');
