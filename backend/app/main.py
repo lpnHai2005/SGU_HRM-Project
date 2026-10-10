@@ -1,4 +1,6 @@
 import logging
+import asyncio
+from contextlib import suppress
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -27,7 +29,14 @@ async def lifespan(app: FastAPI):
         logger.error(f"-> CẢNH BÁO: Lỗi kết nối CSDL Supabase: {e}")
     logger.info("=" * 60)
     
-    yield
+    from app.core.fixed_schedule import worker
+    fixed_schedule_task = asyncio.create_task(worker())
+    try:
+        yield
+    finally:
+        fixed_schedule_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await fixed_schedule_task
     
     # Dọn dẹp tài nguyên khi tắt server
     logger.info("Đang đóng các kết nối CSDL...")

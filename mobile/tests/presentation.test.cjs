@@ -5,6 +5,19 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 const api = {};
+test('multiple assignments pick current afternoon instead of oldest schedule ID', () => {
+  const rows = [
+    {schedule_id:1,shift_id:1,work_date:'2026-10-10',start_time:'08:00:00',end_time:'12:00:00'},
+    {schedule_id:2,shift_id:2,work_date:'2026-10-10',start_time:'13:00:00',end_time:'17:00:00'},
+  ];
+  assert.equal(api.assignedShift(null,rows,'2026-10-10',Date.parse('2026-10-10T14:00:00+07:00')).shift_id,2);
+  assert.equal(api.assignedShift(null,rows,'2026-10-10',Date.parse('2026-10-10T12:30:00+07:00')).shift_id,2);
+});
+test('overnight assignment remains available after midnight and month boundary', () => {
+  const rows = [{schedule_id:1,shift_id:4,work_date:'2026-09-30',start_time:'22:00:00',end_time:'06:00:00'}];
+  assert.equal(api.assignedShift(null,rows,'2026-10-01',Date.parse('2026-10-01T02:00:00+07:00')).shift_id,4);
+  assert.equal(api.assignedShift(null,rows,'2026-10-01',Date.parse('2026-10-01T06:00:00+07:00')),null);
+});
 test('assignment replaces stale completed attendance and does not invent a schedule', () => {
   const schedules = [{schedule_id:2,shift_id:4,work_date:'2026-10-09',shift_name:'Assigned'}];
   assert.equal(api.assignedShift({can_check_out:false,shift_id:1},schedules,'2026-10-09').shift_id,4);

@@ -1,11 +1,10 @@
 import { AppText as Text } from '@/components/app-icon';
 import { storeLabel } from '@/services/presentation';
 import { useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { Modal, Pressable, ScrollView, View } from 'react-native';
 import {
   Button,
   Card,
-  Input,
   Label,
   styles,
   usePalette,
@@ -18,12 +17,15 @@ import type { Schedule } from '@/services/staff';
 
 export default function Schedules() {
   const p = usePalette();
-  const [period, setPeriod] = useState(vietnamPeriod);
   const [applied, setApplied] = useState(vietnamPeriod);
-  const [invalid, setInvalid] = useState('');
-  const { data, error, loading, reload } = useResource<Schedule[]>(
+  const [monthPickerOpen, setMonthPickerOpen] = useState(false);
+  const [draftYear, setDraftYear] = useState(() => Number(vietnamPeriod().slice(0, 4)));
+  const [draftMonth, setDraftMonth] = useState(() => Number(vietnamPeriod().slice(5, 7)));
+  const { data, error, loading } = useResource<Schedule[]>(
     `/mobile-attendance/my-schedules?period=${applied}`
   );
+  const monthNames = ['Tháng 1', 'Tháng 2', 'Tháng 3', 'Tháng 4', 'Tháng 5', 'Tháng 6', 'Tháng 7', 'Tháng 8', 'Tháng 9', 'Tháng 10', 'Tháng 11', 'Tháng 12'];
+  const selectedMonthLabel = `${monthNames[Number(applied.slice(5, 7)) - 1]} / ${applied.slice(0, 4)}`;
 
   return (
     <ScrollView style={{ backgroundColor: p.bg }} contentContainerStyle={styles.content}>
@@ -38,39 +40,38 @@ export default function Schedules() {
       </View>
 
       <Card low style={{ gap: 10 }}>
-        <Label variant="caption">Chọn tháng tra cứu (YYYY-MM)</Label>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <View style={{ flex: 1 }}>
-            <Input
-              value={period}
-              onChangeText={setPeriod}
-              placeholder="YYYY-MM"
-              accessibilityLabel="Tháng lịch biểu"
-              leftIcon="🗓️"
-            />
-          </View>
-          <Button
-            title="Xem lịch"
-            variant="brand"
-            onPress={() => {
-              if (/^\d{4}-(0[1-9]|1[0-2])$/.test(period)) {
-                setInvalid('');
-                setApplied(period);
-                reload();
-              } else {
-                setInvalid('Vui lòng nhập định dạng YYYY-MM.');
-              }
-            }}
-          />
-        </View>
+        <Label variant="caption">Chọn tháng tra cứu</Label>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Chọn tháng lịch, hiện tại ${selectedMonthLabel}`}
+          onPress={() => {
+            setDraftYear(Number(applied.slice(0, 4)));
+            setDraftMonth(Number(applied.slice(5, 7)));
+            setMonthPickerOpen(true);
+          }}
+          style={{
+            minHeight: 50,
+            borderRadius: 14,
+            borderWidth: 1,
+            borderColor: p.line,
+            backgroundColor: p.surfaceLow,
+            paddingHorizontal: 14,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <Text style={{ fontFamily: 'BeVietnam', fontSize: 15, color: p.text }}>🗓️  {selectedMonthLabel}</Text>
+          <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 13, color: p.brandText }}>Đổi tháng</Text>
+        </Pressable>
       </Card>
 
       <LoadingBar active={loading} label="Đang tải danh sách ca làm việc…" />
 
-      {!!(error || invalid) && (
+      {!!error && (
         <Card style={{ backgroundColor: p.dangerBg, borderColor: p.danger }}>
           <Text style={{ color: p.dangerText, fontFamily: 'BeVietnam', fontSize: 13 }}>
-            ⚠️ {error || invalid}
+            ⚠️ {error}
           </Text>
         </Card>
       )}
@@ -81,7 +82,7 @@ export default function Schedules() {
           <Card key={s.schedule_id} style={{ gap: 10 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 15, fontWeight: '700', color: p.text }}>
-                {s.work_date}
+                {s.work_date.split('-').reverse().join('/')}
               </Text>
               <Badge label="Đã xếp ca" variant="success" size="sm" />
             </View>
@@ -108,6 +109,90 @@ export default function Schedules() {
           </Text>
         </Card>
       )}
+
+      <Modal
+        visible={monthPickerOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMonthPickerOpen(false)}
+      >
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Đóng chọn tháng"
+          onPress={() => setMonthPickerOpen(false)}
+          style={{ flex: 1, justifyContent: 'center', padding: 20, backgroundColor: 'rgba(0,0,0,0.55)' }}
+        >
+          <Pressable
+            onPress={event => event.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: 420,
+              alignSelf: 'center',
+              borderRadius: 20,
+              padding: 20,
+              gap: 18,
+              backgroundColor: p.card,
+              borderWidth: 1,
+              borderColor: p.line,
+            }}
+          >
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Label variant="subtitle">Chọn tháng tra cứu</Label>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <Pressable accessibilityRole="button" accessibilityLabel="Năm trước" hitSlop={8} onPress={() => setDraftYear(year => year - 1)}>
+                  <Text style={{ color: p.brandText, fontSize: 24, fontFamily: 'BeVietnamBold' }}>‹</Text>
+                </Pressable>
+                <Text style={{ color: p.text, fontSize: 16, fontFamily: 'BeVietnamBold' }}>{draftYear}</Text>
+                <Pressable accessibilityRole="button" accessibilityLabel="Năm sau" hitSlop={8} onPress={() => setDraftYear(year => year + 1)}>
+                  <Text style={{ color: p.brandText, fontSize: 24, fontFamily: 'BeVietnamBold' }}>›</Text>
+                </Pressable>
+              </View>
+            </View>
+
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {monthNames.map((month, index) => {
+                const monthNumber = index + 1;
+                const selected = draftMonth === monthNumber;
+                return (
+                  <Pressable
+                    key={month}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    onPress={() => setDraftMonth(monthNumber)}
+                    style={{
+                      width: '31%',
+                      minHeight: 46,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: selected ? p.brand : p.line,
+                      backgroundColor: selected ? p.brandLight : p.surfaceLow,
+                    }}
+                  >
+                    <Text style={{ color: selected ? p.brandText : p.text, fontFamily: 'BeVietnam', fontSize: 13 }}>
+                      {month}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10 }}>
+              <Button title="Đóng" variant="secondary" onPress={() => setMonthPickerOpen(false)} />
+              <Button
+                title="Xem lịch"
+                variant="brand"
+                onPress={() => {
+                  const nextPeriod = `${draftYear}-${String(draftMonth).padStart(2, '0')}`;
+                  setApplied(nextPeriod);
+                  setMonthPickerOpen(false);
+                }}
+              />
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </ScrollView>
   );
 }

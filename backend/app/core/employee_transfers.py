@@ -13,7 +13,7 @@ async def sync_transfer_schedules(db, employee_id, old_store_id, new_store_id):
     rows = await db.execute(text('''
         UPDATE work_schedules SET store_id=:new_store
         WHERE employee_id=:emp AND work_date>=:today
-          AND store_id IS NOT DISTINCT FROM :old_store
+          AND store_id IS NOT DISTINCT FROM :old_store AND cancelled_at IS NULL
         RETURNING schedule_id, work_date, shift_id, store_id
     '''), {'emp': employee_id, 'old_store': old_store_id, 'new_store': new_store_id,
            'today': local_now().date()})

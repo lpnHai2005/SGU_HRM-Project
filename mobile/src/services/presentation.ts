@@ -1,13 +1,23 @@
 import type { Today } from './attendance';
 import type { Schedule } from './staff';
 
-export function assignedShift(today: Today | null, schedules: Schedule[], date: string) {
+export function assignedShift(today: Today | null, schedules: Schedule[], date: string, now = Date.now()) {
   if (today?.can_check_out && today.shift_id) return {
     shift_id: today.shift_id, shift_name: today.shift_name || 'Ca đang làm',
     start_time: today.attendance_context?.actual.start_time,
     end_time: today.attendance_context?.actual.end_time, store_name: today.store_name,
   };
-  return schedules.filter(s => s.work_date === date).sort((a, b) => a.schedule_id - b.schedule_id)[0] || null;
+  const candidates = schedules.map(s => {
+    const start = Date.parse(`${s.work_date}T${s.start_time}+07:00`);
+    let end = Date.parse(`${s.work_date}T${s.end_time}+07:00`);
+    if (end <= start) end += 86400000;
+    return { s, start, end };
+  }).filter(({ s, start, end }) => s.work_date === date || (start <= now && now < end));
+  candidates.sort((a, b) => {
+    const rank = (v: typeof a) => v.start <= now && now < v.end ? 0 : v.start > now ? 1 : 2;
+    return rank(a) - rank(b) || a.start - b.start || a.s.schedule_id - b.s.schedule_id;
+  });
+  return candidates[0]?.s || null;
 }
 
 /** Display only; identifiers and API payloads remain unchanged. */

@@ -24,7 +24,7 @@ Tài liệu này là hợp đồng nghiệp vụ chuẩn cho các thay đổi th
 | Phạm vi | Baseline hiện có | GAP cần xử lý trước nghiệm thu |
 |---|---|---|
 | Attendance | 18/18 rule/unit tests và PostgreSQL integration được báo cáo PASS tại `mission.md` | Chưa chứng minh stress test đồng thời hoặc hoàn thành mọi luồng reconciliation/approval |
-| Work Schedule | API dùng `ON CONFLICT (employee_id, work_date)` và check-in lấy schedule theo ngày | Chỉ hỗ trợ một assignment/ngày; cần migration/service cho nhiều assignment không overlap |
+| Work Schedule — cập nhật 10/10/2026 | Đã migrate nhiều assignment/ngày, service chống overlap có khóa nhân viên; API CRUD/batch/filter/audit/reconciliation và tích hợp snapshot | API/PostgreSQL/concurrency regression đã đạt; nghiệm thu thao tác quản lý và mobile còn chờ, xem [mission3.md](mission3.md) |
 | Check-in client | Request còn tương thích mặc định `shift_id=1` | Loại bỏ fallback trước khi phát hành Mobile theo contract mới |
 | Sales | API hiện ghi `employee_sales` tổng theo nhân viên/kỳ và upsert theo employee + period | Chưa phải transaction-level `sales_records`; chưa đủ lifecycle refund/void để đối soát từng giao dịch |
 | Commission | Có stored procedure tính kỳ | Cần xác minh idempotency, source key, status eligibility và period lock bằng test chuyên biệt |

@@ -1,9 +1,11 @@
 import unittest
+import io
+import httpx
 from datetime import datetime, timezone, timedelta
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 import jwt
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 from pydantic import ValidationError
 from app.api.v1.endpoints import mobile_attendance as api
 from app.core.config import settings
@@ -16,6 +18,26 @@ def photo(employee=3, expired=False):
 
 def body(**overrides):
     return api.MobileRequest(**(dict(request_id=uuid4(), photo_token=photo(), latitude=10, longitude=106, accuracy_meters=10, captured_at=datetime.now(timezone.utc), shift_id=1) | overrides))
+
+class PhotoUpload(unittest.IsolatedAsyncioTestCase):
+    async def test_provider_errors_are_not_session_or_network_errors(self):
+        request = httpx.Request('POST', 'https://api.cloudinary.com/test')
+        errors = [(httpx.HTTPStatusError('provider', request=request, response=httpx.Response(code, request=request)), expected)
+                  for code, expected in [(401, 503), (403, 503), (500, 502)]]
+        errors.append((httpx.ReadTimeout('timeout', request=request), 504))
+        for error, expected in errors:
+            with self.subTest(error=type(error).__name__, expected=expected):
+                client = AsyncMock()
+                client.__aenter__.return_value = client
+                client.post.side_effect = error
+                with patch.object(api.httpx, 'AsyncClient', return_value=client), \
+                     patch.object(settings, 'CLOUDINARY_CLOUD_NAME', 'test'), \
+                     patch.object(settings, 'CLOUDINARY_API_KEY', 'test'), \
+                     patch.object(settings, 'CLOUDINARY_API_SECRET', 'test'):
+                    with self.assertRaises(HTTPException) as caught:
+                        await api.upload_photo(UploadFile(file=io.BytesIO(b'\xff\xd8\xfftest'), filename='selfie.jpg'), USER)
+                self.assertEqual(caught.exception.status_code, expected)
+                self.assertIn('Cloudinary', caught.exception.detail)
 
 class Rules(unittest.TestCase):
     def test_distance(self):

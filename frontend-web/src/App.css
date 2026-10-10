@@ -2072,6 +2072,11 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   background: var(--sidebar-hover);
 }
 
+.action-dropdown-item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .action-dropdown-item.danger {
   color: var(--status-error);
 }
@@ -2883,4 +2888,3 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
     margin: 10mm 12mm 10mm 12mm;
   }
 }
-
