@@ -10,12 +10,12 @@ async def main():
     async with engine.connect() as db:
         transaction = await db.begin()
         try:
-            await db.execute(text('CREATE TEMP TABLE work_schedules (schedule_id int, employee_id int, store_id int, shift_id int, work_date date) ON COMMIT DROP'))
+            await db.execute(text('CREATE TEMP TABLE work_schedules (schedule_id int, employee_id int, store_id int, shift_id int, work_date date, cancelled_at timestamptz) ON COMMIT DROP'))
             today = local_now().date()
             rows = [(1,4,2,2,today-timedelta(days=1)), (2,4,2,2,today),
                     (3,4,2,3,today+timedelta(days=1)), (4,4,3,1,today), (5,99,2,2,today)]
             for sid,emp,store,shift,day in rows:
-                await db.execute(text('INSERT INTO work_schedules VALUES(:sid,:emp,:store,:shift,:day)'),
+                await db.execute(text('INSERT INTO work_schedules(schedule_id,employee_id,store_id,shift_id,work_date) VALUES(:sid,:emp,:store,:shift,:day)'),
                                  dict(sid=sid,emp=emp,store=store,shift=shift,day=day))
             changed = await sync_transfer_schedules(db,4,2,5)
             assert {r['schedule_id'] for r in changed} == {2,3}

@@ -113,9 +113,10 @@ async def get_today_attendance_status(
             FROM work_schedules ws
             JOIN work_shifts sh ON ws.shift_id = sh.shift_id
             LEFT JOIN stores s ON ws.store_id = s.store_id
-            WHERE ws.employee_id = :emp_id AND ws.work_date = :today
-            LIMIT 1
-        """), {"emp_id": target_emp_id, "today": today})
+              WHERE ws.employee_id = :emp_id AND ws.work_date = :today AND ws.cancelled_at IS NULL
+              ORDER BY CASE WHEN sh.end_time > sh.start_time AND sh.end_time < :clock THEN 1 ELSE 0 END,
+                       sh.start_time, ws.schedule_id LIMIT 1
+          """), {"emp_id": target_emp_id, "today": today, "clock": local_now().time()})
         sched = sched_res.mappings().first()
 
         return TodayAttendanceStatusOut(
@@ -458,9 +459,13 @@ async def check_in(req: CheckInRequest, current_user: dict = Depends(get_current
         work_date -= timedelta(days=1)
     start = datetime.combine(work_date, shift["start_time"], VIETNAM_TZ)
     schedule = (await db.execute(text("""
-        SELECT schedule_id, shift_id, store_id FROM work_schedules
-        WHERE employee_id = :emp AND work_date = :day
-    """), dict(emp=emp_id, day=work_date))).mappings().first()
+        SELECT schedule_id, shift_id, store_id, starts_at::text AS starts_at, ends_at::text AS ends_at,
+               count(*) OVER () AS candidate_count FROM work_schedules
+        WHERE employee_id = :emp AND work_date = :day AND cancelled_at IS NULL
+        ORDER BY (shift_id=:shift) DESC, schedule_id
+    """), dict(emp=emp_id, day=work_date, shift=req.shift_id))).mappings().first()
+    if schedule and schedule.get('candidate_count', 1)>1 and schedule['shift_id']!=req.shift_id:
+        raise HTTPException(409, 'SCHEDULE_AMBIGUOUS: actual shift must identify an assigned schedule')
     context = attendance_context(shift, schedule, employee["store_id"])
     late = late_minutes(now, start)
     attendance_status = "LATE" if late > 15 else "NORMAL"
@@ -530,26 +535,9 @@ async def list_shift_schedules(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    query = """
-        SELECT ws.schedule_id, ws.employee_id, e.full_name as employee_name,
-               ws.store_id, s.store_name, ws.shift_id, sh.shift_name,
-               ws.work_date, ws.notes
-        FROM work_schedules ws
-        JOIN employees e ON ws.employee_id = e.employee_id
-        LEFT JOIN stores s ON ws.store_id = s.store_id
-        LEFT JOIN work_shifts sh ON ws.shift_id = sh.shift_id
-        WHERE 1=1
-    """
-    params: Dict[str, Any] = {}
-    if store_id:
-        query += " AND ws.store_id = :store_id"
-        params["store_id"] = store_id
-    if work_date:
-        query += " AND ws.work_date = :work_date"
-        params["work_date"] = work_date
-    query += " ORDER BY ws.work_date ASC, ws.schedule_id ASC"
-    res = await db.execute(text(query), params)
-    return res.mappings().all()
+    from app.api.v1.endpoints.work_schedules import listing
+    day = work_date or local_now().date()
+    return await listing(db, current_user, day, day, store_id=store_id)
 
 
 @router.post("/shift-schedules", summary="Phân ca làm việc cho nhân viên (Week 2.3)")
@@ -558,26 +546,19 @@ async def assign_shift_schedule(
     current_user: dict = Depends(require_roles(["STORE_MANAGER", "HR_MANAGER", "ADMIN"])),
     db: AsyncSession = Depends(get_db)
 ):
+    from app.api.v1.endpoints.work_schedules import Assignment, create_schedule
     employee = await authorize_employee(db, current_user, req.employee_id, lock=True)
-    store_id = req.store_id or employee["store_id"]
-    if not store_id:
+    if not (req.store_id or employee["store_id"]):
         raise HTTPException(400, "Nhân viên chưa được phân cửa hàng.")
-    shift = (await db.execute(text("SELECT shift_id, shift_name FROM work_shifts WHERE shift_id = :id"),
-                             {"id": req.shift_id})).mappings().first()
-    if not shift:
-        raise HTTPException(404, "Không tìm thấy ca làm việc.")
-
-    await db.execute(text("""
-        INSERT INTO work_schedules (employee_id, store_id, shift_id, work_date, notes)
-        VALUES (:emp_id, :store_id, :shift_id, :work_date, :notes)
-        ON CONFLICT (employee_id, work_date)
-        DO UPDATE SET store_id = EXCLUDED.store_id,
-                      shift_id = EXCLUDED.shift_id,
-                      notes = EXCLUDED.notes;
-    """), {
-        "emp_id": req.employee_id, "store_id": store_id,
-        "shift_id": req.shift_id, "work_date": req.work_date,
-        "notes": req.notes or "Phân ca theo kế hoạch tuần"
-    })
-    await db.commit()
-    return {"message": "Phân ca làm việc thành công!", "employee_id": req.employee_id, "shift_name": shift["shift_name"], "work_date": str(req.work_date)}
+    if req.notes and len(req.notes) > 255:
+        raise HTTPException(422, "Ghi chú phân ca tối đa 255 ký tự.")
+    payload = Assignment(employee_id=req.employee_id, store_id=req.store_id or employee["store_id"],
+                         shift_id=req.shift_id, work_date=req.work_date, notes=req.notes,
+                         reason=req.notes or "Legacy assignment API")
+    try:
+        row = await create_schedule(payload, current_user, db)
+    except HTTPException as exc:
+        if exc.status_code == 409 and isinstance(exc.detail, dict):
+            raise HTTPException(409, "SCHEDULE_CONFLICT: Nhân viên đã có lịch giao nhau. Hãy sửa hoặc hủy lịch cũ trước.") from exc
+        raise
+    return dict(row, message="Phân ca làm việc thành công!")

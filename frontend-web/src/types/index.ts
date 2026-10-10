@@ -355,6 +355,42 @@ export interface ShiftScheduleCreate {
   notes?: string;
 }
 
+export interface WorkSchedule {
+  schedule_id: number;
+  employee_id: number;
+  employee_name: string;
+  department_id?: number | null;
+  employment_status?: string | null;
+  store_id: number;
+  store_name: string;
+  shift_id: number;
+  shift_name: string;
+  start_time: string;
+  end_time: string;
+  work_date: string;
+  notes?: string | null;
+  cancelled_at?: string | null;
+  fixed_rule_id?: number | null;
+}
+
+export interface WorkScheduleQuery {
+  day: string;
+  view: 'day' | 'week' | 'month';
+  employee_id?: number;
+  department_id?: number;
+  store_id?: number;
+  include_cancelled?: boolean;
+}
+
+export interface WorkScheduleWrite {
+  employee_id: number;
+  store_id: number;
+  shift_id: number;
+  work_date: string;
+  notes?: string;
+  reason: string;
+}
+
 export interface LeaveType {
   leave_type_id: number;
   type_code: string;

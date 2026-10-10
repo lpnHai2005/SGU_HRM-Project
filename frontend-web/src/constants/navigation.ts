@@ -27,6 +27,7 @@ export const NAV_ITEMS: Record<UserRole, NavItemConfig[]> = {
   ADMIN: [
     { id: 'dashboard', label: 'Tổng quan', icon: 'dashboard', section: 'Vận hành' },
     { id: 'attendance', label: 'Bảng Công', icon: 'clock', section: 'Vận hành' },
+    { id: 'work-schedules', label: 'Lịch làm việc', icon: 'calendar', section: 'Vận hành' },
     { id: 'leave', label: 'Nghỉ phép', icon: 'calendar', section: 'Vận hành' },
     { id: 'employees', label: 'Nhân sự', icon: 'users', section: 'Quản trị' },
     { id: 'payroll', label: 'Lương & Thưởng', icon: 'wallet', section: 'Quản trị' },
@@ -36,6 +37,7 @@ export const NAV_ITEMS: Record<UserRole, NavItemConfig[]> = {
   HR_MANAGER: [
     { id: 'dashboard', label: 'Tổng quan', icon: 'dashboard', section: 'Vận hành' },
     { id: 'attendance', label: 'Bảng Công', icon: 'clock', section: 'Vận hành' },
+    { id: 'work-schedules', label: 'Lịch làm việc', icon: 'calendar', section: 'Vận hành' },
     { id: 'leave', label: 'Nghỉ phép', icon: 'calendar', section: 'Vận hành' },
     { id: 'employees', label: 'Nhân sự', icon: 'users', section: 'Quản trị' },
     { id: 'payroll', label: 'Lương & Thưởng', icon: 'wallet', section: 'Quản trị' },
@@ -44,6 +46,7 @@ export const NAV_ITEMS: Record<UserRole, NavItemConfig[]> = {
   STORE_MANAGER: [
     { id: 'dashboard', label: 'Tổng quan', icon: 'dashboard', section: 'Vận hành' },
     { id: 'attendance', label: 'Bảng Công', icon: 'clock', section: 'Vận hành' },
+    { id: 'work-schedules', label: 'Lịch làm việc', icon: 'calendar', section: 'Vận hành' },
     { id: 'leave', label: 'Nghỉ phép', icon: 'calendar', section: 'Vận hành' },
     { id: 'employees', label: 'Nhân viên CH', icon: 'users', section: 'Quản trị' },
     { id: 'payroll', label: 'Bảng lương CH', icon: 'wallet', section: 'Quản trị' },

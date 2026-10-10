@@ -17,6 +17,7 @@ import { LeaveRequestsPage } from './pages/LeaveRequestsPage'
 import { PayrollPage } from './pages/PayrollPage'
 import { ReportsPage } from './pages/ReportsPage'
 import { AuditLogPage } from './pages/AuditLogPage'
+import { WorkSchedulesPage } from './pages/WorkSchedulesPage'
 
 // ProtectedRoute: chặn EMPLOYEE truy cập các trang quản lý
 function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode; allowedRoles: string[] }) {
@@ -157,6 +158,7 @@ export function App() {
           <Route path="/dashboard" element={<Navigate to="/" replace />} />
           <Route path="/employees" element={<ProtectedRoute allowedRoles={['ADMIN', 'HR_MANAGER', 'STORE_MANAGER']}><EmployeeListPage user={user} /></ProtectedRoute>} />
           <Route path="/attendance" element={<AttendancePage user={user} />} />
+          <Route path="/work-schedules" element={<ProtectedRoute allowedRoles={['ADMIN', 'HR_MANAGER', 'STORE_MANAGER']}><WorkSchedulesPage user={user} /></ProtectedRoute>} />
           <Route path="/leave" element={<LeaveRequestsPage user={user} />} />
           <Route path="/payroll" element={<PayrollPage user={user} />} />
           <Route path="/reports" element={<ProtectedRoute allowedRoles={['ADMIN', 'HR_MANAGER', 'STORE_MANAGER']}><ReportsPage user={user} /></ProtectedRoute>} />

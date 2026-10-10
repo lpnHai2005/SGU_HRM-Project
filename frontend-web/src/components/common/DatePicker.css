@@ -1,0 +1,137 @@
+.work-date-field {
+  position: relative;
+}
+
+.work-date-input-wrap {
+  position: relative;
+}
+
+.work-date-input-wrap .form-input {
+  padding-right: 42px;
+  cursor: pointer;
+}
+
+.work-date-input-wrap .form-input[readonly]:focus {
+  border-color: var(--border-strong);
+}
+
+.work-date-trigger {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  transform: translateY(-50%);
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.work-date-trigger:hover:not(:disabled) {
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+}
+
+.work-date-trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.work-date-popover {
+  position: fixed;
+  z-index: 2000;
+  width: 280px;
+  padding: 12px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-card);
+  box-shadow: var(--shadow-md), 0 12px 32px rgba(0, 0, 0, 0.16);
+}
+
+.work-date-calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.work-date-calendar-header strong {
+  text-transform: capitalize;
+}
+
+.work-date-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 3px;
+}
+
+.work-date-weekday {
+  padding: 5px 0;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.work-date-day {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  min-width: 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.work-date-day:hover {
+  border-color: var(--border-default);
+  background: var(--surface-subtle);
+}
+
+.work-date-day.outside-month {
+  color: var(--text-muted);
+}
+
+.work-date-day.selected {
+  border-color: var(--action-primary);
+  background: var(--action-primary);
+  color: var(--action-primary-text);
+  font-weight: 700;
+}
+
+.work-date-error {
+  display: block;
+  margin-top: 6px;
+  color: var(--status-error);
+  font-size: 0.75rem;
+}
+
+.work-date-today {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  padding: 7px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.work-date-today:hover {
+  background: var(--border-subtle);
+}

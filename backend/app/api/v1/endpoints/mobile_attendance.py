@@ -28,7 +28,9 @@ async def my_schedules(period: str = Query(..., pattern=r'^\d{4}-(0[1-9]|1[0-2])
     employee = await attendances.authorize_employee(db, user, user.get('employee_id'))
     rows = await db.execute(text('''SELECT ws.schedule_id,ws.work_date,ws.shift_id,sh.shift_name,sh.start_time,sh.end_time,s.store_name
         FROM work_schedules ws JOIN work_shifts sh USING(shift_id) LEFT JOIN stores s USING(store_id)
-        WHERE ws.employee_id=:emp AND to_char(ws.work_date,'YYYY-MM')=:period ORDER BY ws.work_date,ws.schedule_id'''),
+        WHERE ws.employee_id=:emp AND ws.cancelled_at IS NULL AND (to_char(ws.work_date,'YYYY-MM')=:period
+          OR (ws.work_date=to_date(:period||'-01','YYYY-MM-DD')-1 AND sh.end_time<=sh.start_time))
+        ORDER BY ws.work_date,sh.start_time,ws.schedule_id'''),
         {'emp':employee['employee_id'],'period':period})
     return [dict(row) for row in rows.mappings().all()]
 
@@ -104,8 +106,14 @@ async def upload_photo(file: UploadFile=File(...), user=Depends(get_current_user
                 files={'file':('selfie.jpg', data, 'image/jpeg')})
         response.raise_for_status()
         url = response.json()['secure_url']
-    except (httpx.HTTPError, KeyError, ValueError):
-        raise HTTPException(502, 'Không tải được ảnh. Vui lòng thử lại.')
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code in (401, 403):
+            raise HTTPException(503, 'Cấu hình Cloudinary không được chấp nhận. Quản trị viên cần kiểm tra Cloud name, API key và API secret của backend.') from exc
+        raise HTTPException(502, 'Cloudinary từ chối tải ảnh. Chưa ghi chấm công; vui lòng thử lại hoặc liên hệ quản trị viên.') from exc
+    except httpx.TimeoutException as exc:
+        raise HTTPException(504, 'Cloudinary phản hồi quá lâu. Chưa ghi chấm công; vui lòng thử lại.') from exc
+    except (httpx.HTTPError, KeyError, ValueError) as exc:
+        raise HTTPException(502, 'Backend không nhận được phản hồi hợp lệ từ Cloudinary. Chưa ghi chấm công; vui lòng thử lại.') from exc
     token = jwt.encode({'sub':str(user['employee_id']), 'aud':'mobile-photo', 'exp':timestamp+600, 'nonce':nonce, 'url':url}, settings.JWT_SECRET_KEY, algorithm=settings.ALGORITHM)
     return {'photo_token':token, 'photo_url':url, 'expires_in':600}
 
@@ -118,9 +126,12 @@ class AtomicSession:
 
 
 async def require_assigned_shift(db, employee, shift_id):
-    schedule = (await db.execute(text('''SELECT shift_id, store_id FROM work_schedules
-        WHERE employee_id=:emp AND work_date=:day ORDER BY schedule_id LIMIT 1 FOR SHARE'''),
-        {'emp': employee['employee_id'], 'day': attendances.local_now().date()})).mappings().first()
+    now = attendances.local_now()
+    schedule = (await db.execute(text('''SELECT ws.shift_id, ws.store_id FROM work_schedules ws JOIN work_shifts sh USING(shift_id)
+        WHERE ws.employee_id=:emp AND ws.cancelled_at IS NULL AND ws.shift_id=:shift
+        AND ws.work_date=CAST(:day AS date)-CASE WHEN sh.end_time<=sh.start_time AND :clock<sh.end_time THEN 1 ELSE 0 END
+        FOR SHARE OF ws'''),
+        {'emp': employee['employee_id'], 'day': now.date(), 'clock':now.time(), 'shift':shift_id})).mappings().first()
     if not schedule:
         raise HTTPException(409, 'Chưa có ca được phân công hôm nay. Liên hệ cửa hàng trưởng.')
     if schedule['shift_id'] != shift_id:

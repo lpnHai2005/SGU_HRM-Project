@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { Icons } from '../components/common/Icons'
 import { EmptyState } from '../components/common/EmptyState'
+import { DatePicker } from '../components/common/DatePicker'
 import { getInitials, getRoleFromUser, formatDate, formatCurrency } from '../utils/formatters'
 import type { Employee, EmployeeCreate, Lookups, Contract, PromotionCreate } from '../types'
 
@@ -11,6 +12,16 @@ export interface EmployeeListPageProps {
 
 type ModalMode = 'view' | 'add' | 'edit' | 'promote' | 'contract' | 'resign'
 type ConfirmAction = 'add' | 'edit' | 'promote' | 'contract' | 'resign' | null
+
+const isAssignableEmployeeStatus = (status: string | null | undefined) =>
+  status === 'ACTIVE' || status === 'PROBATION'
+
+const todayVietnam = () => new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Ho_Chi_Minh',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+}).format(new Date())
 
 export function EmployeeListPage({ user }: EmployeeListPageProps) {
   const [employees, setEmployees] = useState<Employee[]>([])
@@ -24,14 +35,20 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
   const [showModal, setShowModal] = useState(false);
   // Shift edit modal state (Phân ca chuẩn MOD-04)
   const [showShiftModal, setShowShiftModal] = useState(false);
-  const [shiftDate, setShiftDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [shiftDate, setShiftDate] = useState(todayVietnam);
+  const [shiftDateError, setShiftDateError] = useState('');
   const [selectedShiftId, setSelectedShiftId] = useState<number>(1);
   const [shiftNotes, setShiftNotes] = useState('');
+  const [fixedShift, setFixedShift] = useState(false);
+  const [activeFixedRule, setActiveFixedRule] = useState<{ rule_id: number; start_date: string; last_error: string | null } | null>(null);
+  const [fixedRuleLoading, setFixedRuleLoading] = useState(false);
+  const dailyShiftNotes = useRef('Phân ca theo kế hoạch tuần');
   const [shiftSaving, setShiftSaving] = useState(false);
 
 
   const [modalMode, setModalMode] = useState<ModalMode>('view')
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null)
+
 
   // Dropdown menu state
   const [openMenuId, setOpenMenuId] = useState<number | null>(null)
@@ -106,11 +123,21 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const toastTimeoutRef = useRef<number | null>(null)
 
-  const showToast = (type: 'success' | 'error', message: string) => {
+  const showToast = useCallback((type: 'success' | 'error', message: string) => {
     if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current)
     setToast({ type, message })
     toastTimeoutRef.current = window.setTimeout(() => setToast(null), 3000)
-  }
+  }, [])
+
+  useEffect(() => {
+    if (!showShiftModal || !selectedEmployee) return
+    let active = true
+    import('../services/api').then(({ attendanceApi }) => attendanceApi.getFixedSchedules(selectedEmployee.employee_id))
+      .then(rows => { if (active) setActiveFixedRule(rows[0] || null) })
+      .catch(() => { if (active) showToast('error', 'Không tải được trạng thái ca cố định. Vui lòng mở lại bảng phân ca.') })
+      .finally(() => { if (active) setFixedRuleLoading(false) })
+    return () => { active = false }
+  }, [showShiftModal, selectedEmployee, showToast])
 
   // Close menu when clicking outside, scrolling, resizing, or pressing Escape
   useEffect(() => {
@@ -313,11 +340,20 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
 
   // --- Shift edit modal handlers ---
   const openShiftEditModal = (employee: Employee) => {
+    if (!isAssignableEmployeeStatus(employee.employment_status)) {
+      showToast('error', 'Chỉ nhân viên đang làm việc hoặc thử việc mới được phân ca hoặc sửa ca.')
+      return
+    }
     setSelectedEmployee(employee)
     setOpenMenuId(null)
     setMenuPos(null)
-    setShiftDate(new Date().toISOString().slice(0, 10))
+    setShiftDate(todayVietnam())
+    setShiftDateError('')
     setSelectedShiftId(1)
+    setActiveFixedRule(null)
+    setFixedRuleLoading(true)
+    setFixedShift(false)
+    dailyShiftNotes.current = 'Phân ca theo kế hoạch tuần'
     setShiftNotes('Phân ca theo kế hoạch tuần')
     setShowShiftModal(true)
   }
@@ -333,6 +369,12 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
 
   const handleShiftSave = async () => {
     if (!selectedEmployee) return
+    const workDate = shiftDate
+    if (fixedShift && workDate < new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' })) {
+      setShiftDateError('Ngày bắt đầu ca cố định không được ở quá khứ.')
+      return
+    }
+    setShiftDateError('')
     const storeId = selectedEmployee.store_id || user?.store_id
     if (!storeId) {
       showToast('error', 'Nhân viên chưa được phân cửa hàng để xếp ca')
@@ -341,20 +383,33 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
     setShiftSaving(true)
     try {
       const { attendanceApi } = await import('../services/api')
-      const res = await attendanceApi.assignShiftSchedule({
+      const res = await (fixedShift ? attendanceApi.assignFixedSchedule : attendanceApi.assignShiftSchedule)({
         employee_id: selectedEmployee.employee_id,
         store_id: storeId,
         shift_id: selectedShiftId,
-        work_date: shiftDate,
+        work_date: workDate,
         notes: shiftNotes || 'Phân ca làm việc',
       })
-      showToast('success', res.message || `Đã phân ca thành công cho ${selectedEmployee.full_name} (${formatDate(shiftDate)})!`)
+      showToast('success', res.message || `Đã phân ca thành công cho ${selectedEmployee.full_name} (${shiftDate})!`)
       closeShiftModal()
     } catch (err: any) {
       showToast('error', err.response?.data?.detail || err.message || 'Lỗi khi lưu phân ca làm việc')
     } finally {
       setShiftSaving(false)
     }
+  }
+
+  const handleStopFixedShift = async () => {
+    if (!activeFixedRule) return
+    setShiftSaving(true)
+    try {
+      const { attendanceApi } = await import('../services/api')
+      const result = await attendanceApi.stopFixedSchedule(activeFixedRule.rule_id)
+      setActiveFixedRule(null)
+      showToast('success', result.message)
+    } catch (err: any) {
+      showToast('error', err.message || 'Không dừng được ca cố định')
+    } finally { setShiftSaving(false) }
   }
 
   const loadEmployeeContracts = async (employeeId: number) => {
@@ -975,6 +1030,10 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
             >
               <option value="PROBATION">Thử việc</option>
               <option value="ACTIVE">Đang làm việc</option>
+              {isEdit && <>
+                <option value="ON_LEAVE">Nghỉ phép</option>
+                <option value="RESIGNED">Đã nghỉ việc</option>
+              </>}
             </select>
           </div>
         </div>
@@ -1435,7 +1494,9 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
         )}
         {(isManagerOfBranch || canManage) && (
           <button
-            className="action-dropdown-item"
+            className={`action-dropdown-item ${!isAssignableEmployeeStatus(emp.employment_status) ? 'disabled' : ''}`}
+            disabled={!isAssignableEmployeeStatus(emp.employment_status)}
+            title={!isAssignableEmployeeStatus(emp.employment_status) ? 'Không thể phân ca hoặc sửa ca khi nhân viên đang nghỉ việc hoặc đã nghỉ việc.' : undefined}
             onClick={() => {
               setOpenMenuId(null)
               setMenuPos(null)
@@ -1638,7 +1699,8 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
                             {(canManage || (role === 'STORE_MANAGER' && user?.store_id === emp.store_id)) && (
                               <button
                                 className="btn btn-secondary btn-sm btn-icon"
-                                title="Phân ca / Sửa ca làm"
+                                title={isAssignableEmployeeStatus(emp.employment_status) ? 'Phân ca / Sửa ca làm' : 'Không thể phân ca hoặc sửa ca khi nhân viên đang nghỉ việc hoặc đã nghỉ việc'}
+                                disabled={!isAssignableEmployeeStatus(emp.employment_status)}
                                 onClick={(e) => {
                                   e.stopPropagation()
                                   openShiftEditModal(emp)
@@ -1716,14 +1778,43 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
                 </div>
               </div>
 
-              <div className="form-group" style={{ marginBottom: '14px' }}>
-                <label className="form-label" style={{ fontWeight: 600 }}>Ngày làm việc (Work Date)</label>
-                <input
-                  type="date"
-                  className="form-input"
+              <fieldset className="form-group" style={{ margin: '0 0 14px', padding: '12px', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-md)' }} disabled={shiftSaving}>
+                <legend className="form-label" style={{ fontWeight: 600 }}>Hình thức phân ca</legend>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', color: 'var(--text-primary)' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                    <input type="radio" name="assignment_mode" checked={!fixedShift} onChange={() => {
+                      setFixedShift(false)
+                      setShiftNotes(dailyShiftNotes.current)
+                    }} /> Phân ca theo ngày
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                    <input type="radio" name="assignment_mode" checked={fixedShift} onChange={() => {
+                      dailyShiftNotes.current = shiftNotes
+                      setFixedShift(true)
+                      setShiftNotes('Phân ca nhân viên chính thức')
+                    }} /> Ca cố định
+                  </label>
+                </div>
+                <p style={{ margin: '8px 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  {fixedShift ? 'Lặp từ ngày bắt đầu đến khi quản lý dừng: thứ Hai–thứ Bảy, nghỉ Chủ nhật. Hệ thống tạo trước và tự duy trì lịch 90 ngày sắp tới.' : 'Phân một ngày cụ thể, phù hợp lịch linh hoạt và nhân viên thực tập.'}
+                </p>
+                {fixedRuleLoading && <p role="status" style={{ color: 'var(--text-secondary)' }}>Đang tải ca cố định…</p>}
+                {activeFixedRule && <div style={{ marginTop: '12px', color: 'var(--text-primary)' }}>
+                  <p>Đã có ca cố định từ {formatDate(activeFixedRule.start_date)}. Muốn đổi ca, dừng lịch cố định cũ rồi phân lại.</p>
+                  {activeFixedRule.last_error && <p role="alert">Cần xử lý: {activeFixedRule.last_error}</p>}
+                  <button type="button" className="btn btn-secondary" onClick={handleStopFixedShift} disabled={shiftSaving}>
+                    Dừng ca cố định và hủy lịch chưa phát sinh công từ hôm nay
+                  </button>
+                </div>}
+              </fieldset>
+              <div style={{ marginBottom: '14px' }}>
+                <DatePicker
+                  key={shiftDate}
                   value={shiftDate}
-                  onChange={(e) => setShiftDate(e.target.value)}
-                  style={{ height: '38px' }}
+                  label={fixedShift ? 'Ngày bắt đầu (Work Date)' : 'Ngày làm việc (Work Date)'}
+                  disabled={shiftSaving}
+                  error={shiftDateError}
+                  onChange={date => { setShiftDate(date); setShiftDateError('') }}
                 />
               </div>
 
@@ -1794,7 +1885,7 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
               <button className="btn btn-secondary" onClick={closeShiftModal} disabled={shiftSaving}>
                 Hủy
               </button>
-              <button className="btn btn-primary" onClick={handleShiftSave} disabled={shiftSaving}>
+              <button className="btn btn-primary" onClick={handleShiftSave} disabled={shiftSaving || !shiftDate || (fixedShift && (fixedRuleLoading || !!activeFixedRule))}>
                 {shiftSaving ? 'Đang lưu...' : 'Lưu phân ca'}
               </button>
             </div>

@@ -259,6 +259,19 @@ export const employeeApi = {
   },
 };
 
+import type { WorkSchedule, WorkScheduleQuery, WorkScheduleWrite } from '../types';
+
+export const workScheduleApi = {
+  getAll: (params: WorkScheduleQuery): Promise<WorkSchedule[]> =>
+    api.get<WorkSchedule[]>('/work-schedules', params),
+
+  update: (scheduleId: number, data: WorkScheduleWrite): Promise<WorkSchedule> =>
+    api.put<WorkSchedule>(`/work-schedules/${scheduleId}`, data),
+
+  cancel: (scheduleId: number, reason: string): Promise<WorkSchedule> =>
+    api.post<WorkSchedule>(`/work-schedules/${scheduleId}/cancel`, { reason }),
+};
+
 // ============================================
 // Attendance API
 // ============================================
@@ -323,6 +336,15 @@ export const attendanceApi = {
 
   assignShiftSchedule: async (data: ShiftScheduleCreate): Promise<{ message: string }> => {
     return api.post('/attendances/shift-schedules', data);
+  },
+  assignFixedSchedule: async (data: ShiftScheduleCreate): Promise<{ message: string }> => {
+    return api.post('/fixed-schedules', data);
+  },
+  getFixedSchedules: async (employee_id: number): Promise<{ rule_id: number; start_date: string; last_error: string | null }[]> => {
+    return api.get('/fixed-schedules', { employee_id });
+  },
+  stopFixedSchedule: async (ruleId: number): Promise<{ message: string }> => {
+    return api.post(`/fixed-schedules/${ruleId}/stop`, { reason: 'Quản lý dừng ca cố định từ bảng phân ca' });
   },
 };
 
