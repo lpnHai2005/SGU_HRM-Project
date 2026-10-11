@@ -4,6 +4,8 @@ export const statusLabels: Record<string, string> = { NORMAL: 'Đúng giờ', LA
 export const shortcuts = [
   { key: 'attendance', title: 'Chấm công', icon: '◉', href: '/(staff)/attendance' },
   { key: 'schedules', title: 'Lịch biểu', icon: '▦', href: '/(staff)/schedules' },
+  { key: 'dashboard', title: 'Báo cáo KPI', icon: '📊', href: '/(staff)/dashboard' },
   { key: 'summary', title: 'Bảng công', icon: '▥', href: '/(staff)/summary' },
   { key: 'requests', title: 'Đơn từ', icon: '▤', href: '/(staff)/requests' },
 ] as const;
+

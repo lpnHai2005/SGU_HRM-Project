@@ -258,11 +258,15 @@ export function MetricBox({
         style,
       ]}
     >
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.muted }}>{label}</Text>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
+        <Text numberOfLines={1} style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.muted, flex: 1 }}>
+          {label}
+        </Text>
         {icon && <Text style={{ fontSize: 16 }}>{icon}</Text>}
       </View>
       <Text
+        numberOfLines={1}
+        adjustsFontSizeToFit
         style={{
           fontFamily: 'BeVietnamBold',
           fontSize: 18,
@@ -274,7 +278,9 @@ export function MetricBox({
         {value}
       </Text>
       {subtext && (
-        <Text style={{ fontFamily: 'BeVietnam', fontSize: 11, color: p.muted }}>{subtext}</Text>
+        <Text numberOfLines={1} style={{ fontFamily: 'BeVietnam', fontSize: 11, color: p.muted }}>
+          {subtext}
+        </Text>
       )}
     </View>
   );

@@ -6,8 +6,26 @@ import { SessionProvider, useSession } from '@/contexts/session';
 import { PreferencesProvider } from '@/contexts/preferences';
 import { usePalette } from '@/components/attendance-ui';
 
+import { NotificationProvider, useNotifications } from '@/contexts/notifications';
+import { GlobalNotificationBanner, NotificationCenterModal } from '@/components/notification-center';
+
 export default function RootLayout() {
-  return <PreferencesProvider><SessionProvider><Navigation /></SessionProvider></PreferencesProvider>;
+  return (
+    <PreferencesProvider>
+      <SessionProvider>
+        <NotificationProvider>
+          <Navigation />
+          <GlobalNotificationBanner />
+          <RootNotificationCenter />
+        </NotificationProvider>
+      </SessionProvider>
+    </PreferencesProvider>
+  );
+}
+
+function RootNotificationCenter() {
+  const { isCenterOpen, setCenterOpen } = useNotifications();
+  return <NotificationCenterModal visible={isCenterOpen} onClose={() => setCenterOpen(false)} />;
 }
 function Navigation() {
   const p = usePalette();

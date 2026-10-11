@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import { Platform, useColorScheme } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 type Prefs = { theme: 'system' | 'light' | 'dark'; shortcuts: string[] };
-const defaults: Prefs = { theme: 'system', shortcuts: ['attendance', 'schedules', 'summary', 'requests'] };
+const defaults: Prefs = { theme: 'system', shortcuts: ['attendance', 'schedules', 'dashboard', 'summary', 'requests'] };
 const Context = createContext<{ prefs: Prefs; dark: boolean; update: (value: Partial<Prefs>) => Promise<void> }>({ prefs: defaults, dark: false, update: async () => {} });
 export function PreferencesProvider({ children }: { children: ReactNode }) {
   const system = useColorScheme();

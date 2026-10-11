@@ -36,7 +36,14 @@
       ],
       "expo-secure-store",
       ["expo-image-picker", { "cameraPermission": "Cho phép TechZone chụp selfie minh chứng chấm công.", "microphonePermission": false, "photosPermission": false }],
-      ["expo-location", { "locationWhenInUsePermission": "Cho phép TechZone lấy vị trí khi bạn gửi chấm công." }]
+      ["expo-location", { "locationWhenInUsePermission": "Cho phép TechZone lấy vị trí khi bạn gửi chấm công." }],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#208AEF"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
