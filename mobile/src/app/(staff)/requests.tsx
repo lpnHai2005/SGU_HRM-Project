@@ -13,6 +13,7 @@ import { Button, Card, Input, Label, styles, usePalette } from '@/components/att
 import { LoadingBar } from '@/components/loading-bar';
 import { EyeIcon } from '@/components/eye-icon';
 import { useSession } from '@/contexts/session';
+import { useNotifications } from '@/contexts/notifications';
 import { ApiError, request } from '@/services/attendance';
 import type { Profile } from '@/services/staff';
 import { storeLabel } from '@/services/presentation';
@@ -244,9 +245,7 @@ export default function RequestsScreen() {
   const [rejectionReasonInput, setRejectionReasonInput] = useState('');
 
   // 8. Notifications & Alerts State
-  const [notifications, setNotifications] = useState<LeaveStatusNotification[]>([]);
-  const [activeBanner, setActiveBanner] = useState<LeaveStatusNotification | null>(null);
-  const [showNotificationCenter, setShowNotificationCenter] = useState(false);
+  const { unreadCount, setCenterOpen, dispatchNotification } = useNotifications();
   const previousStatusMap = useRef<Record<number, string>>({});
   const isFirstLoad = useRef(true);
   const lock = useRef(false);
@@ -347,8 +346,15 @@ export default function RequestsScreen() {
         });
 
         if (newNotifs.length > 0 && !isFirstLoad.current) {
-          setNotifications(prev => [...newNotifs, ...prev]);
-          setActiveBanner(newNotifs[0]);
+          newNotifs.forEach(notifItem => {
+            void dispatchNotification({
+              type: 'leave_status',
+              title: 'Cập nhật đơn nghỉ phép',
+              body: notifItem.message,
+              actionUrl: '/(staff)/requests',
+              data: { requestId: notifItem.requestId, status: notifItem.newStatus },
+            });
+          });
         }
         isFirstLoad.current = false;
       }
@@ -364,7 +370,7 @@ export default function RequestsScreen() {
     } finally {
       setLoading(false);
     }
-  }, [token, profile, selectedTypeId, isManager, signOut]);
+  }, [token, profile, selectedTypeId, isManager, signOut, dispatchNotification]);
 
   useFocusEffect(useCallback(() => { void loadProfile(); }, [loadProfile]));
 
@@ -531,19 +537,13 @@ export default function RequestsScreen() {
       setEndDate(todayStr);
       setTotalDays('1');
 
-      const newNotif: LeaveStatusNotification = {
-        id: `submit-${res.request_id}-${Date.now()}`,
-        requestId: res.request_id,
-        leaveTypeName: selectedTypeInfo?.type_name || 'Nghỉ phép',
-        startDate: isoStart,
-        endDate: isoEnd,
-        newStatus: 'PENDING',
-        message: `Đơn nghỉ phép #${res.request_id} đã được gửi thành công (Trạng thái: Chờ duyệt).`,
-        timestamp: Date.now(),
-        read: false,
-      };
-      setNotifications(prev => [newNotif, ...prev]);
-      setActiveBanner(newNotif);
+      void dispatchNotification({
+        type: 'leave_status',
+        title: 'Đã nộp đơn nghỉ phép',
+        body: `Đơn #${res.request_id} (${selectedTypeInfo?.type_name || 'Nghỉ phép'}) đã gửi, đang chờ duyệt.`,
+        actionUrl: '/(staff)/requests',
+        data: { requestId: res.request_id, status: 'PENDING' },
+      });
 
       await loadLeaveData();
     } catch (e) {
@@ -599,6 +599,13 @@ export default function RequestsScreen() {
         res = await hrApproveLeave(token, selectedRequest.request_id, actionNote);
       }
       setNotice(`✓ ${res.message || 'Phê duyệt đơn nghỉ phép thành công!'}`);
+      void dispatchNotification({
+        type: 'leave_approval',
+        title: isHrManager ? 'Hoàn tất duyệt Cấp 2' : 'Đã duyệt Cấp 1',
+        body: `Đã phê duyệt đơn #${selectedRequest.request_id} (${selectedRequest.employee_name || 'nhân viên'}).`,
+        actionUrl: '/(staff)/requests',
+        data: { requestId: selectedRequest.request_id, status: isHrManager ? 'HR_APPROVED' : 'STORE_APPROVED' },
+      });
       setModalMode(null);
       if (detailItem?.request_id === selectedRequest.request_id) {
         setDetailItem(null);
@@ -818,7 +825,7 @@ export default function RequestsScreen() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Xem thông báo trạng thái đơn"
-          onPress={() => setShowNotificationCenter(true)}
+          onPress={() => setCenterOpen(true)}
           style={{
             padding: 10,
             borderRadius: 12,
@@ -829,7 +836,7 @@ export default function RequestsScreen() {
           }}
         >
           <Text style={{ fontSize: 20 }}>🔔</Text>
-          {notifications.filter(n => !n.read).length > 0 && (
+          {unreadCount > 0 && (
             <View
               style={{
                 position: 'absolute',
@@ -837,45 +844,20 @@ export default function RequestsScreen() {
                 right: 4,
                 backgroundColor: '#dc2626',
                 borderRadius: 8,
-                width: 16,
+                minWidth: 16,
                 height: 16,
                 alignItems: 'center',
                 justifyContent: 'center',
+                paddingHorizontal: 2,
               }}
             >
               <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>
-                {notifications.filter(n => !n.read).length}
+                {unreadCount > 9 ? '9+' : unreadCount}
               </Text>
             </View>
           )}
         </Pressable>
       </View>
-
-      {/* PUSH NOTIFICATION IN-APP BANNER */}
-      {!!activeBanner && (
-        <View
-          style={{
-            backgroundColor: activeBanner.newStatus === 'HR_APPROVED' ? '#dcfce7' : activeBanner.newStatus === 'REJECTED' ? '#fee2e2' : '#fef3c7',
-            borderColor: activeBanner.newStatus === 'HR_APPROVED' ? '#86efac' : activeBanner.newStatus === 'REJECTED' ? '#fca5a5' : '#fde047',
-            borderWidth: 1,
-            borderRadius: 12,
-            padding: 14,
-            gap: 6,
-          }}
-        >
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 13, color: activeBanner.newStatus === 'HR_APPROVED' ? '#166534' : activeBanner.newStatus === 'REJECTED' ? '#991b1b' : '#854d0e' }}>
-              {activeBanner.newStatus === 'HR_APPROVED' ? '🎉 THÔNG BÁO DUYỆT ĐƠN' : activeBanner.newStatus === 'REJECTED' ? '⚠️ THÔNG BÁO TỪ CHỐI' : '🔔 CẬP NHẬT TRẠNG THÁI'}
-            </Text>
-            <Pressable onPress={() => setActiveBanner(null)} hitSlop={10}>
-              <Text style={{ color: '#6b7280', fontSize: 16, fontWeight: '700' }}>✕</Text>
-            </Pressable>
-          </View>
-          <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: activeBanner.newStatus === 'HR_APPROVED' ? '#14532d' : activeBanner.newStatus === 'REJECTED' ? '#7f1d1d' : '#713f12' }}>
-            {activeBanner.message}
-          </Text>
-        </View>
-      )}
 
       {/* MANAGER TAB SWITCHER (IF USER IS MANAGER) */}
       {isManager && (
@@ -2482,112 +2464,6 @@ export default function RequestsScreen() {
         </View>
       </Modal>
 
-      {/* ============================================================== */}
-      {/* 13. NOTIFICATION CENTER MODAL                                 */}
-      {/* ============================================================== */}
-      <Modal visible={showNotificationCenter} transparent animationType="fade" onRequestClose={() => setShowNotificationCenter(false)}>
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: 'rgba(0, 0, 0, 0.6)',
-            justifyContent: 'center',
-            alignItems: 'center',
-            padding: 16,
-          }}
-        >
-          <View
-            style={{
-              width: '100%',
-              maxWidth: 500,
-              backgroundColor: p.card,
-              borderRadius: 20,
-              maxHeight: '85%',
-              borderWidth: 1,
-              borderColor: p.line,
-              overflow: 'hidden',
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 8 },
-              shadowOpacity: 0.25,
-              shadowRadius: 16,
-              elevation: 10,
-            }}
-          >
-            <View
-              style={{
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                paddingHorizontal: 20,
-                paddingVertical: 16,
-                borderBottomWidth: 1,
-                borderBottomColor: p.line,
-              }}
-            >
-              <View style={{ flex: 1 }}>
-                <Label large>Thông báo trạng thái đơn</Label>
-                <Label muted>Cập nhật ngay khi CHT hoặc HR phê duyệt/từ chối.</Label>
-              </View>
-              <Pressable
-                onPress={() => setShowNotificationCenter(false)}
-                hitSlop={10}
-                style={{
-                  width: 30,
-                  height: 30,
-                  borderRadius: 15,
-                  backgroundColor: p.bg,
-                  borderWidth: 1,
-                  borderColor: p.line,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Text style={{ fontSize: 14, color: p.muted, fontWeight: '700' }}>✕</Text>
-              </Pressable>
-            </View>
-
-            <ScrollView contentContainerStyle={{ padding: 20, gap: 10 }}>
-              {notifications.map(notif => (
-                <View
-                  key={notif.id}
-                  style={{
-                    backgroundColor: p.bg,
-                    padding: 12,
-                    borderRadius: 10,
-                    borderWidth: 1,
-                    borderColor: p.line,
-                    gap: 4,
-                  }}
-                >
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                    <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 13, color: p.text }}>
-                      {notif.leaveTypeName}
-                    </Text>
-                    <Text style={{ fontSize: 11, color: p.muted }}>
-                      {new Date(notif.timestamp).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
-                    </Text>
-                  </View>
-                  <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.text }}>
-                    {notif.message}
-                  </Text>
-                  <Text style={{ fontSize: 11, color: p.muted }}>
-                    Kỳ nghỉ: {formatDateDMY(notif.startDate)} → {formatDateDMY(notif.endDate)}
-                  </Text>
-                </View>
-              ))}
-
-              {notifications.length === 0 && (
-                <Card>
-                  <Label>Chưa có thông báo mới. Các thay đổi trạng thái đơn sẽ xuất hiện tại đây.</Label>
-                </Card>
-              )}
-            </ScrollView>
-
-            <View style={{ padding: 16, borderTopWidth: 1, borderTopColor: p.line }}>
-              <Button title="Đóng thông báo" secondary onPress={() => setShowNotificationCenter(false)} />
-            </View>
-          </View>
-        </View>
-      </Modal>
     </ScrollView>
   );
 }

@@ -1,6 +1,6 @@
 import { AttendanceAction } from '@/components/attendance-action';
 import { AppText as Text } from '@/components/app-icon';
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { Modal, Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { router, useFocusEffect, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,6 +12,7 @@ import {
   usePalette,
   Badge,
   ProgressBar,
+  MetricBox,
 } from '@/components/attendance-ui';
 import { LoadingBar } from '@/components/loading-bar';
 import { useResource } from '@/hooks/use-resource';
@@ -20,15 +21,62 @@ import { usePreferences } from '@/contexts/preferences';
 import { shortcuts, type Profile, type Schedule } from '@/services/staff';
 import { assignedShift, shiftProgress, storeLabel } from '@/services/presentation';
 import { displayTime, vietnamPeriod, type Today } from '@/services/attendance';
+import {
+  type EmployeeSummaryData,
+  type ManagerDashboardStats,
+} from '@/services/dashboard';
+import { useNotifications } from '@/contexts/notifications';
 
 export default function Home() {
   const p = usePalette();
   const insets = useSafeAreaInsets();
   const { signOut } = useSession();
   const { prefs } = usePreferences();
+  const currentPeriod = vietnamPeriod();
   const profile = useResource<Profile>('/auth/me', 30000);
   const today = useResource<Today>('/attendances/today-status', 30000);
-  const schedules = useResource<Schedule[]>(`/mobile-attendance/my-schedules?period=${vietnamPeriod()}`, 30000);
+  const schedules = useResource<Schedule[]>(`/mobile-attendance/my-schedules?period=${currentPeriod}`, 30000);
+
+  // Role determination
+  const userRoles = profile.data?.roles || [];
+  const isStoreManager = userRoles.includes('STORE_MANAGER');
+  const isHrManager = userRoles.includes('HR_MANAGER');
+  const isAdmin = userRoles.includes('ADMIN');
+  const isManager = isStoreManager || isHrManager || isAdmin;
+
+  // Embedded Dashboard resources for Home Quick Utilities Tab
+  const [quickTab, setQuickTab] = useState<'shortcuts' | 'dashboard'>('shortcuts');
+  const summary = useResource<EmployeeSummaryData>(`/attendances/my-summary?period=${currentPeriod}`, 30000);
+  const managerStats = useResource<ManagerDashboardStats>(
+    isManager ? `/reports/dashboard-stats?period=${currentPeriod}` : null,
+    30000
+  );
+
+  const { notifications, unreadCount, setCenterOpen, dispatchNotification } = useNotifications();
+
+  // Auto-alert manager for pending leave requests requiring approval without re-pushing read/existing alerts
+  useEffect(() => {
+    if (isManager && managerStats.data?.pending_leaves && managerStats.data.pending_leaves > 0) {
+      const count = managerStats.data.pending_leaves;
+      const batchKey = `pending-leaves-batch-${count}`;
+
+      // Do NOT push if already in notification list or already read
+      const alreadyHandled = notifications.some(
+        n => n.data?.batchKey === batchKey || (n.data?.pendingCount === count && n.read)
+      );
+
+      if (!alreadyHandled) {
+        void dispatchNotification({
+          type: 'leave_approval',
+          title: 'Đơn nghỉ phép chờ duyệt',
+          body: `Có ${count} đơn nghỉ phép đang chờ bạn phê duyệt. Chạm để xem và duyệt nhanh.`,
+          actionUrl: '/(staff)/requests',
+          data: { batchKey, pendingCount: count },
+        });
+      }
+    }
+  }, [isManager, managerStats.data?.pending_leaves, notifications, dispatchNotification]);
+
   const [drawer, setDrawer] = useState(false);
   const [error, setError] = useState('');
   const [clock, setClock] = useState(Date.now);
@@ -39,7 +87,8 @@ export default function Home() {
 
   const menu: [string, string, Href][] = [
     ['👤', 'Thông tin cá nhân', '/(staff)/account'],
-    ['📊', 'Nhật ký làm việc & Hoạt động', '/(staff)/activity'],
+    ['📊', 'Báo cáo tổng hợp & KPI', '/(staff)/dashboard'],
+    ['📈', 'Nhật ký làm việc & Hoạt động', '/(staff)/activity'],
     ['📅', 'Lịch ca & Phân công', '/(staff)/schedules'],
     ['📋', 'Bảng công cá nhân', '/(staff)/summary'],
     ['📝', 'Quản lý nghỉ phép & Đơn từ', '/(staff)/requests'],
@@ -60,7 +109,7 @@ export default function Home() {
 
   return (
     <View style={{ flex: 1, backgroundColor: p.bg }}>
-      <ScrollView refreshControl={<RefreshControl refreshing={profile.loading || today.loading || schedules.loading} onRefresh={() => { profile.reload(); today.reload(); schedules.reload(); }} />} contentContainerStyle={[styles.content, { paddingTop: insets.top + 16 }]}>
+      <ScrollView refreshControl={<RefreshControl refreshing={profile.loading || today.loading || schedules.loading || summary.loading || managerStats.loading} onRefresh={() => { profile.reload(); today.reload(); schedules.reload(); summary.reload(); managerStats.reload(); }} />} contentContainerStyle={[styles.content, { paddingTop: insets.top + 16 }]}>
         {/* User Greeting & Profile Quick Header */}
         <Card low style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
@@ -126,23 +175,66 @@ export default function Home() {
             </View>
           </View>
 
-          <Pressable
-            accessibilityLabel="Cài đặt menu"
-            accessibilityRole="button"
-            onPress={() => setDrawer(true)}
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 12,
-              backgroundColor: p.card,
-              borderWidth: 1,
-              borderColor: p.line,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Text style={{ fontSize: 18, color: p.text }}>☰</Text>
-          </Pressable>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Pressable
+              accessibilityLabel="Xem thông báo"
+              accessibilityRole="button"
+              onPress={() => setCenterOpen(true)}
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 12,
+                backgroundColor: p.card,
+                borderWidth: 1,
+                borderColor: p.line,
+                alignItems: 'center',
+                justifyContent: 'center',
+                position: 'relative',
+              }}
+            >
+              <Text style={{ fontSize: 18 }}>🔔</Text>
+              {unreadCount > 0 && (
+                <View
+                  style={{
+                    position: 'absolute',
+                    top: -2,
+                    right: -2,
+                    backgroundColor: '#ef4444',
+                    minWidth: 18,
+                    height: 18,
+                    borderRadius: 9,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    paddingHorizontal: 4,
+                    borderWidth: 2,
+                    borderColor: p.card,
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </Text>
+                </View>
+              )}
+            </Pressable>
+
+            <Pressable
+              accessibilityLabel="Cài đặt menu"
+              accessibilityRole="button"
+              onPress={() => setDrawer(true)}
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 12,
+                backgroundColor: p.card,
+                borderWidth: 1,
+                borderColor: p.line,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Text style={{ fontSize: 18, color: p.text }}>☰</Text>
+            </Pressable>
+          </View>
         </Card>
 
         {/* Date line */}
@@ -368,13 +460,13 @@ export default function Home() {
           </View>
         </Card>
 
-        {/* Quick Utilities & Actions Grid (4 Core Tiles) */}
+        {/* Quick Utilities & Integrated Dashboard Tab */}
         <Card style={{ gap: 12 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <View>
-              <Label variant="subtitle">Tiện ích nhanh</Label>
-              <Text style={{ fontFamily: 'BeVietnam', fontSize: 11, color: p.muted }}>
-                Nghiệp vụ thường ngày trong ca
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+            <View style={{ flex: 1 }}>
+              <Label variant="subtitle" numberOfLines={1}>Tiện ích & Báo cáo</Label>
+              <Text numberOfLines={1} style={{ fontFamily: 'BeVietnam', fontSize: 11, color: p.muted }}>
+                Nghiệp vụ thường ngày & Báo cáo tổng hợp
               </Text>
             </View>
             <Pressable
@@ -385,17 +477,242 @@ export default function Home() {
                 paddingHorizontal: 10,
                 paddingVertical: 5,
                 borderRadius: 8,
+                flexShrink: 0,
               }}
             >
               <Text style={{ fontFamily: 'BeVietnam', fontSize: 11, color: p.text }}>Tùy biến</Text>
             </Pressable>
           </View>
 
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-            {shortcuts.filter(item => prefs.shortcuts.includes(item.key)).map(item => <Card key={item.key} onPress={() => router.push(item.href)} low style={{ flexBasis: '46%', flexGrow: 1 }}>
-              <Text style={{ fontSize: 26, color: p.brand }}>{item.icon}</Text><Label variant="bold">{item.title}</Label><Label muted variant="caption">Mở chức năng →</Label>
-            </Card>)}
+          {/* Segmented Tab Switcher */}
+          <View
+            style={{
+              flexDirection: 'row',
+              backgroundColor: p.surfaceLow,
+              borderRadius: 12,
+              padding: 3,
+              borderWidth: 1,
+              borderColor: p.line,
+            }}
+          >
+            <Pressable
+              accessibilityRole="tab"
+              accessibilityState={{ selected: quickTab === 'shortcuts' }}
+              onPress={() => setQuickTab('shortcuts')}
+              style={{
+                flex: 1,
+                paddingVertical: 7,
+                paddingHorizontal: 4,
+                borderRadius: 9,
+                backgroundColor: quickTab === 'shortcuts' ? p.brand : 'transparent',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexDirection: 'row',
+                gap: 5,
+              }}
+            >
+              <Text style={{ fontSize: 13 }}>⚡</Text>
+              <Text
+                numberOfLines={1}
+                style={{
+                  fontFamily: 'BeVietnamBold',
+                  fontSize: 12,
+                  color: quickTab === 'shortcuts' ? '#ffffff' : p.muted,
+                  fontWeight: '700',
+                }}
+              >
+                Tiện ích
+              </Text>
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="tab"
+              accessibilityState={{ selected: quickTab === 'dashboard' }}
+              onPress={() => setQuickTab('dashboard')}
+              style={{
+                flex: 1,
+                paddingVertical: 7,
+                paddingHorizontal: 4,
+                borderRadius: 9,
+                backgroundColor: quickTab === 'dashboard' ? p.brand : 'transparent',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexDirection: 'row',
+                gap: 5,
+              }}
+            >
+              <Text style={{ fontSize: 13 }}>📊</Text>
+              <Text
+                numberOfLines={1}
+                style={{
+                  fontFamily: 'BeVietnamBold',
+                  fontSize: 12,
+                  color: quickTab === 'dashboard' ? '#ffffff' : p.muted,
+                  fontWeight: '700',
+                }}
+              >
+                Báo cáo KPI
+              </Text>
+            </Pressable>
           </View>
+
+          {/* TAB 1: Shortcuts Grid */}
+          {quickTab === 'shortcuts' && (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+              {shortcuts
+                .filter(item => prefs.shortcuts.includes(item.key))
+                .map(item => (
+                  <Card
+                    key={item.key}
+                    onPress={() => router.push(item.href as Href)}
+                    low
+                    style={{ flexBasis: '46%', flexGrow: 1 }}
+                  >
+                    <Text style={{ fontSize: 26, color: p.brand }}>{item.icon}</Text>
+                    <Label variant="bold">{item.title}</Label>
+                    <Label muted variant="caption">Mở chức năng →</Label>
+                  </Card>
+                ))}
+            </View>
+          )}
+
+          {/* TAB 2: Embedded Dashboard Summary */}
+          {quickTab === 'dashboard' && (
+            <View style={{ gap: 12 }}>
+              {isManager ? (
+                // Manager Inline Summary
+                <>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+                      <Text style={{ fontSize: 13 }}>{isStoreManager ? '🏪' : '🏢'}</Text>
+                      <Text numberOfLines={1} style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: p.text, flex: 1 }}>
+                        {isStoreManager ? storeDisplay : 'Toàn chuỗi TechZone'}
+                      </Text>
+                    </View>
+                    <Badge label={`T${currentPeriod.slice(5)}/${currentPeriod.slice(0, 4)}`} size="sm" variant="brand" />
+                  </View>
+
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <MetricBox
+                      label="Tổng nhân sự"
+                      value={managerStats.data?.active_employees ?? '—'}
+                      subtext="Biên chế"
+                      icon="👥"
+                      variant="brand"
+                    />
+                    <MetricBox
+                      label="Đang làm hôm nay"
+                      value={managerStats.data?.attendance_today?.checked_in ?? '—'}
+                      subtext={
+                        managerStats.data?.active_employees
+                          ? `Tỷ lệ ${Math.round(
+                              ((managerStats.data.attendance_today.checked_in || 0) /
+                                managerStats.data.active_employees) *
+                                100
+                            )}%`
+                          : undefined
+                      }
+                      icon="🟢"
+                      variant="success"
+                    />
+                  </View>
+
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <MetricBox
+                      label="Đi muộn hôm nay"
+                      value={`${managerStats.data?.attendance_today?.late ?? 0} người`}
+                      subtext="Trong ngày"
+                      icon="⏱️"
+                      variant={managerStats.data?.attendance_today?.late ? 'warning' : 'neutral'}
+                    />
+                    <MetricBox
+                      label="Đơn chờ duyệt"
+                      value={`${managerStats.data?.pending_leaves ?? 0} đơn`}
+                      subtext="Cần xử lý"
+                      icon="📝"
+                      variant={managerStats.data?.pending_leaves ? 'warning' : 'neutral'}
+                    />
+                  </View>
+
+                  <Button
+                    title="Mở Dashboard quản lý toàn chuỗi →"
+                    variant="brand"
+                    onPress={() => router.push('/(staff)/dashboard')}
+                  />
+                </>
+              ) : (
+                // Employee Inline Summary
+                <>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                    <Text numberOfLines={1} style={{ fontFamily: 'BeVietnamBold', fontSize: 13, color: p.text, flex: 1 }}>
+                      Tiến độ Tháng {currentPeriod.slice(5)}/{currentPeriod.slice(0, 4)}
+                    </Text>
+                    {summary.data && (
+                      <Badge
+                        label={`${Math.min(100, Math.round((summary.data.working_days.actual_days / (summary.data.working_days.standard_days || 26)) * 100))}% công`}
+                        size="sm"
+                        variant="brand"
+                      />
+                    )}
+                  </View>
+
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <Card low style={{ flex: 1, gap: 4, padding: 12 }}>
+                      <Text style={{ fontFamily: 'BeVietnam', fontSize: 11, color: p.muted }}>Tổng ngày công</Text>
+                      <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 17, color: p.brandText }}>
+                        {summary.data?.working_days.actual_days ?? 0} / {summary.data?.working_days.standard_days ?? 26}
+                      </Text>
+                      <ProgressBar
+                        progress={
+                          summary.data
+                            ? (summary.data.working_days.actual_days /
+                                (summary.data.working_days.standard_days || 26)) *
+                              100
+                            : 0
+                        }
+                        color={p.brand}
+                      />
+                    </Card>
+
+                    <MetricBox
+                      label="Tổng giờ làm"
+                      value={`${summary.data?.working_days.total_hours ?? 0}h`}
+                      subtext="Tích lũy tháng"
+                      icon="⏱️"
+                      variant="brand"
+                    />
+                  </View>
+
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <MetricBox
+                      label="Đi muộn"
+                      value={`${summary.data?.late_arrivals.count ?? 0} lần`}
+                      subtext={
+                        summary.data?.late_arrivals.minutes
+                          ? `${summary.data.late_arrivals.minutes} phút`
+                          : 'Đúng giờ'
+                      }
+                      icon="⚠️"
+                      variant={summary.data?.late_arrivals.count ? 'warning' : 'neutral'}
+                    />
+                    <MetricBox
+                      label="Đã nghỉ phép"
+                      value={`${summary.data?.leave_quota.used_leave ?? 0} ngày`}
+                      subtext={`Còn ${summary.data?.leave_quota.remaining_leave ?? 0} ngày phép`}
+                      icon="🏖️"
+                      variant="success"
+                    />
+                  </View>
+
+                  <Button
+                    title="Xem biểu đồ & phân tích chi tiết →"
+                    variant="brand"
+                    onPress={() => router.push('/(staff)/dashboard')}
+                  />
+                </>
+              )}
+            </View>
+          )}
         </Card>
 
         {/* Security Mini Banner */}
@@ -441,6 +758,32 @@ export default function Home() {
             </View>
 
             <View style={{ gap: 4 }}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  setDrawer(false);
+                  setCenterOpen(true);
+                }}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 12,
+                  paddingVertical: 12,
+                  paddingHorizontal: 8,
+                  borderRadius: 10,
+                }}
+              >
+                <Text style={{ fontSize: 18 }}>🔔</Text>
+                <Text style={{ fontFamily: 'BeVietnam', fontSize: 14, color: p.text, flex: 1 }}>
+                  Trung tâm thông báo
+                </Text>
+                {unreadCount > 0 ? (
+                  <Badge label={`${unreadCount}`} variant="danger" size="sm" />
+                ) : (
+                  <Text style={{ color: p.muted, fontSize: 14 }}>›</Text>
+                )}
+              </Pressable>
+
               {menu.map(([icon, title, href]) => (
                 <Pressable
                   key={title}

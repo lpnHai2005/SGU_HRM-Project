@@ -90,6 +90,7 @@ export default function StaffTabs() {
           tabBarIcon: icon('👤'),
         }}
       />
+      <Tabs.Screen name="dashboard" options={{ title: 'Báo cáo KPI', headerTitle: 'Báo cáo tổng hợp & KPI', href: null }} />
       <Tabs.Screen name="activity" options={{ title: 'Nhật ký làm việc', href: null }} />
       <Tabs.Screen name="summary" options={{ title: 'Bảng công tháng', href: null }} />
       <Tabs.Screen name="settings" options={{ title: 'Cấu hình', href: null }} />
