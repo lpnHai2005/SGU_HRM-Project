@@ -1,3 +1,4 @@
+import { toast } from 'sonner'
 import { useState, useEffect, useMemo } from 'react'
 import { Icons } from '../components/common/Icons'
 import { StatCard } from '../components/common/StatCard'
@@ -5,6 +6,7 @@ import { EmptyState } from '../components/common/EmptyState'
 import { formatCurrency, formatDate, formatTime, getInitials } from '../utils/formatters'
 import type { Attendance, LeaveBalance, Payroll, LeaveRequest, Employee, TodayAttendanceStatus } from '../types'
 import { attendanceApi } from '../services/api'
+import { assignedShift } from '../services/assignedShift'
 
 export interface AttendanceHeroProps {
   attendance: Attendance | null
@@ -23,6 +25,8 @@ export function AttendanceHero({
   const [session, setSession] = useState<TodayAttendanceStatus | null>(null)
   const [remaining, setRemaining] = useState(0)
   const [statusError, setStatusError] = useState(false)
+  const [assigned,setAssigned]=useState<Awaited<ReturnType<typeof assignedShift>>>(null)
+  useEffect(()=>{let active=true;assignedShift().then(v=>{if(active)setAssigned(v)}).catch(()=>{if(active)setAssigned(null)});return()=>{active=false}},[isLoading])
   useEffect(() => {
     let active = true
     let deadline = 0
@@ -47,8 +51,8 @@ export function AttendanceHero({
   const status = todayAttendance?.check_in_time
     ? todayAttendance.check_out_time
       ? { text: 'Đã hoàn thành', class: 'checked-out' }
-      : { text: 'Đang làm việc', class: 'checked-in' }
-    : { text: 'Chưa check-in', class: 'not-checked' }
+      : { text: 'ĐÃ VÀO CA', class: 'checked-in' }
+    : { text: 'CHƯA VÀO CA', class: 'not-checked' }
 
   return (
     <div className="attendance-hero">
@@ -81,12 +85,12 @@ export function AttendanceHero({
         <div className="attendance-time-item">
           <div className="attendance-time-label">Ca làm việc</div>
           <div className="attendance-time-value" style={{ fontSize: '18px' }}>
-            {todayAttendance?.shift_name || 'Chưa phân ca'}
+            {session?.check_in_time && !session?.check_out_time ? todayAttendance?.shift_name : assigned?.shift_name || todayAttendance?.shift_name || 'Chưa phân ca'}
           </div>
           <div className="attendance-time-sublabel">
-            {todayAttendance?.actual_work_hours != null
-              ? `${todayAttendance.actual_work_hours}h làm việc`
-              : todayAttendance?.shift_id ? '8 tiếng' : 'Chưa có lịch'}
+            {session?.check_in_time && !session?.check_out_time && (session as any).attendance_context?.actual
+              ? `${(session as any).attendance_context.actual.start_time.slice(0,5)} – ${(session as any).attendance_context.actual.end_time.slice(0,5)}`
+              : assigned ? `${assigned.start_time.slice(0,5)} – ${assigned.end_time.slice(0,5)}` : 'Chưa có lịch'}
           </div>
         </div>
       </div>
@@ -95,7 +99,7 @@ export function AttendanceHero({
         <button
           className="check-btn check-in"
           onClick={onCheckIn}
-          disabled={!session || statusError || session.can_check_out || remaining > 0 || isLoading}
+          disabled={!session || !assigned || statusError || session.can_check_out || remaining > 0 || isLoading}
         >
           {Icons.zap}
           {remaining > 0 ? `Check-in sau ${remaining}s` : 'Check-in'}
@@ -109,6 +113,8 @@ export function AttendanceHero({
           Check-out
         </button>
       </div>
+      <p>{assigned?.store_name || 'Chưa có cửa hàng trong lịch phân công'}</p>
+      <p className="attendance-time-sublabel">Để đảm bảo kết nối ổn định khi chấm công, hãy kết nối với Wi-Fi công ty.</p>
       {statusError && <p role="status">Không tải được trạng thái chấm công. Hệ thống sẽ thử lại.</p>}
     </div>
   )
@@ -319,7 +325,7 @@ export function DashboardPage({
           <h1 className="page-title">Tổng quan Vận hành</h1>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
-          <button className="btn btn-secondary btn-sm" onClick={() => alert('Đang lọc toàn bộ hệ thống TechZone')}>
+          <button className="btn btn-secondary btn-sm" onClick={() => toast('Đang lọc toàn bộ hệ thống TechZone')}>
             {Icons.filter} Bộ lọc
           </button>
           <button className="btn btn-primary btn-sm" onClick={onCheckIn}>

@@ -6,7 +6,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
-import { AppText as Text } from '@/components/app-icon';
+import { AppIcon, AppText as Text } from '@/components/app-icon';
 import {
   Card,
   Label,
@@ -27,6 +27,7 @@ import {
   fetchEmployeeSummary,
   fetchEmployeeHistory,
   fetchDashboardStats,
+  fetchDashboardKpis,
   fetchLeaveSummaryStats,
   fetchPayrollFundSummary,
   formatVND,
@@ -34,6 +35,7 @@ import {
   type EmployeeSummaryData,
   type AttendanceHistoryRecord,
   type ManagerDashboardStats,
+  type ManagerDashboardKpis,
   type LeaveSummaryStats,
   type PayrollFundResponse,
 } from '@/services/dashboard';
@@ -67,7 +69,9 @@ export default function DashboardScreen() {
   const [employeeHistory, setEmployeeHistory] = useState<AttendanceHistoryRecord[]>([]);
 
   // Manager data state
-  const [managerStats, setManagerStats] = useState<ManagerDashboardStats | null>(null);
+  const [managerStats, setManagerStats] = useState<ManagerDashboardKpis | null>(null);
+  const [financeStats, setFinanceStats] = useState<ManagerDashboardStats | null>(null);
+  const [financeError, setFinanceError] = useState('');
   const [leaveStats, setLeaveStats] = useState<LeaveSummaryStats | null>(null);
   const [payrollFund, setPayrollFund] = useState<PayrollFundResponse | null>(null);
 
@@ -76,40 +80,45 @@ export default function DashboardScreen() {
 
   // Main data loader
   const loadData = useCallback(async () => {
-    if (!token) return;
+    if (!token || !profile.data) return;
     setLoading(true);
     setError('');
 
     try {
-      const promises: Promise<unknown>[] = [];
-
-      // Always load personal employee summary
-      promises.push(
-        fetchEmployeeSummary(period, token).then(setEmployeeSummary).catch(() => null),
-        fetchEmployeeHistory(period, token).then(setEmployeeHistory).catch(() => [])
-      );
-
-      // If manager, also load executive datasets
-      if (isManager) {
-        promises.push(
-          fetchDashboardStats(period, token).then(setManagerStats).catch(() => null),
-          fetchLeaveSummaryStats(token).then(setLeaveStats).catch(() => null)
+      const loads: { name: string; task: Promise<unknown> }[] = [];
+      if (!isManager || viewMode === 'personal') {
+        loads.push(
+          { name: 'Bảng công cá nhân', task: fetchEmployeeSummary(period, token).then(setEmployeeSummary).catch(error => { setEmployeeSummary(null); throw error; }) },
+          { name: 'Lịch sử chấm công', task: fetchEmployeeHistory(period, token).then(setEmployeeHistory).catch(error => { setEmployeeHistory([]); throw error; }) }
         );
-
+      }
+      if (isManager && viewMode === 'manager') {
+        loads.push(
+          { name: 'Bốn chỉ số Dashboard', task: fetchDashboardKpis(token).then(setManagerStats).catch(error => { setManagerStats(null); throw error; }) },
+          { name: 'Thống kê đơn từ', task: fetchLeaveSummaryStats(token).then(setLeaveStats).catch(error => { setLeaveStats(null); throw error; }) }
+        );
+        loads.push({ name: 'Quỹ lương & doanh số', task: fetchDashboardStats(period, token)
+          .then(data => { setFinanceStats(data); setFinanceError(''); })
+          .catch(cause => {
+            setFinanceStats(null);
+            setFinanceError(cause instanceof Error ? cause.message : 'Không tải được quỹ lương và doanh số.');
+          }) });
         if (isAdmin || isHrManager) {
-          promises.push(
-            fetchPayrollFundSummary(period, token).then(setPayrollFund).catch(() => null)
-          );
+          loads.push({ name: 'Quỹ lương', task: fetchPayrollFundSummary(period, token).then(setPayrollFund).catch(error => { setPayrollFund(null); throw error; }) });
         }
       }
 
-      await Promise.all(promises);
+      const results = await Promise.allSettled(loads.map(load => load.task));
+      const failures = results.flatMap((result, index) => result.status === 'rejected'
+        ? [`${loads[index].name}: ${result.reason instanceof Error ? result.reason.message : 'Không tải được dữ liệu.'}`]
+        : []);
+      if (failures.length) setError(failures.join('\n'));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Không tải được số liệu báo cáo.');
     } finally {
       setLoading(false);
     }
-  }, [token, period, isManager, isAdmin, isHrManager]);
+  }, [token, profile.data, period, isManager, isAdmin, isHrManager, viewMode]);
 
   useFocusEffect(
     useCallback(() => {
@@ -137,9 +146,9 @@ export default function DashboardScreen() {
   const checkedIn = managerStats?.attendance_today?.checked_in || 0;
   const lateToday = managerStats?.attendance_today?.late || 0;
   const attendanceRate = activeEmp > 0 ? Math.round((checkedIn / activeEmp) * 100) : 0;
-  const pendingLeaves = isStoreManager
-    ? leaveStats?.pending_store_approval || managerStats?.pending_leaves || 0
-    : leaveStats?.pending_hr_approval || managerStats?.pending_leaves || 0;
+  const pendingLeaves = managerStats?.pending_leaves ?? (isStoreManager
+    ? leaveStats?.pending_store_approval
+    : leaveStats ? leaveStats.pending_store_approval + leaveStats.pending_hr_approval : undefined) ?? 0;
 
   const storeDisplay = storeLabel(profile.data?.store_name);
 
@@ -195,7 +204,7 @@ export default function DashboardScreen() {
               gap: 6,
             }}
           >
-            <Text style={{ fontSize: 14 }}>👔</Text>
+            <Text style={{ fontSize: 14 }}><AppIcon name="briefcase-outline" size={14} /></Text>
             <Text
               style={{
                 fontFamily: 'BeVietnamBold',
@@ -223,7 +232,7 @@ export default function DashboardScreen() {
               gap: 6,
             }}
           >
-            <Text style={{ fontSize: 14 }}>👤</Text>
+            <AppIcon name="person-outline" style={{ fontSize: 14 }} />
             <Text
               style={{
                 fontFamily: 'BeVietnamBold',
@@ -281,12 +290,12 @@ export default function DashboardScreen() {
 
       <LoadingBar active={loading} label="Đang đối soát số liệu báo cáo từ máy chủ…" />
 
-      {!!error && (
+      {!!(error || profile.error) && (
         <Card style={{ backgroundColor: p.dangerBg, borderColor: p.danger }}>
           <Text style={{ color: p.dangerText, fontFamily: 'BeVietnam', fontSize: 13 }}>
-            ⚠️ {error}
+            <AppIcon name="warning-outline" size={14} /> {error || profile.error}
           </Text>
-          <Button title="Tải lại số liệu" secondary onPress={loadData} />
+          <Button title="Tải lại số liệu" secondary onPress={() => { profile.reload(); void loadData(); }} />
         </Card>
       )}
 
@@ -299,7 +308,7 @@ export default function DashboardScreen() {
           <Card low style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <View style={{ gap: 2, flex: 1 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Text style={{ fontSize: 14 }}>{isStoreManager ? '🏪' : '🏢'}</Text>
+                <AppIcon name={isStoreManager ? 'storefront-outline' : 'business-outline'} style={{ fontSize: 14 }} />
                 <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 14, color: p.text }}>
                   {isStoreManager ? `Chi nhánh: ${storeDisplay}` : 'Phạm vi: Toàn chuỗi TechZone'}
                 </Text>
@@ -312,10 +321,10 @@ export default function DashboardScreen() {
           </Card>
 
           {/* Quick Problem Detector / Action Items Banner */}
-          {(pendingLeaves > 0 || lateToday > 0) && (
+          {pendingLeaves > 0 && (
             <Card style={{ backgroundColor: p.amberBg, borderColor: p.amber, gap: 8 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Text style={{ fontSize: 16 }}>⚠️</Text>
+                <AppIcon name="warning-outline" style={{ fontSize: 16 }} />
                 <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 13, color: p.amberText }}>
                   Vấn đề cần lưu ý trong ngày
                 </Text>
@@ -353,11 +362,6 @@ export default function DashboardScreen() {
                   </Pressable>
                 </View>
               )}
-              {lateToday > 0 && (
-                <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.amberText }}>
-                  • Có {lateToday} lượt nhân viên ghi nhận đi muộn trong các ca hôm nay
-                </Text>
-              )}
             </Card>
           )}
 
@@ -365,16 +369,18 @@ export default function DashboardScreen() {
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <MetricBox
               label="Tổng nhân sự"
-              value={activeEmp}
+              onPress={() => router.push('/(staff)/activity?kind=all')}
+              value={managerStats ? activeEmp : '—'}
               subtext="Đang hoạt động"
-              icon="👥"
+              icon="people-outline"
               variant="brand"
             />
             <MetricBox
               label="Đang làm hôm nay"
-              value={checkedIn}
+              onPress={() => router.push('/(staff)/activity?kind=working')}
+              value={managerStats?.attendance_today?.working ?? '—'}
               subtext={`Tỷ lệ ${attendanceRate}%`}
-              icon="🟢"
+              icon="radio-button-on"
               variant={attendanceRate >= 80 ? 'success' : 'warning'}
             />
           </View>
@@ -382,16 +388,18 @@ export default function DashboardScreen() {
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <MetricBox
               label="Đi muộn hôm nay"
-              value={`${lateToday} người`}
+              onPress={() => router.push('/(staff)/activity?kind=late')}
+              value={managerStats ? `${lateToday} người` : '—'}
               subtext="Ghi nhận trong ngày"
-              icon="⏱️"
+              icon="time-outline"
               variant={lateToday > 0 ? 'warning' : 'neutral'}
             />
             <MetricBox
               label="Đơn chờ duyệt"
-              value={`${pendingLeaves} đơn`}
+              onPress={() => router.push('/(staff)/requests')}
+              value={managerStats || leaveStats ? `${pendingLeaves} đơn` : '—'}
               subtext="Cần xem xét"
-              icon="📝"
+              icon="document-text-outline"
               variant={pendingLeaves > 0 ? 'warning' : 'neutral'}
             />
           </View>
@@ -411,7 +419,7 @@ export default function DashboardScreen() {
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                   <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.muted }}>Đang làm việc:</Text>
                   <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: p.emeraldText }}>
-                    {checkedIn} nhân sự
+                    {managerStats?.attendance_today?.working ?? '—'} nhân sự
                   </Text>
                 </View>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
@@ -431,7 +439,7 @@ export default function DashboardScreen() {
           </Card>
 
           {/* Payroll Fund & Revenue Cards (For HR/Admin or Store Mgr) */}
-          {managerStats && (
+          {financeStats ? (
             <Card style={{ gap: 12 }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                 <View style={{ flex: 1 }}>
@@ -446,21 +454,21 @@ export default function DashboardScreen() {
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 <MetricBox
                   label="Quỹ lương Net"
-                  value={formatVND(managerStats.monthly_net_payroll_fund)}
+                  value={formatVND(financeStats.monthly_net_payroll_fund)}
                   subtext="Thực chi nhân viên"
-                  icon="💰"
+                  icon="wallet-outline"
                   variant="brand"
                 />
                 <MetricBox
                   label="Quỹ Gross dự tính"
-                  value={formatVND(managerStats.monthly_gross_payroll_fund)}
+                  value={formatVND(financeStats.monthly_gross_payroll_fund)}
                   subtext="Trước khấu trừ"
-                  icon="📊"
+                  icon="bar-chart-outline"
                   variant="neutral"
                 />
               </View>
 
-              {managerStats.total_retail_revenue > 0 && (
+              {financeStats.total_retail_revenue > 0 && (
                 <View
                   style={{
                     backgroundColor: p.surfaceLow,
@@ -479,13 +487,17 @@ export default function DashboardScreen() {
                       Tổng doanh số bán lẻ trong kỳ:
                     </Text>
                     <Text numberOfLines={1} style={{ fontFamily: 'BeVietnamBold', fontSize: 16, color: p.emeraldText }}>
-                      {formatVND(managerStats.total_retail_revenue)}
+                      {formatVND(financeStats.total_retail_revenue)}
                     </Text>
                   </View>
-                  <Text style={{ fontSize: 24 }}>📈</Text>
+                  <AppIcon name="analytics-outline" style={{ fontSize: 24 }} />
                 </View>
               )}
             </Card>
+          ) : !!financeError && (
+            <Card low><Text style={{ color: p.muted, fontFamily: 'BeVietnam', fontSize: 12 }}>
+              Quỹ lương & doanh số chưa tải được: {financeError}
+            </Text></Card>
           )}
 
           {/* Unit Comparison Chart (For Admin / HR Manager) */}
@@ -549,7 +561,7 @@ export default function DashboardScreen() {
             <Card style={{ flex: 1, gap: 6 }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.muted }}>Tổng ngày công</Text>
-                <Text style={{ fontSize: 16 }}>💼</Text>
+                <AppIcon name="briefcase-outline" style={{ fontSize: 16 }} />
               </View>
               <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 19, color: p.brandText, fontWeight: '700' }}>
                 {actualDays} / {standardDays}
@@ -567,7 +579,7 @@ export default function DashboardScreen() {
               label="Tổng giờ làm"
               value={`${totalHours}h`}
               subtext={`TB ${(actualDays > 0 ? totalHours / actualDays : 0).toFixed(1)}h / ngày công`}
-              icon="⏱️"
+              icon="time-outline"
               variant="brand"
             />
           </View>
@@ -578,7 +590,7 @@ export default function DashboardScreen() {
               label="Đi muộn"
               value={`${lateCount} lần`}
               subtext={lateCount > 0 ? `Tổng ${lateMinutes} phút` : 'Đúng giờ 100%'}
-              icon="⚠️"
+              icon="warning-outline"
               variant={lateCount > 0 ? 'warning' : 'neutral'}
             />
 
@@ -587,7 +599,7 @@ export default function DashboardScreen() {
               label="Nghỉ phép"
               value={`${usedLeave} ngày`}
               subtext={`Còn ${remainingLeave}/${annualLeave} ngày phép`}
-              icon="🏖️"
+              icon="sunny-outline"
               variant="success"
             />
           </View>
@@ -598,14 +610,14 @@ export default function DashboardScreen() {
               label="Làm thêm (OT)"
               value={`+${otHours}h`}
               subtext={`${otShifts} ca tăng ca`}
-              icon="⚡"
+              icon="flash-outline"
               variant="brand"
             />
             <MetricBox
               label="Về sớm quy chuẩn"
               value={`${earlyCount} lần`}
               subtext={`Tổng ${earlyMinutes} phút`}
-              icon="🚪"
+              icon="log-out-outline"
               variant={earlyCount > 0 ? 'warning' : 'neutral'}
             />
           </View>

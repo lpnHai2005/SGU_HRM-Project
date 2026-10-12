@@ -1,13 +1,16 @@
+from app.api.v1.endpoints import stores
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from app.core.database import get_db
 from app.api.v1.endpoints import (
     auth, users, roles, audit_logs,
-    employees, attendances, leaves, payrolls, reports, ai_copilot, mobile_attendance, work_schedules, fixed_schedules
+    employees, attendances, leaves, payrolls, reports, ai_copilot, mobile_attendance, work_schedules, fixed_schedules, operations
 )
 
 api_router = APIRouter()
+api_router.include_router(stores.router, prefix='/stores', tags=['Stores'])
+api_router.include_router(operations.router, prefix="/operations", tags=["Operations"])
 api_router.include_router(fixed_schedules.router, prefix="/fixed-schedules", tags=["Work Schedule"])
 api_router.include_router(work_schedules.router, prefix="/work-schedules", tags=["Work Schedule"])
 api_router.include_router(mobile_attendance.router, prefix="/mobile-attendance", tags=["Mobile Attendance"])

@@ -5,6 +5,13 @@ import { EmptyState } from '../components/common/EmptyState'
 import { formatCurrency, formatDate } from '../utils/formatters'
 import type { Payroll } from '../types'
 import { payrollApi } from '../services/api'
+import './PayslipPrint.css'
+import { PayrollOvertimePanel } from './PayrollOvertimePanel'
+import { PayrollAdjustmentDialog } from './PayrollAdjustmentDialog'
+import { PayrollRegulationDialog } from './PayrollRegulationDialog'
+import { PayrollReopenDialog } from './PayrollReopenDialog'
+import { PayrollUnconfirmDialog } from './PayrollUnconfirmDialog'
+import { toast } from 'sonner'
 
 export interface PayrollPageProps {
   user: any
@@ -12,6 +19,8 @@ export interface PayrollPageProps {
 
 function getStatusBadgeClass(status?: string): string {
   switch (status) {
+    case 'NEEDS_RECALCULATION':
+      return 'badge-needs-recalculation'
     case 'PAID':
       return 'badge-paid'
     case 'CONFIRMED':
@@ -24,6 +33,8 @@ function getStatusBadgeClass(status?: string): string {
 
 function getStatusLabel(status?: string): string {
   switch (status) {
+    case 'NEEDS_RECALCULATION':
+      return 'Cần tính lại'
     case 'PAID':
       return 'Đã chi trả'
     case 'CONFIRMED':
@@ -44,15 +55,19 @@ export function PayrollPage({ user }: PayrollPageProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
   const [feedbackMessage, setFeedbackMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [confirmation,setConfirmation]=useState<{message:string;action:()=>Promise<void>}|null>(null)
 
   // 2 Balanced Tabs: 'monthly' (Theo Tháng) vs 'annual' (Theo Năm)
   const [activeTab, setActiveTab] = useState<'monthly' | 'annual'>('monthly')
   const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'all' | 'DRAFT' | 'CONFIRMED' | 'PAID'>('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'DRAFT' | 'NEEDS_RECALCULATION' | 'CONFIRMED' | 'PAID'>('all')
 
   // Selected item for details & print
   const [selectedPayroll, setSelectedPayroll] = useState<Payroll | null>(null)
-  const [selectedAnnualEmployeeId, setSelectedAnnualEmployeeId] = useState<number>(() => user?.employee_id || 4)
+  const [adjustmentPayroll, setAdjustmentPayroll] = useState<Payroll | null>(null)
+  const [reopenDialogOpen, setReopenDialogOpen] = useState(false)
+  const [unconfirmPayroll, setUnconfirmPayroll] = useState<Payroll | null>(null)
+  const [selectedAnnualEmployeeId, setSelectedAnnualEmployeeId] = useState<number>(() => user?.employee_id || 0)
   const [annualData, setAnnualData] = useState<any>(null)
   const [annualLoading, setAnnualLoading] = useState(false)
 
@@ -111,14 +126,15 @@ export function PayrollPage({ user }: PayrollPageProps) {
 
   useEffect(() => {
     if (activeTab === 'annual') {
-      const targetEmpId = selectedAnnualEmployeeId || selectedPayroll?.employee_id || user?.employee_id || 4
-      fetchAnnualSummary(targetEmpId, selectedYear)
+      const targetEmpId = selectedAnnualEmployeeId || selectedPayroll?.employee_id || user?.employee_id
+      if (targetEmpId) fetchAnnualSummary(targetEmpId, selectedYear)
     }
   }, [activeTab, selectedAnnualEmployeeId, selectedPayroll?.employee_id, user?.employee_id, selectedYear, fetchAnnualSummary])
 
   // Handle auto-clear feedback message
   useEffect(() => {
     if (feedbackMessage) {
+      toast[feedbackMessage.type](feedbackMessage.text)
       const timer = setTimeout(() => setFeedbackMessage(null), 5000)
       return () => clearTimeout(timer)
     }
@@ -126,9 +142,6 @@ export function PayrollPage({ user }: PayrollPageProps) {
 
   // 1. RUN PAYROLL (Chốt công và tự động tính bảng lương)
   const handleRunPayroll = async () => {
-    if (!window.confirm(`Xác nhận chốt công và tự động tính toán toàn bộ bảng lương cho kỳ ${selectedPeriod}?`)) {
-      return
-    }
     setActionLoading(true)
     try {
       const res = await payrollApi.calculate(selectedPeriod)
@@ -146,9 +159,6 @@ export function PayrollPage({ user }: PayrollPageProps) {
 
   // 2. CONFIRM ALL (Duyệt chốt toàn bộ bảng lương trong kỳ)
   const handleConfirmAll = async () => {
-    if (!window.confirm(`Xác nhận DUYỆT CHÍNH THỨC toàn bộ bảng lương kỳ ${selectedPeriod} (DRAFT -> CONFIRMED)?`)) {
-      return
-    }
     setActionLoading(true)
     try {
       const res = await payrollApi.confirmAll(selectedPeriod)
@@ -166,9 +176,6 @@ export function PayrollPage({ user }: PayrollPageProps) {
 
   // 3. PAY ALL (Xác nhận chi trả toàn bộ bảng lương)
   const handlePayAll = async () => {
-    if (!window.confirm(`Xác nhận đã hoàn tất CHI TRẢ CHUYỂN KHOẢN cho toàn bộ nhân sự kỳ ${selectedPeriod}?`)) {
-      return
-    }
     setActionLoading(true)
     try {
       const res = await payrollApi.payAll(selectedPeriod)
@@ -201,83 +208,58 @@ export function PayrollPage({ user }: PayrollPageProps) {
     }
   }
 
+  const handleSaveAdjustment = async (addition:number,deduction:number,reason:string) => {
+    if(!adjustmentPayroll)return
+    setActionLoading(true)
+    try {
+      await payrollApi.adjustDraft(adjustmentPayroll.payroll_id,addition,deduction,reason)
+      setAdjustmentPayroll(null)
+      setFeedbackMessage({type:'success',text:'Đã lưu điều chỉnh lương nháp, lý do đã được ghi audit.'})
+      await fetchPayrolls()
+    } catch(err:any) {
+      setFeedbackMessage({type:'error',text:`Không thể lưu điều chỉnh: ${err.message}`})
+    } finally { setActionLoading(false) }
+  }
+
+  const handleReopenPeriod = async (reason:string) => {
+    setActionLoading(true)
+    try {
+      const result=await payrollApi.reopenPeriod(selectedPeriod,reason)
+      setReopenDialogOpen(false)
+      setFeedbackMessage({type:'success',text:result.message})
+      await fetchPayrolls()
+    } catch(err:any) {
+      setFeedbackMessage({type:'error',text:`Không thể mở lại kỳ lương: ${err.message}`})
+    } finally { setActionLoading(false) }
+  }
+
+  const handleUnconfirmPayroll = async (reason:string) => {
+    if (!unconfirmPayroll) return
+    setActionLoading(true)
+    try {
+      const result = await payrollApi.unconfirm(unconfirmPayroll.payroll_id, reason)
+      setUnconfirmPayroll(null)
+      setFeedbackMessage({ type: 'success', text: result.message })
+      await fetchPayrolls()
+    } catch (err: any) {
+      setFeedbackMessage({ type: 'error', text: `Không thể hoàn tác duyệt phiếu: ${err.message}` })
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
   // 5. Open Printable Monthly Payslip (Popup Overlay)
   const handleOpenMonthlyPrint = async (payroll: Payroll) => {
+    if (!['CONFIRMED', 'PAID'].includes(payroll.payment_status || '')) {
+      setFeedbackMessage({ type: 'error', text: 'Chỉ in phiếu lương sau khi đã duyệt.' })
+      return
+    }
     setSelectedPayroll(payroll)
     setActionLoading(true)
     try {
       const printData = await payrollApi.getPayslip(payroll.payroll_id)
 
-      // Merge robustly with the selected payroll record to guarantee 100% accuracy
-      const att = {
-        standard_working_days: printData.attendance?.standard_working_days ?? printData.attendance_summary?.standard_working_days ?? payroll.standard_working_days ?? 26,
-        actual_working_days: printData.attendance?.actual_working_days ?? printData.attendance_summary?.actual_working_days ?? payroll.actual_working_days ?? 26,
-        paid_leave_days: printData.attendance?.paid_leave_days ?? printData.attendance_summary?.paid_leave_days ?? payroll.paid_leave_days ?? 0,
-        unpaid_leave_days: printData.attendance?.unpaid_leave_days ?? printData.attendance_summary?.unpaid_leave_days ?? payroll.unpaid_leave_days ?? 0,
-        unworked_hours: printData.attendance?.unworked_hours ?? printData.attendance_summary?.unworked_hours ?? payroll.unworked_hours ?? 0,
-      }
-
-      // Ensure earnings have items
-      let earningsList = printData.earnings || []
-      if (earningsList.length === 0) {
-        earningsList = [
-          { item_name: 'Lương cơ bản thực tế', calculation_formula: `(${formatCurrency(payroll.contract_salary)} / 26) × ${payroll.actual_working_days ?? 26} công`, amount: payroll.actual_base_salary || payroll.contract_salary },
-          ...(payroll.overtime_salary ? [{ item_name: 'Tiền làm thêm giờ (OT 150%)', calculation_formula: 'Hệ số tăng ca 1.5x', amount: payroll.overtime_salary }] : []),
-          ...(payroll.position_allowance ? [{ item_name: 'Phụ cấp chức vụ quản lý', calculation_formula: 'Theo vị trí chức danh', amount: payroll.position_allowance }] : []),
-          ...(payroll.seniority_allowance ? [{ item_name: 'Phụ cấp thâm niên công tác', calculation_formula: 'Theo số năm gắn bó TechZone', amount: payroll.seniority_allowance }] : []),
-          ...(payroll.project_allowance ? [{ item_name: 'Phụ cấp dự án & chiến dịch chuỗi', calculation_formula: 'Dự án Flagship', amount: payroll.project_allowance }] : []),
-          ...(payroll.meal_transport_allowance ? [{ item_name: 'Phụ cấp cơm trưa & đi lại', calculation_formula: 'Hỗ trợ ca kíp', amount: payroll.meal_transport_allowance }] : []),
-          ...(payroll.commission_amount ? [{ item_name: 'Hoa hồng doanh số bán lẻ', calculation_formula: '1% ĐT, Laptop + 3% Phụ kiện', amount: payroll.commission_amount }] : []),
-          ...(payroll.bonus_amount ? [{ item_name: 'Thưởng nóng KPI & Năng suất', calculation_formula: 'Đạt chỉ tiêu doanh số chi nhánh', amount: payroll.bonus_amount }] : []),
-        ]
-      }
-
-      // Ensure deductions have items
-      let deductionsList = printData.deductions || []
-      if (deductionsList.length === 0) {
-        deductionsList = [
-          ...(payroll.unpaid_leave_days ? [{ item_name: 'Khấu trừ nghỉ không lương', calculation_formula: `(${formatCurrency(payroll.contract_salary)} / 26) × ${payroll.unpaid_leave_days} ngày`, amount: Math.round(((payroll.contract_salary || 0) / 26) * payroll.unpaid_leave_days) }] : []),
-          ...(payroll.bhxh_amount ? [{ item_name: 'Bảo hiểm Xã hội (BHXH 8%)', calculation_formula: '8% lương đóng BH', amount: payroll.bhxh_amount }] : []),
-          ...(payroll.bhyt_amount ? [{ item_name: 'Bảo hiểm Y tế (BHYT 1.5%)', calculation_formula: '1.5% lương đóng BH', amount: payroll.bhyt_amount }] : []),
-          ...(payroll.bhtn_amount ? [{ item_name: 'Bảo hiểm Thất nghiệp (BHTN 1%)', calculation_formula: '1% lương đóng BH', amount: payroll.bhtn_amount }] : []),
-          ...(payroll.penalty_deduction ? [{ item_name: 'Khấu trừ đi trễ / vi phạm nội quy', calculation_formula: 'Biên bản chấm công', amount: payroll.penalty_deduction }] : []),
-        ]
-      }
-
-      const mergedData = {
-        ...printData,
-        payroll_id: printData.payroll_id || payroll.payroll_id,
-        payroll_code: printData.payroll_code || `PL-${payroll.salary_period || selectedPeriod}-${String(payroll.payroll_id).padStart(4, '0')}`,
-        generated_date: printData.generated_date || new Date().toLocaleDateString('vi-VN') + ' ' + new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
-        attendance: att,
-        attendance_summary: att,
-        earnings: earningsList,
-        deductions: deductionsList,
-        employee: {
-          ...printData.employee,
-          full_name: printData.employee?.full_name || payroll.employee_name,
-          employee_code: printData.employee?.employee_code || payroll.employee_code,
-          position: printData.employee?.position || printData.employee?.position_name || payroll.position_name,
-          position_name: printData.employee?.position_name || printData.employee?.position || payroll.position_name,
-          store_name: printData.employee?.store_name || payroll.store_name || 'TechZone - TECHZONE Store',
-          bank_account: printData.employee?.bank_account || printData.employee?.bank_account_no || '19036788899999',
-          bank_account_no: printData.employee?.bank_account_no || printData.employee?.bank_account || '19036788899999',
-          bank_name: printData.employee?.bank_name || 'Techcombank CN Tân Bình',
-          tax_code: printData.employee?.tax_code || '8345672192',
-        },
-        summary: {
-          ...printData.summary,
-          contract_salary: printData.summary?.contract_salary ?? payroll.contract_salary ?? 0,
-          time_deduction_amount: printData.summary?.time_deduction_amount ?? payroll.time_deduction_amount ?? 0,
-          actual_base_salary: printData.summary?.actual_base_salary ?? payroll.actual_base_salary ?? 0,
-          gross_income: printData.summary?.gross_income ?? payroll.gross_income,
-          total_deduction: printData.summary?.total_deduction ?? payroll.total_deduction,
-          net_salary: printData.summary?.net_salary ?? payroll.net_salary,
-          net_salary_in_words: printData.summary?.net_salary_in_words || 'Mười sáu triệu không trăm bốn mươi bốn nghìn hai trăm ba mươi đồng',
-        }
-      }
-
-      setMonthlyPrintData(mergedData)
+      setMonthlyPrintData(printData)
       setIsMonthlyPrintModalOpen(true)
     } catch (err: any) {
       setFeedbackMessage({ type: 'error', text: `Lỗi tải dữ liệu in phiếu lương: ${err.message}` })
@@ -314,8 +296,8 @@ export function PayrollPage({ user }: PayrollPageProps) {
       `"${(p.store_name || '').replace(/"/g, '""')}"`,
       `"${(p.position_name || '').replace(/"/g, '""')}"`,
       p.salary_period || period,
-      p.standard_working_days ?? 26,
-      p.actual_working_days ?? 26,
+      p.standard_working_days ?? 0,
+      p.actual_working_days ?? 0,
       p.contract_salary ?? 0,
       p.time_deduction_amount ?? 0,
       p.actual_base_salary ?? 0,
@@ -412,6 +394,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
     const paidCount = payrolls.filter(p => p.payment_status === 'PAID').length
     const confirmedCount = payrolls.filter(p => p.payment_status === 'CONFIRMED').length
     const draftCount = payrolls.filter(p => p.payment_status === 'DRAFT').length
+    const needsRecalculationCount = payrolls.filter(p => p.payment_status === 'NEEDS_RECALCULATION').length
     const totalEmployees = payrolls.length
 
     return {
@@ -421,6 +404,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
       paidCount,
       confirmedCount,
       draftCount,
+      needsRecalculationCount,
       totalEmployees,
       completionRate: totalEmployees > 0 ? Math.round((paidCount / totalEmployees) * 100) : 0,
     }
@@ -520,7 +504,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                 <>
                   <button
                     className="btn btn-primary"
-                    onClick={handleRunPayroll}
+                    onClick={()=>setConfirmation({message:`Tính bảng lương kỳ ${selectedPeriod} theo OT đã duyệt?`,action:handleRunPayroll})}
                     disabled={actionLoading}
                     style={{ backgroundColor: '#2563eb' }}
                   >
@@ -530,7 +514,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
 
                   <button
                     className="btn btn-secondary"
-                    onClick={handleConfirmAll}
+                    onClick={()=>setConfirmation({message:`Duyệt chính thức các phiếu nháp kỳ ${selectedPeriod}?`,action:handleConfirmAll})}
                     disabled={actionLoading || metrics.draftCount === 0}
                     title="Duyệt chính thức các bản ghi DRAFT"
                   >
@@ -540,12 +524,17 @@ export function PayrollPage({ user }: PayrollPageProps) {
 
                   <button
                     className="btn btn-secondary"
-                    onClick={handlePayAll}
+                    onClick={()=>setConfirmation({message:`Xác nhận đã chi trả các phiếu được duyệt kỳ ${selectedPeriod}?`,action:handlePayAll})}
                     disabled={actionLoading || (metrics.draftCount === 0 && metrics.confirmedCount === 0)}
                     title="Xác nhận đã chi trả chuyển khoản"
                   >
                     {Icons.dollar}
                     Chi trả tất cả
+                  </button>
+                  <button className="btn btn-secondary" onClick={()=>setReopenDialogOpen(true)}
+                    disabled={actionLoading || (metrics.paidCount===0 && metrics.confirmedCount===0)}
+                    title={`Mở lại toàn kỳ ${selectedPeriod} để rà soát Attendance và tính lại`}>
+                    {Icons.undo} Mở lại kỳ lương
                   </button>
                 </>
               )}
@@ -579,6 +568,8 @@ export function PayrollPage({ user }: PayrollPageProps) {
             </div>
           </div>
 
+          {canRunPayroll&&<PayrollOvertimePanel period={selectedPeriod}/>}
+
           {/* 4 Balanced Stat Cards for the Month */}
           <div className="stat-grid-4">
             <StatCard
@@ -607,7 +598,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
               iconColor="blue"
               label="TIẾN ĐỘ DUYỆT & CHI TRẢ"
               value={`${metrics.paidCount + metrics.confirmedCount} / ${metrics.totalEmployees}`}
-              footerNote={`Nháp: ${metrics.draftCount} | Duyệt: ${metrics.confirmedCount} | Trả: ${metrics.paidCount}`}
+              footerNote={`Nháp: ${metrics.draftCount} | Cần tính lại: ${metrics.needsRecalculationCount} | Duyệt: ${metrics.confirmedCount} | Trả: ${metrics.paidCount}`}
             />
           </div>
 
@@ -639,6 +630,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                   >
                     <option value="all">Tất cả trạng thái</option>
                     <option value="DRAFT">Bản nháp (DRAFT)</option>
+                    <option value="NEEDS_RECALCULATION">Cần tính lại</option>
                     <option value="CONFIRMED">Đã duyệt (CONFIRMED)</option>
                     <option value="PAID">Đã chi trả (PAID)</option>
                   </select>
@@ -703,8 +695,11 @@ export function PayrollPage({ user }: PayrollPageProps) {
 
                             {/* Working days */}
                             <td style={{ padding: '12px 10px', textAlign: 'center' }}>
-                              <div style={{ fontWeight: 600 }}>{pr.actual_working_days ?? 26} / {pr.standard_working_days ?? 26}</div>
-                              <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>ngày công</div>
+                              <div style={{ fontWeight: 600 }}>{pr.actual_working_days ?? '—'} / {pr.standard_working_days ?? '—'}</div>
+                              <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>ngày công theo lương</div>
+                              <div title="Tổng hợp trực tiếp từ Attendance" style={{ marginTop:4,fontSize:'10px',lineHeight:1.5,color:'var(--text-secondary)' }}>
+                                {Number(pr.attendance_hours||0).toFixed(1)}h · trễ {pr.attendance_late_minutes||0}p · OT duyệt {Number(pr.attendance_approved_overtime_hours||0).toFixed(1)}h
+                              </div>
                             </td>
 
                             {/* Leaves */}
@@ -763,11 +758,13 @@ export function PayrollPage({ user }: PayrollPageProps) {
                             {/* Actions */}
                             <td style={{ padding: '12px 14px', textAlign: 'center' }}>
                               <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                                {canRunPayroll && pr.payment_status === 'DRAFT' && <button className="btn btn-secondary btn-sm btn-icon" title="Điều chỉnh lương nháp" aria-label={`Điều chỉnh lương ${pr.employee_name}`} onClick={()=>setAdjustmentPayroll(pr)}>{Icons.edit}</button>}
                                 {/* Open A4 PDF Payslip Popup Overlay */}
                                 <button
                                   className="btn btn-secondary btn-sm"
                                   onClick={() => handleOpenMonthlyPrint(pr)}
-                                  title="Xem trước & In phiếu lương (PDF)"
+                                  disabled={!['CONFIRMED','PAID'].includes(pr.payment_status || '')}
+                                  title={pr.payment_status==='DRAFT'?'Chỉ in sau khi duyệt':'Xem trước & In phiếu lương (PDF)'}
                                 >
                                   {Icons.printer}
                                   <span style={{ fontSize: '11px', marginLeft: '4px' }}>In PDF</span>
@@ -786,14 +783,25 @@ export function PayrollPage({ user }: PayrollPageProps) {
                                 )}
 
                                 {canRunPayroll && pr.payment_status === 'CONFIRMED' && (
-                                  <button
-                                    className="btn btn-sm"
-                                    style={{ backgroundColor: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0' }}
-                                    onClick={() => handleUpdateSingleStatus(pr.payroll_id, 'PAID')}
-                                    title="Xác nhận chi trả (CONFIRMED -> PAID)"
-                                  >
-                                    {Icons.dollar}
-                                  </button>
+                                  <>
+                                    <button
+                                      className="btn btn-sm"
+                                      style={{ backgroundColor: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0' }}
+                                      onClick={() => handleUpdateSingleStatus(pr.payroll_id, 'PAID')}
+                                      title="Xác nhận chi trả (CONFIRMED -> PAID)"
+                                      aria-label={`Xác nhận chi trả phiếu ${pr.employee_name}`}
+                                    >
+                                      {Icons.dollar}
+                                    </button>
+                                    <button
+                                      className="btn btn-secondary btn-sm btn-icon"
+                                      onClick={() => setUnconfirmPayroll(pr)}
+                                      title="Hoàn tác duyệt phiếu về DRAFT"
+                                      aria-label={`Hoàn tác duyệt phiếu ${pr.employee_name}`}
+                                    >
+                                      {Icons.undo}
+                                    </button>
+                                  </>
                                 )}
                               </div>
                             </td>
@@ -951,8 +959,8 @@ export function PayrollPage({ user }: PayrollPageProps) {
             {/* Print Annual Sheet Button */}
             <button
               className="btn btn-primary"
-              onClick={() => handleOpenAnnualPrint(selectedAnnualEmployeeId || selectedPayroll?.employee_id || user?.employee_id || 4)}
-              disabled={annualLoading || !annualData}
+              onClick={() => handleOpenAnnualPrint(selectedAnnualEmployeeId || selectedPayroll?.employee_id || user?.employee_id)}
+              disabled={annualLoading || !annualData || !(selectedAnnualEmployeeId || selectedPayroll?.employee_id || user?.employee_id)}
             >
               {Icons.printer}
               In Bảng Lương Năm (PDF)
@@ -1104,148 +1112,11 @@ export function PayrollPage({ user }: PayrollPageProps) {
       {/* ========================================================================= */}
       {/* MODAL 1: FORMULA BREAKDOWN EXPLANATION POPUP OVERLAY */}
       {/* ========================================================================= */}
-      {isFormulaModalOpen && (
-        <div className="modal-overlay no-print" onClick={() => setIsFormulaModalOpen(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '760px' }}>
-            <div className="modal-header">
-              <h2 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ color: '#2563eb' }}>{Icons.info}</span>
-                Quy Chế Tính Lương, Thưởng & Khấu Trừ Chuỗi TechZone Retail
-              </h2>
-              <button
-                className="modal-close"
-                onClick={() => setIsFormulaModalOpen(false)}
-                title="Đóng"
-              >
-                {Icons.close}
-              </button>
-            </div>
-
-            <div className="modal-body" style={{ maxHeight: '74vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {/* 1. LƯƠNG CƠ BẢN & NGÀY CÔNG */}
-              <div style={{ background: 'var(--surface-subtle)', border: '1px solid var(--border-default)', borderRadius: '8px', padding: '16px' }}>
-                <h4 style={{ fontSize: '14px', fontWeight: 700, color: '#2563eb', margin: '0 0 8px 0' }}>
-                  1. LƯƠNG CƠ BẢN & NGÀY CÔNG BÁN LẺ (RETAIL BASE SALARY)
-                </h4>
-                <div style={{ fontSize: '13px', lineHeight: 1.6, color: 'var(--text-secondary)' }}>
-                  <div>• <strong>Ngày công chuẩn quy định:</strong> 26 ngày/tháng (Nghỉ 1 ngày/tuần theo lịch phân ca tại cửa hàng).</div>
-                  <div>• <strong>Lương cơ bản thực nhận:</strong> Tính theo số ngày công thực tế đi làm và các ngày nghỉ có hưởng lương.</div>
-                  <div style={{ fontFamily: 'var(--font-mono)', background: 'var(--surface-card)', padding: '8px 12px', borderRadius: '4px', margin: '6px 0', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)' }}>
-                    Lương CB thực nhận = (Lương Hợp đồng / 26) × Ngày công thực tế
-                  </div>
-                  <div>• <strong>Làm thêm giờ (OT - Overtime):</strong></div>
-                  <div style={{ paddingLeft: '12px' }}>
-                    - Ca đêm ngày thường: Hệ số <strong>150%</strong> = <code>(Lương HĐ / 26 / 8) × Giờ OT × 1.5</code><br />
-                    - Ca ngày nghỉ hàng tuần (Off-day): Hệ số <strong>200%</strong><br />
-                    - Ca ngày Lễ, Tết: Hệ số <strong>300%</strong> theo Bộ luật Lao động
-                  </div>
-                </div>
-              </div>
-
-              {/* 2. CÁC KHOẢN PHỤ CẤP BÁN LẺ */}
-              <div style={{ background: 'var(--surface-subtle)', border: '1px solid var(--border-default)', borderRadius: '8px', padding: '16px' }}>
-                <h4 style={{ fontSize: '14px', fontWeight: 700, color: '#0284c7', margin: '0 0 8px 0' }}>
-                  2. CÁC KHOẢN PHỤ CẤP BÁN LẺ (RETAIL ALLOWANCES)
-                </h4>
-                <div style={{ fontSize: '13px', lineHeight: 1.6 }}>
-                  <div>• <strong>Phụ cấp Chức vụ (Position Allowance):</strong></div>
-                  <div style={{ paddingLeft: '12px', color: 'var(--text-secondary)' }}>
-                    - Cửa hàng trưởng (Store Manager): <strong>2.500.000đ - 3.500.000đ/tháng</strong> (trách nhiệm quản lý doanh số & nhân sự chi nhánh).<br />
-                    - Cửa hàng phó / Trưởng ca bán lẻ: <strong>1.000.000đ - 1.500.000đ/tháng</strong>.
-                  </div>
-                  <div style={{ marginTop: '4px' }}>• <strong>Phụ cấp Dự án & Chiến dịch chuỗi (Project Allowance):</strong> <strong>1.000.000đ - 2.500.000đ/tháng</strong> khi tham gia setup cửa hàng mới hoặc chiến dịch mở bán Flagship (Apple, Samsung...).</div>
-                  <div style={{ marginTop: '4px' }}>• <strong>Phụ cấp Thâm niên (Seniority Allowance):</strong> +<strong>200.000đ/tháng</strong> cho mỗi năm công tác gắn bó tại TechZone.</div>
-                  <div style={{ marginTop: '4px' }}>• <strong>Phụ cấp Cơm trưa & Đi lại:</strong> Hỗ trợ <strong>730.000đ - 1.000.000đ/tháng</strong> hỗ trợ nhân viên trực ca kíp.</div>
-                </div>
-              </div>
-
-              {/* 3. HOA HỒNG DOANH SỐ */}
-              <div style={{ background: 'rgba(2, 132, 199, 0.05)', border: '1px solid rgba(2, 132, 199, 0.25)', borderRadius: '8px', padding: '16px' }}>
-                <h4 style={{ fontSize: '14px', fontWeight: 700, color: '#0284c7', margin: '0 0 8px 0' }}>
-                  3. CƠ CHẾ HOA HỒNG DOANH SỐ BÁN LẺ (RETAIL COMMISSIONS)
-                </h4>
-                <div style={{ fontSize: '13px', lineHeight: 1.6 }}>
-                  <div>• <strong>Ngành hàng Điện thoại Smartphone:</strong> Hưởng <strong>1.0%</strong> doanh số bán lẻ cá nhân (VD: 150 triệu &rarr; Hoa hồng 1.500.000đ).</div>
-                  <div>• <strong>Ngành hàng Laptop & Máy tính bảng:</strong> Hưởng <strong>1.0%</strong> doanh số bán lẻ cá nhân (VD: 70 triệu &rarr; Hoa hồng 700.000đ).</div>
-                  <div>• <strong>Ngành hàng Phụ kiện & Thiết bị âm thanh:</strong> Hưởng <strong>3.0% - 5.0%</strong> doanh số (Sạc nhanh, cáp, tai nghe, bao da, loa Bluetooth...).</div>
-                  <div>• <strong>Gói Dịch vụ & Bảo hành TechZone Care 1 Đổi 1:</strong> Hưởng <strong>10.0% - 15.0%</strong> giá trị gói dịch vụ (dán màn hình PPF, bảo hành rơi vỡ).</div>
-                </div>
-              </div>
-
-              {/* 4. CÁC KHOẢN TIỀN THƯỞNG BÁN LẺ */}
-              <div style={{ background: 'rgba(34, 197, 94, 0.05)', border: '1px solid rgba(34, 197, 94, 0.25)', borderRadius: '8px', padding: '16px' }}>
-                <h4 style={{ fontSize: '14px', fontWeight: 700, color: '#166534', margin: '0 0 8px 0' }}>
-                  4. CÁC KHOẢN TIỀN THƯỞNG BÁN LẺ (RETAIL BONUSES)
-                </h4>
-                <div style={{ fontSize: '13px', lineHeight: 1.6, color: '#14532d' }}>
-                  <div>• <strong>Thưởng nóng KPI Doanh số bán lẻ:</strong></div>
-                  <div style={{ paddingLeft: '12px' }}>
-                    - Đạt 100% mục tiêu KPI: Thưởng nóng <strong>1.000.000đ</strong>.<br />
-                    - Đạt &gt;= 120% mục tiêu KPI: Thưởng nóng <strong>2.000.000đ</strong>.<br />
-                    - Đạt &gt;= 150% mục tiêu KPI: Thưởng nóng <strong>3.500.000đ</strong>.
-                  </div>
-                  <div style={{ marginTop: '4px' }}>• <strong>Thưởng Best Seller Chi nhánh:</strong> <strong>1.500.000đ/tháng</strong> cho nhân viên có tổng doanh thu thiết bị bán ra cao nhất tháng tại mỗi showroom.</div>
-                  <div style={{ marginTop: '4px' }}>• <strong>Thưởng Chuyên cần Bán lẻ (Attendance Bonus):</strong> <strong>500.000đ/tháng</strong> nếu đi làm đủ 26 công, không đi trễ, không nghỉ đột xuất, tuân thủ tác phong đồng phục.</div>
-                  <div style={{ marginTop: '4px' }}>• <strong>Thưởng Dịch vụ Khách hàng (CSAT 5 sao):</strong> <strong>500.000đ/tháng</strong> nếu điểm đánh giá phục vụ khách hàng tại quầy đạt &gt;= 95% hài lòng.</div>
-                  <div style={{ marginTop: '4px' }}>• <strong>Thưởng Chiến dịch & Mở bán Flagship (Productivity / Campaign):</strong> <strong>1.000.000đ - 2.500.000đ/tháng</strong> theo hiệu quả kinh doanh của toàn chuỗi trong các dịp lễ Tết, Back to School, sự kiện ra mắt Apple & Samsung.</div>
-                </div>
-              </div>
-
-              {/* 5. CÁC KHOẢN TRỪ LƯƠNG & KHẤU TRỪ */}
-              <div style={{ background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: '8px', padding: '16px' }}>
-                <h4 style={{ fontSize: '14px', fontWeight: 700, color: '#b91c1c', margin: '0 0 8px 0' }}>
-                  5. CÁC KHOẢN TRỪ LƯƠNG & KHẤU TRỪ BÁN LẺ (RETAIL DEDUCTIONS)
-                </h4>
-                <div style={{ fontSize: '13px', lineHeight: 1.6 }}>
-                  <div>• <strong>Khấu trừ Nghỉ phép không hưởng lương (Unpaid Leave):</strong></div>
-                  <div style={{ paddingLeft: '12px' }}>
-                    - Tự động liên kết từ phân hệ Đơn nghỉ phép (<code>leave_requests</code>) khi HR duyệt.<br />
-                    - Số tiền trừ: <code style={{ color: '#b91c1c', fontWeight: 600 }}>(Lương HĐ / 26) × Số ngày nghỉ không lương</code>.<br />
-                    - <em>Lưu ý:</em> Phép năm (tối đa 12 ngày) và Việc riêng có lương (3 ngày kết hôn, tang chế) hưởng 100% lương, hoàn toàn không bị trừ tiền.
-                  </div>
-                  <div style={{ marginTop: '6px' }}>• <strong>Khấu trừ Đi trễ / Về sớm & Thiếu giờ công:</strong></div>
-                  <div style={{ paddingLeft: '12px' }}>
-                    - Đi trễ 15 - 60 phút: Trừ giờ công thực tế + phạt nội quy <strong>50.000đ/lần</strong>.<br />
-                    - Đi trễ &gt; 60 phút không lý do: Tính trừ 0.5 ngày công thực tế.<br />
-                    - Thiếu giờ ca kíp: Trừ <code>(Lương HĐ / 26 / 8) × Số giờ thiếu</code>.
-                  </div>
-                  <div style={{ marginTop: '6px' }}>• <strong>Trích nộp Bảo hiểm Bắt buộc (10.5% lương đóng BH):</strong></div>
-                  <div style={{ paddingLeft: '12px' }}>
-                    - BHXH: <strong>8.0%</strong> | BHYT: <strong>1.5%</strong> | BHTN: <strong>1.0%</strong>.
-                  </div>
-                  <div style={{ marginTop: '6px' }}>• <strong>Khấu trừ Sai lệch Quỹ & Hao hụt Kho Cửa hàng:</strong> Trừ bồi hoàn sai sót lệch quỹ thu ngân cuối ca hoặc thất thoát phụ kiện/hàng trưng bày theo biên bản kiểm kê chuỗi bán lẻ.</div>
-                  <div style={{ marginTop: '6px' }}>• <strong>Thuế TNCN:</strong> Trích nộp theo biểu lũy tiến từng phần sau khi giảm trừ gia cảnh (bản thân 11 triệu/tháng, người phụ thuộc 4.4 triệu/tháng).</div>
-                </div>
-              </div>
-
-              {/* 6. VÍ DỤ MINH HỌA */}
-              <div style={{ background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '16px' }}>
-                <h4 style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a', margin: '0 0 8px 0' }}>
-                  6. VÍ DỤ MINH HOẠ THỰC TẾ (Nhân viên Phạm Quốc Dũng - Doanh số 220 triệu)
-                </h4>
-                <div style={{ fontSize: '13px', lineHeight: 1.7, color: '#334155' }}>
-                  <div>• Lương cơ bản HĐ: <strong>8.000.000 đ</strong> (Làm 24/26 ngày, nghỉ không lương 2 ngày &rarr; Lương CB thực: <strong>5.309.615 đ</strong>)</div>
-                  <div>• Hoa hồng bán lẻ (ĐT 150M x 1% + Laptop 70M x 1%): <strong>2.200.000 đ</strong></div>
-                  <div>• Phụ cấp (Chức vụ 500K + Thâm niên 500K + Dự án 1.5M + Cơm trưa 1M): <strong>3.500.000 đ</strong></div>
-                  <div>• Tiền thưởng (KPI 100% 1M + Thưởng năng suất 1M): <strong>2.000.000 đ</strong></div>
-                  <div>• Làm thêm giờ (OT ca đêm): <strong>3.859.615 đ</strong></div>
-                  <div>• <strong>TỔNG GROSS:</strong> <strong>16.869.230 đ</strong></div>
-                  <div>• <strong>KHẤU TRỪ:</strong> Trừ ngày không lương (-2.690.385 đ) + BHXH 10.5% (-525.000 đ) + Phạt (-300.000 đ)</div>
-                  <div style={{ fontWeight: 800, color: '#15803d', fontSize: '15px', marginTop: '6px' }}>
-                    ↳ THỰC LĨNH CHUYỂN KHOẢN (NET): 16.044.230 VNĐ
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="modal-footer">
-              <button className="btn btn-primary" onClick={() => setIsFormulaModalOpen(false)}>
-                Đã hiểu
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {confirmation&&<div className="modal-overlay no-print"><div className="modal" role="alertdialog" aria-modal="true" aria-label="Xác nhận thao tác bảng lương" style={{maxWidth:440,padding:24}}><h2>Xác nhận bảng lương</h2><p>{confirmation.message}</p><div className="modal-footer"><button className="btn btn-secondary" onClick={()=>setConfirmation(null)}>Hủy</button><button className="btn btn-primary" onClick={()=>{const action=confirmation.action;setConfirmation(null);void action()}}>Xác nhận</button></div></div></div>}
+      {reopenDialogOpen&&<PayrollReopenDialog period={selectedPeriod} busy={actionLoading} onClose={()=>setReopenDialogOpen(false)} onSubmit={handleReopenPeriod}/>}
+      {unconfirmPayroll&&<PayrollUnconfirmDialog payroll={unconfirmPayroll} busy={actionLoading} onClose={()=>setUnconfirmPayroll(null)} onSubmit={handleUnconfirmPayroll}/>}
+      {adjustmentPayroll&&<PayrollAdjustmentDialog payroll={adjustmentPayroll} busy={actionLoading} onClose={()=>setAdjustmentPayroll(null)} onSave={handleSaveAdjustment}/>}
+      {isFormulaModalOpen && <PayrollRegulationDialog onClose={() => setIsFormulaModalOpen(false)} />}
 
       {/* ========================================================================= */}
       {/* MODAL 2: PRINTABLE MONTHLY PAYSLIP POPUP OVERLAY (PDF / A4) */}
@@ -1279,16 +1150,16 @@ export function PayrollPage({ user }: PayrollPageProps) {
                 {/* Header */}
                 <div className="payslip-a4-header">
                   <div>
-                    <div className="payslip-a4-company-name">{monthlyPrintData.company?.name || 'CÔNG TY TNHH THƯƠNG MẠI DỊCH VỤ TECH ZONE'}</div>
-                    <div className="payslip-a4-company-sub">Địa chỉ: {monthlyPrintData.company?.address || '273 An Dương Vương, Phường 3, Quận 5, TP. Hồ Chí Minh'}</div>
-                    <div className="payslip-a4-company-sub">Mã số thuế: {monthlyPrintData.company?.tax_id || '0312345678'} • Hotline: {monthlyPrintData.company?.hotline || '1900 6868'}</div>
+                    <div className="payslip-a4-company-name">{monthlyPrintData.company?.name || 'TECHZONE RETAIL'}</div>
+                    {monthlyPrintData.company?.address&&<div className="payslip-a4-company-sub">Địa chỉ: {monthlyPrintData.company.address}</div>}
+                    {monthlyPrintData.company?.tax_id&&<div className="payslip-a4-company-sub">Mã số thuế: {monthlyPrintData.company.tax_id}</div>}
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: '12px', fontWeight: 700, color: '#1e3a8a' }}>
-                      MÃ PHIẾU: <span style={{ fontFamily: 'monospace' }}>#{monthlyPrintData.payroll_code || `PL-${monthlyPrintData.salary_period || '2026-09'}-${String(monthlyPrintData.payroll_id || selectedPayroll?.payroll_id || 1).padStart(4, '0')}`}</span>
+                      MÃ PHIẾU: <span style={{ fontFamily: 'monospace' }}>#{monthlyPrintData.payroll_code}</span>
                     </div>
                     <div style={{ fontSize: '12px', color: '#475569', marginTop: '3px' }}>
-                      NGÀY TẠO: <strong>{monthlyPrintData.generated_date || monthlyPrintData.created_at || new Date().toLocaleDateString('vi-VN')}</strong>
+                      NGÀY TẠO: <strong>{monthlyPrintData.generated_date}</strong>
                     </div>
                   </div>
                 </div>
@@ -1301,12 +1172,12 @@ export function PayrollPage({ user }: PayrollPageProps) {
 
                 {/* Employee Info Grid */}
                 <div className="payslip-a4-info-grid">
-                  <div>Họ và tên: <strong>{monthlyPrintData.employee?.full_name || selectedPayroll?.employee_name}</strong></div>
-                  <div>Mã nhân viên: <strong>{monthlyPrintData.employee?.employee_code || selectedPayroll?.employee_code}</strong></div>
-                  <div>Vị trí công việc: <strong>{monthlyPrintData.employee?.position || monthlyPrintData.employee?.position_name || selectedPayroll?.position_name}</strong></div>
-                  <div>Chi nhánh làm việc: <strong>{monthlyPrintData.employee?.store_name || selectedPayroll?.store_name || 'TechZone - TECHZONE Store'}</strong></div>
-                  <div>Số tài khoản: <strong>{monthlyPrintData.employee?.bank_account_no || monthlyPrintData.employee?.bank_account || '19036788899999'}</strong></div>
-                  <div>Ngân hàng: <strong>{monthlyPrintData.employee?.bank_name || 'Techcombank'}</strong></div>
+                  <div>Họ và tên: <strong>{monthlyPrintData.employee?.full_name}</strong></div>
+                  <div>Mã nhân viên: <strong>{monthlyPrintData.employee?.employee_code}</strong></div>
+                  <div>Vị trí công việc: <strong>{monthlyPrintData.employee?.position_name}</strong></div>
+                  <div>Chi nhánh làm việc: <strong>{monthlyPrintData.employee?.store_name}</strong></div>
+                  <div>Số tài khoản: <strong>{monthlyPrintData.employee?.bank_account_no || monthlyPrintData.employee?.bank_account || 'Chưa cập nhật'}</strong></div>
+                  <div>Ngân hàng: <strong>{monthlyPrintData.employee?.bank_name || 'Chưa cập nhật'}</strong></div>
                 </div>
 
                 {/* Attendance Summary Bar (Synced with Attendance & Leaves) */}
@@ -1314,23 +1185,29 @@ export function PayrollPage({ user }: PayrollPageProps) {
                   <div style={{ fontWeight: 700, color: '#1e3a8a', marginBottom: '4px', textTransform: 'uppercase', fontSize: '11.5px', letterSpacing: '0.5px' }}>
                     THỐNG KÊ NGÀY CÔNG & NGHỈ PHÉP (LIÊN KẾT CHẤM CÔNG & ĐƠN NGHỈ PHÉP)
                   </div>
-                  <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-                    <div>📅 Công chuẩn: <strong>{monthlyPrintData.attendance?.standard_working_days ?? selectedPayroll?.standard_working_days ?? 26}</strong> ngày</div>
-                    <div>✅ Công thực tế: <strong>{monthlyPrintData.attendance?.actual_working_days ?? selectedPayroll?.actual_working_days ?? 26}</strong> ngày</div>
-                    <div>🌴 Phép năm có lương: <strong style={{ color: '#2563eb' }}>{monthlyPrintData.attendance?.paid_leave_days ?? selectedPayroll?.paid_leave_days ?? 0}</strong> ngày</div>
+            <div className="payslip-attendance-values">
+                    <div>{Icons.calendar} Công chuẩn: <strong>{monthlyPrintData.attendance?.standard_working_days ?? selectedPayroll?.standard_working_days ?? '—'}</strong> ngày</div>
+                    <div>{Icons.checkCircle} Công thực tế: <strong>{monthlyPrintData.attendance?.actual_working_days ?? selectedPayroll?.actual_working_days ?? '—'}</strong> ngày</div>
+                    <div>{Icons.leave} Phép năm có lương: <strong style={{ color: '#2563eb' }}>{monthlyPrintData.attendance?.paid_leave_days ?? selectedPayroll?.paid_leave_days ?? 0}</strong> ngày</div>
                     <div>
-                      ⛔ Nghỉ không lương: <strong style={{ color: (monthlyPrintData.attendance?.unpaid_leave_days ?? selectedPayroll?.unpaid_leave_days ?? 0) > 0 ? '#dc2626' : 'inherit' }}>
+                      {Icons.minusCircle} Nghỉ không lương: <strong style={{ color: (monthlyPrintData.attendance?.unpaid_leave_days ?? selectedPayroll?.unpaid_leave_days ?? 0) > 0 ? '#dc2626' : 'inherit' }}>
                         {monthlyPrintData.attendance?.unpaid_leave_days ?? selectedPayroll?.unpaid_leave_days ?? 0} ngày
                       </strong>
                     </div>
                     {(monthlyPrintData.attendance?.unworked_hours ?? selectedPayroll?.unworked_hours ?? 0) > 0 && (
-                      <div>⏱️ Giờ trễ/thiếu: <strong style={{ color: '#dc2626' }}>{monthlyPrintData.attendance?.unworked_hours ?? selectedPayroll?.unworked_hours} giờ</strong></div>
+                      <div>{Icons.clock} Giờ trễ/thiếu: <strong style={{ color: '#dc2626' }}>{monthlyPrintData.attendance?.unworked_hours ?? selectedPayroll?.unworked_hours} giờ</strong></div>
                     )}
+                    {monthlyPrintData.attendance?.actual_work_hours!==undefined&&<div>{Icons.clock} Giờ công thực tế: <strong>{monthlyPrintData.attendance.actual_work_hours}</strong></div>}
+                    {monthlyPrintData.attendance?.late_minutes!==undefined&&<div>Đi trễ: <strong>{monthlyPrintData.attendance.late_minutes}</strong> phút</div>}
+                    {monthlyPrintData.attendance?.early_minutes!==undefined&&<div>Về sớm: <strong>{monthlyPrintData.attendance.early_minutes}</strong> phút</div>}
+                    {monthlyPrintData.attendance?.actual_overtime_hours!==undefined&&<div>OT thực tế: <strong>{monthlyPrintData.attendance.actual_overtime_hours}</strong> giờ</div>}
+                    {monthlyPrintData.attendance?.ot_source==='APPROVED'&&<div>OT được duyệt: <strong>{monthlyPrintData.attendance.approved_overtime_hours}</strong> giờ</div>}
+                    {monthlyPrintData.attendance?.ot_source==='LEGACY_UNVERIFIED'&&<div>OT kỳ cũ: <strong>Chưa có dữ liệu duyệt</strong></div>}
                   </div>
                 </div>
 
                 {/* Tables: Earnings & Deductions */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                <div className="payslip-columns">
                   {/* Earnings */}
                   <div>
                     <div style={{ fontWeight: 700, fontSize: '13px', marginBottom: '8px', color: '#1e3a8a' }}>

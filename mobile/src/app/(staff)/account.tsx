@@ -1,4 +1,4 @@
-import { AppText as Text } from '@/components/app-icon';
+import { AppIcon, AppText as Text } from '@/components/app-icon';
 import { storeLabel } from '@/services/presentation';
 import { ScrollView, View, Pressable } from 'react-native';
 import { router } from 'expo-router';
@@ -30,7 +30,7 @@ export default function Account() {
       {!!error && (
         <Card style={{ backgroundColor: p.dangerBg, borderColor: p.danger }}>
           <Text style={{ color: p.dangerText, fontFamily: 'BeVietnam', fontSize: 13 }}>
-            ⚠️ {error}
+            <AppIcon name="warning-outline" size={14} /> {error}
           </Text>
           <Button title="Thử lại" secondary onPress={reload} />
         </Card>
@@ -102,10 +102,10 @@ export default function Account() {
           }}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <Text style={{ fontSize: 18 }}>🔒</Text>
+            <AppIcon name="lock-closed-outline" style={{ fontSize: 18 }} />
             <Text style={{ fontFamily: 'BeVietnam', fontSize: 14, color: p.text }}>Đổi mật khẩu tài khoản</Text>
           </View>
-          <Text style={{ fontSize: 14, color: p.muted }}>›</Text>
+          <AppIcon name="chevron-forward" style={{ fontSize: 14, color: p.muted }} />
         </Pressable>
 
         <View style={{ height: 1, backgroundColor: p.line }} />
@@ -121,10 +121,10 @@ export default function Account() {
           }}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <Text style={{ fontSize: 18 }}>⚙️</Text>
+            <AppIcon name="settings-outline" style={{ fontSize: 18 }} />
             <Text style={{ fontFamily: 'BeVietnam', fontSize: 14, color: p.text }}>Giao diện & Tiện ích truy cập nhanh</Text>
           </View>
-          <Text style={{ fontSize: 14, color: p.muted }}>›</Text>
+          <AppIcon name="chevron-forward" style={{ fontSize: 14, color: p.muted }} />
         </Pressable>
       </Card>
 
@@ -143,7 +143,7 @@ export default function Account() {
       <Button
         title="Đăng xuất khỏi thiết bị"
         variant="danger"
-        icon="🚪"
+        icon="log-out-outline"
         onPress={() => void signOut()}
       />
     </ScrollView>

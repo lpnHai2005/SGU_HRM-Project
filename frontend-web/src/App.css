@@ -335,8 +335,14 @@
 }
 
 .nav-item-label {
+  color: inherit;
+  opacity: 1;
+  min-width: 0;
+  flex: 1;
+  font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .nav-item-badge {
@@ -994,7 +1000,10 @@
   border-radius: var(--radius-sm);
   font-size: var(--text-xs);
   font-weight: 600;
-  transition: all var(--duration-fast) var(--ease-out);
+  transition: background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    filter var(--duration-fast) var(--ease-out);
   cursor: pointer;
   border: 1px solid transparent;
   user-select: none;
@@ -1018,7 +1027,9 @@
 }
 
 .check-btn.check-in:hover:not(:disabled) {
-  background-color: var(--success-700);
+  background-color: var(--status-success);
+  filter: brightness(0.9);
+  box-shadow: 0 2px 5px rgba(21, 128, 61, 0.24);
 }
 
 .check-btn.check-out {
@@ -1028,7 +1039,8 @@
 }
 
 .check-btn.check-out:hover:not(:disabled) {
-  background-color: var(--surface-subtle);
+  background-color: var(--surface-card);
+  filter: brightness(0.96);
   border-color: var(--gray-400);
 }
 
@@ -2441,6 +2453,12 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   border: 1px solid #cbd5e1;
 }
 
+.badge-needs-recalculation {
+  background-color: #fffbeb;
+  color: #92400e;
+  border: 1px solid #fcd34d;
+}
+
 .badge-confirmed {
   background-color: #eff6ff;
   color: #2563eb;
@@ -2457,6 +2475,12 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   background-color: rgba(148, 163, 184, 0.15);
   color: #cbd5e1;
   border-color: rgba(148, 163, 184, 0.3);
+}
+
+[data-theme="dark"] .badge-needs-recalculation {
+  background-color: rgba(217, 119, 6, 0.16);
+  color: #fcd34d;
+  border-color: rgba(251, 191, 36, 0.38);
 }
 
 [data-theme="dark"] .badge-confirmed {
@@ -2888,3 +2912,10 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
     margin: 10mm 12mm 10mm 12mm;
   }
 }
+
+.notification-count{position:absolute;top:0;right:-3px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:var(--status-error,#dc2626);color:white;font-size:10px;line-height:17px;font-weight:700;border:1px solid var(--surface-card,#fff)}
+.topbar-user,.sidebar-user-card{cursor:pointer}
+.account-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin:16px 0 24px}.account-fields dt{color:var(--text-secondary);font-size:12px}.account-fields dd{margin:4px 0;font-weight:600;overflow-wrap:anywhere}.month-picker .form-input{display:flex;align-items:center;gap:8px;cursor:pointer;white-space:nowrap}.btn:disabled{cursor:not-allowed;opacity:.5}
+.month-picker-dialog { max-width:min(360px, calc(100vw - 32px)); padding:20px; }
+.month-picker-dialog > div { min-width:0; }
+.month-picker-dialog .btn { min-width:0; white-space:nowrap; }

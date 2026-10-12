@@ -1,4 +1,4 @@
-import { AppText as Text } from '@/components/app-icon';
+import { AppIcon, type AppIconName } from '@/components/app-icon';
 import { Tabs } from 'expo-router';
 import { View, type ColorValue } from 'react-native';
 import { usePalette } from '@/components/attendance-ui';
@@ -8,7 +8,7 @@ export default function StaffTabs() {
   const p = usePalette();
   const insets = useSafeAreaInsets();
 
-  const icon = (symbol: string) =>
+  const icon = (symbol: AppIconName) =>
     function TabIcon({ color, focused }: { color: ColorValue; focused: boolean }) {
       return (
         <View
@@ -21,7 +21,7 @@ export default function StaffTabs() {
             backgroundColor: focused ? p.brandLight : 'transparent',
           }}
         >
-          <Text style={{ color, fontSize: 18 }}>{symbol}</Text>
+          <AppIcon name={symbol} style={{ color, fontSize: 18 }} />
         </View>
       );
     };
@@ -39,9 +39,9 @@ export default function StaffTabs() {
           backgroundColor: p.card,
           borderTopColor: p.line,
           borderTopWidth: 1,
-          height: 76 + insets.bottom,
+          height: 88 + insets.bottom,
           paddingBottom: Math.max(10, insets.bottom),
-          paddingTop: 6,
+          paddingTop: 14,
           elevation: 4,
           shadowColor: '#000',
           shadowOffset: { width: 0, height: -2 },
@@ -62,7 +62,7 @@ export default function StaffTabs() {
         options={{
           title: 'Trang chủ',
           headerShown: false,
-          tabBarIcon: icon('🏠'),
+          tabBarIcon: icon("home-outline"),
         }}
       />
       <Tabs.Screen
@@ -70,16 +70,16 @@ export default function StaffTabs() {
         options={{
           title: 'Lịch ca',
           headerTitle: 'Lịch ca & Phân công',
-          tabBarIcon: icon('▦'),
+          tabBarIcon: icon("calendar-outline"),
         }}
       />
-      <Tabs.Screen name="attendance" options={{ title: 'Chấm công', tabBarIcon: () => <View style={{ width: 48, height: 48, borderRadius: 24, marginTop: -20, backgroundColor: p.brand, alignItems: 'center', justifyContent: 'center', borderWidth: 4, borderColor: p.card }}><Text style={{ fontSize: 25, color: '#fff' }}>◉</Text></View> }} />
+      <Tabs.Screen name="attendance" options={{ title: 'Chấm công', tabBarIcon: () => <View style={{ width: 52, height: 52, marginTop: -18, borderRadius: 26, backgroundColor: p.brand, alignItems: 'center', justifyContent: 'center', borderWidth: 4, borderColor: p.card }}><AppIcon name="person-outline" style={{ fontSize: 26, color: '#fff' }} /></View> }} />
       <Tabs.Screen
         name="requests"
         options={{
           title: 'Đơn từ',
           headerTitle: 'Quản lý nghỉ phép & Đơn từ',
-          tabBarIcon: icon('📝'),
+          tabBarIcon: icon("document-text-outline"),
         }}
       />
       <Tabs.Screen
@@ -87,7 +87,7 @@ export default function StaffTabs() {
         options={{
           title: 'Tài khoản',
           headerTitle: 'Hồ sơ cá nhân',
-          tabBarIcon: icon('👤'),
+          tabBarIcon: icon("person-outline"),
         }}
       />
       <Tabs.Screen name="dashboard" options={{ title: 'Báo cáo KPI', headerTitle: 'Báo cáo tổng hợp & KPI', href: null }} />

@@ -17,7 +17,11 @@ async def main():
   tx=await conn.begin()
   try:
    for ddl in [
-    "CREATE TEMP TABLE employees(employee_id int PRIMARY KEY,store_id int,department_id int,full_name text,employment_status text NOT NULL DEFAULT 'ACTIVE') ON COMMIT DROP",
+    "CREATE TEMP TABLE users(user_id int,employee_id int) ON COMMIT DROP",
+    "CREATE TEMP TABLE user_roles(user_id int,role_id int) ON COMMIT DROP",
+    "CREATE TEMP TABLE roles(role_id int,role_code text) ON COMMIT DROP",
+    "CREATE TEMP TABLE employees(employee_id int PRIMARY KEY,store_id int,department_id int,full_name text,employment_status text NOT NULL DEFAULT 'ACTIVE',position_id int DEFAULT 1) ON COMMIT DROP",
+    "CREATE TEMP TABLE positions(position_id int,position_name text) ON COMMIT DROP",
     'CREATE TEMP TABLE stores(store_id int PRIMARY KEY,store_name text) ON COMMIT DROP',
     'CREATE TEMP TABLE work_shifts(shift_id int PRIMARY KEY,shift_name text,start_time time,end_time time,work_hours numeric,is_active bool) ON COMMIT DROP',
     'CREATE TEMP TABLE work_schedules(schedule_id bigserial PRIMARY KEY,employee_id int,store_id int,shift_id int,work_date date,notes text,starts_at timestamptz,ends_at timestamptz,cancelled_at timestamptz) ON COMMIT DROP',
@@ -28,11 +32,12 @@ async def main():
     'CREATE TEMP TABLE attendances(LIKE public.attendances INCLUDING ALL) ON COMMIT DROP',
     'CREATE TEMP SEQUENCE schedule_test_attendance_ids',
     "ALTER TABLE pg_temp.attendances ALTER COLUMN attendance_id SET DEFAULT nextval('pg_temp.schedule_test_attendance_ids')",
-    "INSERT INTO employees VALUES(1,1,10,'Staff A'),(2,2,20,'Staff B')",
+    "INSERT INTO employees(employee_id,store_id,department_id,full_name) VALUES(1,1,10,'Staff A'),(2,2,20,'Staff B')",
+    "INSERT INTO positions VALUES(1,'Sales')",
     "INSERT INTO stores VALUES(1,'Store A'),(2,'Store B')",
     "INSERT INTO work_shifts VALUES(1,'Morning','08:00','12:00',4,true),(2,'Afternoon','13:00','17:00',4,true),(3,'Overlap','11:00','15:00',4,true),(4,'Night','22:00','06:00',8,true),(5,'Early','05:00','09:00',4,true),(6,'Adjacent','12:00','13:00',1,true),(7,'Inactive','18:00','20:00',2,false)"
    ]: await conn.execute(text(ddl))
-   user={'user_id':1,'employee_id':1,'store_id':1,'roles':['HR_MANAGER']}
+   user={'user_id':1,'employee_id':99,'store_id':1,'roles':['HR_MANAGER']}
    app=FastAPI(); app.include_router(work_schedules.router,prefix='/work-schedules'); app.include_router(attendances.router,prefix='/attendances'); app.include_router(fixed_schedules.router,prefix='/fixed-schedules')
    async def db():
     async with AsyncSession(bind=conn,join_transaction_mode='create_savepoint') as session:
@@ -46,7 +51,23 @@ async def main():
     async def create(data,status=201):
      r=await client.post('/work-schedules',json=data); assert r.status_code==status,r.text
      return r.json()
+    user['employee_id']=1
+    await create(item(),403)
+    user['employee_id']=99
+    await conn.execute(text("INSERT INTO roles VALUES(1,'HR_MANAGER')"))
+    await conn.execute(text('INSERT INTO users VALUES(2,2)'))
+    await conn.execute(text('INSERT INTO user_roles VALUES(2,1)'))
+    await create(item(emp=2,store=2),403)
+    user['roles']=['ADMIN']
+    hr_schedule=await create(item(day='2026-12-01',emp=2,store=2))
+    assert (await client.post(f"/work-schedules/{hr_schedule['schedule_id']}/cancel",json={'reason':'Policy test cleanup'})).status_code==200
+    await conn.execute(text('DELETE FROM pg_temp.user_roles'))
+    user['roles']=['HR_MANAGER']
     first=await create(item()); second=await create(item(2)); await create(item(6))
+    user['employee_id']=1
+    assert (await client.put(f"/work-schedules/{first['schedule_id']}",json=item())).status_code==403
+    assert (await client.post(f"/work-schedules/{first['schedule_id']}/cancel",json={'reason':'Self cancel rejected'})).status_code==403
+    user['employee_id']=99
     await create(item(),409); await create(item(3),409); await create(item(7),422)
     await create(item(4,'2026-10-11')); await create(item(5,'2026-10-12'),409)
     before=(await conn.execute(text('SELECT count(*) FROM pg_temp.work_schedules'))).scalar_one()
@@ -54,12 +75,12 @@ async def main():
     assert r.status_code==409,r.text
     assert (await conn.execute(text('SELECT count(*) FROM pg_temp.work_schedules'))).scalar_one()==before
     await create(item(emp=2,store=2))
-    user['roles']=['EMPLOYEE']
+    user.update(employee_id=1,roles=['EMPLOYEE'])
     assert len((await client.get('/work-schedules?day=2026-10-10')).json())==3
     assert (await client.get('/work-schedules?day=2026-10-10&employee_id=2')).json()==[]
     await create(item(1,'2026-10-20'),403)
     user['roles']=['STORE_MANAGER']; await create(item(1,'2026-10-20',2,2),403); await create(item(1,'2026-10-20',1,2),403)
-    user['roles']=['HR_MANAGER']
+    user.update(employee_id=99,roles=['HR_MANAGER'])
     assert len((await client.get('/work-schedules?day=2026-10-10&department_id=20')).json())==1
     assert len((await client.get('/work-schedules?day=2026-10-10&view=month&store_id=1')).json())==4
     assert len((await client.get('/work-schedules?day=2026-10-10&view=week&store_id=1')).json())==3
@@ -74,8 +95,10 @@ async def main():
     assert updated.status_code==200,updated.text
     assert (await client.put(f"/work-schedules/{second['schedule_id']}",json=item(3))).status_code==409
     with patch.object(attendances,'local_now',return_value=datetime(2026,10,10,8,tzinfo=VIETNAM_TZ)):
+     user.update(employee_id=1,roles=['EMPLOYEE'])
      r=await client.post('/attendances/check-in',json={'shift_id':1}); assert r.status_code==201,r.text
      snapshot=r.json()['attendance_context']; assert snapshot['planned']['schedule_id']==first['schedule_id']
+     user.update(employee_id=99,roles=['HR_MANAGER'])
     assert (await client.put(f"/work-schedules/{first['schedule_id']}",json=item(2))).status_code==409
     r=await client.post(f"/work-schedules/{first['schedule_id']}/cancel",json={'reason':'Cancelled after record'})
     assert r.status_code==200,r.text
@@ -90,7 +113,7 @@ async def main():
     report=(await client.get('/work-schedules/reconciliation?day=2026-10-10')).json()
     assert len(report['unlinked_attendances'])==1
     assert report['unlinked_attendances'][0]['schedule_status']=='LEGACY_UNKNOWN'
-    user['roles']=['EMPLOYEE']
+    user.update(employee_id=1,roles=['EMPLOYEE'])
     assert (await client.get('/attendances/shift-schedules?work_date=2026-10-10&store_id=2')).json()==[]
     assert (await client.get('/work-schedules/reconciliation?day=2026-10-10&employee_id=2')).json()=={'schedules':[],'unlinked_attendances':[]}
     # Cancelled assignments do not authorize mobile check-in.
@@ -99,7 +122,7 @@ async def main():
       try: await mobile_attendance.require_assigned_shift(session,user,1)
       except Exception as exc: assert getattr(exc,'status_code',None)==409
       else: raise AssertionError('Cancelled schedule accepted')
-    user['roles']=['HR_MANAGER']
+    user.update(employee_id=99,roles=['HR_MANAGER'])
     afternoon=await create(item(2,emp=2,store=2))
     user.update(employee_id=2,store_id=2,roles=['EMPLOYEE'])
     with patch.object(attendances,'local_now',return_value=datetime(2026,10,10,14,tzinfo=VIETNAM_TZ)):
@@ -109,7 +132,7 @@ async def main():
      assert matched.status_code==201,matched.text
      assert matched.json()['attendance_context']['planned']['schedule_id']==afternoon['schedule_id']
     # Fixed rule is a separate opt-in; the existing daily flow above is unchanged.
-    await conn.execute(text("INSERT INTO employees VALUES(3,1,10,'Fixed staff')"))
+     await conn.execute(text("INSERT INTO employees(employee_id,store_id,department_id,full_name) VALUES(3,1,10,'Fixed staff')"))
     command=dict(employee_id=3,store_id=1,shift_id=1,work_date='2026-10-18')
     assert (await client.post('/fixed-schedules',json=command)).status_code==403
     user.update(employee_id=1,store_id=1,roles=['STORE_MANAGER'])
@@ -135,6 +158,13 @@ async def main():
      with patch.object(fixed_schedule,'local_now',return_value=datetime(2026,10,19,tzinfo=VIETNAM_TZ)):
       async with AsyncSession(bind=conn,join_transaction_mode='create_savepoint') as session:
        assert await fixed_schedule.materialize(session,rule,user)==1
+       assert await fixed_schedule.materialize(session,rule,user)==0
+       await session.commit()
+     # The rule still generates new work days a year later: 90 is a rolling
+     # materialization window, never an expiry date for the recurring rule.
+     with patch.object(fixed_schedule,'local_now',return_value=datetime(2027,10,19,tzinfo=VIETNAM_TZ)):
+      async with AsyncSession(bind=conn,join_transaction_mode='create_savepoint') as session:
+       assert await fixed_schedule.materialize(session,rule,user)>0
        assert await fixed_schedule.materialize(session,rule,user)==0
        await session.commit()
      # Future attendance snapshot survives stopping the rule.

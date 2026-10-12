@@ -369,6 +369,8 @@ class AttendanceWorkingDaysSummary(BaseModel):
     standard_days: int = 26
     actual_days: float = 0.0
     total_hours: float = 0.0
+    payroll_time_adjustment_minutes: int = 0
+    payroll_time_adjustment_hours: float = 0.0
 
 
 class AttendanceLeaveQuotaSummary(BaseModel):
@@ -589,6 +591,15 @@ class PayrollOut(BaseModel):
     penalty_deduction: Optional[float] = 0.0
     total_deduction: Optional[float] = 0.0
     net_salary: Optional[float] = 0.0
+    attendance_actual_days: Optional[int] = 0
+    attendance_hours: Optional[float] = 0.0
+    attendance_late_minutes: Optional[int] = 0
+    attendance_early_minutes: Optional[int] = 0
+    attendance_actual_overtime_hours: Optional[float] = 0.0
+    attendance_approved_overtime_hours: Optional[float] = 0.0
+    manual_addition: Optional[float] = 0.0
+    manual_deduction: Optional[float] = 0.0
+    adjustment_reason: Optional[str] = None
     payment_status: Optional[str] = "DRAFT"
     payment_date: Optional[date] = None
     details: List[PayrollDetailOut] = Field(default_factory=list)
@@ -633,6 +644,11 @@ class BatchPayrollStatusRequest(BaseModel):
     salary_period: str = Field(..., json_schema_extra={"example": "2026-09"})
     payment_status: str = Field("CONFIRMED", json_schema_extra={"example": "CONFIRMED"}, description="CONFIRMED or PAID")
     payment_date: Optional[date] = None
+
+
+class PayrollPeriodReopenRequest(BaseModel):
+    salary_period: str = Field(..., pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$")
+    reason: str = Field(..., min_length=5, max_length=500)
 
 
 # ===================================================================================

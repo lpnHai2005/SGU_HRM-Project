@@ -1,3 +1,11 @@
+import { AccountPage } from './pages/AccountPage'
+import { MonthlyAttendancePage } from './pages/MonthlyAttendancePage'
+import { StoresPage } from './pages/StoreManagementPage'
+import { toast } from 'sonner'
+import { Toaster } from 'sonner'
+import { ActivityPage } from './pages/ActivityPage'
+import { PersonalSchedulesPage } from './pages/PersonalSchedulesPage'
+import { assignedShift } from './services/assignedShift'
 import { useState, useEffect } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import './App.css'
@@ -10,7 +18,7 @@ import { getRoleFromUser } from './utils/formatters'
 
 // Pages
 import { LoginPage } from './pages/LoginPage'
-import { DashboardPage } from './pages/DashboardPage'
+import { OverviewPage } from './pages/OverviewPage'
 import { EmployeeListPage } from './pages/EmployeeListPage'
 import { AttendancePage } from './pages/AttendancePage'
 import { LeaveRequestsPage } from './pages/LeaveRequestsPage'
@@ -35,7 +43,7 @@ function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode;
         padding: '24px',
         textAlign: 'center',
       }}>
-        <div style={{ fontSize: '64px' }}>🔒</div>
+        <div>{Icons.lock}</div>
         <h2 style={{ margin: 0, fontSize: '20px' }}>Không có quyền truy cập</h2>
         <p style={{ margin: 0, color: 'var(--text-secondary)' }}>
           Bạn không có quyền truy cập trang này. Vui lòng liên hệ quản trị viên.
@@ -77,11 +85,12 @@ export function App() {
     setAttendanceLoading(true)
     try {
       const { attendanceApi } = await import('./services/api')
-      const result = await attendanceApi.checkIn({ shift_id: 1 })
-      alert(result.message)
-      window.location.reload()
+      const shift = await assignedShift()
+      if (!shift) throw new Error('Chưa có ca được phân công phù hợp. Liên hệ quản lý.')
+      const result = await attendanceApi.checkIn({ shift_id: shift.shift_id })
+      toast(result.message)
     } catch (err: any) {
-      alert(err.message || 'Check-in thất bại')
+      toast(err.message || 'Check-in thất bại')
     } finally {
       setAttendanceLoading(false)
     }
@@ -92,10 +101,9 @@ export function App() {
     try {
       const { attendanceApi } = await import('./services/api')
       const result = await attendanceApi.checkOut({})
-      alert(result.message)
-      window.location.reload()
+      toast(result.message)
     } catch (err: any) {
-      alert(err.message || 'Check-out thất bại')
+      toast(err.message || 'Check-out thất bại')
     } finally {
       setAttendanceLoading(false)
     }
@@ -126,7 +134,7 @@ export function App() {
   const userRole = getRoleFromUser(user)
 
   return (
-    <div className="app-layout">
+    <div className="app-layout"><Toaster richColors closeButton theme={theme} position="top-right" />
       <Sidebar
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
@@ -147,7 +155,7 @@ export function App() {
           <Route
             path="/"
             element={
-              <DashboardPage
+              <OverviewPage
                 user={user}
                 onCheckIn={handleCheckIn}
                 onCheckOut={handleCheckOut}
@@ -156,8 +164,13 @@ export function App() {
             }
           />
           <Route path="/dashboard" element={<Navigate to="/" replace />} />
+          <Route path="/account" element={<AccountPage user={user}/>} />
+          <Route path="/stores" element={<ProtectedRoute allowedRoles={['ADMIN']}><StoresPage/></ProtectedRoute>} />
           <Route path="/employees" element={<ProtectedRoute allowedRoles={['ADMIN', 'HR_MANAGER', 'STORE_MANAGER']}><EmployeeListPage user={user} /></ProtectedRoute>} />
-          <Route path="/attendance" element={<AttendancePage user={user} />} />
+          <Route path="/activity" element={<ActivityPage user={user} />} />
+<Route path="/my-schedules" element={<PersonalSchedulesPage />} />
+<Route path="/my-attendance" element={<AttendancePage key="personal" user={user} personal />} />
+<Route path="/attendance" element={<ProtectedRoute allowedRoles={['ADMIN', 'HR_MANAGER', 'STORE_MANAGER']}><MonthlyAttendancePage user={user}/></ProtectedRoute>} />
           <Route path="/work-schedules" element={<ProtectedRoute allowedRoles={['ADMIN', 'HR_MANAGER', 'STORE_MANAGER']}><WorkSchedulesPage user={user} /></ProtectedRoute>} />
           <Route path="/leave" element={<LeaveRequestsPage user={user} />} />
           <Route path="/payroll" element={<PayrollPage user={user} />} />

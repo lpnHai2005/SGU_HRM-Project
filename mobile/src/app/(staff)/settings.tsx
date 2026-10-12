@@ -1,4 +1,4 @@
-import { AppText as Text } from '@/components/app-icon';
+import { AppIcon, AppText as Text } from '@/components/app-icon';
 import { useState } from 'react';
 import { ScrollView, View, Pressable } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
@@ -33,7 +33,7 @@ export default function Settings() {
       {!!error && (
         <Card style={{ backgroundColor: p.dangerBg, borderColor: p.danger }}>
           <Text style={{ color: p.dangerText, fontFamily: 'BeVietnam', fontSize: 13 }}>
-            ⚠️ {error}
+            <AppIcon name="warning-outline" size={14} /> {error}
           </Text>
         </Card>
       )}
@@ -43,11 +43,11 @@ export default function Settings() {
         <Card style={{ gap: 12 }}>
           <Label variant="subtitle">Chủ đề giao diện</Label>
           <View style={{ gap: 8 }}>
-            {[
-              { id: 'system', name: 'Theo cài đặt hệ thống thiết bị', icon: '📱' },
-              { id: 'light', name: 'Giao diện Sáng (Light Mode)', icon: '☀️' },
-              { id: 'dark', name: 'Giao diện Tối (Dark Mode)', icon: '🌙' },
-            ].map(item => {
+            {([
+              { id: 'system', name: 'Theo cài đặt hệ thống thiết bị', icon: "phone-portrait-outline" },
+              { id: 'light', name: 'Giao diện Sáng (Light Mode)', icon: "sunny-outline" },
+              { id: 'dark', name: 'Giao diện Tối (Dark Mode)', icon: "moon-outline" },
+            ] as const).map(item => {
               const active = prefs.theme === item.id;
               return (
                 <Pressable
@@ -66,7 +66,7 @@ export default function Settings() {
                   }}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                    <Text style={{ fontSize: 18 }}>{item.icon}</Text>
+                    <AppIcon name={item.icon} style={{ fontSize: 18 }} />
                     <Text
                       style={{
                         fontFamily: active ? 'BeVietnamBold' : 'BeVietnam',
@@ -78,9 +78,7 @@ export default function Settings() {
                       {item.name}
                     </Text>
                   </View>
-                  <Text style={{ fontSize: 16, color: active ? p.brand : p.muted }}>
-                    {active ? '●' : '○'}
-                  </Text>
+                  <AppIcon name={active ? 'checkmark-circle' : 'ellipse-outline'} style={{ fontSize: 16, color: active ? p.brand : p.muted }} />
                 </Pressable>
               );
             })}
@@ -124,7 +122,7 @@ export default function Settings() {
                 }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                  <Text style={{ fontSize: 22 }}>{item.icon}</Text>
+                  <AppIcon name={item.icon} style={{ fontSize: 22 }} />
                   <View>
                     <Text
                       style={{

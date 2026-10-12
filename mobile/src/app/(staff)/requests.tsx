@@ -1,4 +1,4 @@
-import { AppText as Text } from '@/components/app-icon';
+import { AppIcon, AppText as Text } from '@/components/app-icon';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useRef, useState, useMemo } from 'react';
 import {
@@ -529,7 +529,7 @@ export default function RequestsScreen() {
       });
 
       setShowCreateModal(false);
-      setNotice(`✓ ${res.message || 'Nộp đơn nghỉ phép thành công! Đơn đã vào quy trình chờ duyệt.'}`);
+      setNotice(`${res.message || 'Nộp đơn nghỉ phép thành công! Đơn đã vào quy trình chờ duyệt.'}`);
       setReason('');
       setAttachmentUrl('');
       const todayStr = formatDateToDMY(new Date());
@@ -570,7 +570,7 @@ export default function RequestsScreen() {
             setActionBusy(true);
             try {
               const res = await cancelLeave(token, requestItem.request_id);
-              setNotice(`✓ ${res.message || 'Đã hủy đơn xin nghỉ phép thành công.'}`);
+              setNotice(`${res.message || 'Đã hủy đơn xin nghỉ phép thành công.'}`);
               if (detailItem?.request_id === requestItem.request_id) {
                 setDetailItem(null);
               }
@@ -598,7 +598,7 @@ export default function RequestsScreen() {
       } else {
         res = await hrApproveLeave(token, selectedRequest.request_id, actionNote);
       }
-      setNotice(`✓ ${res.message || 'Phê duyệt đơn nghỉ phép thành công!'}`);
+      setNotice(`${res.message || 'Phê duyệt đơn nghỉ phép thành công!'}`);
       void dispatchNotification({
         type: 'leave_approval',
         title: isHrManager ? 'Hoàn tất duyệt Cấp 2' : 'Đã duyệt Cấp 1',
@@ -631,7 +631,7 @@ export default function RequestsScreen() {
     setError('');
     try {
       const res = await rejectLeave(token, selectedRequest.request_id, rejectionReasonInput.trim());
-      setNotice(`✓ ${res.message || 'Đã từ chối đơn nghỉ phép.'}`);
+      setNotice(`${res.message || 'Đã từ chối đơn nghỉ phép.'}`);
       setModalMode(null);
       if (detailItem?.request_id === selectedRequest.request_id) {
         setDetailItem(null);
@@ -745,7 +745,7 @@ export default function RequestsScreen() {
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
             <Text style={{ fontSize: 11, fontWeight: '700', color: isStoreApproved ? '#16a34a' : isChtRejected ? '#dc2626' : item.status === 'PENDING' ? '#d97706' : p.muted }}>
-              {isStoreApproved ? '✓ CHT' : isChtRejected ? '✕ CHT' : '⏳ CHT'}:
+              {isStoreApproved ? 'CHT' : isChtRejected ? 'CHT' : '⏳ CHT'}:
             </Text>
             <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.text, flex: 1 }} numberOfLines={1}>
               {item.store_approved_at
@@ -772,7 +772,7 @@ export default function RequestsScreen() {
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
             <Text style={{ fontSize: 11, fontWeight: '700', color: isHrApproved ? '#16a34a' : isHrRejected ? '#dc2626' : item.status === 'STORE_APPROVED' ? '#2563eb' : p.muted }}>
-              {isHrApproved ? '✓ HR' : isHrRejected ? '✕ HR' : '⏳ HR'}:
+              {isHrApproved ? 'HR' : isHrRejected ? 'HR' : '⏳ HR'}:
             </Text>
             <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.text, flex: 1 }} numberOfLines={1}>
               {item.hr_approved_at
@@ -835,7 +835,7 @@ export default function RequestsScreen() {
             position: 'relative',
           }}
         >
-          <Text style={{ fontSize: 20 }}>🔔</Text>
+          <AppIcon name="notifications-outline" style={{ fontSize: 20 }} />
           {unreadCount > 0 && (
             <View
               style={{
@@ -1037,7 +1037,7 @@ export default function RequestsScreen() {
                 paddingHorizontal: 12,
               }}
             >
-              <Text style={{ fontSize: 14, marginRight: 8 }}>🔍</Text>
+              <AppIcon name="search-outline" style={{ fontSize: 14, marginRight: 8 }} />
               <TextInput
                 accessibilityLabel="Tìm kiếm đơn nghỉ phép"
                 placeholder="Tìm theo loại nghỉ, lý do, người duyệt..."
@@ -1054,7 +1054,7 @@ export default function RequestsScreen() {
               />
               {searchQuery.length > 0 && (
                 <Pressable onPress={() => setSearchQuery('')} hitSlop={10} style={{ padding: 4 }}>
-                  <Text style={{ fontSize: 13, color: p.muted, fontWeight: '700' }}>✕</Text>
+                  <AppIcon name="close-outline" style={{ fontSize: 13, color: p.muted, fontWeight: '700' }} />
                 </Pressable>
               )}
             </View>
@@ -1169,7 +1169,7 @@ export default function RequestsScreen() {
 
                 {/* Date range in dd-mm-yyyy and total days */}
                 <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.muted }}>
-                  📅 {formatDateDMY(item.start_date)} → {formatDateDMY(item.end_date)} ·{' '}
+                  <AppIcon name="calendar-outline" size={14} /> {formatDateDMY(item.start_date)} → {formatDateDMY(item.end_date)} ·{' '}
                   <Text style={{ color: p.text, fontWeight: '700' }}>{item.total_days} ngày</Text>
                 </Text>
 
@@ -1213,7 +1213,7 @@ export default function RequestsScreen() {
                       }}
                     >
                       <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: '#dc2626' }}>
-                        ✕ Hủy đơn
+                        <AppIcon name="close-outline" size={14} /> Hủy đơn
                       </Text>
                     </Pressable>
                   )}
@@ -1255,7 +1255,7 @@ export default function RequestsScreen() {
                 paddingHorizontal: 12,
               }}
             >
-              <Text style={{ fontSize: 14, marginRight: 8 }}>🔍</Text>
+              <AppIcon name="search-outline" style={{ fontSize: 14, marginRight: 8 }} />
               <TextInput
                 accessibilityLabel="Tìm kiếm đơn nhân viên"
                 placeholder="Tìm nhân viên, mã NV, loại nghỉ, chi nhánh..."
@@ -1272,7 +1272,7 @@ export default function RequestsScreen() {
               />
               {searchQuery.length > 0 && (
                 <Pressable onPress={() => setSearchQuery('')} hitSlop={10} style={{ padding: 4 }}>
-                  <Text style={{ fontSize: 13, color: p.muted, fontWeight: '700' }}>✕</Text>
+                  <AppIcon name="close-outline" style={{ fontSize: 13, color: p.muted, fontWeight: '700' }} />
                 </Pressable>
               )}
             </View>
@@ -1378,7 +1378,7 @@ export default function RequestsScreen() {
 
                 {/* Leave details & dd-mm-yyyy dates */}
                 <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.muted }}>
-                  {item.leave_type_name} · 📅 {formatDateDMY(item.start_date)} → {formatDateDMY(item.end_date)} ({item.total_days} ngày)
+                  {item.leave_type_name} · <AppIcon name="calendar-outline" size={14} /> {formatDateDMY(item.start_date)} → {formatDateDMY(item.end_date)} ({item.total_days} ngày)
                 </Text>
 
                 {/* Approval Stage Box: Cấp 1, Cấp 2, Approver & Timestamp */}
@@ -1430,7 +1430,7 @@ export default function RequestsScreen() {
                           alignItems: 'center',
                         }}
                       >
-                        <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: '#16a34a' }}>✓ Duyệt</Text>
+                        <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: '#16a34a' }}><AppIcon name="checkmark-outline" size={14} /> Duyệt</Text>
                       </Pressable>
 
                       <Pressable
@@ -1450,7 +1450,7 @@ export default function RequestsScreen() {
                           alignItems: 'center',
                         }}
                       >
-                        <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: '#dc2626' }}>✕ Từ chối</Text>
+                        <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: '#dc2626' }}><AppIcon name="close-outline" size={14} /> Từ chối</Text>
                       </Pressable>
                     </View>
                   )}
@@ -1527,7 +1527,7 @@ export default function RequestsScreen() {
                   justifyContent: 'center',
                 }}
               >
-                <Text style={{ fontSize: 16, color: p.muted, fontWeight: '700' }}>✕</Text>
+                <AppIcon name="close-outline" style={{ fontSize: 16, color: p.muted, fontWeight: '700' }} />
               </Pressable>
             </View>
 
@@ -1578,7 +1578,7 @@ export default function RequestsScreen() {
                   }}
                 >
                   <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 13, color: selectedTypeInfo.is_paid ? '#166534' : '#92400e' }}>
-                    {selectedTypeInfo.is_paid ? '✓ Chế độ hưởng nguyên lương' : '⚠️ Nghỉ không hưởng lương (trừ vào lương tháng)'}
+                    {selectedTypeInfo.is_paid ? 'Chế độ hưởng nguyên lương' : 'Nghỉ không hưởng lương (trừ vào lương tháng)'}
                   </Text>
                   <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: selectedTypeInfo.is_paid ? '#14532d' : '#78350f' }}>
                     {selectedTypeInfo.type_code === 'PHEP_NAM'
@@ -1686,7 +1686,7 @@ export default function RequestsScreen() {
                       justifyContent: 'center',
                     }}
                   >
-                    <Text style={{ fontSize: 16, color: p.text, fontWeight: '700' }}>‹</Text>
+                    <AppIcon name="chevron-back" style={{ fontSize: 16, color: p.text, fontWeight: '700' }} />
                   </Pressable>
 
                   <View style={{ alignItems: 'center' }}>
@@ -1721,7 +1721,7 @@ export default function RequestsScreen() {
                       justifyContent: 'center',
                     }}
                   >
-                    <Text style={{ fontSize: 16, color: p.text, fontWeight: '700' }}>›</Text>
+                    <AppIcon name="chevron-forward" style={{ fontSize: 16, color: p.text, fontWeight: '700' }} />
                   </Pressable>
                 </View>
 
@@ -1908,7 +1908,7 @@ export default function RequestsScreen() {
               {/* Real-time validation warning */}
               {!!formValidationMsg && (
                 <Text style={{ color: p.danger, fontFamily: 'BeVietnamBold', fontSize: 13 }}>
-                  ⚠️ {formValidationMsg}
+                  <AppIcon name="warning-outline" size={14} /> {formValidationMsg}
                 </Text>
               )}
 
@@ -2004,7 +2004,7 @@ export default function RequestsScreen() {
                   justifyContent: 'center',
                 }}
               >
-                <Text style={{ fontSize: 16, color: p.muted, fontWeight: '700' }}>✕</Text>
+                <AppIcon name="close-outline" style={{ fontSize: 16, color: p.muted, fontWeight: '700' }} />
               </Pressable>
             </View>
 
@@ -2033,13 +2033,13 @@ export default function RequestsScreen() {
                         </Text>
                         <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: meta.color, marginTop: 4, lineHeight: 18 }}>
                           {detailItem.status === 'HR_APPROVED'
-                            ? '✓ Đã hoàn tất phê duyệt chính thức bởi Phòng Nhân sự.'
+                            ? 'Đã hoàn tất phê duyệt chính thức bởi Phòng Nhân sự.'
                             : detailItem.status === 'STORE_APPROVED'
-                            ? '✓ Cửa hàng trưởng đã duyệt Cấp 1 · Đang chờ Trưởng phòng Nhân sự duyệt Cấp 2.'
+                            ? 'Cửa hàng trưởng đã duyệt Cấp 1 · Đang chờ Trưởng phòng Nhân sự duyệt Cấp 2.'
                             : detailItem.status === 'PENDING'
                             ? '⏳ Đang chờ Cửa hàng trưởng kiểm tra lịch ca trực và duyệt Cấp 1.'
                             : detailItem.status === 'REJECTED'
-                            ? '✕ Đơn đã bị từ chối phê duyệt.'
+                            ? 'Đơn đã bị từ chối phê duyệt.'
                             : 'Đã hủy bởi người nộp đơn.'}
                         </Text>
                       </View>
@@ -2118,7 +2118,7 @@ export default function RequestsScreen() {
                       </Text>
                       <View style={{ backgroundColor: p.bg, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: p.line }}>
                         <Text style={{ fontSize: 13, color: '#2563eb', fontFamily: 'BeVietnamBold' }}>
-                          🔗 {detailItem.attachment_url}
+                          <AppIcon name="link-outline" size={14} /> {detailItem.attachment_url}
                         </Text>
                       </View>
                     </View>
@@ -2152,7 +2152,7 @@ export default function RequestsScreen() {
                                 color: detailItem.store_approved_at ? '#16a34a' : detailItem.status === 'REJECTED' && detailItem.rejected_by_role === 'Cửa hàng trưởng' ? '#991b1b' : '#854d0e',
                               }}
                             >
-                              {detailItem.store_approved_at ? '✓ Đã duyệt' : detailItem.status === 'REJECTED' && detailItem.rejected_by_role === 'Cửa hàng trưởng' ? '✕ Từ chối' : '⏳ Chờ duyệt'}
+                              {detailItem.store_approved_at ? 'Đã duyệt' : detailItem.status === 'REJECTED' && detailItem.rejected_by_role === 'Cửa hàng trưởng' ? 'Từ chối' : '⏳ Chờ duyệt'}
                             </Text>
                           </View>
                         </View>
@@ -2201,7 +2201,7 @@ export default function RequestsScreen() {
                                 color: detailItem.hr_approved_at ? '#16a34a' : detailItem.status === 'REJECTED' && detailItem.rejected_by_role !== 'Cửa hàng trưởng' ? '#991b1b' : '#854d0e',
                               }}
                             >
-                              {detailItem.hr_approved_at ? '✓ Đã duyệt' : detailItem.status === 'REJECTED' && detailItem.rejected_by_role !== 'Cửa hàng trưởng' ? '✕ Từ chối' : '⏳ Chờ duyệt'}
+                              {detailItem.hr_approved_at ? 'Đã duyệt' : detailItem.status === 'REJECTED' && detailItem.rejected_by_role !== 'Cửa hàng trưởng' ? 'Từ chối' : '⏳ Chờ duyệt'}
                             </Text>
                           </View>
                         </View>
@@ -2227,7 +2227,7 @@ export default function RequestsScreen() {
                   {!!detailItem.rejection_reason && (
                     <View style={{ backgroundColor: '#fee2e2', padding: 14, borderRadius: 12, gap: 6, borderWidth: 1, borderColor: '#fca5a5' }}>
                       <Text style={{ color: '#991b1b', fontFamily: 'BeVietnamBold', fontSize: 13 }}>
-                        ⚠️ LÝ DO TỪ CHỐI ĐƠN
+                        <AppIcon name="warning-outline" size={14} /> LÝ DO TỪ CHỐI ĐƠN
                       </Text>
                       <Text style={{ color: '#7f1d1d', fontFamily: 'BeVietnam', fontSize: 13, lineHeight: 18 }}>
                         {detailItem.rejection_reason}
@@ -2244,7 +2244,7 @@ export default function RequestsScreen() {
                       <View style={{ flexDirection: 'row', gap: 10 }}>
                         <View style={{ flex: 1 }}>
                           <Button
-                            title="✓ Duyệt đơn"
+                            title="Duyệt đơn"
                             onPress={() => {
                               setSelectedRequest(detailItem);
                               setActionNote(isStoreManager ? 'Cửa hàng trưởng duyệt Cấp 1.' : 'Phòng Nhân sự phê duyệt.');
@@ -2255,7 +2255,7 @@ export default function RequestsScreen() {
                         </View>
                         <View style={{ flex: 1 }}>
                           <Button
-                            title="✕ Từ chối"
+                            title="Từ chối"
                             secondary
                             onPress={() => {
                               setSelectedRequest(detailItem);
@@ -2289,7 +2289,7 @@ export default function RequestsScreen() {
                           })}
                         >
                           <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 13, color: '#dc2626', fontWeight: '700' }}>
-                            ✕ Hủy đơn
+                            <AppIcon name="close-outline" size={14} /> Hủy đơn
                           </Text>
                         </Pressable>
 
@@ -2355,7 +2355,7 @@ export default function RequestsScreen() {
                   justifyContent: 'center',
                 }}
               >
-                <Text style={{ fontSize: 14, color: p.muted, fontWeight: '700' }}>✕</Text>
+                <AppIcon name="close-outline" style={{ fontSize: 14, color: p.muted, fontWeight: '700' }} />
               </Pressable>
             </View>
 
@@ -2432,7 +2432,7 @@ export default function RequestsScreen() {
                   justifyContent: 'center',
                 }}
               >
-                <Text style={{ fontSize: 14, color: p.muted, fontWeight: '700' }}>✕</Text>
+                <AppIcon name="close-outline" style={{ fontSize: 14, color: p.muted, fontWeight: '700' }} />
               </Pressable>
             </View>
 

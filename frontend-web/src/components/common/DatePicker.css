@@ -46,7 +46,9 @@
 .work-date-popover {
   position: fixed;
   z-index: 2000;
-  width: 280px;
+  width: min(280px, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
   padding: 12px;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
@@ -63,6 +65,10 @@
 
 .work-date-calendar-header strong {
   text-transform: capitalize;
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .work-date-calendar-grid {

@@ -306,6 +306,8 @@ export interface AttendanceSummary {
     standard_days: number;
     actual_days: number;
     total_hours: number;
+    payroll_time_adjustment_minutes: number;
+    payroll_time_adjustment_hours: number;
   };
   leave_quota: {
     annual_leave: number;
@@ -374,6 +376,7 @@ export interface WorkSchedule {
 }
 
 export interface WorkScheduleQuery {
+  position_id?: number;
   day: string;
   view: 'day' | 'week' | 'month';
   employee_id?: number;
@@ -509,6 +512,15 @@ export interface Payroll {
   penalty_deduction?: number;
   total_deduction?: number;
   net_salary?: number;
+  attendance_actual_days?: number;
+  attendance_hours?: number;
+  attendance_late_minutes?: number;
+  attendance_early_minutes?: number;
+  attendance_actual_overtime_hours?: number;
+  attendance_approved_overtime_hours?: number;
+  manual_addition?: number;
+  manual_deduction?: number;
+  adjustment_reason?: string | null;
   payment_status?: string;
   payment_date?: string | null;
   details?: PayrollDetail[];

@@ -1700,7 +1700,7 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
                               <button
                                 className="btn btn-secondary btn-sm btn-icon"
                                 title={isAssignableEmployeeStatus(emp.employment_status) ? 'Phân ca / Sửa ca làm' : 'Không thể phân ca hoặc sửa ca khi nhân viên đang nghỉ việc hoặc đã nghỉ việc'}
-                                disabled={!isAssignableEmployeeStatus(emp.employment_status)}
+                                disabled={!isAssignableEmployeeStatus(emp.employment_status) || (role === 'STORE_MANAGER' && emp.employee_id === user?.employee_id)}
                                 onClick={(e) => {
                                   e.stopPropagation()
                                   openShiftEditModal(emp)
@@ -1712,7 +1712,8 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
                             {(canManage || (role === 'STORE_MANAGER' && user?.store_id === emp.store_id)) && (
                               <button
                                 className={`btn btn-secondary btn-sm btn-icon ${openMenuId === emp.employee_id ? 'active' : ''}`}
-                                title="Tùy chọn"
+                                disabled={role === 'STORE_MANAGER' && emp.employee_id === user?.employee_id}
+                                  title={role === 'STORE_MANAGER' && emp.employee_id === user?.employee_id ? 'Bạn không thể tự quản lý hồ sơ/phân ca của chính mình.' : 'Tùy chọn'}
                                 onClick={(e) => handleToggleMenu(e, emp.employee_id, index, filteredEmployees.length)}
                               >
                                 {Icons.moreVertical}
@@ -1796,7 +1797,7 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
                   </label>
                 </div>
                 <p style={{ margin: '8px 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                  {fixedShift ? 'Lặp từ ngày bắt đầu đến khi quản lý dừng: thứ Hai–thứ Bảy, nghỉ Chủ nhật. Hệ thống tạo trước và tự duy trì lịch 90 ngày sắp tới.' : 'Phân một ngày cụ thể, phù hợp lịch linh hoạt và nhân viên thực tập.'}
+                  {fixedShift ? 'Ca cố định không có ngày hết hạn: lặp thứ Hai–thứ Bảy từ ngày bắt đầu, nghỉ Chủ nhật, đến khi quản lý dừng hoặc đổi ca.' : 'Phân một ngày cụ thể, phù hợp lịch linh hoạt và nhân viên thực tập.'}
                 </p>
                 {fixedRuleLoading && <p role="status" style={{ color: 'var(--text-secondary)' }}>Đang tải ca cố định…</p>}
                 {activeFixedRule && <div style={{ marginTop: '12px', color: 'var(--text-primary)' }}>

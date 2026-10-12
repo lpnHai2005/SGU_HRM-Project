@@ -1,4 +1,5 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { Icons } from './Icons'
+import { useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import './DatePicker.css'
 
@@ -24,7 +25,8 @@ export function DatePicker({ value, onChange, label, disabled = false, error }: 
   const pickerRef = useRef<HTMLDivElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
   const inputId = useId()
-  const selected = new Date(`${value}T00:00:00`)
+  const parsed = new Date(`${value}T00:00:00`)
+  const selected = Number.isNaN(parsed.getTime()) ? new Date() : parsed
   const [open, setOpen] = useState(false)
   const [visibleMonth, setVisibleMonth] = useState(() => new Date(selected.getFullYear(), selected.getMonth(), 1))
   const [popoverPosition, setPopoverPosition] = useState({ top: 0, left: 0 })
@@ -41,16 +43,20 @@ export function DatePicker({ value, onChange, label, disabled = false, error }: 
     })
   }, [visibleMonth])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open) return
     const updatePosition = () => {
       const input = pickerRef.current?.querySelector('input')
       if (!input) return
       const rect = input.getBoundingClientRect()
-      const popoverHeight = 330
+      const width = popoverRef.current?.offsetWidth || 280
+      const popoverHeight = popoverRef.current?.offsetHeight || 340
+      const spaceBelow = window.innerHeight - rect.bottom
+      const spaceAbove = rect.top
       setPopoverPosition({
-        top: window.innerHeight - rect.bottom < popoverHeight ? Math.max(8, rect.top - popoverHeight - 6) : rect.bottom + 6,
-        left: Math.max(8, Math.min(rect.left, window.innerWidth - 288)),
+        top: Math.max(8, Math.min(window.innerHeight - popoverHeight - 8,
+          spaceBelow >= popoverHeight + 8 || spaceBelow >= spaceAbove ? rect.bottom + 6 : rect.top - popoverHeight - 6)),
+        left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
       })
     }
     const closeOnOutsideClick = (event: MouseEvent) => {
@@ -72,7 +78,7 @@ export function DatePicker({ value, onChange, label, disabled = false, error }: 
       window.removeEventListener('resize', updatePosition)
       window.removeEventListener('scroll', updatePosition, true)
     }
-  }, [open])
+  }, [open, visibleMonth])
 
   const showPicker = () => {
     if (disabled) return
@@ -109,18 +115,15 @@ export function DatePicker({ value, onChange, label, disabled = false, error }: 
           }}
         />
         <button type="button" className="work-date-trigger" aria-label={`Chọn ${label.toLowerCase()}`} onClick={showPicker} disabled={disabled}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-            <rect x="3" y="4" width="18" height="18" rx="2" />
-            <path d="M16 2v4M8 2v4M3 10h18" />
-          </svg>
+          {Icons.calendar}
         </button>
       </div>
       {open && createPortal(
         <div ref={popoverRef} className="work-date-popover" style={popoverPosition} role="dialog" aria-label={`Chọn ${label.toLowerCase()}`}>
           <div className="work-date-calendar-header">
-            <button type="button" className="btn btn-secondary btn-sm" aria-label="Tháng trước" onClick={() => changeMonth(-1)}>‹</button>
+            <button type="button" className="btn btn-secondary btn-sm" aria-label="Tháng trước" onClick={() => changeMonth(-1)}>{Icons.chevronLeft}</button>
             <strong>{monthLabel}</strong>
-            <button type="button" className="btn btn-secondary btn-sm" aria-label="Tháng sau" onClick={() => changeMonth(1)}>›</button>
+            <button type="button" className="btn btn-secondary btn-sm" aria-label="Tháng sau" onClick={() => changeMonth(1)}>{Icons.chevronRight}</button>
           </div>
           <div className="work-date-calendar-grid" role="grid">
             {['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'].map((weekday, index) => (

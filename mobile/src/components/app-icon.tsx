@@ -1,32 +1,22 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Children } from 'react';
-import { Text, StyleSheet, type TextProps } from 'react-native';
+import { StyleSheet, Text, type TextProps } from 'react-native';
+import type { ComponentProps } from 'react';
+import { usePreferences } from '@/contexts/preferences';
 
-// Translate existing decorative tokens to bundled vector glyphs, never system emoji.
-const icons: Record<string, keyof typeof Ionicons.glyphMap> = {
-  '⏱': 'time-outline', '⏳': 'hourglass-outline', '▦': 'calendar-outline',
-  '▥': 'bar-chart-outline', '▤': 'document-text-outline', '◉': 'person-outline',
-  '○': 'ellipse-outline', '●': 'checkmark-circle', '☀': 'sunny-outline',
-  '☰': 'menu-outline', '⚙': 'settings-outline', '⚠': 'warning-outline',
-  '⚡': 'flash-outline', '✅': 'checkmark-circle-outline', '✓': 'checkmark-outline',
-  '✕': 'close-outline', '×': 'close-outline', '➜': 'arrow-forward',
-  '→': 'arrow-forward', '←': 'arrow-back', '›': 'chevron-forward',
-  '🌙': 'moon-outline', '🎉': 'ribbon-outline', '🏖': 'sunny-outline',
-  '🏠': 'home-outline', '🏪': 'storefront-outline', '👁': 'eye-outline',
-  '👤': 'person-outline', '💼': 'briefcase-outline', '💾': 'save-outline',
-  '📅': 'calendar-outline', '📊': 'bar-chart-outline', '📋': 'clipboard-outline',
-  '📍': 'location-outline', '📝': 'document-text-outline', '📱': 'phone-portrait-outline',
-  '🔍': 'search-outline', '🔑': 'key-outline', '🔒': 'lock-closed-outline',
-  '🔔': 'notifications-outline', '🔗': 'link-outline', '🗓': 'calendar-outline',
-  '🚪': 'log-out-outline', '🛡': 'shield-checkmark-outline',
-};
-export const AppIcon = Ionicons;
-export function AppText({ children, style, ...props }: TextProps) {
+export type AppIconName = ComponentProps<typeof Ionicons>['name'];
+
+/** Explicit library glyphs; text content is never parsed or replaced. */
+export function AppIcon({ size, style, color, ...props }: ComponentProps<typeof Ionicons>) {
+  const { dark } = usePreferences();
   const appearance = StyleSheet.flatten(style);
-  return <Text {...props} style={style}>{Children.map(children, child => {
-    if (typeof child !== 'string') return child;
-    return Array.from(child.replace(/\uFE0F/g, '')).map((char, index) => icons[char]
-      ? <Ionicons key={index} name={icons[char]} size={appearance?.fontSize || 16} color={appearance?.color || '#64748b'} accessible={false} />
-      : char);
-  })}</Text>;
+  const iconSize = size ?? appearance?.fontSize ?? 20;
+  const iconStyle = { ...appearance };
+  delete iconStyle.fontFamily;
+  delete iconStyle.fontWeight;
+  return <Ionicons {...props} size={iconSize} color={color ?? appearance?.color ?? (dark ? '#94a3b8' : '#64748b')}
+    accessible={false} style={[iconStyle, { fontSize: iconSize, lineHeight: iconSize + 4, includeFontPadding: false, textAlign: 'center', flexShrink: 0 }]} />;
+}
+
+export function AppText(props: TextProps) {
+  return <Text {...props} />;
 }

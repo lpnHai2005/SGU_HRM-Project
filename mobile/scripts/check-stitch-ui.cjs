@@ -41,7 +41,7 @@ const assert = require('node:assert/strict');
   await page.screenshot({path:'tmp/mobile-stitch-login.png'});
   await page.getByRole('button',{name:'Đăng nhập',exact:true}).click();
   await page.getByText('Xin chào,',{exact:true}).waitFor();
-  assert.equal(await page.getByRole('tab').count(),5);
+  assert.equal(await page.locator('a[role="tab"]').count(),5);
   assert.equal(await page.locator('iframe').count(),0);
   assert.equal(await page.getByText(/Flagship/).count(),0);
   await page.screenshot({path:'tmp/mobile-stitch-home.png'});

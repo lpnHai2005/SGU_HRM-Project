@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { View, ScrollView, Pressable, type StyleProp, type ViewStyle } from 'react-native';
-import { AppText as Text } from '@/components/app-icon';
+import { AppIcon, AppText as Text } from '@/components/app-icon';
 import { usePalette, Card, Label, Badge } from '@/components/attendance-ui';
 import { formatVND, type AttendanceHistoryRecord, type PayrollUnitItem } from '@/services/dashboard';
 import { displayTime } from '@/services/attendance';
@@ -29,7 +29,7 @@ export function DailyHoursBarChart({
   if (sorted.length === 0) {
     return (
       <Card low style={{ alignItems: 'center', paddingVertical: 24, gap: 6 }}>
-        <Text style={{ fontSize: 28 }}>📊</Text>
+        <AppIcon name="bar-chart-outline" style={{ fontSize: 28 }} />
         <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 13, color: p.text }}>
           Chưa có dữ liệu chấm công kỳ {period}
         </Text>
@@ -56,10 +56,10 @@ export function DailyHoursBarChart({
         >
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: p.brandText }}>
-              📅 Ngày {selectedRecord.work_date.slice(8)}/{selectedRecord.work_date.slice(5, 7)} ({selectedRecord.shift_name || 'Ca thường'})
+              <AppIcon name="calendar-outline" size={14} /> Ngày {selectedRecord.work_date.slice(8)}/{selectedRecord.work_date.slice(5, 7)} ({selectedRecord.shift_name || 'Ca thường'})
             </Text>
             <Pressable onPress={() => setSelectedRecord(null)}>
-              <Text style={{ fontSize: 12, color: p.muted }}>✕ Đóng</Text>
+              <Text style={{ fontSize: 12, color: p.muted }}><AppIcon name="close-outline" size={14} /> Đóng</Text>
             </Pressable>
           </View>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
@@ -72,7 +72,7 @@ export function DailyHoursBarChart({
           </View>
           {selectedRecord.late_minutes > 0 && (
             <Text style={{ fontFamily: 'BeVietnam', fontSize: 11, color: p.amberText }}>
-              ⚠️ Đi muộn: {selectedRecord.late_minutes} phút
+              <AppIcon name="warning-outline" size={14} /> Đi muộn: {selectedRecord.late_minutes} phút
             </Text>
           )}
         </View>
@@ -443,7 +443,7 @@ export function UnitPayrollComparisonChart({
           <View key={unit.unit_name || idx} style={{ gap: 4 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
-                <Text style={{ fontSize: 13 }}>🏬</Text>
+                <Text style={{ fontSize: 13 }}><AppIcon name="business-outline" size={14} /></Text>
                 <Text
                   numberOfLines={1}
                   style={{

@@ -488,6 +488,9 @@ export const payrollApi = {
     return api.get(`/payrolls/${payrollId}/payslip`);
   },
 
+  adjustDraft: async (payrollId:number, additionAmount:number, deductionAmount:number, reason:string):Promise<any> =>
+    api.put(`/payrolls/${payrollId}/adjustments`,{addition_amount:additionAmount,deduction_amount:deductionAmount,reason}),
+
   updateStatus: async (payrollId: number, paymentStatus: string, paymentDate?: string): Promise<any> => {
     return api.put(`/payrolls/${payrollId}/status`, { payment_status: paymentStatus, payment_date: paymentDate });
   },
@@ -499,6 +502,12 @@ export const payrollApi = {
   payAll: async (period: string, paymentDate?: string): Promise<any> => {
     return api.post('/payrolls/pay-all', { salary_period: period, payment_status: 'PAID', payment_date: paymentDate });
   },
+
+  reopenPeriod: async (period:string,reason:string):Promise<any> =>
+    api.post('/payrolls/reopen-period',{salary_period:period,reason}),
+
+  unconfirm: async (payrollId:number,reason:string):Promise<any> =>
+    api.post(`/payrolls/${payrollId}/unconfirm`,{reason}),
 
   getMySales: async (period?: string): Promise<any> => {
     return api.get('/payrolls/sales-records/me', period ? { period } : undefined);

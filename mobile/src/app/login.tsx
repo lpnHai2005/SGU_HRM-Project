@@ -1,4 +1,4 @@
-import { AppText as Text } from '@/components/app-icon';
+import { AppIcon, AppText as Text } from '@/components/app-icon';
 import { useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
@@ -84,7 +84,7 @@ export default function Login() {
                 justifyContent: 'center',
               }}
             >
-              <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>⚡</Text>
+              <AppIcon name="flash-outline" style={{ color: '#fff', fontSize: 16, fontWeight: '700' }} />
             </View>
             <Text
               style={{
@@ -155,7 +155,7 @@ export default function Login() {
               autoCorrect={false}
               value={username}
               onChangeText={setUsername}
-              leftIcon="👤"
+              leftIcon="person-outline"
             />
           </View>
 
@@ -171,7 +171,7 @@ export default function Login() {
               onSubmitEditing={() => {
                 if (username.trim() && password) void submit();
               }}
-              leftIcon="🔒"
+              leftIcon="lock-closed-outline"
             />
           </View>
 
@@ -224,7 +224,7 @@ export default function Login() {
           <Button
             title="Đăng nhập"
             variant="brand"
-            icon="➜"
+            icon="arrow-forward"
             onPress={() => void submit()}
             disabled={busy || !username.trim() || !password}
           />
@@ -240,7 +240,7 @@ export default function Login() {
             paddingVertical: 8,
           }}
         >
-          <Text style={{ fontSize: 14, color: p.emerald }}>🛡️</Text>
+          <AppIcon name="shield-checkmark-outline" style={{ fontSize: 14, color: p.emerald }} />
           <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.muted }}>
             Tài khoản và quyền truy cập được xác thực bởi máy chủ
           </Text>

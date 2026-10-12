@@ -34,7 +34,7 @@ def bounds(day, view):
         return start,(start.replace(day=28)+timedelta(days=4)).replace(day=1)-timedelta(days=1)
     return day,day
 
-async def listing(db,user,start,end,employee_id=None,department_id=None,store_id=None,include_cancelled=False):
+async def listing(db,user,start,end,employee_id=None,department_id=None,store_id=None,include_cancelled=False,position_id=None):
     if end<start or (end-start).days>366:
         raise HTTPException(422,'Date range must be ordered and at most 367 days')
     params=dict(start=start,end=end)
@@ -43,18 +43,21 @@ async def listing(db,user,start,end,employee_id=None,department_id=None,store_id
         if value is not None:
             params[name]=value; where+=f' AND {column}=:{name}'
     if not include_cancelled: where+=' AND ws.cancelled_at IS NULL'
-    return [dict(r) for r in (await db.execute(text('''SELECT ws.*,e.full_name AS employee_name,e.department_id,e.employment_status,
+    if position_id is not None:
+        params['position']=position_id; where+=' AND e.position_id=:position'
+    return [dict(r) for r in (await db.execute(text('''SELECT ws.*,e.full_name AS employee_name,e.department_id,e.position_id,p.position_name,e.employment_status,
         s.store_name,sh.shift_name,sh.start_time,sh.end_time FROM work_schedules ws
         JOIN employees e USING(employee_id) JOIN stores s ON s.store_id=ws.store_id JOIN work_shifts sh USING(shift_id)
+        LEFT JOIN positions p USING(position_id)
         WHERE ws.work_date BETWEEN :start AND :end'''+where+' ORDER BY ws.work_date,ws.employee_id,ws.schedule_id'),params)).mappings().all()]
 
 @router.get('')
 async def list_schedules(day:date,view:Literal['day','week','month']='day',date_from:date|None=None,date_to:date|None=None,
     employee_id:int|None=None,department_id:int|None=None,store_id:int|None=None,include_cancelled:bool=False,
-    user=Depends(get_current_user),db:AsyncSession=Depends(get_db)):
+    user=Depends(get_current_user),db:AsyncSession=Depends(get_db),position_id:int|None=None):
     if (date_from is None)!=(date_to is None): raise HTTPException(422,'Provide both date_from and date_to')
     start,end=(date_from,date_to) if date_from else bounds(day,view)
-    return await listing(db,user,start,end,employee_id,department_id,store_id,include_cancelled)
+    return await listing(db,user,start,end,employee_id,department_id,store_id,include_cancelled,position_id)
 
 @router.post('',status_code=201)
 async def create_schedule(req:Assignment,user=Depends(get_current_user),db:AsyncSession=Depends(get_db)):

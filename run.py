@@ -55,7 +55,7 @@ def check_and_install_dependencies(python_executable, npm_cmd):
         test_cmd = [
             python_executable,
             "-c",
-            "import fastapi, uvicorn, sqlalchemy, asyncpg, pydantic, dotenv, openpyxl",
+            "import fastapi, uvicorn, sqlalchemy, asyncpg, pydantic, dotenv, openpyxl, tzdata",
         ]
         test_result = subprocess.run(
             test_cmd,
@@ -143,8 +143,9 @@ def main():
 
     check_and_prepare_env()
 
-    python_executable = sys.executable
-    print(f"👉 Python đang dùng: {GREEN}{python_executable}{RESET}")
+    venv_python = os.path.join(BACKEND_DIR, "venv", "Scripts" if os.name == "nt" else "bin", "python.exe" if os.name == "nt" else "python")
+    python_executable = venv_python if os.path.isfile(venv_python) else sys.executable
+    print(f"👉 Python backend đang dùng: {GREEN}{python_executable}{RESET}")
 
     # Tìm lệnh npm phù hợp
     npm_cmd = "npm.cmd" if os.name == "nt" else "npm"

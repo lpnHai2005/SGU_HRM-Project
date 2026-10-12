@@ -1,0 +1,13 @@
+.payroll-regulation{width:min(840px,calc(100vw - 24px));max-width:840px;padding:0;overflow:hidden}
+.payroll-regulation .modal-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:20px 24px;border-bottom:1px solid var(--border-subtle)}
+.payroll-regulation .modal-header h2{margin:0 0 5px}.payroll-regulation .modal-header p{margin:0;color:var(--text-secondary);font-size:13px}
+.payroll-regulation-body{padding:20px 24px;overflow-y:auto;max-height:65vh}
+.payroll-regulation-scroll{overflow-x:auto;border:1px solid var(--border-default);border-radius:12px}
+.payroll-regulation table{width:100%;min-width:650px;border-collapse:collapse;font-size:13px}
+.payroll-regulation th,.payroll-regulation td{padding:12px;text-align:left;vertical-align:top;border-bottom:1px solid var(--border-subtle);line-height:1.45}
+.payroll-regulation thead{background:var(--surface-subtle)}.payroll-regulation thead th{color:var(--text-secondary);font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+.payroll-regulation tbody th{width:23%;font-weight:700}.payroll-regulation tbody td:last-child{width:23%;color:var(--text-secondary)}
+.payroll-regulation-note{color:var(--text-secondary);font-size:12px;line-height:1.55}
+.payroll-regulation-approval{display:flex;flex-direction:column;gap:7px;margin-top:16px;padding:16px;border:1px dashed var(--border-default);border-radius:12px;background:var(--surface-subtle)}
+.payroll-regulation-approval span{font-size:11px;font-weight:800;letter-spacing:.06em}.payroll-regulation-approval strong{font-size:13px;color:var(--status-warning,#b45309)}.payroll-regulation-approval small{color:var(--text-secondary)}
+@media(max-width:600px){.payroll-regulation .modal-header,.payroll-regulation-body{padding:16px}}

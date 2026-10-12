@@ -1,3 +1,4 @@
+import { toast } from 'sonner'
 import { useState, useEffect } from 'react'
 import { StatCard } from '../components/common/StatCard'
 import type { Employee } from '../types'
@@ -44,10 +45,10 @@ export function ReportsPage({ user: _user }: ReportsPageProps) {
           <h1 className="page-title">Báo cáo & Thống kê</h1>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
-          <button className="btn btn-secondary btn-sm" onClick={() => alert('Xuất báo cáo PDF')}>
+          <button className="btn btn-secondary btn-sm" onClick={() => toast('Xuất báo cáo PDF')}>
             Xuất PDF
           </button>
-          <button className="btn btn-primary btn-sm" onClick={() => alert('Xuất báo cáo Excel')}>
+          <button className="btn btn-primary btn-sm" onClick={() => toast('Xuất báo cáo Excel')}>
             Xuất Excel
           </button>
         </div>

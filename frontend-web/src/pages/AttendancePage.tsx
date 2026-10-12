@@ -1,3 +1,4 @@
+import { MonthPicker } from '../components/common/MonthPicker'
 import { useState, useEffect, useMemo } from 'react'
 import { Icons } from '../components/common/Icons'
 import { StatCard } from '../components/common/StatCard'
@@ -6,12 +7,14 @@ import { formatDate, formatTime } from '../utils/formatters'
 import type { Attendance, AttendanceSummary } from '../types'
 import { attendanceApi } from '../services/api'
 import './AttendancePage.css'
+const sessionLabels: Record<string,string> = { NORMAL:'Đúng giờ', LATE:'Đi muộn', EARLY:'Về sớm', LATE_AND_EARLY:'Đi muộn & về sớm', OVERTIME:'Tăng ca', ANNUAL_LEAVE:'Nghỉ phép' }
 
 export interface AttendancePageProps {
   user: any
+  personal?: boolean
 }
 
-export function AttendancePage({ user }: AttendancePageProps) {
+export function AttendancePage({ user, personal = false }: AttendancePageProps) {
   // Period filter (YYYY-MM), default current month
   const [selectedPeriod, setSelectedPeriod] = useState<string>(() => {
     const now = new Date()
@@ -19,13 +22,14 @@ export function AttendancePage({ user }: AttendancePageProps) {
   })
 
   // Tab: 'my_timesheet' (Bảng công cá nhân) | 'team_timesheet' (Bảng công toàn chi nhánh)
-  const [activeTab, setActiveTab] = useState<'my_timesheet' | 'team_timesheet'>('my_timesheet')
+  const activeTab = !personal && user?.roles?.some((r: string) => ['ADMIN','HR_MANAGER','STORE_MANAGER'].includes(r)) ? 'team_timesheet' : 'my_timesheet'
 
   // States
   const [summaryData, setSummaryData] = useState<AttendanceSummary | null>(null)
   const [attendanceHistory, setAttendanceHistory] = useState<Attendance[]>([])
   const [teamAttendances, setTeamAttendances] = useState<Attendance[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
 
   // Filters
   const [statusFilter, setStatusFilter] = useState<string>('ALL')
@@ -33,12 +37,18 @@ export function AttendancePage({ user }: AttendancePageProps) {
 
   // Roles
   const roles: string[] = user?.roles || []
-  const isManager = roles.includes('STORE_MANAGER') || roles.includes('HR_MANAGER') || roles.includes('ADMIN')
+  const periodDisplay = selectedPeriod.split('-').reverse().join('/')
+  const isManager = !personal && (roles.includes('STORE_MANAGER') || roles.includes('HR_MANAGER') || roles.includes('ADMIN'))
 
   // Fetch Bảng công data
   const fetchTimesheetData = async () => {
     setIsLoading(true)
+    setLoadError('')
     try {
+      if (isManager) {
+        setTeamAttendances(await attendanceApi.getAll({ period: selectedPeriod }) || [])
+        return
+      }
       // 1. Lấy dữ liệu 8 chỉ số tổng hợp tháng (Khớp chức năng nghiệp vụ)
       const summaryRes = await attendanceApi.getMySummary(selectedPeriod)
       setSummaryData(summaryRes)
@@ -47,12 +57,8 @@ export function AttendancePage({ user }: AttendancePageProps) {
       const historyRes = await attendanceApi.getMyHistory(selectedPeriod)
       setAttendanceHistory(historyRes || [])
 
-      // 3. Nếu là Quản lý, lấy dữ liệu toàn chi nhánh
-      if (isManager) {
-        const teamRes = await attendanceApi.getAll({ period: selectedPeriod })
-        setTeamAttendances(teamRes || [])
-      }
     } catch (err) {
+      setLoadError(err instanceof Error ? err.message : 'Không tải được bảng công.')
       console.error('Error fetching timesheet data:', err)
     } finally {
       setIsLoading(false)
@@ -61,7 +67,7 @@ export function AttendancePage({ user }: AttendancePageProps) {
 
   useEffect(() => {
     fetchTimesheetData()
-  }, [selectedPeriod])
+  }, [selectedPeriod, personal])
 
   // Điều hướng tháng
   const handlePrevMonth = () => {
@@ -76,22 +82,24 @@ export function AttendancePage({ user }: AttendancePageProps) {
     setSelectedPeriod(`${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}`)
   }
 
-  const periodDisplay = useMemo(() => {
-    const [y, m] = selectedPeriod.split('-')
-    return `Tháng ${m}/${y}`
-  }, [selectedPeriod])
-
   // Lọc nhật ký cá nhân
   const filteredPersonalRecords = useMemo(() => {
     return attendanceHistory.filter(att => {
       if (statusFilter === 'ALL') return true
-      if (statusFilter === 'LATE') return (att.late_minutes || 0) > 0
+      if (statusFilter === 'LATE') return (att.late_minutes || 0) > 15
       if (statusFilter === 'EARLY') return (att.early_minutes || 0) > 0
       if (statusFilter === 'OVERTIME') return (att.overtime_hours || 0) > 0
-      if (statusFilter === 'NORMAL') return (!att.late_minutes || att.late_minutes === 0) && (!att.early_minutes || att.early_minutes === 0)
+      if (statusFilter === 'NORMAL' || statusFilter === 'LATE_AND_EARLY') return att.status === statusFilter
       return true
     })
   }, [attendanceHistory, statusFilter])
+
+  const personalPeriodTotals = useMemo(() => attendanceHistory.reduce((totals, att) => ({
+    workHours: totals.workHours + Number(att.actual_work_hours || 0),
+    lateMinutes: totals.lateMinutes + Number(att.late_minutes || 0),
+    earlyMinutes: totals.earlyMinutes + Number(att.early_minutes || 0),
+    overtimeHours: totals.overtimeHours + Number(att.overtime_hours || 0),
+  }), { workHours: 0, lateMinutes: 0, earlyMinutes: 0, overtimeHours: 0 }), [attendanceHistory])
 
   // Lọc bảng công chi nhánh
   const filteredTeamRecords = useMemo(() => {
@@ -99,9 +107,10 @@ export function AttendancePage({ user }: AttendancePageProps) {
       const matchName = !searchEmployee || (att.employee_name && att.employee_name.toLowerCase().includes(searchEmployee.toLowerCase()))
       if (!matchName) return false
       if (statusFilter === 'ALL') return true
-      if (statusFilter === 'LATE') return (att.late_minutes || 0) > 0
+      if (statusFilter === 'LATE') return (att.late_minutes || 0) > 15
       if (statusFilter === 'EARLY') return (att.early_minutes || 0) > 0
       if (statusFilter === 'OVERTIME') return (att.overtime_hours || 0) > 0
+      if (statusFilter === 'NORMAL' || statusFilter === 'LATE_AND_EARLY') return att.status === statusFilter
       return true
     })
   }, [teamAttendances, searchEmployee, statusFilter])
@@ -144,7 +153,7 @@ export function AttendancePage({ user }: AttendancePageProps) {
       att.early_minutes || 0,
       att.actual_work_hours || 0,
       att.overtime_hours || 0,
-      att.late_minutes && att.late_minutes > 0 ? 'Đi muộn' : att.early_minutes && att.early_minutes > 0 ? 'Về sớm' : 'Đúng giờ',
+      sessionLabels[att.status] || att.status,
       `"${(att.notes || '').replace(/"/g, '""')}"`
     ])
 
@@ -162,7 +171,7 @@ export function AttendancePage({ user }: AttendancePageProps) {
       {/* 1. Header Bar: Tiêu đề trang & Bộ điều khiển kỳ công đồng bộ chuẩn hệ thống */}
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
         <div>
-          <h1 className="page-title">Bảng Công</h1>
+          <h1 className="page-title">{isManager ? 'Quản lý công' : 'Bảng công cá nhân'}</h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginTop: '4px' }}>
             Bảng tổng hợp ngày công, thời gian làm việc & dữ liệu chấm công chi tiết TechZone
           </p>
@@ -171,14 +180,7 @@ export function AttendancePage({ user }: AttendancePageProps) {
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--surface-subtle)', padding: '3px 6px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)' }}>
             <button className="btn btn-secondary btn-sm" onClick={handlePrevMonth} title="Tháng trước" style={{ border: 'none', background: 'transparent', padding: '4px 8px' }}>‹</button>
-            <input
-              type="month"
-              className="form-input"
-              value={selectedPeriod}
-              onChange={(e) => setSelectedPeriod(e.target.value)}
-              title="Chọn tháng"
-              style={{ border: 'none', background: 'transparent', height: '30px', padding: '0 4px', fontSize: '13px', fontWeight: 600 }}
-            />
+            <MonthPicker value={selectedPeriod} onChange={setSelectedPeriod}/>
             <button className="btn btn-secondary btn-sm" onClick={handleNextMonth} title="Tháng sau" style={{ border: 'none', background: 'transparent', padding: '4px 8px' }}>›</button>
           </div>
 
@@ -189,15 +191,16 @@ export function AttendancePage({ user }: AttendancePageProps) {
         </div>
       </div>
 
+      {loadError && <p role="alert">{loadError}</p>}
       {/* 2. 8 THẺ CHỈ SỐ ĐỒNG BỘ LAYOUT STAT-GRID VÀ STYLE CHUẨN VERO DESIGN SYSTEM */}
-      <div className="stat-grid-4">
+      {activeTab === 'my_timesheet' && <div className="stat-grid-4">
         {/* Card 1: Ngày công */}
         <StatCard
           icon={Icons.checkCircle}
           iconColor="green"
           label="NGÀY CÔNG THỰC TẾ"
           value={`${actualDays} công`}
-          footerNote={`Công chuẩn: ${standardDays} công | Tổng: ${totalHours}h`}
+          footerNote={`Công chuẩn: ${standardDays} | Làm: ${totalHours}h | Trễ/sớm tính lương: ${summaryData?.working_days?.payroll_time_adjustment_hours ?? 0}h`}
         />
 
         {/* Card 2: Quỹ phép */}
@@ -266,30 +269,7 @@ export function AttendancePage({ user }: AttendancePageProps) {
           value={`${compensatoryDays} ngày`}
           footerNote="Tổng số ngày nghỉ bù khả dụng"
         />
-      </div>
-
-      {/* 3. TABS CHỌN CHẾ ĐỘ XEM ĐỒNG BỘ PHONG CÁCH CÁC TRANG TRƯỚC */}
-      <div className="tabs" style={{ marginBottom: '16px' }}>
-        <div
-          className={`tab ${activeTab === 'my_timesheet' ? 'active' : ''}`}
-          onClick={() => setActiveTab('my_timesheet')}
-          style={{ cursor: 'pointer' }}
-        >
-          {Icons.calendar}
-          <span style={{ marginLeft: '6px' }}>Bảng công cá nhân ({attendanceHistory.length} ca trong {periodDisplay})</span>
-        </div>
-
-        {isManager && (
-          <div
-            className={`tab ${activeTab === 'team_timesheet' ? 'active' : ''}`}
-            onClick={() => setActiveTab('team_timesheet')}
-            style={{ cursor: 'pointer' }}
-          >
-            {Icons.users}
-            <span style={{ marginLeft: '6px' }}>Quản lý bảng công toàn chi nhánh ({teamAttendances.length} bản ghi)</span>
-          </div>
-        )}
-      </div>
+      </div>}
 
       {/* 4. BẢNG DỮ LIỆU NHẬT KÝ CHI TIẾT */}
       <div className="card">
@@ -307,6 +287,7 @@ export function AttendancePage({ user }: AttendancePageProps) {
               <option value="NORMAL">Đúng giờ</option>
               <option value="LATE">Có đi muộn</option>
               <option value="EARLY">Có về sớm</option>
+              <option value="LATE_AND_EARLY">Đi muộn & về sớm</option>
               <option value="OVERTIME">Có tăng ca (OT)</option>
             </select>
 
@@ -362,7 +343,7 @@ export function AttendancePage({ user }: AttendancePageProps) {
                   </td>
                 </tr>
               ) : (activeTab === 'my_timesheet' ? filteredPersonalRecords : filteredTeamRecords).map((att) => {
-                const isLate = (att.late_minutes || 0) > 0
+                const isLate = (att.late_minutes || 0) > 15
                 const isEarly = (att.early_minutes || 0) > 0
                 const isOT = (att.overtime_hours || 0) > 0
 
@@ -381,7 +362,7 @@ export function AttendancePage({ user }: AttendancePageProps) {
                       </span>
                     </td>
                     <td>
-                      <span>{att.shift_name || 'Ca chuẩn (8h)'}</span>
+                      <span>{att.shift_name || 'Chưa có tên ca'}</span>
                     </td>
                     <td>
                       <span className={`table-cell-mono ${isLate ? 'text-red' : ''}`} style={{ fontWeight: 600 }}>
@@ -397,7 +378,7 @@ export function AttendancePage({ user }: AttendancePageProps) {
                       {isLate ? (
                         <span className="status-pill rejected">{att.late_minutes} phút</span>
                       ) : (
-                        <span style={{ color: 'var(--status-success)', fontSize: '12px' }}>0p</span>
+                        <span style={{ color: 'var(--status-success)', fontSize: '12px' }}>{att.late_minutes || 0}p</span>
                       )}
                     </td>
                     <td>
@@ -422,10 +403,10 @@ export function AttendancePage({ user }: AttendancePageProps) {
                     <td>
                       <span
                         className={`status-pill ${
-                          isLate ? 'rejected' : isEarly ? 'pending' : isOT ? 'active' : 'active'
+                          att.status === 'ANNUAL_LEAVE' ? 'active' : isLate ? 'rejected' : isEarly ? 'pending' : isOT ? 'active' : 'active'
                         }`}
                       >
-                        {isLate ? 'Đi muộn' : isEarly ? 'Về sớm' : isOT ? 'Tăng ca' : 'Đúng giờ'}
+                        {sessionLabels[att.status] || att.status}
                       </span>
                     </td>
                     <td style={{ maxWidth: '240px', fontSize: '12px', color: 'var(--text-tertiary)' }}>
@@ -447,6 +428,18 @@ export function AttendancePage({ user }: AttendancePageProps) {
                 </tr>
               )}
             </tbody>
+            {activeTab === 'my_timesheet' && !isLoading && attendanceHistory.length > 0 && (
+              <tfoot>
+                <tr className="attendance-personal-total-row">
+                  <th colSpan={4}>TỔNG KỲ {periodDisplay} · {attendanceHistory.length} phiên</th>
+                  <th>{personalPeriodTotals.lateMinutes} phút · {(personalPeriodTotals.lateMinutes / 60).toFixed(2)} giờ</th>
+                  <th>{personalPeriodTotals.earlyMinutes} phút</th>
+                  <th>{personalPeriodTotals.workHours.toFixed(2)} giờ</th>
+                  <th>{personalPeriodTotals.overtimeHours.toFixed(2)} giờ</th>
+                  <th colSpan={2}>Tổng trễ/sớm quy đổi {( (personalPeriodTotals.lateMinutes + personalPeriodTotals.earlyMinutes) / 60).toFixed(2)} giờ</th>
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
       </div>

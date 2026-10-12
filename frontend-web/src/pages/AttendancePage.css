@@ -18,3 +18,17 @@
     align-items: flex-start;
   }
 }
+.attendance-personal-total-row th {
+  padding: 14px 10px;
+  border-top: 2px solid var(--border-strong, var(--border-default));
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.attendance-personal-total-row th:first-child {
+  color: var(--brand-primary, var(--blue-600));
+}

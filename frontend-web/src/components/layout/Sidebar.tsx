@@ -77,7 +77,7 @@ export function Sidebar({
             <div className="workspace-info">
               <div className="workspace-title-row">
                 <span className="workspace-name">TechZone Retail</span>
-                <span className="workspace-chevron">⌄</span>
+                <span className="workspace-chevron">{Icons.chevronDown}</span>
               </div>
             </div>
           )}
@@ -103,7 +103,7 @@ export function Sidebar({
         </nav>
 
         <div className="sidebar-footer">
-          <div className="sidebar-user-card" title={user?.full_name || user?.username}>
+          <div className="sidebar-user-card" role="button" tabIndex={0} onClick={() => handleNavigate('account')} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') handleNavigate('account') }} title={user?.full_name || user?.username}>
             <div className="sidebar-user-avatar">{getInitials(user?.full_name || user?.username)}</div>
             {!collapsed && (
               <>
@@ -111,7 +111,7 @@ export function Sidebar({
                   <span className="sidebar-user-name">{user?.full_name || user?.username || 'User'}</span>
                   <span className="sidebar-user-role">{ROLE_LABELS[role]}</span>
                 </div>
-                <span className="sidebar-user-options">⋯</span>
+                <span className="sidebar-user-options">{Icons.moreVertical}</span>
               </>
             )}
           </div>
