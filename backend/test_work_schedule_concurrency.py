@@ -17,7 +17,10 @@ async def main():
    await c.execute(text(f'CREATE SCHEMA {schema}'))
    await c.execute(text(f'SET LOCAL search_path TO {schema}'))
    for ddl in [
-    'CREATE TABLE employees(employee_id int PRIMARY KEY,store_id int)',
+    "CREATE TABLE users(user_id int,employee_id int)",
+    "CREATE TABLE user_roles(user_id int,role_id int)",
+    "CREATE TABLE roles(role_id int,role_code text)",
+    "CREATE TABLE employees(employee_id int PRIMARY KEY,store_id int,employment_status text DEFAULT 'ACTIVE')",
     'CREATE TABLE stores(store_id int PRIMARY KEY)',
     'CREATE TABLE work_shifts(shift_id int PRIMARY KEY,start_time time,end_time time,is_active bool)',
     'CREATE TABLE work_schedules(schedule_id bigserial PRIMARY KEY,employee_id int,store_id int,shift_id int,work_date date,notes text,starts_at timestamptz,ends_at timestamptz,cancelled_at timestamptz)',
@@ -26,7 +29,7 @@ async def main():
     "INSERT INTO work_shifts VALUES(1,'08:00','16:00',true),(2,'13:00','21:00',true)"
    ]: await c.execute(text(ddl))
   ready=asyncio.Event()
-  user=dict(user_id=1,employee_id=1,store_id=1,roles=['HR_MANAGER'])
+  user=dict(user_id=1,employee_id=99,store_id=1,roles=['HR_MANAGER'])
   async def writer(shift):
    async with AsyncSession(engine) as db:
     await db.execute(text(f'SET LOCAL search_path TO {schema}'))

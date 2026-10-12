@@ -22,6 +22,32 @@ from app.schemas.schemas import CheckInRequest, CheckOutRequest
 
 router = APIRouter()
 
+@router.get('/assigned-shift')
+async def assigned_shift(user=Depends(get_current_user), db: AsyncSession=Depends(get_db)):
+    employee = await attendances.authorize_employee(db, user, user.get('employee_id'))
+    now = attendances.local_now()
+    # Include yesterday's overnight shift and use the server's business timezone.
+    row = (await db.execute(text('''SELECT ws.schedule_id,ws.shift_id,ws.work_date,
+        sh.shift_name,sh.start_time,sh.end_time,s.store_name
+        FROM work_schedules ws JOIN work_shifts sh USING(shift_id) JOIN stores s USING(store_id)
+        WHERE ws.employee_id=:emp AND ws.store_id=:store AND ws.cancelled_at IS NULL
+          AND ws.work_date BETWEEN CAST(:day AS date)-1 AND :day
+          AND ws.work_date+sh.end_time+CASE WHEN sh.end_time<=sh.start_time THEN interval '1 day' ELSE interval '0 day' END > :now
+        ORDER BY ws.work_date+sh.start_time,ws.schedule_id LIMIT 1'''),
+        {'emp':employee['employee_id'],'store':employee['store_id'],'day':now.date(),'now':now.replace(tzinfo=None)})).mappings().first()
+    if not row:
+        # The attendance hero still needs today's assigned shift after it ends.
+        # Prefer the latest completed shift; never revive a cancelled occurrence.
+        row = (await db.execute(text('''SELECT ws.schedule_id,ws.shift_id,ws.work_date,
+            sh.shift_name,sh.start_time,sh.end_time,s.store_name
+            FROM work_schedules ws JOIN work_shifts sh USING(shift_id) JOIN stores s USING(store_id)
+            WHERE ws.employee_id=:emp AND ws.store_id=:store AND ws.cancelled_at IS NULL
+              AND ws.work_date=:day
+            ORDER BY ws.work_date+sh.end_time+CASE WHEN sh.end_time<=sh.start_time THEN interval '1 day' ELSE interval '0 day' END DESC,
+              ws.schedule_id DESC LIMIT 1'''),
+            {'emp':employee['employee_id'],'store':employee['store_id'],'day':now.date()})).mappings().first()
+    return dict(row) if row else None
+
 
 @router.get('/my-schedules')
 async def my_schedules(period: str = Query(..., pattern=r'^\d{4}-(0[1-9]|1[0-2])$'), user=Depends(get_current_user), db: AsyncSession=Depends(get_db)):

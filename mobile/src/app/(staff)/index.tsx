@@ -1,5 +1,5 @@
 import { AttendanceAction } from '@/components/attendance-action';
-import { AppText as Text } from '@/components/app-icon';
+import { AppIcon, AppText as Text, type AppIconName } from '@/components/app-icon';
 import { useCallback, useState, useEffect } from 'react';
 import { Modal, Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { router, useFocusEffect, type Href } from 'expo-router';
@@ -23,7 +23,7 @@ import { assignedShift, shiftProgress, storeLabel } from '@/services/presentatio
 import { displayTime, vietnamPeriod, type Today } from '@/services/attendance';
 import {
   type EmployeeSummaryData,
-  type ManagerDashboardStats,
+  type ManagerDashboardKpis,
 } from '@/services/dashboard';
 import { useNotifications } from '@/contexts/notifications';
 
@@ -47,8 +47,8 @@ export default function Home() {
   // Embedded Dashboard resources for Home Quick Utilities Tab
   const [quickTab, setQuickTab] = useState<'shortcuts' | 'dashboard'>('shortcuts');
   const summary = useResource<EmployeeSummaryData>(`/attendances/my-summary?period=${currentPeriod}`, 30000);
-  const managerStats = useResource<ManagerDashboardStats>(
-    isManager ? `/reports/dashboard-stats?period=${currentPeriod}` : null,
+  const managerStats = useResource<ManagerDashboardKpis>(
+    isManager ? '/reports/dashboard-kpis' : null,
     30000
   );
 
@@ -85,15 +85,15 @@ export default function Home() {
   const date = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
   const initials = profile.data?.full_name?.split(' ').slice(-2).map(v => v[0]).join('') || 'TZ';
 
-  const menu: [string, string, Href][] = [
-    ['👤', 'Thông tin cá nhân', '/(staff)/account'],
-    ['📊', 'Báo cáo tổng hợp & KPI', '/(staff)/dashboard'],
-    ['📈', 'Nhật ký làm việc & Hoạt động', '/(staff)/activity'],
-    ['📅', 'Lịch ca & Phân công', '/(staff)/schedules'],
-    ['📋', 'Bảng công cá nhân', '/(staff)/summary'],
-    ['📝', 'Quản lý nghỉ phép & Đơn từ', '/(staff)/requests'],
-    ['⚙️', 'Cấu hình ứng dụng', '/(staff)/settings'],
-    ['🔒', 'Đổi mật khẩu', '/(staff)/password'],
+  const menu: [AppIconName, string, Href][] = [
+    ["person-outline", 'Thông tin cá nhân', '/(staff)/account'],
+    ["bar-chart-outline", 'Báo cáo tổng hợp & KPI', '/(staff)/dashboard'],
+    ["analytics-outline", 'Nhật ký làm việc & Hoạt động', '/(staff)/activity'],
+    ["calendar-outline", 'Lịch ca & Phân công', '/(staff)/schedules'],
+    ["clipboard-outline", 'Bảng công cá nhân', '/(staff)/summary'],
+    ["document-text-outline", 'Quản lý nghỉ phép & Đơn từ', '/(staff)/requests'],
+    ["settings-outline", 'Cấu hình ứng dụng', '/(staff)/settings'],
+    ["lock-closed-outline", 'Đổi mật khẩu', '/(staff)/password'],
   ];
 
   function navigate(href: Href) {
@@ -192,7 +192,7 @@ export default function Home() {
                 position: 'relative',
               }}
             >
-              <Text style={{ fontSize: 18 }}>🔔</Text>
+              <AppIcon name="notifications-outline" style={{ fontSize: 18 }} />
               {unreadCount > 0 && (
                 <View
                   style={{
@@ -232,14 +232,14 @@ export default function Home() {
                 justifyContent: 'center',
               }}
             >
-              <Text style={{ fontSize: 18, color: p.text }}>☰</Text>
+              <AppIcon name="menu-outline" style={{ fontSize: 18, color: p.text }} />
             </Pressable>
           </View>
         </Card>
 
         {/* Date line */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 4 }}>
-          <Text style={{ fontSize: 13, color: p.muted }}>🗓</Text>
+          <AppIcon name="calendar-outline" style={{ fontSize: 13, color: p.muted }} />
           <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.muted }}>
             {new Date().toLocaleDateString('vi-VN', {
               timeZone: 'Asia/Ho_Chi_Minh',
@@ -252,14 +252,14 @@ export default function Home() {
         </View>
 
         <LoadingBar
-          active={profile.loading || today.loading || schedules.loading}
+          active={profile.loading || today.loading || schedules.loading || (quickTab === 'dashboard' && managerStats.loading)}
           label="Đang đồng bộ trang chủ…"
         />
 
-        {!!(profile.error || today.error || schedules.error || error) && (
+        {!!(profile.error || today.error || schedules.error || (quickTab === 'dashboard' && managerStats.error) || error) && (
           <Card style={{ backgroundColor: p.dangerBg, borderColor: p.danger }}>
             <Text style={{ color: p.dangerText, fontFamily: 'BeVietnam', fontSize: 13 }}>
-              {profile.error || today.error || schedules.error || error}
+              {profile.error || today.error || schedules.error || (quickTab === 'dashboard' && managerStats.error) || error}
             </Text>
             <Button
               title="Thử tải lại dữ liệu"
@@ -268,6 +268,7 @@ export default function Home() {
                 profile.reload();
                 today.reload();
                 schedules.reload();
+                managerStats.reload();
               }}
             />
           </Card>
@@ -294,7 +295,7 @@ export default function Home() {
                 {assigned?.shift_name || 'Hôm nay chưa có lịch ca'}
               </Text>
               <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.muted }}>
-                🏪 {storeDisplay}
+                <AppIcon name="storefront-outline" size={14} /> {storeDisplay}
               </Text>
               {!!assigned?.store_name && assigned.store_name !== profile.data?.store_name && <Label muted>{isWorking ? 'Cửa hàng của lượt đang mở' : 'Cửa hàng trong lịch phân ca'}: {storeLabel(assigned.store_name)}</Label>}
             </View>
@@ -309,7 +310,7 @@ export default function Home() {
                 justifyContent: 'center',
               }}
             >
-              <Text style={{ fontSize: 22 }}>⏱️</Text>
+              <AppIcon name="time-outline" style={{ fontSize: 22 }} />
             </View>
           </View>
 
@@ -328,7 +329,7 @@ export default function Home() {
               <>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.emeraldText, fontWeight: '600' }}>
-                    ✓ Đã vào ca: {displayTime(today.data?.check_in_time || null)}
+                    <AppIcon name="checkmark-outline" size={14} /> Đã vào ca: {displayTime(today.data?.check_in_time || null)}
                   </Text>
                   <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: p.muted }}>
                     Đã ghi nhận
@@ -511,7 +512,7 @@ export default function Home() {
                 gap: 5,
               }}
             >
-              <Text style={{ fontSize: 13 }}>⚡</Text>
+              <AppIcon name="flash-outline" style={{ fontSize: 13 }} />
               <Text
                 numberOfLines={1}
                 style={{
@@ -541,7 +542,7 @@ export default function Home() {
                 gap: 5,
               }}
             >
-              <Text style={{ fontSize: 13 }}>📊</Text>
+              <AppIcon name="bar-chart-outline" style={{ fontSize: 13 }} />
               <Text
                 numberOfLines={1}
                 style={{
@@ -568,7 +569,7 @@ export default function Home() {
                     low
                     style={{ flexBasis: '46%', flexGrow: 1 }}
                   >
-                    <Text style={{ fontSize: 26, color: p.brand }}>{item.icon}</Text>
+                    <AppIcon name={item.icon} style={{ fontSize: 26, color: p.brand }} />
                     <Label variant="bold">{item.title}</Label>
                     <Label muted variant="caption">Mở chức năng →</Label>
                   </Card>
@@ -584,7 +585,7 @@ export default function Home() {
                 <>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
-                      <Text style={{ fontSize: 13 }}>{isStoreManager ? '🏪' : '🏢'}</Text>
+                      <AppIcon name={isStoreManager ? 'storefront-outline' : 'business-outline'} style={{ fontSize: 13 }} />
                       <Text numberOfLines={1} style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: p.text, flex: 1 }}>
                         {isStoreManager ? storeDisplay : 'Toàn chuỗi TechZone'}
                       </Text>
@@ -597,12 +598,12 @@ export default function Home() {
                       label="Tổng nhân sự"
                       value={managerStats.data?.active_employees ?? '—'}
                       subtext="Biên chế"
-                      icon="👥"
+                      icon="people-outline"
                       variant="brand"
                     />
                     <MetricBox
                       label="Đang làm hôm nay"
-                      value={managerStats.data?.attendance_today?.checked_in ?? '—'}
+                      value={managerStats.data?.attendance_today?.working ?? '—'}
                       subtext={
                         managerStats.data?.active_employees
                           ? `Tỷ lệ ${Math.round(
@@ -612,7 +613,7 @@ export default function Home() {
                             )}%`
                           : undefined
                       }
-                      icon="🟢"
+                      icon="radio-button-on"
                       variant="success"
                     />
                   </View>
@@ -620,16 +621,16 @@ export default function Home() {
                   <View style={{ flexDirection: 'row', gap: 10 }}>
                     <MetricBox
                       label="Đi muộn hôm nay"
-                      value={`${managerStats.data?.attendance_today?.late ?? 0} người`}
+                      value={managerStats.data ? `${managerStats.data.attendance_today.late} người` : '—'}
                       subtext="Trong ngày"
-                      icon="⏱️"
+                      icon="time-outline"
                       variant={managerStats.data?.attendance_today?.late ? 'warning' : 'neutral'}
                     />
                     <MetricBox
                       label="Đơn chờ duyệt"
-                      value={`${managerStats.data?.pending_leaves ?? 0} đơn`}
+                      value={managerStats.data ? `${managerStats.data.pending_leaves} đơn` : '—'}
                       subtext="Cần xử lý"
-                      icon="📝"
+                      icon="document-text-outline"
                       variant={managerStats.data?.pending_leaves ? 'warning' : 'neutral'}
                     />
                   </View>
@@ -678,7 +679,7 @@ export default function Home() {
                       label="Tổng giờ làm"
                       value={`${summary.data?.working_days.total_hours ?? 0}h`}
                       subtext="Tích lũy tháng"
-                      icon="⏱️"
+                      icon="time-outline"
                       variant="brand"
                     />
                   </View>
@@ -692,14 +693,14 @@ export default function Home() {
                           ? `${summary.data.late_arrivals.minutes} phút`
                           : 'Đúng giờ'
                       }
-                      icon="⚠️"
+                      icon="warning-outline"
                       variant={summary.data?.late_arrivals.count ? 'warning' : 'neutral'}
                     />
                     <MetricBox
                       label="Đã nghỉ phép"
                       value={`${summary.data?.leave_quota.used_leave ?? 0} ngày`}
                       subtext={`Còn ${summary.data?.leave_quota.remaining_leave ?? 0} ngày phép`}
-                      icon="🏖️"
+                      icon="sunny-outline"
                       variant="success"
                     />
                   </View>
@@ -717,7 +718,7 @@ export default function Home() {
 
         {/* Security Mini Banner */}
         <Card low style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12 }}>
-          <Text style={{ fontSize: 20 }}>🛡️</Text>
+          <AppIcon name="shield-checkmark-outline" style={{ fontSize: 20 }} />
           <View style={{ flex: 1 }}>
             <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: p.text, fontWeight: '600' }}>
               Quyền riêng tư
@@ -773,14 +774,14 @@ export default function Home() {
                   borderRadius: 10,
                 }}
               >
-                <Text style={{ fontSize: 18 }}>🔔</Text>
+                <AppIcon name="notifications-outline" style={{ fontSize: 18 }} />
                 <Text style={{ fontFamily: 'BeVietnam', fontSize: 14, color: p.text, flex: 1 }}>
                   Trung tâm thông báo
                 </Text>
                 {unreadCount > 0 ? (
                   <Badge label={`${unreadCount}`} variant="danger" size="sm" />
                 ) : (
-                  <Text style={{ color: p.muted, fontSize: 14 }}>›</Text>
+                  <AppIcon name="chevron-forward" style={{ color: p.muted, fontSize: 14 }} />
                 )}
               </Pressable>
 
@@ -798,11 +799,11 @@ export default function Home() {
                     borderRadius: 10,
                   }}
                 >
-                  <Text style={{ fontSize: 18 }}>{icon}</Text>
+                  <AppIcon name={icon} style={{ fontSize: 18 }} />
                   <Text style={{ fontFamily: 'BeVietnam', fontSize: 14, color: p.text, flex: 1 }}>
                     {title}
                   </Text>
-                  <Text style={{ color: p.muted, fontSize: 14 }}>›</Text>
+                  <AppIcon name="chevron-forward" style={{ color: p.muted, fontSize: 14 }} />
                 </Pressable>
               ))}
             </View>

@@ -1,3 +1,4 @@
+import { AppIcon } from '@/components/app-icon';
 import { useState } from 'react';
 import {
   View,
@@ -9,6 +10,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { isRunningInExpoGo } from 'expo';
 import { useNotifications } from '@/contexts/notifications';
 import { usePalette, Card, Badge, Button } from '@/components/attendance-ui';
 import { type AppNotificationItem, type AppNotificationType } from '@/services/notifications';
@@ -124,7 +126,7 @@ export function NotificationCenterModal({ visible, onClose }: Props) {
               onPress={onClose}
               style={[styles.closeBtn, { backgroundColor: p.card, borderColor: p.line }]}
             >
-              <Text style={{ fontSize: 14, color: p.text, fontWeight: '700' }}>✕</Text>
+              <AppIcon name="close-outline" style={{ fontSize: 14, color: p.text, fontWeight: '700' }} />
             </Pressable>
           </View>
 
@@ -239,18 +241,20 @@ export function NotificationCenterModal({ visible, onClose }: Props) {
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                   <Text style={[styles.sectionTitle, { color: p.text }]}>Trạng thái Push Notifications</Text>
                   <Badge
-                    label={permissionGranted ? 'Hoạt động' : 'Chưa cấp quyền'}
-                    variant={permissionGranted ? 'success' : 'danger'}
+                    label={isRunningInExpoGo() ? 'Expo Go' : permissionGranted ? 'Hoạt động' : 'Chưa cấp quyền'}
+                    variant={isRunningInExpoGo() ? 'neutral' : permissionGranted ? 'success' : 'danger'}
                   />
                 </View>
 
                 <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.muted, lineHeight: 18 }}>
-                  {permissionGranted
+                  {isRunningInExpoGo()
+                    ? 'Expo Go vẫn hiển thị thông báo trong ứng dụng. Thông báo đẩy Android cần bản development build.'
+                    : permissionGranted
                     ? 'Ứng dụng đã sẵn sàng nhận thông báo đẩy. Bạn sẽ nhận thông báo khi có việc cần xử lý hoặc sắp tới ca làm.'
                     : 'Quyền thông báo chưa được bật. Vui lòng cấp quyền để nhận cảnh báo kịp thời.'}
                 </Text>
 
-                {!permissionGranted && (
+                {!isRunningInExpoGo() && !permissionGranted && (
                   <Button
                     title="Cấp quyền thông báo ngay"
                     variant="brand"
@@ -394,7 +398,7 @@ export function NotificationCenterModal({ visible, onClose }: Props) {
                   {unreadCount > 0 ? (
                     <Pressable onPress={markAllAsRead}>
                       <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: p.brand }}>
-                        ✓ Đánh dấu tất cả đã đọc
+                        <AppIcon name="checkmark-outline" size={14} /> Đánh dấu tất cả đã đọc
                       </Text>
                     </Pressable>
                   ) : (
@@ -557,7 +561,7 @@ export function GlobalNotificationBanner() {
         </View>
 
         <Pressable hitSlop={12} onPress={dismissBanner} style={{ padding: 6 }}>
-          <Text style={{ color: p.muted, fontSize: 14, fontWeight: '700' }}>✕</Text>
+          <AppIcon name="close-outline" style={{ color: p.muted, fontSize: 14, fontWeight: '700' }} />
         </Pressable>
       </Pressable>
     </View>

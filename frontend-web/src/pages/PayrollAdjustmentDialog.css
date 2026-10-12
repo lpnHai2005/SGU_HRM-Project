@@ -1,0 +1,19 @@
+.payroll-adjustment-dialog{max-width:min(620px,calc(100vw - 24px));padding:0;overflow:hidden}
+.payroll-adjustment-header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:22px 24px;border-bottom:1px solid var(--border-subtle)}
+.payroll-adjustment-header span{font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--action-primary)}
+.payroll-adjustment-header h2{margin:5px 0;font-size:21px}
+.payroll-adjustment-header p{margin:0;color:var(--text-secondary);font-size:13px}
+.payroll-adjustment-body{padding:20px 24px;overflow-y:auto}
+.payroll-attendance-reconcile{padding:14px 16px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--surface-subtle)}
+.payroll-attendance-reconcile h3{font-size:13px;margin:0 0 8px}
+.payroll-attendance-reconcile div{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-top:1px solid var(--border-subtle);font-size:12px}
+.payroll-attendance-reconcile span{color:var(--text-secondary)}
+.payroll-attendance-reconcile .payroll-reconcile-money strong{font-size:13px;white-space:nowrap}
+.payroll-attendance-reconcile .payroll-reconcile-money.is-positive strong{color:var(--status-success)}
+.payroll-attendance-reconcile .payroll-reconcile-money.is-negative strong{color:var(--status-danger,#dc2626)}
+.payroll-attendance-reconcile .payroll-reconcile-hint{margin:9px 0 0;color:var(--text-secondary);font-size:11px;line-height:1.5}
+.payroll-adjustment-note{font-size:12px;line-height:1.5;color:var(--text-secondary);margin:14px 0}
+.payroll-adjustment-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.payroll-adjustment-total{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-top:16px;padding:14px 16px;border-radius:var(--radius-md);background:var(--surface-subtle)}
+.payroll-adjustment-total strong{color:var(--status-success);font-size:18px}
+@media(max-width:520px){.payroll-adjustment-fields{grid-template-columns:1fr}.payroll-adjustment-header,.payroll-adjustment-body,.payroll-adjustment-dialog .modal-footer{padding-left:16px;padding-right:16px}}

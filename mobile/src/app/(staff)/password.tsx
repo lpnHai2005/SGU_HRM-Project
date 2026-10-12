@@ -1,4 +1,4 @@
-import { AppText as Text } from '@/components/app-icon';
+import { AppIcon, AppText as Text } from '@/components/app-icon';
 import { useRef, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import {
@@ -81,7 +81,7 @@ export default function Password() {
                 secureTextEntry
                 value={current}
                 onChangeText={setCurrent}
-                leftIcon="🔒"
+                leftIcon="lock-closed-outline"
               />
             </View>
 
@@ -93,7 +93,7 @@ export default function Password() {
                 secureTextEntry
                 value={next}
                 onChangeText={setNext}
-                leftIcon="🔑"
+                leftIcon="key-outline"
               />
             </View>
 
@@ -105,7 +105,7 @@ export default function Password() {
                 secureTextEntry
                 value={confirm}
                 onChangeText={setConfirm}
-                leftIcon="✅"
+                leftIcon="checkmark-circle-outline"
               />
             </View>
 
@@ -115,17 +115,13 @@ export default function Password() {
                 Tiêu chuẩn mật khẩu an toàn:
               </Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Text style={{ fontSize: 12, color: next.length >= 8 ? p.emeraldText : p.muted }}>
-                  {next.length >= 8 ? '✓' : '○'}
-                </Text>
+                <AppIcon name={next.length >= 8 ? 'checkmark-outline' : 'ellipse-outline'} style={{ fontSize: 12, color: next.length >= 8 ? p.emeraldText : p.muted }} />
                 <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: next.length >= 8 ? p.emeraldText : p.muted }}>
                   Độ dài tối thiểu 8 ký tự
                 </Text>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Text style={{ fontSize: 12, color: next && confirm && next === confirm ? p.emeraldText : p.muted }}>
-                  {next && confirm && next === confirm ? '✓' : '○'}
-                </Text>
+                <AppIcon name={next && confirm && next === confirm ? 'checkmark-outline' : 'ellipse-outline'} style={{ fontSize: 12, color: next && confirm && next === confirm ? p.emeraldText : p.muted }} />
                 <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: next && confirm && next === confirm ? p.emeraldText : p.muted }}>
                   Khớp giữa 2 lần nhập
                 </Text>
@@ -154,7 +150,7 @@ export default function Password() {
                 fontSize: 13,
               }}
             >
-              {done ? '✓ ' : '⚠️ '}
+              <AppIcon name={done ? 'checkmark-outline' : 'warning-outline'} size={16} color={done ? p.emeraldText : p.dangerText} />
               {message}
             </Text>
           </View>
@@ -164,14 +160,14 @@ export default function Password() {
           <Button
             title="Đăng nhập lại"
             variant="brand"
-            icon="➜"
+            icon="arrow-forward"
             onPress={() => void signOut()}
           />
         ) : (
           <Button
             title="Lưu mật khẩu mới"
             variant="brand"
-            icon="💾"
+            icon="save-outline"
             onPress={() => void submit()}
             disabled={busy || !current || next.length < 8 || !confirm}
           />

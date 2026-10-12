@@ -8,10 +8,51 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
 from app.core.database import get_db
+from app.core.attendance import local_now
 from app.api.deps import require_roles, get_current_user
 from app.core.excel_exporter import create_styled_excel
 
 router = APIRouter()
+
+
+async def _dashboard_kpis(db: AsyncSession, current_user: dict, today: date) -> dict:
+    """Four workforce cards are independent of payroll and sales availability."""
+    roles = set(current_user.get("roles", []))
+    manager_scope = "STORE_MANAGER" in roles and not roles.intersection({"ADMIN", "HR_MANAGER"})
+    store_id = current_user.get("store_id") if manager_scope else None
+    if manager_scope and not store_id:
+        raise HTTPException(403, "Tài khoản chưa được gán cửa hàng.")
+    params = {"today": today}
+    employee_filter = ""
+    if store_id:
+        params["store_id"] = store_id
+        employee_filter = " AND e.store_id = :store_id"
+
+    active = (await db.execute(text("""SELECT count(*) FROM employees e
+        WHERE e.employment_status IN ('ACTIVE','PROBATION')""" + employee_filter), params)).scalar() or 0
+    pending_filter = "lr.status = 'PENDING'" if manager_scope else "lr.status IN ('PENDING','STORE_APPROVED')"
+    if manager_scope:
+        params["manager_employee_id"] = current_user.get("employee_id")
+    pending = (await db.execute(text("""SELECT count(*) FROM leave_requests lr
+        JOIN employees e ON e.employee_id = lr.employee_id WHERE """ + pending_filter
+        + employee_filter + (" AND lr.employee_id IS DISTINCT FROM :manager_employee_id" if manager_scope else "")), params)).scalar() or 0
+    attendance = (await db.execute(text("""SELECT
+        COUNT(DISTINCT a.employee_id) FILTER (WHERE a.check_in_time IS NOT NULL) AS checked_in,
+        COUNT(DISTINCT a.employee_id) FILTER (WHERE a.late_minutes > 15) AS late,
+        COUNT(DISTINCT a.employee_id) FILTER (WHERE a.check_in_time IS NOT NULL AND a.check_out_time IS NULL) AS working
+        FROM attendances a JOIN employees e ON e.employee_id = a.employee_id
+        WHERE a.work_date = :today""" + employee_filter), params)).one()
+    return {"active_employees": active, "pending_leaves": pending,
+            "attendance_today": {"checked_in": attendance[0] or 0,
+                                 "late": attendance[1] or 0, "working": attendance[2] or 0}}
+
+
+@router.get("/dashboard-kpis", summary="Bốn chỉ số nhân sự Dashboard, không phụ thuộc Payroll/Sales")
+async def get_dashboard_kpis(
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "STORE_MANAGER"])),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _dashboard_kpis(db, current_user, local_now().date())
 
 # ===================================================================================
 # 1. DASHBOARD STATS (THẺ CHỈ SỐ TỔNG QUAN)
@@ -19,7 +60,7 @@ router = APIRouter()
 
 @router.get("/dashboard-stats", summary="Số liệu tổng quan hiển thị trên thẻ Dashboard (Executive KPI Cards)")
 async def get_dashboard_stats(
-    period: Optional[str] = Query("2026-09", description="Kỳ thống kê (YYYY-MM)"),
+    period: Optional[str] = Query(None, description="Kỳ thống kê (YYYY-MM)"),
     current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "STORE_MANAGER"])),
     db: AsyncSession = Depends(get_db)
 ):
@@ -34,23 +75,22 @@ async def get_dashboard_stats(
     """
     roles = current_user.get("roles", [])
     store_filter = ""
-    params = {"period": period, "today": date.today()}
+    today = local_now().date()
+    period = period or today.strftime('%Y-%m')
+    params = {"period": period}
+    kpis = await _dashboard_kpis(db, current_user, today)
 
-    if "STORE_MANAGER" in roles and "ADMIN" not in roles and "HR_MANAGER" not in roles:
+    store_manager_scope = "STORE_MANAGER" in roles and "ADMIN" not in roles and "HR_MANAGER" not in roles
+    if store_manager_scope:
         user_store_id = current_user.get("store_id")
+        if not user_store_id:
+            raise HTTPException(403, 'Tài khoản chưa được gán cửa hàng.')
         if user_store_id:
             store_filter = " AND store_id = :store_id"
             params["store_id"] = user_store_id
 
-    # 1. Nhân sự
-    total_emp = (await db.execute(text(f"SELECT count(*) FROM employees WHERE employment_status IN ('ACTIVE', 'PROBATION'){store_filter}"), params)).scalar() or 0
+    # 1. Cửa hàng đang hoạt động
     total_stores = (await db.execute(text("SELECT count(*) FROM stores WHERE is_active = TRUE"))).scalar() or 0
-
-    # 2. Đơn chờ duyệt
-    leave_query = "SELECT count(*) FROM leave_requests lr JOIN employees e ON lr.employee_id = e.employee_id WHERE lr.status IN ('PENDING', 'STORE_APPROVED')"
-    if store_filter:
-        leave_query += " AND e.store_id = :store_id"
-    pending_leaves = (await db.execute(text(leave_query), params)).scalar() or 0
 
     # 3. Quỹ lương kỳ
     pr_query = "SELECT COALESCE(SUM(p.net_salary), 0), COALESCE(SUM(p.gross_income), 0) FROM payrolls p JOIN employees e ON p.employee_id = e.employee_id WHERE p.salary_period = :period"
@@ -66,32 +106,12 @@ async def get_dashboard_stats(
         sales_query += " AND store_id = :store_id"
     total_sales = float((await db.execute(text(sales_query), params)).scalar() or 0)
 
-    # 5. Chấm công hôm nay
-    att_query = """
-        SELECT 
-            COUNT(CASE WHEN check_in_time IS NOT NULL THEN 1 END) as checked_in,
-            COUNT(CASE WHEN late_minutes > 0 THEN 1 END) as late_count
-        FROM attendances a
-        JOIN employees e ON a.employee_id = e.employee_id
-        WHERE a.work_date = :today
-    """
-    if store_filter:
-        att_query += " AND e.store_id = :store_id"
-    att_res = (await db.execute(text(att_query), params)).first()
-    checked_in_today = att_res[0] or 0
-    late_today = att_res[1] or 0
-
     return {
-        "active_employees": total_emp,
+        **kpis,
         "total_stores": total_stores,
-        "pending_leaves": pending_leaves,
         "monthly_net_payroll_fund": monthly_net_fund,
         "monthly_gross_payroll_fund": monthly_gross_fund,
         "total_retail_revenue": total_sales,
-        "attendance_today": {
-            "checked_in": checked_in_today,
-            "late": late_today
-        },
         "system_status": "ONLINE",
         "current_period": period
     }

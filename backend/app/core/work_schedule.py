@@ -30,6 +30,13 @@ async def lock_employee(db, user, employee_id, store_id):
     roles = set(user.get('roles', []))
     if not roles & MANAGERS:
         raise HTTPException(403, 'Schedule management requires manager role')
+    if not user.get('_schedule_worker'):
+        if employee_id == user.get('employee_id'):
+            raise HTTPException(403, 'Không được tự phân, sửa hoặc hủy lịch của bản thân.')
+        is_hr=(await db.execute(text('''SELECT 1 FROM users u JOIN user_roles ur USING(user_id)
+            JOIN roles r USING(role_id) WHERE u.employee_id=:id AND r.role_code='HR_MANAGER' LIMIT 1'''),{'id':employee_id})).first()
+        if is_hr and 'ADMIN' not in roles:
+            raise HTTPException(403, 'Chỉ Admin được quản lý lịch phân ca của HR.')
     employee = (await db.execute(text('SELECT employee_id,store_id FROM employees WHERE employee_id=:id FOR UPDATE'), {'id':employee_id})).mappings().first()
     if not employee:
         raise HTTPException(404, 'Employee not found')

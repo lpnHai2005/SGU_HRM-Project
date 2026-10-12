@@ -1,0 +1,15 @@
+.overview-page { display:grid;gap:22px; }
+.overview-tabs {display:flex;flex-wrap:wrap;gap:10px;}
+.overview-panel {padding:24px;}
+.overview-panel header {display:flex;justify-content:space-between;align-items:center;gap:20px;margin-bottom:20px;flex-wrap:wrap;}
+.overview-panel h2 {font-size:18px;margin:0 0 16px;}
+.overview-metric {min-width:0;overflow-wrap:anywhere;border:1px solid var(--border-color);border-radius:16px;background:var(--surface-subtle);color:var(--text-primary);padding:22px;display:flex;flex-direction:column;gap:12px;text-align:left;box-shadow:0 4px 18px #00000006;}
+button.overview-metric {cursor:pointer;transition:transform .15s;}
+button.overview-metric:hover {transform:translateY(-3px);}
+.overview-metric strong {font-size:32px;}
+.overview-metric small,.overview-metric span {color:var(--text-secondary);}
+.overview-columns {display:grid;grid-template-columns:1fr 1fr;gap:22px;}
+.overview-rate {font-size:48px;display:block;margin:16px 0;}
+.overview-panel progress {width:100%;height:12px;accent-color:#2563eb;}
+.overview-row {display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border-color);}
+@media(max-width:760px){.overview-columns{grid-template-columns:1fr}.overview-panel{padding:16px}.overview-metric{padding:16px}}

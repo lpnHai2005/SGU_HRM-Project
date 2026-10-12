@@ -1,3 +1,5 @@
+import { toast } from 'sonner'
+import { NotificationBell } from './EnterpriseNotifications'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Icons } from '../common/Icons'
 import { ROLE_LABELS } from '../../constants/navigation'
@@ -12,9 +14,15 @@ export interface TopbarProps {
 }
 
 const PAGE_TITLES: Record<string, string> = {
+  'my-schedules': 'Lịch ca & Phân công',
+  'my-attendance': 'Bảng công cá nhân',
+  'work-schedules': 'Quản lý lịch làm việc',
+  account: 'Tài khoản',
+  stores: 'Quản lý cửa hàng',
+  activity: 'Nhật ký làm việc & Hoạt động',
   dashboard: 'Tổng quan',
   employees: 'Nhân sự',
-  attendance: 'Bảng Công',
+  attendance: 'Quản lý công',
   leave: 'Nghỉ phép',
   payroll: 'Lương & Thưởng',
   reports: 'Báo cáo & Thống kê',
@@ -51,14 +59,14 @@ export function Topbar({
         <div className="breadcrumb-nav">
           <span className="breadcrumb-root" onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>TechZone</span>
           <span className="breadcrumb-separator">&gt;</span>
-          <h1 className="topbar-title">{PAGE_TITLES[currentRoute] || 'Tổng quan'}</h1>
+          <h1 className="topbar-title">{currentRoute === 'dashboard' && role === 'EMPLOYEE' ? 'Trang chủ' : PAGE_TITLES[currentRoute] || 'Trang chủ'}</h1>
         </div>
       </div>
       <div className="topbar-right">
         <button
           className="topbar-icon-btn"
           title="Tìm kiếm hệ thống"
-          onClick={() => alert('Nhấn Ctrl+K hoặc chọn trang từ menu')}
+          onClick={() => toast('Nhấn Ctrl+K hoặc chọn trang từ menu')}
         >
           {Icons.search}
         </button>
@@ -72,7 +80,7 @@ export function Topbar({
         </button>
         <button
           className="btn btn-ai"
-          onClick={() => alert('✦ Trợ lý AI TechZone: Hệ thống đang kết nối trực tiếp cơ sở dữ liệu và vận hành ổn định.')}
+          onClick={() => toast('✦ Trợ lý AI TechZone: Hệ thống đang kết nối trực tiếp cơ sở dữ liệu và vận hành ổn định.')}
           title="Hỏi trợ lý AI TechZone"
         >
           ✦ Trợ lý AI
@@ -85,7 +93,7 @@ export function Topbar({
           + Thêm mới
         </button>
         <div className="topbar-divider"></div>
-        <div className="topbar-user">
+        <NotificationBell user={user} /><div className="topbar-user" role="button" tabIndex={0} onClick={() => navigate('/account')} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') navigate('/account') }}>
           <div className="user-avatar">{getInitials(user?.full_name || user?.username)}</div>
           <div className="user-info">
             <span className="user-name">{user?.full_name || user?.username || 'User'}</span>

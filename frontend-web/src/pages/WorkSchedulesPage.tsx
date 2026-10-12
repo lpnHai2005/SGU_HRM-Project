@@ -19,7 +19,7 @@ const localDate = (date: Date) => {
   return `${year}-${month}-${day}`
 }
 
-const today = () => localDate(new Date())
+const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' })
 
 const displayDate = (value: string) => new Date(`${value}T00:00:00`).toLocaleDateString('vi-VN')
 const displayTime = (value: string) => value.slice(0, 5)
@@ -56,6 +56,7 @@ export function WorkSchedulesPage({ user }: { user: any }) {
   const [view, setView] = useState<ViewMode>('week')
   const [employeeFilter, setEmployeeFilter] = useState('')
   const [departmentFilter, setDepartmentFilter] = useState('')
+  const [positionFilter, setPositionFilter] = useState('')
   const [storeFilter, setStoreFilter] = useState(isStoreManager && user?.store_id ? String(user.store_id) : '')
   const [includeCancelled, setIncludeCancelled] = useState(false)
   const [schedules, setSchedules] = useState<WorkSchedule[]>([])
@@ -68,6 +69,7 @@ export function WorkSchedulesPage({ user }: { user: any }) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const [refresh, setRefresh] = useState(0)
 
   useEffect(() => {
     let active = true
@@ -88,6 +90,7 @@ export function WorkSchedulesPage({ user }: { user: any }) {
     const params: WorkScheduleQuery = { day: selectedDate, view, include_cancelled: includeCancelled }
     if (employeeFilter) params.employee_id = Number(employeeFilter)
     if (departmentFilter) params.department_id = Number(departmentFilter)
+    if (positionFilter) params.position_id = Number(positionFilter)
     if (storeFilter) params.store_id = Number(storeFilter)
 
     workScheduleApi.getAll(params)
@@ -102,7 +105,7 @@ export function WorkSchedulesPage({ user }: { user: any }) {
       })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [selectedDate, view, employeeFilter, departmentFilter, storeFilter, includeCancelled])
+  }, [selectedDate, view, employeeFilter, departmentFilter, positionFilter, storeFilter, includeCancelled, refresh])
 
   const sortedSchedules = useMemo(
     () => [...schedules].sort((a, b) => a.work_date.localeCompare(b.work_date) || a.start_time.localeCompare(b.start_time) || a.employee_name.localeCompare(b.employee_name)),
@@ -178,10 +181,7 @@ export function WorkSchedulesPage({ user }: { user: any }) {
       </header>
 
       <section className="work-schedule-filters" aria-label="Bộ lọc lịch làm việc">
-        <label className="form-group">
-          <span className="form-label">Ngày tham chiếu</span>
-          <DatePicker key={selectedDate} value={selectedDate} label="Ngày tham chiếu" onChange={date => { setLoading(true); setSelectedDate(date) }} />
-        </label>
+        <DatePicker key={selectedDate} value={selectedDate} label="Ngày tham chiếu" onChange={date => { setLoading(true); setSelectedDate(date) }} />
         <label className="form-group">
           <span className="form-label">Hiển thị</span>
           <select className="form-select" value={view} onChange={event => { setLoading(true); setView(event.target.value as ViewMode) }}>
@@ -217,6 +217,10 @@ export function WorkSchedulesPage({ user }: { user: any }) {
             ))}
           </select>
         </label>
+        <label className="form-group">
+          <span className="form-label">Chức vụ</span>
+          <select className="form-select" value={positionFilter} onChange={e=>{setLoading(true);setPositionFilter(e.target.value)}}><option value="">Tất cả chức vụ</option>{lookups?.positions.map(p=><option key={p.position_id} value={p.position_id}>{p.position_name}</option>)}</select>
+        </label>
         <label className="work-schedule-cancelled-toggle">
           <input type="checkbox" checked={includeCancelled} onChange={event => { setLoading(true); setIncludeCancelled(event.target.checked) }} />
           Hiện lịch đã hủy
@@ -228,7 +232,7 @@ export function WorkSchedulesPage({ user }: { user: any }) {
           <button type="button" className="btn btn-secondary" onClick={() => { setLoading(true); setSelectedDate(value => moveDate(value, view, -1)) }} aria-label="Kỳ trước">‹ Trước</button>
           <strong>{periodLabel(selectedDate, view)}</strong>
           <button type="button" className="btn btn-secondary" onClick={() => { setLoading(true); setSelectedDate(value => moveDate(value, view, 1)) }} aria-label="Kỳ sau">Sau ›</button>
-          <button type="button" className="btn btn-secondary" onClick={() => { const date = today(); if (date !== selectedDate) setLoading(true); setSelectedDate(date) }}>Hôm nay</button>
+          <button type="button" className="btn btn-secondary" onClick={() => { const date = today(); setLoading(true); setSelectedDate(date); setRefresh(value => value + 1) }}>Hôm nay</button>
         </div>
 
         {notice && <div className="work-schedule-notice" role="status">{notice}</div>}
@@ -241,7 +245,7 @@ export function WorkSchedulesPage({ user }: { user: any }) {
             <table className="data-table work-schedule-table">
               <thead>
                 <tr>
-                  <th>Ngày</th><th>Nhân viên</th><th>Phòng ban</th><th>Cửa hàng</th><th>Ca làm</th><th>Ghi chú</th><th>Trạng thái</th><th>Thao tác</th>
+                  <th>Ngày</th><th>Nhân viên</th><th>Chức vụ</th><th>Phòng ban</th><th>Cửa hàng</th><th>Ca làm</th><th>Ghi chú</th><th>Trạng thái</th><th>Thao tác</th>
                 </tr>
               </thead>
               <tbody>
@@ -249,6 +253,7 @@ export function WorkSchedulesPage({ user }: { user: any }) {
                   <tr key={schedule.schedule_id} className={schedule.cancelled_at ? 'is-cancelled' : ''}>
                     <td>{displayDate(schedule.work_date)}</td>
                     <td>{schedule.employee_name}</td>
+                    <td>{(schedule as WorkSchedule & {position_name?:string}).position_name || '—'}</td>
                     <td>{lookups?.departments.find(department => department.department_id === schedule.department_id)?.department_name || '—'}</td>
                     <td>{schedule.store_name}</td>
                     <td><strong>{schedule.shift_name}</strong><br /><span>{displayTime(schedule.start_time)}–{displayTime(schedule.end_time)}</span></td>
@@ -259,11 +264,11 @@ export function WorkSchedulesPage({ user }: { user: any }) {
                         <button
                           type="button"
                           className="btn btn-secondary btn-sm"
-                          disabled={schedule.employment_status !== 'ACTIVE' && schedule.employment_status !== 'PROBATION'}
+                          disabled={schedule.employee_id === user?.employee_id || (schedule.employment_status !== 'ACTIVE' && schedule.employment_status !== 'PROBATION')}
                           title={schedule.employment_status !== 'ACTIVE' && schedule.employment_status !== 'PROBATION' ? 'Không thể sửa ca khi nhân viên đang nghỉ việc hoặc đã nghỉ việc.' : undefined}
                           onClick={() => beginEdit(schedule)}
                         >Sửa</button>
-                        <button type="button" className="btn btn-danger btn-sm" onClick={() => beginCancel(schedule)}>Hủy</button>
+                        <button type="button" className="btn btn-danger btn-sm" disabled={schedule.employee_id === user?.employee_id} title={schedule.employee_id === user?.employee_id ? 'Không được tự hủy lịch của bản thân.' : undefined} onClick={() => beginCancel(schedule)}>Hủy</button>
                       </>}
                     </td>
                   </tr>

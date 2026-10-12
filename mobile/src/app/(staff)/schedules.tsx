@@ -1,4 +1,5 @@
-import { AppText as Text } from '@/components/app-icon';
+import { ManagerSchedules } from '@/components/manager-schedules';
+import { AppIcon, AppText as Text } from '@/components/app-icon';
 import { storeLabel } from '@/services/presentation';
 import { useState } from 'react';
 import { Modal, Pressable, ScrollView, View } from 'react-native';
@@ -13,9 +14,9 @@ import {
 import { LoadingBar } from '@/components/loading-bar';
 import { useResource } from '@/hooks/use-resource';
 import { vietnamPeriod } from '@/services/attendance';
-import type { Schedule } from '@/services/staff';
+import type { Schedule, Profile } from '@/services/staff';
 
-export default function Schedules() {
+function PersonalSchedules() {
   const p = usePalette();
   const [applied, setApplied] = useState(vietnamPeriod);
   const [monthPickerOpen, setMonthPickerOpen] = useState(false);
@@ -61,7 +62,7 @@ export default function Schedules() {
             justifyContent: 'space-between',
           }}
         >
-          <Text style={{ fontFamily: 'BeVietnam', fontSize: 15, color: p.text }}>🗓️  {selectedMonthLabel}</Text>
+          <Text style={{ fontFamily: 'BeVietnam', fontSize: 15, color: p.text }}><AppIcon name="calendar-outline" size={14} />  {selectedMonthLabel}</Text>
           <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 13, color: p.brandText }}>Đổi tháng</Text>
         </Pressable>
       </Card>
@@ -71,7 +72,7 @@ export default function Schedules() {
       {!!error && (
         <Card style={{ backgroundColor: p.dangerBg, borderColor: p.danger }}>
           <Text style={{ color: p.dangerText, fontFamily: 'BeVietnam', fontSize: 13 }}>
-            ⚠️ {error}
+            <AppIcon name="warning-outline" size={14} /> {error}
           </Text>
         </Card>
       )}
@@ -93,7 +94,7 @@ export default function Schedules() {
                 ⏱️ {s.start_time.slice(0, 5)} – {s.end_time.slice(0, 5)}
               </Text>
               <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.muted }}>
-                🏪 {storeName}
+                <AppIcon name="storefront-outline" size={14} /> {storeName}
               </Text>
             </View>
           </Card>
@@ -102,7 +103,7 @@ export default function Schedules() {
 
       {data?.length === 0 && !loading && (
         <Card style={{ alignItems: 'center', paddingVertical: 28 }}>
-          <Text style={{ fontSize: 28, marginBottom: 8 }}>📅</Text>
+          <AppIcon name="calendar-outline" style={{ fontSize: 28, marginBottom: 8 }} />
           <Label variant="subtitle">Chưa có lịch phân ca</Label>
           <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.muted, textAlign: 'center', marginTop: 4 }}>
             Tháng {applied} chưa có phân ca cụ thể. Bạn vẫn có thể chọn ca thực tế khi chấm công để đối soát.
@@ -140,11 +141,11 @@ export default function Schedules() {
               <Label variant="subtitle">Chọn tháng tra cứu</Label>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                 <Pressable accessibilityRole="button" accessibilityLabel="Năm trước" hitSlop={8} onPress={() => setDraftYear(year => year - 1)}>
-                  <Text style={{ color: p.brandText, fontSize: 24, fontFamily: 'BeVietnamBold' }}>‹</Text>
+                  <AppIcon name="chevron-back" style={{ color: p.brandText, fontSize: 24, fontFamily: 'BeVietnamBold' }} />
                 </Pressable>
                 <Text style={{ color: p.text, fontSize: 16, fontFamily: 'BeVietnamBold' }}>{draftYear}</Text>
                 <Pressable accessibilityRole="button" accessibilityLabel="Năm sau" hitSlop={8} onPress={() => setDraftYear(year => year + 1)}>
-                  <Text style={{ color: p.brandText, fontSize: 24, fontFamily: 'BeVietnamBold' }}>›</Text>
+                  <AppIcon name="chevron-forward" style={{ color: p.brandText, fontSize: 24, fontFamily: 'BeVietnamBold' }} />
                 </Pressable>
               </View>
             </View>
@@ -195,4 +196,12 @@ export default function Schedules() {
       </Modal>
     </ScrollView>
   );
+}
+
+export default function Schedules() {
+ const {data}=useResource<Profile>('/auth/me');
+ const [tab,setTab]=useState('personal');
+ const manager=data?.roles?.some(r=>['ADMIN','HR_MANAGER','STORE_MANAGER'].includes(r));
+ const p=usePalette();
+ return <View style={{flex:1,backgroundColor:p.bg}}>{manager&&<View style={{flexDirection:'row',paddingHorizontal:16,paddingVertical:10,gap:8}}><Button title="Cá nhân" style={{flex:1}} secondary={tab!=='personal'} onPress={()=>setTab('personal')}/><Button title="Nhân viên" style={{flex:1}} secondary={tab!=='team'} onPress={()=>setTab('team')}/></View>}{manager&&tab==='team'?<ManagerSchedules profile={data!}/>:<PersonalSchedules/>}</View>;
 }

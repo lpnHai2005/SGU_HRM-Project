@@ -1,4 +1,4 @@
-import { AppText as Text } from '@/components/app-icon';
+import { AppIcon, AppText as Text, type AppIconName } from '@/components/app-icon';
 import {
   Pressable,
   TextInput,
@@ -152,7 +152,7 @@ export function Badge({
   variant?: 'success' | 'warning' | 'danger' | 'info' | 'neutral' | 'brand';
   pulse?: boolean;
   size?: 'sm' | 'md';
-  icon?: string;
+  icon?: AppIconName;
 }) {
   const p = usePalette();
   let bg = p.surfaceLow;
@@ -205,7 +205,7 @@ export function Badge({
         />
       )}
       {icon ? (
-        <Text style={{ fontSize: size === 'sm' ? 11 : 13, color: text }}>{icon}</Text>
+        <AppIcon name={icon} style={{ fontSize: size === 'sm' ? 11 : 13, color: text }} />
       ) : null}
       <Text
         style={{
@@ -222,6 +222,7 @@ export function Badge({
 }
 
 export function MetricBox({
+  onPress,
   label,
   value,
   subtext,
@@ -229,10 +230,11 @@ export function MetricBox({
   variant = 'neutral',
   style,
 }: {
+  onPress?: () => void;
   label: string;
   value: string | number;
   subtext?: string;
-  icon?: string;
+  icon?: AppIconName;
   variant?: 'success' | 'warning' | 'danger' | 'info' | 'neutral' | 'brand';
   style?: StyleProp<ViewStyle>;
 }) {
@@ -244,10 +246,12 @@ export function MetricBox({
   if (variant === 'brand') valColor = p.brandText;
 
   return (
-    <View
+    <Pressable onPress={onPress} disabled={!onPress} accessibilityRole={onPress ? "button" : undefined}
       style={[
         {
           flex: 1,
+          minWidth: 0,
+          minHeight: 110,
           backgroundColor: p.surfaceLow,
           padding: 12,
           borderRadius: 14,
@@ -259,10 +263,10 @@ export function MetricBox({
       ]}
     >
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
-        <Text numberOfLines={1} style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.muted, flex: 1 }}>
+        <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, lineHeight: 18, color: p.muted, flex: 1, minWidth: 0 }}>
           {label}
         </Text>
-        {icon && <Text style={{ fontSize: 16 }}>{icon}</Text>}
+        {icon && <AppIcon name={icon} style={{ fontSize: 16 }} />}
       </View>
       <Text
         numberOfLines={1}
@@ -282,7 +286,7 @@ export function MetricBox({
           {subtext}
         </Text>
       )}
-    </View>
+    </Pressable>
   );
 }
 
@@ -331,7 +335,7 @@ export function Button({
   disabled?: boolean;
   secondary?: boolean;
   variant?: 'primary' | 'secondary' | 'brand' | 'danger' | 'outline';
-  icon?: string;
+  icon?: AppIconName;
   style?: StyleProp<ViewStyle>;
 }) {
   const p = usePalette();
@@ -388,13 +392,15 @@ export function Button({
         style,
       ]}
     >
-      {icon && <Text style={{ fontSize: 16, color: textColor }}>{icon}</Text>}
+      {icon && <AppIcon name={icon} style={{ fontSize: 16, color: textColor }} />}
       <Text
         style={{
           fontFamily: 'BeVietnamBold',
           color: textColor,
           fontWeight: '700',
           fontSize: 15,
+          flexShrink: 1,
+          textAlign: 'center',
         }}
       >
         {title}
@@ -405,7 +411,7 @@ export function Button({
 
 export function Input(
   props: TextInputProps & {
-    leftIcon?: string;
+    leftIcon?: AppIconName;
   }
 ) {
   const p = usePalette();
@@ -424,7 +430,7 @@ export function Input(
       }}
     >
       {leftIcon && (
-        <Text style={{ marginRight: 8, fontSize: 16, color: p.muted }}>{leftIcon}</Text>
+        <AppIcon name={leftIcon} size={18} color={p.muted} style={{ marginRight: 10 }} />
       )}
       <TextInput
         placeholderTextColor={p.muted}
@@ -436,6 +442,7 @@ export function Input(
             color: p.text,
             paddingVertical: 14,
             fontSize: 15,
+            minWidth: 0,
           },
           style,
         ]}

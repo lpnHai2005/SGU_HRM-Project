@@ -2,6 +2,7 @@ import io
 import csv
 from datetime import date, datetime
 from typing import Optional, List
+from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,10 +17,96 @@ from app.schemas.schemas import (
     SalesRecordCreate, SalesRecordOut, SalesRecordUpdate,
     CommissionOut, PayrollStatusUpdate, BatchPayrollStatusRequest,
     ProjectCreate, ProjectUpdate, ProjectMemberCreate, ProjectMemberUpdate,
-    ProjectOut, ProjectMemberOut
+    ProjectOut, ProjectMemberOut, PayrollPeriodReopenRequest
 )
 
 router = APIRouter()
+
+async def lock_payroll_period(db, period):
+    # Serialize calculation and approval, including periods with no rows yet.
+    await db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:key))"), {"key": f"payroll:{period}"})
+
+async def ensure_fresh_payroll(db,period):
+    run=(await db.execute(text('SELECT calculated_at FROM payroll_calculation_runs WHERE salary_period=:period'),{'period':period})).scalar_one_or_none()
+    if not run:
+        raise HTTPException(409,'Kỳ lương nháp cần được tính lại theo giờ OT đã duyệt trước khi chốt')
+    changed=(await db.execute(text('''SELECT 1 FROM attendance_overtime_approvals ota
+        JOIN attendances a USING(attendance_id) WHERE to_char(a.work_date,'YYYY-MM')=:period
+        AND ota.updated_at>:calculated LIMIT 1'''),{'period':period,'calculated':run})).first()
+    if changed: raise HTTPException(409,'Quyết định OT thay đổi sau lần tính lương; vui lòng tính lại trước khi duyệt')
+
+async def reapply_payroll_adjustments(db, period, adjustments):
+    """Carry audited draft adjustments across recalculation, keyed by employee."""
+    for adjustment in adjustments:
+        new_id = (await db.execute(text('''SELECT payroll_id FROM payrolls
+            WHERE salary_period=:period AND employee_id=:employee_id FOR UPDATE'''),
+            {'period':period,'employee_id':adjustment['employee_id']})).scalar_one_or_none()
+        if new_id is None:
+            continue
+        addition=float(adjustment['addition_amount'] or 0)
+        deduction=float(adjustment['deduction_amount'] or 0)
+        await db.execute(text('''UPDATE payrolls SET gross_income=COALESCE(gross_income,0)+:addition,
+            total_deduction=COALESCE(total_deduction,0)+:deduction,
+            net_salary=COALESCE(net_salary,0)+:addition-:deduction,updated_at=clock_timestamp()
+            WHERE payroll_id=:id'''),{'id':new_id,'addition':addition,'deduction':deduction})
+        await db.execute(text('''INSERT INTO payroll_manual_adjustments(payroll_id,addition_amount,deduction_amount,reason,edited_by)
+            VALUES(:id,:addition,:deduction,:reason,:edited_by)'''),
+            {'id':new_id,'addition':addition,'deduction':deduction,'reason':adjustment['reason'],'edited_by':adjustment['edited_by']})
+
+class OvertimeDecision(BaseModel):
+    approved_hours: float = Field(ge=0,allow_inf_nan=False)
+    decision: str = Field(pattern='^(APPROVED|REJECTED)$')
+    reason: str = Field(min_length=3,max_length=500)
+
+class PayrollAdjustmentRequest(BaseModel):
+    addition_amount: float = Field(ge=0,le=100000000)
+    deduction_amount: float = Field(ge=0,le=100000000)
+    reason: str = Field(min_length=5,max_length=500)
+
+class PayrollUnconfirmRequest(BaseModel):
+    reason: str = Field(min_length=5,max_length=500)
+
+@router.get('/overtime-approvals')
+async def list_overtime_approvals(period:str=Query(...,pattern=r'^\d{4}-(0[1-9]|1[0-2])$'),
+    current_user:dict=Depends(require_roles(['HR_MANAGER','ADMIN'])),db:AsyncSession=Depends(get_db)):
+    return [dict(r) for r in (await db.execute(text('''SELECT a.attendance_id,a.employee_id,e.employee_code,e.full_name,
+        a.work_date,a.overtime_hours AS actual_overtime_hours,ota.approved_hours,ota.decision,ota.reason,
+        ota.reviewer_user_id,ota.updated_at FROM attendances a JOIN employees e USING(employee_id)
+        LEFT JOIN attendance_overtime_approvals ota USING(attendance_id)
+        WHERE to_char(a.work_date,'YYYY-MM')=:period AND a.overtime_hours>0 AND a.check_out_time IS NOT NULL
+        ORDER BY a.work_date,e.full_name,a.attendance_id'''),{'period':period})).mappings().all()]
+
+@router.put('/overtime-approvals/{attendance_id}')
+async def decide_overtime(attendance_id:int,req:OvertimeDecision,
+    current_user:dict=Depends(require_roles(['HR_MANAGER','ADMIN'])),db:AsyncSession=Depends(get_db)):
+    row=(await db.execute(text('''SELECT a.attendance_id,a.work_date,a.overtime_hours,a.check_out_time,
+        ota.approved_hours AS old_hours,ota.decision AS old_decision
+        FROM attendances a LEFT JOIN attendance_overtime_approvals ota USING(attendance_id)
+        WHERE a.attendance_id=:id FOR UPDATE OF a'''),{'id':attendance_id})).mappings().first()
+    if not row: raise HTTPException(404,'Không tìm thấy phiên chấm công')
+    if not row['check_out_time'] or not row['overtime_hours'] or row['overtime_hours']<=0:
+        raise HTTPException(409,'Chỉ duyệt OT cho phiên đã check-out và có giờ OT thực tế')
+    if len(req.reason.strip())<3 or round(req.approved_hours,2)!=req.approved_hours:
+        raise HTTPException(422,'Lý do ít nhất 3 ký tự và giờ OT có tối đa 2 chữ số thập phân')
+    if req.approved_hours>float(row['overtime_hours']) or (req.decision=='REJECTED' and req.approved_hours!=0):
+        raise HTTPException(422,'Giờ OT duyệt phải từ 0 đến số giờ thực tế; từ chối thì bằng 0')
+    period=row['work_date'].strftime('%Y-%m')
+    await lock_payroll_period(db,period)
+    if (await db.execute(text("SELECT 1 FROM payrolls WHERE salary_period=:period AND payment_status IN ('CONFIRMED','PAID') LIMIT 1"),{'period':period})).first():
+        raise HTTPException(409,'Kỳ lương đã duyệt; điều chỉnh OT cần quy trình phê duyệt hồi tố riêng')
+    await db.execute(text('''INSERT INTO attendance_overtime_approvals(attendance_id,approved_hours,decision,reviewer_user_id,reason)
+        VALUES(:id,:hours,:decision,:reviewer,:reason) ON CONFLICT(attendance_id) DO UPDATE SET
+        approved_hours=EXCLUDED.approved_hours,decision=EXCLUDED.decision,reviewer_user_id=EXCLUDED.reviewer_user_id,
+        reason=EXCLUDED.reason,updated_at=clock_timestamp()'''),{'id':attendance_id,'hours':req.approved_hours,
+        'decision':req.decision,'reviewer':current_user['user_id'],'reason':req.reason.strip()})
+    import json
+    await db.execute(text('''INSERT INTO audit_logs(user_id,action,entity_name,entity_id,old_values,new_values)
+        VALUES(:user,'DECIDE_OVERTIME','attendance_overtime_approvals',:id,CAST(:old AS jsonb),CAST(:new AS jsonb))'''),
+        {'user':current_user['user_id'],'id':str(attendance_id),
+         'old':json.dumps({'approved_hours':float(row['old_hours']) if row['old_hours'] is not None else None,'decision':row['old_decision']}),
+         'new':req.model_dump_json()})
+    await db.commit()
+    return {'attendance_id':attendance_id,'approved_hours':req.approved_hours,'decision':req.decision}
 
 # ===================================================================================
 # 1. PAYROLL LIST (PHÂN HỆ 8 - QUẢN LÝ TIỀN LƯƠNG & CHỐT LƯƠNG)
@@ -51,11 +138,28 @@ async def list_payrolls(
                p.holiday_bonus, p.productivity_bonus,
                p.gross_income, p.bhxh_amount, p.bhyt_amount, p.bhtn_amount,
                p.total_insurance, p.personal_income_tax, p.penalty_deduction, p.total_deduction,
-               p.net_salary, p.payment_status, p.payment_date
+               p.net_salary, p.payment_status, p.payment_date,
+               COALESCE(att.attendance_actual_days,0) AS attendance_actual_days,
+               COALESCE(att.attendance_hours,0) AS attendance_hours,
+               COALESCE(att.attendance_late_minutes,0) AS attendance_late_minutes,
+               COALESCE(att.attendance_early_minutes,0) AS attendance_early_minutes,
+               COALESCE(att.attendance_actual_overtime_hours,0) AS attendance_actual_overtime_hours,
+               COALESCE(att.attendance_approved_overtime_hours,0) AS attendance_approved_overtime_hours,
+               COALESCE(adj.addition_amount,0) AS manual_addition,
+               COALESCE(adj.deduction_amount,0) AS manual_deduction,adj.reason AS adjustment_reason
         FROM payrolls p
         JOIN employees e ON p.employee_id = e.employee_id
         LEFT JOIN stores s ON e.store_id = s.store_id
         JOIN positions pos ON e.position_id = pos.position_id
+        LEFT JOIN LATERAL (SELECT COUNT(DISTINCT a.work_date) FILTER (WHERE a.check_in_time IS NOT NULL) AS attendance_actual_days,
+            COALESCE(SUM(a.actual_work_hours),0) AS attendance_hours,
+            COALESCE(SUM(a.late_minutes),0) AS attendance_late_minutes,
+            COALESCE(SUM(a.early_minutes),0) AS attendance_early_minutes,
+            COALESCE(SUM(a.overtime_hours),0) AS attendance_actual_overtime_hours,
+            COALESCE(SUM(CASE WHEN ota.decision='APPROVED' THEN ota.approved_hours ELSE 0 END),0) AS attendance_approved_overtime_hours
+            FROM attendances a LEFT JOIN attendance_overtime_approvals ota USING(attendance_id)
+            WHERE a.employee_id=p.employee_id AND to_char(a.work_date,'YYYY-MM')=p.salary_period) att ON TRUE
+        LEFT JOIN payroll_manual_adjustments adj USING(payroll_id)
         WHERE p.salary_period = :period
     """
     params = {"period": period}
@@ -70,6 +174,8 @@ async def list_payrolls(
             params["emp_id"] = employee_id
     elif "STORE_MANAGER" in roles:
         user_store_id = current_user.get("store_id")
+        if not user_store_id or (store_id is not None and store_id != user_store_id):
+            raise HTTPException(403, "Bạn chỉ được xem lương của cửa hàng được quản lý")
         if user_store_id:
             query += " AND e.store_id = :mgr_store_id"
             params["mgr_store_id"] = user_store_id
@@ -80,6 +186,7 @@ async def list_payrolls(
         user_emp_id = current_user.get("employee_id")
         query += " AND p.employee_id = :self_emp_id"
         params["self_emp_id"] = user_emp_id
+        query += " AND p.payment_status IN ('CONFIRMED','PAID')"
 
     if payment_status:
         query += " AND p.payment_status = :status"
@@ -123,10 +230,18 @@ async def calculate_payroll(
     hr_id = current_user.get("employee_id") or 2
     period = req.salary_period
 
+    await lock_payroll_period(db, period)
+    finalized = (await db.execute(text("SELECT 1 FROM payrolls WHERE salary_period=:period AND payment_status IN ('CONFIRMED','PAID') LIMIT 1"), {"period": period})).first()
+    if finalized:
+        raise HTTPException(409, "Kỳ lương đã duyệt/chi trả. Không được tính lại; cần quy trình điều chỉnh có phê duyệt riêng.")
+
     # 1. Tính hoa hồng trước
     await db.execute(text("CALL sp_calculate_monthly_commission(:period)"), {"period": period})
 
     # Dọn dẹp các chi tiết và bảng lương của kỳ này trước khi chốt lại
+    saved_adjustments = (await db.execute(text('''SELECT p.employee_id,a.addition_amount,a.deduction_amount,a.reason,a.edited_by
+        FROM payrolls p JOIN payroll_manual_adjustments a USING(payroll_id)
+        WHERE p.salary_period=:period ORDER BY p.employee_id'''),{'period':period})).mappings().all()
     await db.execute(text("""
         DELETE FROM payroll_details 
         WHERE payroll_id IN (SELECT payroll_id FROM payrolls WHERE salary_period = :period)
@@ -135,6 +250,10 @@ async def calculate_payroll(
 
     # 2. Gọi Stored Procedure chính
     await db.execute(text("CALL sp_generate_monthly_payroll(:period, :hr_id)"), {"period": period, "hr_id": hr_id})
+    await reapply_payroll_adjustments(db,period,saved_adjustments)
+    await db.execute(text('''INSERT INTO payroll_calculation_runs(salary_period,calculated_at)
+        VALUES(:period,clock_timestamp()) ON CONFLICT(salary_period) DO UPDATE
+        SET calculated_at=EXCLUDED.calculated_at'''),{'period':period})
     await db.commit()
 
     count_res = await db.execute(text("SELECT count(*), COALESCE(SUM(gross_income), 0), COALESCE(SUM(net_salary), 0) FROM payrolls WHERE salary_period = :period"), {"period": period})
@@ -149,7 +268,6 @@ async def calculate_payroll(
     }
 
 
-@router.get("/generate/{month}", summary="Chốt và tự động tính bảng lương tháng (Week 3.2)")
 @router.post("/generate/{month}", summary="Chốt và tự động tính bảng lương tháng (Week 3.2)")
 async def generate_payroll_month(
     month: str,
@@ -167,6 +285,8 @@ async def confirm_all_payrolls(
     current_user: dict = Depends(require_roles(["HR_MANAGER", "ADMIN"])),
     db: AsyncSession = Depends(get_db)
 ):
+    await lock_payroll_period(db, req.salary_period)
+    await ensure_fresh_payroll(db,req.salary_period)
     res = await db.execute(text("""
         UPDATE payrolls
         SET payment_status = 'CONFIRMED', updated_at = CURRENT_TIMESTAMP
@@ -189,10 +309,11 @@ async def pay_all_payrolls(
     db: AsyncSession = Depends(get_db)
 ):
     pay_date = req.payment_date or date.today()
+    await lock_payroll_period(db, req.salary_period)
     res = await db.execute(text("""
         UPDATE payrolls
         SET payment_status = 'PAID', payment_date = :p_date, updated_at = CURRENT_TIMESTAMP
-        WHERE salary_period = :period AND payment_status IN ('DRAFT', 'CONFIRMED')
+        WHERE salary_period = :period AND payment_status = 'CONFIRMED'
         RETURNING payroll_id
     """), {"period": req.salary_period, "p_date": pay_date})
     updated_ids = [r[0] for r in res.all()]
@@ -202,6 +323,74 @@ async def pay_all_payrolls(
         "paid_count": len(updated_ids),
         "payment_date": str(pay_date)
     }
+
+
+@router.post("/reopen-period", summary="Mở lại kỳ lương để rà soát Attendance và tính lại toàn kỳ")
+async def reopen_payroll_period(
+    req: PayrollPeriodReopenRequest,
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "ADMIN"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Mark every finalized payslip in a period as requiring recalculation; audit the batch."""
+    period = req.salary_period
+    reason = req.reason.strip()
+    if len(reason) < 5:
+        raise HTTPException(422, "Lý do mở lại kỳ lương cần ít nhất 5 ký tự")
+    await lock_payroll_period(db, period)
+    rows = (await db.execute(text("""SELECT payroll_id,employee_id,payment_status,payment_date FROM payrolls
+        WHERE salary_period=:period AND payment_status IN ('CONFIRMED','PAID')
+        ORDER BY payroll_id FOR UPDATE"""), {"period":period})).mappings().all()
+    if not rows:
+        raise HTTPException(409, "Kỳ lương không có phiếu CONFIRMED/PAID cần mở lại")
+    await db.execute(text("""UPDATE payrolls SET payment_status='NEEDS_RECALCULATION',payment_date=NULL,
+        updated_at=clock_timestamp() WHERE salary_period=:period AND payment_status IN ('CONFIRMED','PAID')"""),
+        {"period":period})
+    import json
+    await db.execute(text("""INSERT INTO audit_logs(user_id,action,entity_name,entity_id,old_values,new_values)
+        VALUES(:user,'REOPEN_PAYROLL_PERIOD','payroll_periods',:period,CAST(:old AS jsonb),CAST(:new AS jsonb))"""),
+        {"user":current_user['user_id'],"period":period,
+         "old":json.dumps({"payrolls":[dict(row) for row in rows]},default=str),
+         "new":json.dumps({"payment_status":"NEEDS_RECALCULATION","reason":reason,"reopened_count":len(rows)})})
+    await db.commit()
+    return {"salary_period":period,"reopened_count":len(rows),"payment_status":"NEEDS_RECALCULATION",
+        "message":f"Đã mở lại {len(rows)} phiếu của kỳ {period}; HR rà soát Attendance rồi tính lại toàn kỳ. Lý do đã được ghi audit."}
+
+
+@router.post("/{payroll_id}/unconfirm", summary="Hoàn tác duyệt một phiếu CONFIRMED về DRAFT")
+async def unconfirm_payroll(
+    payroll_id: int,
+    req: PayrollUnconfirmRequest,
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "ADMIN"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Undo a mistaken approval for one unpaid payslip, with a required audit reason."""
+    reason = req.reason.strip()
+    if len(reason) < 5:
+        raise HTTPException(422, "Lý do hoàn tác duyệt cần ít nhất 5 ký tự")
+    period = (await db.execute(text("SELECT salary_period FROM payrolls WHERE payroll_id=:pid"),
+        {"pid": payroll_id})).scalar_one_or_none()
+    if period is None:
+        raise HTTPException(404, "Không tìm thấy phiếu lương")
+    await lock_payroll_period(db, period)
+    row = (await db.execute(text("""SELECT payroll_id,employee_id,salary_period,payment_status,payment_date
+        FROM payrolls WHERE payroll_id=:pid FOR UPDATE"""), {"pid": payroll_id})).mappings().first()
+    if not row:
+        raise HTTPException(404, "Không tìm thấy phiếu lương")
+    if row["payment_status"] == "PAID":
+        raise HTTPException(409, "Phiếu đã chi trả; hãy dùng Mở lại kỳ lương và đối soát với kế toán")
+    if row["payment_status"] != "CONFIRMED":
+        raise HTTPException(409, "Chỉ có thể hoàn tác phiếu đang ở trạng thái CONFIRMED")
+    await db.execute(text("""UPDATE payrolls SET payment_status='DRAFT',payment_date=NULL,
+        updated_at=clock_timestamp() WHERE payroll_id=:pid"""), {"pid": payroll_id})
+    import json
+    await db.execute(text("""INSERT INTO audit_logs(user_id,action,entity_name,entity_id,old_values,new_values)
+        VALUES(:user,'UNCONFIRM_PAYROLL','payrolls',:id,CAST(:old AS jsonb),CAST(:new AS jsonb))"""),
+        {"user": current_user["user_id"], "id": str(payroll_id),
+         "old": json.dumps(dict(row), default=str),
+         "new": json.dumps({"payment_status": "DRAFT", "reason": reason})})
+    await db.commit()
+    return {"payroll_id": payroll_id, "payment_status": "DRAFT",
+        "message": f"Đã hoàn tác duyệt phiếu lương #{payroll_id} về bản nháp. Lý do đã được ghi audit."}
 
 
 @router.get("/employee/{employee_id}/annual", summary="Bảng in tổng hợp thu nhập năm của nhân sự (Workflow Week 3.2)")
@@ -219,7 +408,11 @@ async def get_annual_salary(
     roles = current_user.get("roles", [])
     if "ADMIN" not in roles and "HR_MANAGER" not in roles:
         if employee_id != current_user.get("employee_id"):
-            raise HTTPException(status_code=403, detail="Bạn chỉ có thể xem báo cáo thu nhập năm của chính mình")
+            if "STORE_MANAGER" not in roles or not current_user.get('store_id'):
+                raise HTTPException(status_code=403, detail="Bạn chỉ có thể xem báo cáo thu nhập năm của chính mình")
+            target_store=(await db.execute(text('SELECT store_id FROM employees WHERE employee_id=:id'),{'id':employee_id})).scalar_one_or_none()
+            if target_store != current_user['store_id']:
+                raise HTTPException(403,'Bạn không thể xem thu nhập ngoài cửa hàng quản lý')
 
     # Lấy thông tin nhân viên
     emp_res = await db.execute(text("""
@@ -249,6 +442,7 @@ async def get_annual_salary(
                net_salary, payment_status, payment_date
         FROM payrolls
         WHERE employee_id = :eid AND salary_period LIKE :year_prefix
+          AND payment_status IN ('CONFIRMED','PAID')
         ORDER BY salary_period ASC
     """), {"eid": employee_id, "year_prefix": f"{year}-%"})
     monthly_list = [dict(m) for m in monthly_res.mappings().all()]
@@ -259,6 +453,8 @@ async def get_annual_salary(
         WHERE employee_id = :eid AND salary_year = :year
     """), {"eid": employee_id, "year": year})
     row = res.mappings().first()
+    if not set(roles) & {'ADMIN','HR_MANAGER'}:
+        row = None  # The legacy view includes drafts; self-service uses released rows only.
 
     if not row and not monthly_list:
         return {
@@ -821,7 +1017,7 @@ async def get_printable_payslip(
     bảng kê chi tiết thu nhập - giảm trừ, và số tiền thực lĩnh bằng chữ tiếng Việt.
     """
     res = await db.execute(text("""
-        SELECT p.*, e.employee_code, e.full_name as employee_name, e.tax_code,
+        SELECT p.*, e.store_id, e.employee_code, e.full_name as employee_name, e.tax_code,
                e.bank_account_number, e.bank_name, e.identity_card, e.join_date,
                s.store_name, s.address as store_address, d.department_name, pos.position_name
         FROM payrolls p
@@ -837,8 +1033,12 @@ async def get_printable_payslip(
 
     roles = current_user.get("roles", [])
     if "ADMIN" not in roles and "HR_MANAGER" not in roles:
-        if row["employee_id"] != current_user.get("employee_id"):
+        own_store = "STORE_MANAGER" in roles and current_user.get("store_id") is not None and row["store_id"] == current_user.get("store_id")
+        if not own_store and row["employee_id"] != current_user.get("employee_id"):
             raise HTTPException(status_code=403, detail="Bạn chỉ có thể in phiếu lương của chính mình")
+
+    if row["payment_status"] not in ("CONFIRMED", "PAID"):
+        raise HTTPException(409, "Phiếu lương chưa được duyệt. Chỉ phát hành bản in sau khi duyệt chính thức.")
 
     det_res = await db.execute(text("""
         SELECT detail_id, item_code, item_name, item_type, calculation_formula, amount, notes
@@ -846,6 +1046,17 @@ async def get_printable_payslip(
         ORDER BY detail_id ASC
     """), {"pid": payroll_id})
     details = det_res.mappings().all()
+
+    metrics=(await db.execute(text('''SELECT COALESCE(SUM(a.actual_work_hours),0) AS actual_work_hours,
+        COALESCE(SUM(a.late_minutes),0) AS late_minutes,
+        COALESCE(SUM(a.early_minutes),0) AS early_minutes,
+        COALESCE(SUM(a.overtime_hours),0) AS actual_overtime_hours,
+        COALESCE(SUM(CASE WHEN ota.decision='APPROVED' THEN ota.approved_hours ELSE 0 END),0) AS approved_overtime_hours
+        FROM attendances a LEFT JOIN attendance_overtime_approvals ota USING(attendance_id)
+        WHERE a.employee_id=:emp AND to_char(a.work_date,'YYYY-MM')=:period'''),
+        {'emp':row['employee_id'],'period':row['salary_period']})).mappings().one()
+    has_run=(await db.execute(text('SELECT 1 FROM payroll_calculation_runs WHERE salary_period=:period'),
+        {'period':row['salary_period']})).first()
 
     earnings = [d for d in details if d["item_type"] in ("EARNING", "ALLOWANCE", "BONUS")]
     deductions = [d for d in details if d["item_type"] == "DEDUCTION"]
@@ -919,12 +1130,21 @@ async def get_printable_payslip(
         e_dict["amount"] = float(e["amount"] or 0)
         final_earnings.append(e_dict)
 
+    adjustment=(await db.execute(text('SELECT addition_amount,deduction_amount,reason FROM payroll_manual_adjustments WHERE payroll_id=:id'),{'id':payroll_id})).mappings().first()
+    manual_add=float(adjustment['addition_amount']) if adjustment else 0
+    manual_ded=float(adjustment['deduction_amount']) if adjustment else 0
+    if manual_add:
+        final_earnings.append({'item_code':'MANUAL_ADDITION','item_name':'Điều chỉnh cộng','name':'Điều chỉnh cộng',
+            'item_type':'EARNING','calculation_formula':adjustment['reason'],'amount':manual_add})
+    if manual_ded:
+        final_deductions.append({'item_code':'MANUAL_DEDUCTION','item_name':'Điều chỉnh khấu trừ','name':'Điều chỉnh khấu trừ',
+            'item_type':'DEDUCTION','calculation_formula':adjustment['reason'],'amount':manual_ded})
+
     # Tính toán chuẩn xác tổng thu nhập, tổng khấu trừ và thực lĩnh
-    calc_total_earnings = sum(e["amount"] for e in final_earnings)
-    calc_total_deductions = sum(d["amount"] for d in final_deductions)
-    net_val = calc_total_earnings - calc_total_deductions
-    if net_val < 0:
-        net_val = float(row["net_salary"] or 0)
+    # A payslip is a presentation of the approved ledger, never a recalculation.
+    calc_total_earnings = float(row["gross_income"] or 0)
+    calc_total_deductions = float(row["total_deduction"] or 0)
+    net_val = float(row["net_salary"] or 0)
     net_in_words = currency_to_vietnamese_words(net_val)
 
     period_str = str(row["salary_period"])
@@ -940,14 +1160,16 @@ async def get_printable_payslip(
         "generated_date": current_time_str,
         "created_at": str(row.get("payment_date") or date.today().strftime("%d/%m/%Y")),
         "company": {
-            "name": "CÔNG TY TNHH THƯƠNG MẠI DỊCH VỤ TECH ZONE",
+            "name": "TECHZONE RETAIL",
             "brand": "TECHZONE RETAIL",
-            "tax_id": "0312345678",
-            "hotline": "1900 6868",
-            "address": "273 An Dương Vương, Phường 3, Quận 5, TP. Hồ Chí Minh"
+            "tax_id": None,
+            "hotline": None,
+            "address": None
         },
         "payslip_title": f"PHIẾU LƯƠNG THÁNG {month_val}/{year_val}",
         "salary_period": row["salary_period"],
+        "manual_adjustment": {"addition_amount":manual_add,"deduction_amount":manual_ded,
+            "reason":adjustment['reason'] if adjustment else None},
         "employee": {
             "employee_id": row["employee_id"],
             "employee_code": row["employee_code"],
@@ -955,18 +1177,24 @@ async def get_printable_payslip(
             "department_name": row["department_name"],
             "position_name": row["position_name"],
             "position": row["position_name"],
-            "store_name": row["store_name"] or "Trụ sở chính TechZone",
+            "store_name": row["store_name"] or "Chưa phân công",
             "bank_account": row["bank_account_number"] or "Chưa cập nhật",
             "bank_account_no": row["bank_account_number"] or "Chưa cập nhật",
-            "bank_name": row["bank_name"] or "Techcombank",
-            "tax_code": row["tax_code"] or "0312345678-001"
+            "bank_name": row["bank_name"] or "Chưa cập nhật",
+            "tax_code": row["tax_code"] or "Chưa cập nhật"
         },
         "attendance": {
             "standard_working_days": float(row["standard_working_days"] if row["standard_working_days"] is not None else 26.0),
             "actual_working_days": float(row["actual_working_days"] if row["actual_working_days"] is not None else 0),
             "paid_leave_days": float(row["paid_leave_days"] if row["paid_leave_days"] is not None else 0),
             "unpaid_leave_days": float(row["unpaid_leave_days"] if row["unpaid_leave_days"] is not None else 0),
-            "unworked_hours": float(row["unworked_hours"] if row["unworked_hours"] is not None else 0)
+            "unworked_hours": float(row["unworked_hours"] if row["unworked_hours"] is not None else 0),
+            "actual_work_hours": float(metrics['actual_work_hours']),
+            "late_minutes": int(metrics['late_minutes']),
+            "early_minutes": int(metrics['early_minutes']),
+            "actual_overtime_hours": float(metrics['actual_overtime_hours']),
+            "approved_overtime_hours": float(metrics['approved_overtime_hours']),
+            "ot_source": "APPROVED" if has_run else "LEGACY_UNVERIFIED"
         },
         "attendance_summary": {
             "standard_working_days": float(row["standard_working_days"] if row["standard_working_days"] is not None else 26.0),
@@ -1031,8 +1259,22 @@ async def get_payroll_detail(
         else:
             if pr["employee_id"] != current_user.get("employee_id"):
                 raise HTTPException(status_code=403, detail="Bạn chỉ có thể xem phiếu lương của chính mình")
+            if pr['payment_status'] == 'DRAFT':
+                raise HTTPException(403,'Phiếu lương chưa được duyệt')
 
     pr_dict = dict(pr)
+    attendance_summary=(await db.execute(text('''SELECT COUNT(DISTINCT a.work_date) FILTER (WHERE a.check_in_time IS NOT NULL) AS attendance_actual_days,
+        COALESCE(SUM(a.actual_work_hours),0) AS attendance_hours,COALESCE(SUM(a.late_minutes),0) AS attendance_late_minutes,
+        COALESCE(SUM(a.early_minutes),0) AS attendance_early_minutes,COALESCE(SUM(a.overtime_hours),0) AS attendance_actual_overtime_hours,
+        COALESCE(SUM(CASE WHEN ota.decision='APPROVED' THEN ota.approved_hours ELSE 0 END),0) AS attendance_approved_overtime_hours
+        FROM attendances a LEFT JOIN attendance_overtime_approvals ota USING(attendance_id)
+        WHERE a.employee_id=:employee AND to_char(a.work_date,'YYYY-MM')=:period'''),
+        {'employee':pr['employee_id'],'period':pr['salary_period']})).mappings().one()
+    pr_dict.update(dict(attendance_summary))
+    adjustment=(await db.execute(text('SELECT addition_amount,deduction_amount,reason FROM payroll_manual_adjustments WHERE payroll_id=:id'),{'id':payroll_id})).mappings().first()
+    pr_dict.update({'manual_addition':float(adjustment['addition_amount']) if adjustment else 0,
+                    'manual_deduction':float(adjustment['deduction_amount']) if adjustment else 0,
+                    'adjustment_reason':adjustment['reason'] if adjustment else None})
     det_res = await db.execute(text("""
         SELECT detail_id, item_code, item_name, item_type, calculation_formula, amount, notes
         FROM payroll_details WHERE payroll_id = :pid
@@ -1041,6 +1283,53 @@ async def get_payroll_detail(
     pr_dict["details"] = det_res.mappings().all()
 
     return pr_dict
+
+
+@router.put("/{payroll_id}/adjustments", summary="Điều chỉnh khoản cộng/trừ trên phiếu lương nháp có lý do và audit")
+async def update_payroll_adjustments(
+    payroll_id: int,
+    req: PayrollAdjustmentRequest,
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "ADMIN"])),
+    db: AsyncSession = Depends(get_db),
+):
+    if len(req.reason.strip()) < 5:
+        raise HTTPException(422, "Lý do điều chỉnh cần ít nhất 5 ký tự")
+    period = (await db.execute(text('SELECT salary_period FROM payrolls WHERE payroll_id=:id'), {'id': payroll_id})).scalar_one_or_none()
+    if not period:
+        raise HTTPException(404, "Không tìm thấy phiếu lương")
+    await lock_payroll_period(db, period)
+    row = (await db.execute(text('''SELECT p.payroll_id,p.salary_period,p.payment_status,p.gross_income,p.total_deduction,p.net_salary,
+        adj.addition_amount,adj.deduction_amount,adj.reason FROM payrolls p
+        LEFT JOIN payroll_manual_adjustments adj USING(payroll_id)
+        WHERE p.payroll_id=:id FOR UPDATE OF p'''), {'id': payroll_id})).mappings().first()
+    if not row:
+        raise HTTPException(404, "Không tìm thấy phiếu lương")
+    if row['payment_status'] != 'DRAFT':
+        raise HTTPException(409, "Chỉ được điều chỉnh phiếu lương nháp. Phiếu đã duyệt/chi trả cần quy trình điều chỉnh riêng.")
+    old_add = float(row['addition_amount'] or 0)
+    old_ded = float(row['deduction_amount'] or 0)
+    delta_add = req.addition_amount - old_add
+    delta_ded = req.deduction_amount - old_ded
+    await db.execute(text('''UPDATE payrolls SET gross_income=COALESCE(gross_income,0)+:add_delta,
+        total_deduction=COALESCE(total_deduction,0)+:ded_delta,
+        net_salary=COALESCE(net_salary,0)+:add_delta-:ded_delta,updated_at=clock_timestamp()
+        WHERE payroll_id=:id'''), {'id': payroll_id,'add_delta':delta_add,'ded_delta':delta_ded})
+    await db.execute(text('''INSERT INTO payroll_manual_adjustments(payroll_id,addition_amount,deduction_amount,reason,edited_by)
+        VALUES(:id,:addition,:deduction,:reason,:user) ON CONFLICT(payroll_id) DO UPDATE SET
+        addition_amount=EXCLUDED.addition_amount,deduction_amount=EXCLUDED.deduction_amount,
+        reason=EXCLUDED.reason,edited_by=EXCLUDED.edited_by,updated_at=clock_timestamp()'''),
+        {'id':payroll_id,'addition':req.addition_amount,'deduction':req.deduction_amount,
+         'reason':req.reason.strip(),'user':current_user['user_id']})
+    import json
+    await db.execute(text('''INSERT INTO audit_logs(user_id,action,entity_name,entity_id,old_values,new_values)
+        VALUES(:user,'ADJUST_DRAFT_PAYROLL','payrolls',:id,CAST(:old AS jsonb),CAST(:new AS jsonb))'''),
+        {'user':current_user['user_id'],'id':str(payroll_id),
+         'old':json.dumps({'addition_amount':old_add,'deduction_amount':old_ded,'reason':row['reason']}),
+         'new':req.model_dump_json()})
+    await db.commit()
+    return {'payroll_id':payroll_id,'addition_amount':req.addition_amount,
+        'deduction_amount':req.deduction_amount,'reason':req.reason.strip(),
+        'message':'Đã cập nhật điều chỉnh phiếu lương nháp và ghi audit'}
 
 
 @router.put("/{payroll_id}/status", summary="Cập nhật trạng thái phiếu lương (DRAFT -> CONFIRMED -> PAID)")
@@ -1056,6 +1345,14 @@ async def update_payroll_status(
         raise HTTPException(status_code=400, detail=f"Trạng thái không hợp lệ. Cho phép: {valid_statuses}")
 
     payment_date = req.payment_date or (date.today() if status_val == "PAID" else None)
+    period = (await db.execute(text("SELECT salary_period FROM payrolls WHERE payroll_id=:pid"), {"pid": payroll_id})).scalar_one_or_none()
+    if period is None:
+        raise HTTPException(404, "Không tìm thấy bảng lương")
+    await lock_payroll_period(db, period)
+    old_status = (await db.execute(text("SELECT payment_status FROM payrolls WHERE payroll_id=:pid FOR UPDATE"), {"pid": payroll_id})).scalar_one_or_none()
+    if (old_status, status_val) not in (("DRAFT", "CONFIRMED"), ("CONFIRMED", "PAID")):
+        raise HTTPException(409, "Chỉ cho phép DRAFT → CONFIRMED → PAID. Không được mở lại phiếu lương đã duyệt.")
+    if status_val=='CONFIRMED': await ensure_fresh_payroll(db,period)
     res = await db.execute(text("""
         UPDATE payrolls 
         SET payment_status = :status, payment_date = :p_date, updated_at = CURRENT_TIMESTAMP

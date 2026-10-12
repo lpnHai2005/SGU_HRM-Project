@@ -1,0 +1,10 @@
+.payroll-unconfirm-dialog { width: min(100% - 32px, 560px); padding: 0; overflow: hidden; }
+.payroll-unconfirm-header { display: flex; align-items: center; gap: 14px; padding: 24px 24px 16px; }
+.payroll-unconfirm-header p { margin: 0 0 4px; color: var(--text-tertiary); font-size: 11px; font-weight: 700; letter-spacing: .08em; }
+.payroll-unconfirm-header h2 { margin: 0; color: var(--text-primary); font-size: 20px; }
+.payroll-unconfirm-icon { display: grid; place-items: center; width: 44px; height: 44px; flex: 0 0 44px; border-radius: 14px; color: #1d4ed8; background: #eff6ff; }
+.payroll-unconfirm-body { display: grid; gap: 16px; padding: 4px 24px 22px; color: var(--text-secondary); line-height: 1.55; }
+.payroll-unconfirm-body p { margin: 0; }
+.payroll-unconfirm-body strong { color: var(--text-primary); }
+.payroll-unconfirm-note { padding: 12px 14px; border: 1px solid var(--border-default); border-radius: 10px; background: var(--surface-subtle); font-size: 13px; }
+.payroll-unconfirm-dialog .modal-footer { padding: 14px 24px; border-top: 1px solid var(--border-default); }

@@ -1,8 +1,11 @@
-import { AppText as Text } from '@/components/app-icon';
+import { ManagerActivity } from '@/components/manager-activity';
+import { useResource } from '@/hooks/use-resource';
+import type { Profile } from '@/services/staff';
+import { AppIcon, AppText as Text } from '@/components/app-icon';
 import { storeLabel } from '@/services/presentation';
 import { useCallback, useRef, useState } from 'react';
 import { FlatList, Modal, Pressable, ScrollView, View } from 'react-native';
-import { Redirect, useFocusEffect } from 'expo-router';
+import { Redirect, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSession } from '@/contexts/session';
 import {
   Button,
@@ -24,7 +27,7 @@ import {
 } from '@/services/attendance';
 import { statusLabels } from '@/services/staff';
 
-export default function HistoryScreen() {
+function HistoryScreen() {
   const { token, ready, signOut } = useSession();
   const p = usePalette();
   const [period, setPeriod] = useState(vietnamPeriod);
@@ -104,7 +107,7 @@ export default function HistoryScreen() {
                   {selected.shift_name || 'Ca làm việc thực tế'}
                 </Text>
                 <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.brand }}>
-                  🏪 {storeLabel(selected.store_name)}
+                  <AppIcon name="storefront-outline" size={14} /> {storeLabel(selected.store_name)}
                 </Text>
               </View>
 
@@ -154,7 +157,7 @@ export default function HistoryScreen() {
                   </Text>
                 </View>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.muted }}>Giờ OT phê duyệt:</Text>
+                  <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.muted }}>Giờ OT thực tế:</Text>
                   <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 13, color: p.brandText }}>
                     +{selected.overtime_hours || 0} giờ
                   </Text>
@@ -199,7 +202,7 @@ export default function HistoryScreen() {
                     onChangeText={setPeriod}
                     keyboardType="numbers-and-punctuation"
                     maxLength={7}
-                    leftIcon="🗓️"
+                    leftIcon="calendar-outline"
                   />
                 </View>
                 <Button
@@ -223,7 +226,7 @@ export default function HistoryScreen() {
             {!!error && (
               <Card style={{ backgroundColor: p.dangerBg, borderColor: p.danger }}>
                 <Text accessibilityRole="alert" style={{ color: p.dangerText, fontFamily: 'BeVietnam', fontSize: 13 }}>
-                  ⚠️ {error}
+                  <AppIcon name="warning-outline" size={14} /> {error}
                 </Text>
               </Card>
             )}
@@ -241,7 +244,7 @@ export default function HistoryScreen() {
         ListEmptyComponent={
           !loading && !error ? (
             <Card style={{ alignItems: 'center', paddingVertical: 28 }}>
-              <Text style={{ fontSize: 28, marginBottom: 8 }}>📋</Text>
+              <AppIcon name="clipboard-outline" style={{ fontSize: 28, marginBottom: 8 }} />
               <Label variant="subtitle">Chưa có lượt chấm công</Label>
               <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.muted, textAlign: 'center', marginTop: 4 }}>
                 Chưa có dữ liệu chấm công cho tháng {applied}.
@@ -293,4 +296,11 @@ export default function HistoryScreen() {
       />
     </>
   );
+}
+
+export default function ActivityScreen() {
+ const {kind}=useLocalSearchParams<{kind?:string}>();
+ const {data,error}=useResource<Profile>('/auth/me');
+ if(!data)return <Label>{error||'Loading?'}</Label>;
+ return data.roles?.some(r=>['ADMIN','HR_MANAGER','STORE_MANAGER'].includes(r))?<ManagerActivity key={kind||'all'} profile={data} initialKind={kind||'all'}/>:<HistoryScreen/>;
 }

@@ -1,4 +1,4 @@
-import { AppText as Text } from '@/components/app-icon';
+import { AppIcon, AppText as Text } from '@/components/app-icon';
 import { useCallback, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { Redirect, useFocusEffect } from 'expo-router';
@@ -91,7 +91,7 @@ export default function SummaryScreen() {
               onChangeText={setPeriod}
               placeholder="YYYY-MM"
               maxLength={7}
-              leftIcon="🗓️"
+              leftIcon="calendar-outline"
             />
           </View>
           <Button
@@ -111,7 +111,7 @@ export default function SummaryScreen() {
       {!!error && (
         <Card style={{ backgroundColor: p.dangerBg, borderColor: p.danger }}>
           <Text accessibilityRole="alert" style={{ color: p.dangerText, fontFamily: 'BeVietnam', fontSize: 13 }}>
-            ⚠️ {error}
+            <AppIcon name="warning-outline" size={14} /> {error}
           </Text>
         </Card>
       )}
@@ -124,14 +124,14 @@ export default function SummaryScreen() {
               label="Ngày công thực tế"
               value={`${data.working_days.actual_days} / ${data.working_days.standard_days}`}
               subtext={`${data.working_days.total_hours} giờ làm việc`}
-              icon="💼"
+              icon="briefcase-outline"
               variant="brand"
             />
             <MetricBox
               label="Quỹ phép năm"
               value={`${data.leave_quota.remaining_leave} ngày`}
               subtext={`Đã dùng ${data.leave_quota.used_leave}/${data.leave_quota.annual_leave} ngày`}
-              icon="🏖️"
+              icon="sunny-outline"
               variant="success"
             />
           </View>
@@ -141,14 +141,14 @@ export default function SummaryScreen() {
               label="Tăng ca (OT)"
               value={`+${data.overtime.hours}h`}
               subtext={`${data.overtime.shifts_count} ca làm thêm`}
-              icon="⚡"
+              icon="flash-outline"
               variant="brand"
             />
             <MetricBox
               label="Đi muộn"
               value={`${data.late_arrivals.count} lần`}
               subtext={`Tổng ${data.late_arrivals.minutes} phút`}
-              icon="⏱️"
+              icon="time-outline"
               variant={data.late_arrivals.count ? 'warning' : 'neutral'}
             />
           </View>

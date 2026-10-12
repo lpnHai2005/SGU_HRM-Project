@@ -197,6 +197,10 @@ async def get_employee(
     emp = res.mappings().first()
     if not emp:
         raise HTTPException(status_code=404, detail="Không tìm thấy nhân viên")
+    roles = set(current_user.get('roles', []))
+    if not roles & {'ADMIN', 'HR_MANAGER'} and employee_id != current_user.get('employee_id'):
+        if 'STORE_MANAGER' not in roles or not current_user.get('store_id') or emp['store_id'] != current_user['store_id']:
+            raise HTTPException(403, 'Không được xem hồ sơ ngoài phạm vi quản lý')
     return emp
 
 @router.post("", response_model=EmployeeOut, summary="Thêm nhân sự mới (Rubric III.3.1.1)")

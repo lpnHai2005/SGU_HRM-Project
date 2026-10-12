@@ -1,7 +1,8 @@
 from typing import Optional, List, Dict, Any
 import json
+import ipaddress
 from datetime import date, datetime, time, timedelta, timezone
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from app.core.database import get_db
@@ -15,6 +16,30 @@ from app.schemas.schemas import (
 from app.core.attendance import local_now, VIETNAM_TZ, availability, require_available, session_metrics, late_minutes, attendance_context, require_checkout_ready
 
 router = APIRouter()
+
+
+async def require_store_web_network(db: AsyncSession, store_id: int, client_host: str | None, *, check_active: bool = False):
+    """Apply a store's browser attendance allowlist to the observed socket IP.
+
+    Do not trust an arbitrary X-Forwarded-For header here. A reverse proxy must
+    be configured as a trusted ASGI proxy before its forwarded client IP is used.
+    """
+    if check_active:
+        active = (await db.execute(text('SELECT is_active FROM stores WHERE store_id=:id'), {'id': store_id})).scalar_one_or_none()
+        if not active:
+            raise HTTPException(403, 'Cửa hàng đang tạm dừng chấm công.')
+    networks = (await db.execute(text('''SELECT network::text FROM store_web_attendance_networks
+        WHERE store_id=:id'''), {'id': store_id})).scalars().all()
+    if not networks:
+        return  # Existing stores remain usable until Admin configures a policy.
+    try:
+        client = ipaddress.ip_address(client_host or '')
+        if isinstance(client, ipaddress.IPv6Address) and client.ipv4_mapped:
+            client = client.ipv4_mapped
+    except ValueError:
+        raise HTTPException(403, 'Không xác định được IP thiết bị để kiểm tra mạng cửa hàng.')
+    if not any(client in ipaddress.ip_network(network, strict=False) for network in networks):
+        raise HTTPException(403, 'IP kết nối không thuộc danh sách được phép chấm công web tại cửa hàng.')
 
 
 async def authorize_employee(db, user, employee_id, lock=False):
@@ -217,6 +242,7 @@ async def get_my_attendance_summary(
         SELECT
             COUNT(DISTINCT CASE WHEN check_in_time IS NOT NULL THEN work_date END) as actual_days,
             COALESCE(SUM(actual_work_hours), 0) as total_hours,
+            COALESCE(SUM(late_minutes + early_minutes),0) as payroll_time_adjustment_minutes,
             COUNT(CASE WHEN late_minutes > 15 THEN 1 END) as late_count,
             COALESCE(SUM(CASE WHEN late_minutes > 15 THEN late_minutes ELSE 0 END), 0) as total_late_minutes,
             COUNT(CASE WHEN early_minutes > 0 THEN 1 END) as early_count,
@@ -232,6 +258,7 @@ async def get_my_attendance_summary(
 
     actual_days = float(att_stats["actual_days"] or 0)
     total_hours = round(float(att_stats["total_hours"] or 0), 1)
+    payroll_time_adjustment_minutes = int(att_stats['payroll_time_adjustment_minutes'] or 0)
     late_count = int(att_stats["late_count"] or 0)
     total_late_minutes = int(att_stats["total_late_minutes"] or 0)
     early_count = int(att_stats["early_count"] or 0)
@@ -313,6 +340,8 @@ async def get_my_attendance_summary(
             "standard_days": 26,
             "actual_days": actual_days,
             "total_hours": total_hours,
+            "payroll_time_adjustment_minutes": payroll_time_adjustment_minutes,
+            "payroll_time_adjustment_hours": round(payroll_time_adjustment_minutes / 60.0, 2),
         },
         leave_quota={
             "annual_leave": annual_total,
@@ -442,7 +471,7 @@ async def get_my_attendance_history(
 
 @router.post("/check-in", status_code=201, summary="Mở lượt chấm công mới")
 async def check_in(req: CheckInRequest, current_user: dict = Depends(get_current_user),
-                   db: AsyncSession = Depends(get_db)):
+                   db: AsyncSession = Depends(get_db), request: Request = None):
     emp_id = req.employee_id or current_user.get("employee_id")
     employee = await authorize_employee(db, current_user, emp_id, lock=True)
     # Employee row lock serializes all check-in/check-out requests, including first entry.
@@ -450,6 +479,8 @@ async def check_in(req: CheckInRequest, current_user: dict = Depends(get_current
     require_available(await latest_session(db, emp_id), now)
     if not employee["store_id"]:
         raise HTTPException(400, "Nhân viên chưa được phân cửa hàng.")
+    if request is not None:
+        await require_store_web_network(db, employee['store_id'], request.client.host if request.client else None, check_active=True)
     shift = (await db.execute(text("SELECT * FROM work_shifts WHERE shift_id = :id"),
                              {"id": req.shift_id})).mappings().first()
     if not shift:
@@ -490,7 +521,7 @@ async def check_in(req: CheckInRequest, current_user: dict = Depends(get_current
 
 @router.post("/check-out", summary="Đóng lượt chấm công đang mở")
 async def check_out(req: CheckOutRequest, current_user: dict = Depends(get_current_user),
-                    db: AsyncSession = Depends(get_db)):
+                    db: AsyncSession = Depends(get_db), request: Request = None):
     emp_id = current_user.get("employee_id")
     if req.attendance_id:
         owner = (await db.execute(text("SELECT employee_id FROM attendances WHERE attendance_id = :id"),
@@ -507,6 +538,8 @@ async def check_out(req: CheckOutRequest, current_user: dict = Depends(get_curre
         {"id": req.attendance_id or emp_id})).mappings().first()
     if not att:
         raise HTTPException(404, "Không có lượt đang mở để check-out.")
+    if request is not None:
+        await require_store_web_network(db, att['store_id'], request.client.host if request.client else None)
     if not att["check_in_time"] or att["check_out_time"]:
         raise HTTPException(409, "Lượt này chưa check-in hoặc đã check-out.")
     now = local_now()

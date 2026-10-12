@@ -1,0 +1,27 @@
+.payslip-a4-modal { font-family: Arial, sans-serif; overflow-wrap: anywhere; }
+.payslip-a4-header { gap: 24px; }
+.payslip-a4-header > div { min-width: 0; }
+.payslip-columns { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 16px; }
+.payslip-a4-attendance-summary svg { width: 15px; height: 15px; vertical-align: -3px; margin-right: 3px; }
+.payslip-attendance-values { display: flex; gap: 12px 18px; flex-wrap: wrap; }
+.payslip-a4-table { table-layout: fixed; }
+.payslip-a4-table td { overflow-wrap: anywhere; }
+.payslip-a4-table td:last-child { font-variant-numeric: tabular-nums; }
+.print-modal .modal-header { flex-wrap: wrap; gap: 12px; }
+.payslip-a4-highlight-box { gap: 16px; flex-wrap: wrap; }
+@media screen and (max-width: 650px) {
+  .payslip-a4-modal { padding: 20px 16px; }
+  .payslip-a4-header { flex-direction: column; }
+  .payslip-a4-info-grid, .payslip-columns { grid-template-columns: 1fr; }
+  .payslip-a4-signatures { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; }
+}
+@media print {
+  .modal-overlay.print-active-overlay { backdrop-filter: none !important; animation: none !important; }
+  .payslip-a4-modal { width: 186mm !important; max-width: 186mm !important; }
+  .payslip-a4-modal { break-inside: auto !important; page-break-inside: auto !important; font-family: Arial, sans-serif !important; }
+  .payslip-columns { display: block; }
+  .payslip-a4-table thead { display: table-header-group; }
+  .payslip-a4-table tr, .payslip-a4-info-grid, .payslip-a4-highlight-box { break-inside: avoid; }
+  .payslip-a4-table th, .payslip-a4-table td { padding: 5px 8px !important; }
+  .payslip-a4-table { font-size: 11px !important; }
+}

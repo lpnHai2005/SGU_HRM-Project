@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
-import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import * as SecureStore from 'expo-secure-store';
+import { nativeNotifications as Notifications } from './native-notifications';
 
 export type AppNotificationType =
   | 'leave_approval'
@@ -48,7 +48,7 @@ function getStorageKey(baseKey: string, userKey?: string | null): string {
 }
 
 // Setup global notification handler for foreground display
-if (Platform.OS !== 'web') {
+if (Notifications) {
   try {
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
@@ -72,6 +72,9 @@ export async function setupPushNotificationsAsync(): Promise<{
 }> {
   if (Platform.OS === 'web') {
     return { granted: true, pushToken: 'web-push-token-mock' };
+  }
+  if (!Notifications) {
+    return { granted: false, pushToken: null };
   }
 
   try {
@@ -125,10 +128,8 @@ export async function setupPushNotificationsAsync(): Promise<{
         const tokenRes = await Notifications.getExpoPushTokenAsync();
         pushToken = tokenRes.data;
       } catch {
-        pushToken = `ExpoDevToken-${Platform.OS}-${Date.now().toString(36)}`;
+        pushToken = null;
       }
-    } else {
-      pushToken = `SimulatorToken-${Platform.OS}`;
     }
 
     return { granted: true, pushToken };
@@ -163,7 +164,7 @@ export async function sendLocalNotification(params: {
   const notificationId = params.id || `notif-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 
   // Schedule native push alert
-  if (Platform.OS !== 'web') {
+  if (Notifications) {
     try {
       const perm = await Notifications.getPermissionsAsync().catch(() => null);
       if (perm?.status === 'granted') {
@@ -218,7 +219,7 @@ export async function scheduleShiftReminder(params: {
   hour: number;
   minute: number;
 }): Promise<void> {
-  if (Platform.OS === 'web') return;
+  if (!Notifications) return;
 
   try {
     const perm = await Notifications.getPermissionsAsync().catch(() => null);

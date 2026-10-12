@@ -7,9 +7,8 @@ import {
   useMemo,
   type ReactNode,
 } from 'react';
-import { Platform } from 'react-native';
 import { useRouter } from 'expo-router';
-import * as Notifications from 'expo-notifications';
+import { nativeNotifications as Notifications } from '@/services/native-notifications';
 import { useSession } from '@/contexts/session';
 import { request } from '@/services/attendance';
 import { type Profile } from '@/services/staff';
@@ -159,7 +158,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   // Setup Expo Notification Listeners
   useEffect(() => {
-    if (Platform.OS === 'web') return;
+    if (!Notifications) return;
 
     // Listener when user taps on a push notification in tray/lockscreen
     const responseSub = Notifications.addNotificationResponseReceivedListener(response => {

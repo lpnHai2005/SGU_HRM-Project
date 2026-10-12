@@ -35,17 +35,21 @@ export interface EmployeeSummaryData {
   };
 }
 
-export interface ManagerDashboardStats {
+export interface ManagerDashboardKpis {
   active_employees: number;
-  total_stores: number;
   pending_leaves: number;
-  monthly_net_payroll_fund: number;
-  monthly_gross_payroll_fund: number;
-  total_retail_revenue: number;
   attendance_today: {
+    working: number;
     checked_in: number;
     late: number;
   };
+}
+
+export interface ManagerDashboardStats extends ManagerDashboardKpis {
+  total_stores: number;
+  monthly_net_payroll_fund: number;
+  monthly_gross_payroll_fund: number;
+  total_retail_revenue: number;
   system_status: string;
   current_period: string;
 }
@@ -99,6 +103,10 @@ export async function fetchEmployeeHistory(period: string, token: string): Promi
 
 export async function fetchDashboardStats(period: string, token: string): Promise<ManagerDashboardStats> {
   return request<ManagerDashboardStats>(`/reports/dashboard-stats?period=${period}`, token);
+}
+
+export async function fetchDashboardKpis(token: string): Promise<ManagerDashboardKpis> {
+  return request<ManagerDashboardKpis>('/reports/dashboard-kpis', token);
 }
 
 export async function fetchLeaveSummaryStats(token: string): Promise<LeaveSummaryStats> {

@@ -44,7 +44,7 @@ async def refresh_rules():
             try:
                 rule=(await db.execute(text('SELECT * FROM fixed_schedule_rules WHERE rule_id=:id'),{'id':rule_id})).mappings().one()
                 # Internal execution of a manager-authorized rule; actor remains its creator.
-                user={'user_id':rule['created_by'],'roles':['HR_MANAGER']}
+                user={'user_id':rule['created_by'],'roles':['HR_MANAGER'],'_schedule_worker':True}
                 await schedules.lock_employee(db,user,rule['employee_id'],rule['store_id'])
                 rule=(await db.execute(text('SELECT * FROM fixed_schedule_rules WHERE rule_id=:id FOR UPDATE'),{'id':rule_id})).mappings().one()
                 if rule['stopped_at']: continue
