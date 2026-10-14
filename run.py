@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import threading
 import time
+import json
 
 # Đảm bảo mã hóa UTF-8 trên Windows console
 if hasattr(sys.stdout, "reconfigure"):
@@ -44,28 +45,64 @@ def check_and_prepare_env():
 
 def check_and_install_dependencies(python_executable, npm_cmd):
     """
-    Kiểm tra thư viện Python trong requirements.txt và thư viện Frontend (node_modules).
-    Nếu thiếu sẽ tự động chạy pip install / npm install.
+    Kiểm tra thư viện Python trong requirements.txt và thư viện Frontend (package.json).
+    Nếu thiếu bất kỳ package nào sẽ tự động chạy pip install / npm install.
     """
     print(f"\n{BOLD}🔍 [KIỂM TRA THƯ VIỆN & PHỤ THUỘC]{RESET}")
 
     # 1. Kiểm tra Backend (requirements.txt)
     req_file = os.path.join(BACKEND_DIR, "requirements.txt")
     if os.path.exists(req_file):
-        test_cmd = [
-            python_executable,
-            "-c",
-            "import fastapi, uvicorn, sqlalchemy, asyncpg, pydantic, dotenv, openpyxl, tzdata",
-        ]
+        check_script = (
+            "import sys, importlib.metadata\n"
+            "packages = []\n"
+            "with open('requirements.txt', 'r', encoding='utf-8') as f:\n"
+            "    for line in f:\n"
+            "        line = line.strip()\n"
+            "        if not line or line.startswith('#'): continue\n"
+            "        pkg = line.split('>=')[0].split('==')[0].split('<=')[0].split('~=')[0].split('>')[0].split('<')[0].split('[')[0].strip()\n"
+            "        if pkg: packages.append(pkg)\n"
+            "missing = [p for p in packages if not _is_installed(p)]\n"
+            "if missing:\n"
+            "    print(','.join(missing))\n"
+            "    sys.exit(1)\n"
+        )
+        # Helper function định nghĩa trước
+        full_check_script = (
+            "import sys, importlib.metadata\n"
+            "def _is_installed(name):\n"
+            "    try:\n"
+            "        importlib.metadata.distribution(name)\n"
+            "        return True\n"
+            "    except Exception:\n"
+            "        return False\n"
+            "packages = []\n"
+            "with open('requirements.txt', 'r', encoding='utf-8') as f:\n"
+            "    for line in f:\n"
+            "        line = line.strip()\n"
+            "        if not line or line.startswith('#'): continue\n"
+            "        pkg = line.split('>=')[0].split('==')[0].split('<=')[0].split('~=')[0].split('>')[0].split('<')[0].split('[')[0].strip()\n"
+            "        if pkg: packages.append(pkg)\n"
+            "missing = [p for p in packages if not _is_installed(p)]\n"
+            "if missing:\n"
+            "    print(','.join(missing))\n"
+            "    sys.exit(1)\n"
+        )
+
         test_result = subprocess.run(
-            test_cmd,
+            [python_executable, "-c", full_check_script],
             cwd=BACKEND_DIR,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
 
         if test_result.returncode != 0:
-            print(f"{YELLOW}⚠️  Phát hiện thiếu thư viện Python. Đang tự động chạy: pip install -r requirements.txt...{RESET}")
+            missing_pkgs = test_result.stdout.strip()
+            detail = f" (thiếu: {missing_pkgs})" if missing_pkgs else ""
+            print(f"{YELLOW}⚠️  Phát hiện thiếu thư viện Python{detail}. Đang tự động chạy: pip install -r requirements.txt...{RESET}")
             try:
                 subprocess.run(
                     [python_executable, "-m", "pip", "install", "-r", "requirements.txt"],
@@ -78,10 +115,33 @@ def check_and_install_dependencies(python_executable, npm_cmd):
         else:
             print(f"{GREEN}✓ Thư viện Python (requirements.txt): Đã cài đầy đủ.{RESET}")
 
-    # 2. Kiểm tra Frontend (node_modules)
+    # 2. Kiểm tra Frontend (node_modules & các package trong package.json)
+    frontend_pkg_path = os.path.join(FRONTEND_DIR, "package.json")
     node_modules_dir = os.path.join(FRONTEND_DIR, "node_modules")
+    need_frontend_install = False
+    missing_deps = []
+
     if not os.path.exists(node_modules_dir):
-        print(f"{YELLOW}⚠️  Chưa tìm thấy thư mục node_modules. Đang tự động chạy: npm install...{RESET}")
+        need_frontend_install = True
+    elif os.path.exists(frontend_pkg_path):
+        try:
+            with open(frontend_pkg_path, "r", encoding="utf-8") as f:
+                pkg_data = json.load(f)
+            deps = {**pkg_data.get("dependencies", {}), **pkg_data.get("devDependencies", {})}
+            for dep in deps:
+                dep_path = os.path.join(node_modules_dir, *dep.split("/"))
+                if not os.path.exists(dep_path):
+                    missing_deps.append(dep)
+            if missing_deps:
+                need_frontend_install = True
+        except Exception:
+            pass
+
+    if need_frontend_install:
+        if missing_deps:
+            print(f"{YELLOW}⚠️  Phát hiện thiếu {len(missing_deps)} thư viện Frontend (chưa có: {', '.join(missing_deps[:5])}{'...' if len(missing_deps) > 5 else ''}). Đang tự động chạy: npm install...{RESET}")
+        else:
+            print(f"{YELLOW}⚠️  Chưa tìm thấy thư mục node_modules. Đang tự động chạy: npm install...{RESET}")
         try:
             subprocess.run(
                 [npm_cmd, "install"],
@@ -89,7 +149,7 @@ def check_and_install_dependencies(python_executable, npm_cmd):
                 shell=(os.name == "nt"),
                 check=True,
             )
-            print(f"{GREEN}✓ Đã cài đặt xong node_modules cho Frontend!{RESET}")
+            print(f"{GREEN}✓ Đã cài đặt xong toàn bộ thư viện Frontend!{RESET}")
         except subprocess.CalledProcessError as e:
             print(f"{RED}❌ Lỗi khi cài đặt npm install: {e}{RESET}")
     else:
