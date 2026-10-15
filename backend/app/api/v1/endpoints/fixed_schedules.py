@@ -18,6 +18,11 @@ class FixedAssignment(BaseModel):
     shift_id:int=Field(gt=0)
     work_date:date
     notes:str=Field(default='Phân ca nhân viên chính thức',min_length=1,max_length=255)
+    weekdays:str|None=None
+    end_date:date|None=None
+
+class FixedBatch(BaseModel):
+    assignments:list[FixedAssignment]=Field(min_length=1,max_length=100)
 
 @router.get('')
 async def get_rules(employee_id:int,user=Depends(get_current_user),db:AsyncSession=Depends(get_db)):
@@ -25,24 +30,40 @@ async def get_rules(employee_id:int,user=Depends(get_current_user),db:AsyncSessi
     where=schedules.scope(user,params,'r')
     return [dict(r) for r in (await db.execute(text('SELECT r.* FROM fixed_schedule_rules r WHERE employee_id=:emp AND stopped_at IS NULL'+where),params)).mappings().all()]
 
-@router.post('',status_code=201)
-async def create_rule(req:FixedAssignment,user=Depends(get_current_user),db:AsyncSession=Depends(get_db)):
+async def _save_fixed_rule(db, user, req: FixedAssignment):
     await schedules.lock_employee(db,user,req.employee_id,req.store_id)
     await schedules.ensure_assignable_employee(db,req.employee_id)
     if req.work_date < local_now().date(): raise HTTPException(422,'Ngày bắt đầu ca cố định không được ở quá khứ.')
     if (await db.execute(text('SELECT rule_id FROM fixed_schedule_rules WHERE employee_id=:emp AND stopped_at IS NULL'),{'emp':req.employee_id})).first():
-        raise HTTPException(409,'Nhân viên đã có ca cố định. Dừng ca cũ trước khi phân lại.')
-    row=(await db.execute(text('''INSERT INTO fixed_schedule_rules(employee_id,store_id,shift_id,start_date,notes,created_by)
-        VALUES(:employee_id,:store_id,:shift_id,:work_date,:notes,:actor) RETURNING *'''),dict(req.model_dump(),actor=user['user_id']))).mappings().one()
+        raise HTTPException(409,f'Nhân viên ID {req.employee_id} đã có ca cố định. Dừng ca cũ trước khi phân lại.')
+    dump = dict(req.model_dump(), actor=user['user_id'])
+    if not dump.get('weekdays'):
+        dump['weekdays'] = '1,2,3,4,5,6'
+    row=(await db.execute(text('''INSERT INTO fixed_schedule_rules(employee_id,store_id,shift_id,start_date,notes,created_by,weekdays,end_date)
+        VALUES(:employee_id,:store_id,:shift_id,:work_date,:notes,:actor,:weekdays,:end_date) RETURNING *'''),dump)).mappings().one()
     try:
         count=await materialize(db,row,user)
     except HTTPException as exc:
         if exc.status_code==409 and isinstance(exc.detail,dict):
-            raise HTTPException(409,'Ca cố định trùng với lịch đã có. Hãy xử lý lịch xung đột trước; chưa lưu ca cố định.') from exc
+            raise HTTPException(409,f'Ca cố định trùng với lịch đã có của nhân viên {req.employee_id}. Hãy xử lý lịch xung đột trước; chưa lưu ca cố định.') from exc
         raise
     await db.execute(text("INSERT INTO fixed_schedule_audits(rule_id,actor_id,action,reason) VALUES(:id,:actor,'CREATE',:reason)"),{'id':row['rule_id'],'actor':user['user_id'],'reason':req.notes})
+    return dict(row,created_count=count)
+
+@router.post('',status_code=201)
+async def create_rule(req:FixedAssignment,user=Depends(get_current_user),db:AsyncSession=Depends(get_db)):
+    result = await _save_fixed_rule(db, user, req)
     await db.commit()
-    return dict(row,created_count=count,message=f'Đã bật ca cố định thứ Hai–thứ Bảy và tạo {count} ngày làm việc.')
+    return dict(result, message=f'Đã bật ca cố định và tạo {result["created_count"]} ngày làm việc.')
+
+@router.post('/batch',status_code=201)
+async def create_batch(req:FixedBatch,user=Depends(get_current_user),db:AsyncSession=Depends(get_db)):
+    results = []
+    for item in sorted(req.assignments, key=lambda a: a.employee_id):
+        results.append(await _save_fixed_rule(db, user, item))
+    await db.commit()
+    total_days = sum(r['created_count'] for r in results)
+    return {'rules': results, 'message': f'Đã bật ca cố định cho {len(results)} nhân viên ({total_days} ngày làm việc).'}
 
 @router.post('/{rule_id}/stop')
 async def stop_rule(rule_id:int,req:Cancel,user=Depends(get_current_user),db:AsyncSession=Depends(get_db)):

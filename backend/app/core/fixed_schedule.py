@@ -11,9 +11,28 @@ from app.core.database import AsyncSessionLocal
 
 HORIZON_DAYS = 90
 
-def working_days(start, end):
+def parse_weekdays(val):
+    if not val:
+        return {0, 1, 2, 3, 4, 5}
+    res = set()
+    for part in str(val).split(','):
+        part = part.strip()
+        if not part: continue
+        try:
+            n = int(part)
+            if 1 <= n <= 7:
+                res.add(n - 1)
+            elif 0 <= n <= 6:
+                res.add(n)
+        except ValueError:
+            pass
+    return res or {0, 1, 2, 3, 4, 5}
+
+def working_days(start, end, allowed_weekdays=None):
+    if allowed_weekdays is None:
+        allowed_weekdays = {0, 1, 2, 3, 4, 5}
     while start <= end:
-        if start.weekday() != 6:
+        if start.weekday() in allowed_weekdays:
             yield start
         start += timedelta(days=1)
 
@@ -25,9 +44,14 @@ async def materialize(db, rule, user):
     today=local_now().date()
     start=max(today,rule['start_date'])
     end=start+timedelta(days=HORIZON_DAYS-1)
+    if rule.get('end_date'):
+        end=min(end, rule['end_date'])
+    if start > end:
+        return 0
+    allowed=parse_weekdays(rule.get('weekdays'))
     existing=set((await db.execute(text('SELECT work_date FROM work_schedules WHERE fixed_rule_id=:id'),{'id':rule['rule_id']})).scalars().all())
     count=0
-    for day in working_days(start,end):
+    for day in working_days(start,end,allowed):
         if day in existing: continue  # Includes cancelled occurrences: never resurrect them.
         data=SimpleNamespace(employee_id=rule['employee_id'],store_id=rule['store_id'],shift_id=rule['shift_id'],
             work_date=day,notes=rule['notes'],reason=f"Ca cố định #{rule['rule_id']}")
