@@ -1163,7 +1163,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: '12px', fontWeight: 700, color: '#1e3a8a' }}>
-                      MÃ PHIẾU: <span style={{ fontFamily: 'monospace' }}>#{monthlyPrintData.payroll_code}</span>
+                      MÃ PHIẾU: <span style={{ fontFamily: 'var(--font-mono)' }}>#{monthlyPrintData.payroll_code}</span>
                     </div>
                     <div style={{ fontSize: '12px', color: '#475569', marginTop: '3px' }}>
                       NGÀY TẠO: <strong>{monthlyPrintData.generated_date}</strong>
@@ -1188,8 +1188,8 @@ export function PayrollPage({ user }: PayrollPageProps) {
                 </div>
 
                 {/* Attendance Summary Bar (Synced with Attendance & Leaves) */}
-                <div className="payslip-a4-attendance-summary" style={{ marginBottom: '16px', fontSize: '12.5px', background: '#f8fafc', padding: '10px 14px', border: '1px solid #cbd5e1', borderRadius: '6px', lineHeight: 1.6 }}>
-                  <div style={{ fontWeight: 700, color: '#1e3a8a', marginBottom: '4px', textTransform: 'uppercase', fontSize: '11.5px', letterSpacing: '0.5px' }}>
+                <div className="payslip-a4-attendance-summary" style={{ marginBottom: '10px', fontSize: '11px', background: '#f8fafc', padding: '6px 10px', border: '1px solid #cbd5e1', borderRadius: '6px', lineHeight: 1.4 }}>
+                  <div style={{ fontWeight: 700, color: '#1e3a8a', marginBottom: '3px', textTransform: 'uppercase', fontSize: '11px', letterSpacing: '0.5px' }}>
                     THỐNG KÊ NGÀY CÔNG & NGHỈ PHÉP (LIÊN KẾT CHẤM CÔNG & ĐƠN NGHỈ PHÉP)
                   </div>
             <div className="payslip-attendance-values">
@@ -1238,14 +1238,14 @@ export function PayrollPage({ user }: PayrollPageProps) {
                                 </div>
                               )}
                             </td>
-                            <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 600 }}>
+                            <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
                               {formatCurrency(e.amount)}
                             </td>
                           </tr>
                         ))}
                         <tr className="payslip-a4-total-row">
                           <td>TỔNG THU NHẬP (GROSS)</td>
-                          <td style={{ textAlign: 'right', fontFamily: 'monospace', color: '#1e3a8a', fontSize: '13.5px' }}>
+                          <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: '#1e3a8a', fontSize: '13.5px' }}>
                             {formatCurrency(monthlyPrintData.summary?.gross_income ?? selectedPayroll?.gross_income)}
                           </td>
                         </tr>
@@ -1276,14 +1276,14 @@ export function PayrollPage({ user }: PayrollPageProps) {
                                 </div>
                               )}
                             </td>
-                            <td style={{ textAlign: 'right', fontFamily: 'monospace', color: '#dc2626', fontWeight: 600 }}>
+                            <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: '#dc2626', fontWeight: 600 }}>
                               -{formatCurrency(d.amount)}
                             </td>
                           </tr>
                         ))}
                         <tr className="payslip-a4-total-row">
                           <td>TỔNG GIẢM TRỪ</td>
-                          <td style={{ textAlign: 'right', fontFamily: 'monospace', color: '#dc2626', fontSize: '13.5px' }}>
+                          <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: '#dc2626', fontSize: '13.5px' }}>
                             -{formatCurrency(monthlyPrintData.summary?.total_deduction ?? selectedPayroll?.total_deduction)}
                           </td>
                         </tr>
@@ -1422,24 +1422,24 @@ export function PayrollPage({ user }: PayrollPageProps) {
                             {rec.salary_period ? `Tháng ${parseInt(rec.salary_period.split('-')[1], 10)}/${rec.salary_period.split('-')[0]}` : rec.month_name || `Kỳ ${idx + 1}`}
                           </td>
                           <td style={{ textAlign: 'center' }}>{rec.actual_working_days ?? '-'}</td>
-                          <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{formatCurrency(rec.actual_base_salary)}</td>
-                          <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{formatCurrency(allowances)}</td>
-                          <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{formatCurrency(rec.commission_amount)}</td>
-                          <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{formatCurrency(rec.bonus_amount)}</td>
-                          <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 600 }}>{formatCurrency(rec.gross_income)}</td>
-                          <td style={{ textAlign: 'right', fontFamily: 'monospace', color: '#dc2626' }}>-{formatCurrency(rec.total_insurance)}</td>
-                          <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: '#15803d' }}>{formatCurrency(rec.net_salary)}</td>
+                          <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{formatCurrency(rec.actual_base_salary)}</td>
+                          <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{formatCurrency(allowances)}</td>
+                          <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{formatCurrency(rec.commission_amount)}</td>
+                          <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{formatCurrency(rec.bonus_amount)}</td>
+                          <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{formatCurrency(rec.gross_income)}</td>
+                          <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: '#dc2626' }}>-{formatCurrency(rec.total_insurance)}</td>
+                          <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, color: '#15803d' }}>{formatCurrency(rec.net_salary)}</td>
                         </tr>
                       )
                     })}
                     <tr className="payslip-a4-total-row" style={{ fontSize: '12px' }}>
                       <td colSpan={2}>TỔNG CẢ NĂM</td>
                       <td colSpan={2}>-</td>
-                      <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{formatCurrency(annualData.total_commission_year)}</td>
-                      <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{formatCurrency(annualData.total_bonus_year)}</td>
-                      <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{formatCurrency(annualData.total_gross_income_year)}</td>
-                      <td style={{ textAlign: 'right', fontFamily: 'monospace', color: '#dc2626' }}>-{formatCurrency(annualData.total_insurance_deducted_year)}</td>
-                      <td style={{ textAlign: 'right', fontFamily: 'monospace', color: '#15803d', fontSize: '13px' }}>{formatCurrency(annualData.total_net_salary_year)}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{formatCurrency(annualData.total_commission_year)}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{formatCurrency(annualData.total_bonus_year)}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{formatCurrency(annualData.total_gross_income_year)}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: '#dc2626' }}>-{formatCurrency(annualData.total_insurance_deducted_year)}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: '#15803d', fontSize: '13px' }}>{formatCurrency(annualData.total_net_salary_year)}</td>
                     </tr>
                   </tbody>
                 </table>
