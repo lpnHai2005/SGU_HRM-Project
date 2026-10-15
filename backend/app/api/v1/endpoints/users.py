@@ -227,6 +227,20 @@ async def update_user_roles(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_roles(["ADMIN"]))
 ):
+    if not role_ids or len(role_ids) != len(set(role_ids)):
+        raise HTTPException(status_code=400, detail="Cần chọn ít nhất một vai trò hợp lệ, không trùng lặp")
+    valid_roles_res = await db.execute(
+        text("SELECT role_id, role_code FROM roles WHERE role_id = ANY(:role_ids)"),
+        {"role_ids": role_ids},
+    )
+    valid_roles = valid_roles_res.mappings().all()
+    if len(valid_roles) != len(role_ids):
+        raise HTTPException(status_code=400, detail="Vai trò không tồn tại")
+    if user_id == current_user["user_id"] and not any(r["role_code"] == "ADMIN" for r in valid_roles):
+        raise HTTPException(status_code=400, detail="Không thể tự gỡ quyền ADMIN của chính mình")
+    exists = (await db.execute(text("SELECT 1 FROM users WHERE user_id = :id"), {"id": user_id})).scalar_one_or_none()
+    if exists is None:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản")
     # Lấy roles cũ
     old_r_res = await db.execute(
         text("SELECT r.role_code FROM user_roles ur JOIN roles r ON ur.role_id = r.role_id WHERE ur.user_id = :id;"),

@@ -366,7 +366,7 @@ export const leaveApi = {
     return api.get<LeaveType[]>('/leaves/types');
   },
 
-  getAll: async (params?: { status?: string }): Promise<LeaveRequest[]> => {
+  getAll: async (params?: { status?: string; employee_id?: number }): Promise<LeaveRequest[]> => {
     return api.get<LeaveRequest[]>('/leaves', params);
   },
 
@@ -411,7 +411,7 @@ export const leaveApi = {
     return api.get('/leaves/summary/stats');
   },
 
-  getCalendar: async (params?: { month?: string; store_id?: number }): Promise<LeaveRequest[]> => {
+  getCalendar: async (params?: { month?: string; store_id?: number; employee_id?: number }): Promise<LeaveRequest[]> => {
     return api.get<LeaveRequest[]>('/leaves/calendar', params);
   },
 
@@ -641,7 +641,7 @@ export const userApi = {
   },
 
   updateStatus: async (userId: number, isActive: boolean): Promise<{ message: string; is_active: boolean }> => {
-    return api.put(`/users/${userId}/status`, { is_active: isActive });
+    return api.put(`/users/${userId}/status?is_active=${isActive}`, {});
   },
 
   updateRoles: async (userId: number, roleIds: number[]): Promise<{ message: string; roles: string[] }> => {

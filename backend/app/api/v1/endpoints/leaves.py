@@ -100,6 +100,7 @@ async def get_leave_stats(
 async def get_leave_calendar(
     month: Optional[str] = Query(None, description="Tháng cần xem theo định dạng YYYY-MM (mặc định tháng hiện tại)"),
     store_id: Optional[int] = Query(None, description="Lọc theo mã chi nhánh"),
+    employee_id: Optional[int] = Query(None, description="Lọc lịch nghỉ của một nhân viên"),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -137,6 +138,12 @@ async def get_leave_calendar(
     elif store_id:
         query += " AND e.store_id = :filter_store_id"
         params["filter_store_id"] = store_id
+
+    if employee_id is not None:
+        if not any(role in roles for role in ("ADMIN", "HR_MANAGER", "STORE_MANAGER")) and employee_id != current_user.get("employee_id"):
+            raise HTTPException(status_code=403, detail="Không được xem lịch nghỉ của nhân viên khác")
+        query += " AND lr.employee_id = :employee_id"
+        params["employee_id"] = employee_id
 
     query += " ORDER BY lr.start_date ASC"
     res = await db.execute(text(query), params)

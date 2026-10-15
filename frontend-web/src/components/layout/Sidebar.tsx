@@ -1,6 +1,6 @@
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Icons } from '../common/Icons'
-import { NAV_ITEMS, ROLE_LABELS } from '../../constants/navigation'
+import { navigationForUser, ROLE_LABELS } from '../../constants/navigation'
 import { getInitials } from '../../utils/formatters'
 import type { UserRole } from '../../types'
 
@@ -24,18 +24,12 @@ export function Sidebar({
   const location = useLocation()
   const navigate = useNavigate()
 
-  const currentRoute =
-    location.pathname === '/' || location.pathname === '/dashboard'
-      ? 'dashboard'
-      : location.pathname.replace(/^\//, '')
-
-  const handleNavigate = (id: string) => {
-    const targetPath = id === 'dashboard' ? '/' : `/${id}`
-    navigate(targetPath)
+  const handleNavigate = (path: string) => {
+    navigate(path)
     if (onCloseMobile) onCloseMobile()
   }
 
-  const navItems = NAV_ITEMS[role] || []
+  const navItems = navigationForUser(user)
 
   // Group items by section
   const sections = navItems.reduce((acc, item) => {
@@ -71,7 +65,7 @@ export function Sidebar({
           )}
         </div>
 
-        <div className="workspace-selector" onClick={() => handleNavigate('dashboard')} title="TechZone Retail">
+        <div className="workspace-selector" onClick={() => handleNavigate('/')} title="TechZone Retail">
           <div className="workspace-badge">T</div>
           {!collapsed && (
             <div className="workspace-info">
@@ -90,8 +84,12 @@ export function Sidebar({
               {items.map((item) => (
                 <div
                   key={item.id}
-                  className={`nav-item ${currentRoute === item.id ? 'active' : ''}`}
-                  onClick={() => handleNavigate(item.id)}
+                  className={`nav-item ${location.pathname === item.path || (item.path === '/' && location.pathname === '/dashboard') ? 'active' : ''}`}
+                  onClick={() => handleNavigate(item.path)}
+                  onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') handleNavigate(item.path) }}
+                  role="link"
+                  tabIndex={0}
+                  aria-current={location.pathname === item.path ? 'page' : undefined}
                   title={item.label}
                 >
                   {Icons[item.icon]}
@@ -103,7 +101,7 @@ export function Sidebar({
         </nav>
 
         <div className="sidebar-footer">
-          <div className="sidebar-user-card" role="button" tabIndex={0} onClick={() => handleNavigate('account')} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') handleNavigate('account') }} title={user?.full_name || user?.username}>
+          <div className="sidebar-user-card" role="button" tabIndex={0} onClick={() => handleNavigate('/account')} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') handleNavigate('/account') }} title={user?.full_name || user?.username}>
             <div className="sidebar-user-avatar">{getInitials(user?.full_name || user?.username)}</div>
             {!collapsed && (
               <>
