@@ -47,6 +47,16 @@ function getStatusDisplayLabel(status: string, req?: LeaveRequest | null): strin
   }
 }
 
+function formatMonthDisplay(monthStr: string): string {
+  if (!monthStr) return ''
+  const parts = monthStr.split('-')
+  if (parts.length === 2) {
+    const [y, m] = parts
+    return `${m}-${y}`
+  }
+  return monthStr
+}
+
 export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageProps) {
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([])
   const [leaveBalance, setLeaveBalance] = useState<LeaveBalance | null>(null)
@@ -66,6 +76,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
   // Modals state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [detailModalRequest, setDetailModalRequest] = useState<LeaveRequest | null>(null)
+  const [selectedDayLeavesModal, setSelectedDayLeavesModal] = useState<{ dateStr: string; leaves: LeaveRequest[] } | null>(null)
   const [storeApproveModalRequest, setStoreApproveModalRequest] = useState<LeaveRequest | null>(null)
   const [hrApproveModalRequest, setHrApproveModalRequest] = useState<LeaveRequest | null>(null)
   const [rejectModalRequest, setRejectModalRequest] = useState<LeaveRequest | null>(null)
@@ -209,6 +220,133 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
     setCalendarMonth(new Date().toISOString().slice(0, 7))
   }
 
+  // Danh sách các tháng hiển thị trong dropdown: 1 năm trước tháng hiện tại đến 1 năm sau tháng hiện tại
+  const monthOptions = useMemo(() => {
+    const now = new Date()
+    const currentYear = now.getFullYear()
+    const currentMonthNum = now.getMonth() // 0-indexed (0..11)
+
+    const options: Array<{ value: string; label: string }> = []
+    // 1 năm trước (-12 tháng) đến 1 năm sau (+12 tháng)
+    for (let offset = -12; offset <= 12; offset++) {
+      const d = new Date(currentYear, currentMonthNum + offset, 1)
+      const y = d.getFullYear()
+      const mStr = String(d.getMonth() + 1).padStart(2, '0')
+      options.push({
+        value: `${y}-${mStr}`,
+        label: `Tháng ${mStr}-${y}`,
+      })
+    }
+
+    // Đảm bảo calendarMonth người dùng đang chọn luôn có trong dropdown (nếu lùi/tiến vượt khoảng)
+    if (!options.some((opt) => opt.value === calendarMonth)) {
+      const [y, m] = calendarMonth.split('-')
+      if (y && m) {
+        options.push({
+          value: calendarMonth,
+          label: `Tháng ${m}-${y}`,
+        })
+        options.sort((a, b) => a.value.localeCompare(b.value))
+      }
+    }
+
+    return options
+  }, [calendarMonth])
+
+  // Helper mở modal xem chi tiết đơn: luôn tải chi tiết mới nhất kèm thông tin duyệt nếu có
+  const handleOpenDetailModal = useCallback(async (req: LeaveRequest) => {
+    setDetailModalRequest(req)
+    if (req.request_id && req.request_id > 0) {
+      try {
+        const fullDetail = await leaveApi.getById(req.request_id)
+        if (fullDetail) {
+          setDetailModalRequest((prev) => {
+            if (prev && prev.request_id === req.request_id) {
+              return { ...prev, ...fullDetail }
+            }
+            return prev
+          })
+        }
+      } catch (err) {
+        console.error('Error fetching full leave detail:', err)
+      }
+    }
+  }, [])
+
+  // Helper to determine if a record is specifically a resignation / thôi việc (nghỉ việc luôn / chấm dứt HĐLĐ)
+  const isResignationRecord = (req: LeaveRequest) => {
+    const typeCode = (req.leave_type_code || '').toUpperCase()
+    const typeName = (req.leave_type_name || '').toLowerCase()
+
+    // 1. TUYỆT ĐỐI KHÔNG phải là thôi việc/nghỉ luôn nếu là các loại nghỉ phép định kỳ / thông thường:
+    if (
+      typeCode === 'VIEC_RIENG' ||
+      typeCode === 'KHONG_LUONG' ||
+      typeCode === 'PHEP_NAM' ||
+      typeCode === 'OM_DAU' ||
+      typeCode === 'NGHI_OM' ||
+      typeCode === 'THAI_SAN' ||
+      typeName.includes('việc riêng') ||
+      typeName.includes('phép năm') ||
+      typeName.includes('ốm đau') ||
+      typeName.includes('thai sản')
+    ) {
+      return false
+    }
+
+    // 2. CHỈ ĐƠN THÔI VIỆC / NGHỈ VIỆC HẲN (NGHỈ LUÔN / CHẤM DỨT HĐLĐ) MỚI TÍNH LÀ RESIGNATION:
+    if (typeCode === 'THOI_VIEC' || req.leave_type_id === 6) {
+      return true
+    }
+    if (typeName.includes('thôi việc') || typeName.includes('chấm dứt hợp đồng') || typeName.includes('chấm dứt hđlđ')) {
+      return true
+    }
+    if (req.request_id < 0 && typeCode === 'THOI_VIEC') {
+      return true
+    }
+
+    return false
+  }
+
+  // 1. Danh sách nhân sự thôi việc trong tháng (hiển thị riêng ở panel ghi chú)
+  const monthResignedEmployees = useMemo(() => {
+    const map = new Map<number, LeaveRequest>()
+    for (const l of calendarLeaves) {
+      if (isResignationRecord(l)) {
+        if (!map.has(l.employee_id)) {
+          map.set(l.employee_id, l)
+        }
+      }
+    }
+    return Array.from(map.values())
+  }, [calendarLeaves])
+
+  // 2. Danh sách các đơn nghỉ thông thường trong tháng (loại trừ các nhân viên thôi việc)
+  const regularCalendarLeaves = useMemo(() => {
+    return calendarLeaves.filter(l => !isResignationRecord(l))
+  }, [calendarLeaves])
+
+  // 3. Danh sách đơn nghỉ theo bộ lọc tìm kiếm & loại nghỉ
+  const filteredCalendarLeaves = useMemo(() => {
+    return regularCalendarLeaves.filter(l => {
+      if (selectedTypeFilter !== 'all' && String(l.leave_type_id) !== selectedTypeFilter) {
+        return false
+      }
+      if (searchTerm.trim()) {
+        const term = searchTerm.toLowerCase()
+        const empName = l.employee_name?.toLowerCase() || ''
+        const empCode = l.employee_code?.toLowerCase() || ''
+        const typeName = l.leave_type_name?.toLowerCase() || ''
+        const reason = l.reason?.toLowerCase() || ''
+        const store = l.store_name?.toLowerCase() || ''
+        if (!empName.includes(term) && !empCode.includes(term) && !typeName.includes(term) && !reason.includes(term) && !store.includes(term)) {
+          return false
+        }
+      }
+      return true
+    })
+  }, [regularCalendarLeaves, selectedTypeFilter, searchTerm])
+
   const calendarDaysMatrix = useMemo(() => {
     const [yearStr, monthStr] = calendarMonth.split('-')
     const year = parseInt(yearStr, 10) || new Date().getFullYear()
@@ -246,7 +384,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
         dayNumber: d,
         isCurrentMonth: false,
         isToday: dateStr === todayStr,
-        leaves: calendarLeaves.filter(l => l.start_date <= dateStr && l.end_date >= dateStr),
+        leaves: filteredCalendarLeaves.filter(l => l.start_date <= dateStr && l.end_date >= dateStr),
       })
     }
 
@@ -258,7 +396,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
         dayNumber: d,
         isCurrentMonth: true,
         isToday: dateStr === todayStr,
-        leaves: calendarLeaves.filter(l => l.start_date <= dateStr && l.end_date >= dateStr),
+        leaves: filteredCalendarLeaves.filter(l => l.start_date <= dateStr && l.end_date >= dateStr),
       })
     }
 
@@ -273,12 +411,12 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
         dayNumber: d,
         isCurrentMonth: false,
         isToday: dateStr === todayStr,
-        leaves: calendarLeaves.filter(l => l.start_date <= dateStr && l.end_date >= dateStr),
+        leaves: filteredCalendarLeaves.filter(l => l.start_date <= dateStr && l.end_date >= dateStr),
       })
     }
 
     return days
-  }, [calendarMonth, calendarLeaves])
+  }, [calendarMonth, filteredCalendarLeaves])
 
   // Filter requests
   const filteredRequests = useMemo(() => {
@@ -502,70 +640,156 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
 
       {/* Main Content Card */}
       <div className="card">
-        {/* Card Header & Tabs */}
-        <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-          <div className="tabs" style={{ marginBottom: 0, borderBottom: 'none', padding: 0 }}>
-            <div
-              className={`tab ${activeTab === 'all' ? 'active' : ''}`}
+        {/* Card Header & Tabs (Optimized single-row layout) */}
+        <div className="card-header leave-requests-header">
+          {/* Tabs */}
+          <div
+            className="tabs"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              marginBottom: 0,
+              borderBottom: 'none',
+              padding: 0,
+              flexShrink: 0,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <button
+              type="button"
+              className={`leave-tab-btn ${activeTab === 'all' ? 'active' : ''}`}
               onClick={() => setActiveTab('all')}
             >
-              Tất cả đơn ({leaveRequests.length})
-            </div>
-            <div
-              className={`tab ${activeTab === 'pending' ? 'active' : ''}`}
+              <span>Tất cả đơn</span>
+              <span className="leave-tab-badge">{leaveRequests.length}</span>
+            </button>
+            <button
+              type="button"
+              className={`leave-tab-btn ${activeTab === 'pending' ? 'active' : ''}`}
               onClick={() => setActiveTab('pending')}
             >
-              Chờ duyệt ({leaveRequests.filter(r => r.status === 'PENDING' || r.status === 'STORE_APPROVED').length})
-            </div>
-            <div
-              className={`tab ${activeTab === 'approved' ? 'active' : ''}`}
+              <span>Chờ duyệt</span>
+              <span className="leave-tab-badge">
+                {leaveRequests.filter(r => r.status === 'PENDING' || r.status === 'STORE_APPROVED').length}
+              </span>
+            </button>
+            <button
+              type="button"
+              className={`leave-tab-btn ${activeTab === 'approved' ? 'active' : ''}`}
               onClick={() => setActiveTab('approved')}
             >
-              Đã duyệt ({leaveRequests.filter(r => r.status === 'HR_APPROVED').length})
-            </div>
-            <div
-              className={`tab ${activeTab === 'rejected' ? 'active' : ''}`}
+              <span>Đã duyệt</span>
+              <span className="leave-tab-badge">
+                {leaveRequests.filter(r => r.status === 'HR_APPROVED').length}
+              </span>
+            </button>
+            <button
+              type="button"
+              className={`leave-tab-btn ${activeTab === 'rejected' ? 'active' : ''}`}
               onClick={() => setActiveTab('rejected')}
             >
-              Từ chối ({leaveRequests.filter(r => r.status === 'REJECTED').length})
-            </div>
-            <div
-              className={`tab ${activeTab === 'calendar' ? 'active' : ''}`}
+              <span>Từ chối</span>
+              <span className="leave-tab-badge">
+                {leaveRequests.filter(r => r.status === 'REJECTED').length}
+              </span>
+            </button>
+            <button
+              type="button"
+              className={`leave-tab-btn ${activeTab === 'calendar' ? 'active' : ''}`}
               onClick={() => setActiveTab('calendar')}
             >
-              Lịch nghỉ phép (Calendar)
-            </div>
+              <span style={{ display: 'inline-flex', alignItems: 'center' }}>{Icons.calendar}</span>
+              <span>Lịch nghỉ phép</span>
+            </button>
           </div>
 
-          {activeTab !== 'calendar' && (
-            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-              <div className="search-box" style={{ minWidth: '220px' }}>
-                <span className="search-icon">{Icons.search}</span>
-                <input
-                  type="text"
-                  className="form-input"
-                  placeholder="Tìm nhân viên, mã, lý do..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  style={{ height: '36px' }}
-                />
-              </div>
-
-              <select
-                className="form-select"
-                value={selectedTypeFilter}
-                onChange={(e) => setSelectedTypeFilter(e.target.value)}
-                style={{ height: '36px', width: 'auto', minWidth: '150px' }}
+          {/* Search & Leave Type Dropdown (Always on the same row) */}
+          <div
+            style={{
+              display: 'flex',
+              gap: '10px',
+              alignItems: 'center',
+              flexShrink: 0,
+              marginLeft: 'auto',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <div className="search-box" style={{ width: '220px', minWidth: '170px', position: 'relative' }}>
+              <span
+                className="search-icon"
+                style={{
+                  position: 'absolute',
+                  left: '10px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  color: 'var(--text-muted)',
+                  pointerEvents: 'none',
+                }}
               >
-                <option value="all">Tất cả loại nghỉ</option>
-                {leaveTypes.map((t) => (
-                  <option key={t.leave_type_id} value={String(t.leave_type_id)}>
-                    {t.type_name}
-                  </option>
-                ))}
-              </select>
+                {Icons.search}
+              </span>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="Tìm nhân viên, mã..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                style={{
+                  height: '34px',
+                  paddingLeft: '32px',
+                  paddingRight: searchTerm ? '28px' : '10px',
+                  fontSize: '13px',
+                  width: '100%',
+                }}
+              />
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm('')}
+                  style={{
+                    position: 'absolute',
+                    right: '8px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: 'var(--text-muted)',
+                    fontSize: '12px',
+                    padding: '2px',
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                  title="Xóa tìm kiếm"
+                >
+                  {Icons.close}
+                </button>
+              )}
             </div>
-          )}
+
+            <select
+              className="form-select"
+              value={selectedTypeFilter}
+              onChange={(e) => setSelectedTypeFilter(e.target.value)}
+              style={{
+                height: '34px',
+                width: 'auto',
+                minWidth: '145px',
+                maxWidth: '180px',
+                fontSize: '13px',
+              }}
+            >
+              <option value="all">Tất cả loại nghỉ</option>
+              {leaveTypes.map((t) => (
+                <option key={t.leave_type_id} value={String(t.leave_type_id)}>
+                  {t.type_name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {/* Tab 1: List Table */}
@@ -622,7 +846,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                     return (
                       <tr key={req.request_id}>
                         <td>
-                          <span className="table-cell-mono font-bold" style={{ cursor: 'pointer', color: 'var(--primary-color, #2563eb)' }} onClick={() => setDetailModalRequest(req)}>
+                          <span className="table-cell-mono font-bold" style={{ cursor: 'pointer', color: 'var(--primary-color, #2563eb)' }} onClick={() => handleOpenDetailModal(req)}>
                             #{req.request_id}
                           </span>
                         </td>
@@ -871,54 +1095,162 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
           /* Tab 2: Calendar View */
           <div className="card-body" style={{ padding: '24px' }}>
             {/* Top Navigation & Controls */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '16px' }}>
               <div>
-                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                  Lịch Nhân Sự Nghỉ Phép Tháng {calendarMonth}
+                <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  Lịch Nhân Sự Nghỉ Phép Tháng {formatMonthDisplay(calendarMonth)}
                 </h3>
                 <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                  Theo dõi trực quan lịch vắng mặt theo ngày & chi tiết từng nhân sự đã được duyệt
+                  Theo dõi trực quan lịch vắng mặt theo ngày & chi tiết từng nhân sự đã được duyệt trong tháng {formatMonthDisplay(calendarMonth)}
                 </p>
               </div>
 
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                <div className="btn-group" style={{ display: 'flex', gap: '4px' }}>
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                {/* Nút Hôm nay đứng riêng bên trái */}
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  title="Trở về tháng hiện tại"
+                  onClick={handleCurrentMonth}
+                  style={{ padding: '6px 14px', fontSize: '13px', fontWeight: 600, height: '34px' }}
+                >
+                  Hôm nay
+                </button>
+
+                {/* Cụm chuyển tháng: nút lùi [ < ] + Dropdown chọn tháng + nút tiến [ > ] */}
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                   <button
+                    type="button"
                     className="btn btn-secondary btn-sm"
                     title="Tháng trước"
                     onClick={handlePrevMonth}
-                    style={{ padding: '6px 10px' }}
+                    style={{ padding: '6px 10px', height: '34px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                   >
                     {Icons.chevronLeft}
                   </button>
-                  <button
-                    className="btn btn-secondary btn-sm"
-                    title="Trở về tháng hiện tại"
-                    onClick={handleCurrentMonth}
-                    style={{ padding: '6px 12px', fontSize: '12px', fontWeight: 600 }}
+
+                  <select
+                    className="form-select"
+                    value={calendarMonth}
+                    onChange={(e) => setCalendarMonth(e.target.value)}
+                    style={{
+                      height: '34px',
+                      width: 'auto',
+                      minWidth: '150px',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      padding: '4px 10px',
+                    }}
                   >
-                    Hôm nay
-                  </button>
+                    {monthOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+
                   <button
+                    type="button"
                     className="btn btn-secondary btn-sm"
                     title="Tháng sau"
                     onClick={handleNextMonth}
-                    style={{ padding: '6px 10px' }}
+                    style={{ padding: '6px 10px', height: '34px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                   >
                     {Icons.chevronRight}
                   </button>
                 </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <input
-                    type="month"
-                    className="form-input"
-                    value={calendarMonth}
-                    onChange={(e) => setCalendarMonth(e.target.value)}
-                    style={{ width: 'auto', padding: '5px 10px', fontSize: '13px' }}
-                  />
-                </div>
               </div>
+            </div>
+
+            {/* Note danh sách nhân sự thôi việc / nghỉ việc trong tháng */}
+            <div className="resigned-staff-panel">
+              <div className="resigned-staff-header">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ display: 'inline-flex', padding: '6px', borderRadius: '6px', backgroundColor: 'var(--surface-subtle)', color: 'var(--text-primary)', border: '1px solid var(--border-default)' }}>
+                    {Icons.users}
+                  </span>
+                  <div>
+                    <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                      Danh Sách Nhân Sự Thôi Việc / Nghỉ Việc Trong Tháng {formatMonthDisplay(calendarMonth)} ({monthResignedEmployees.length})
+                    </h4>
+                  </div>
+                </div>
+
+                {monthResignedEmployees.length > 0 && (
+                  <span
+                    style={{
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      padding: '2px 8px',
+                      borderRadius: '9999px',
+                      backgroundColor: 'var(--surface-subtle)',
+                      color: 'var(--text-primary)',
+                      border: '1px solid var(--border-default)',
+                    }}
+                  >
+                    {monthResignedEmployees.length} nhân sự
+                  </span>
+                )}
+              </div>
+
+              {monthResignedEmployees.length === 0 ? (
+                <div style={{ padding: '12px 14px', borderRadius: 'var(--radius-sm)', backgroundColor: 'var(--surface-subtle)', color: 'var(--text-secondary)', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ color: 'var(--status-success)' }}>{Icons.checkCircle}</span>
+                  <span>Không có nhân sự nào thôi việc hoặc nghỉ việc trong tháng {formatMonthDisplay(calendarMonth)}.</span>
+                </div>
+              ) : (
+                <div className="resigned-staff-grid">
+                  {monthResignedEmployees.map((emp) => (
+                    <div key={'resigned-' + emp.employee_id + '-' + emp.request_id} className="resigned-staff-card">
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
+                          <span
+                            style={{
+                              fontSize: '10.5px',
+                              fontWeight: 600,
+                              padding: '1px 6px',
+                              borderRadius: '4px',
+                              backgroundColor: 'var(--surface-subtle)',
+                              color: 'var(--text-primary)',
+                              border: '1px solid var(--border-default)',
+                            }}
+                          >
+                            Đã thôi việc
+                          </span>
+                          <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
+                            {emp.employee_code}
+                          </span>
+                        </div>
+                        <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)', marginBottom: '2px' }}>
+                          {emp.employee_name}
+                        </div>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                          {emp.store_name || emp.department_name || 'TechZone'} {emp.position_name ? `• ${emp.position_name}` : ''}
+                        </div>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-primary)', backgroundColor: 'var(--surface-subtle)', border: '1px solid var(--border-subtle)', padding: '5px 8px', borderRadius: '4px', marginBottom: '6px' }}>
+                          <strong>Ngày thôi việc:</strong> {formatDate(emp.resignation_date || emp.start_date)}
+                        </div>
+                        {emp.reason && (
+                          <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={emp.reason}>
+                            &ldquo;{emp.reason}&rdquo;
+                          </div>
+                        )}
+                      </div>
+
+                      {emp.request_id > 0 && (
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          style={{ marginTop: '10px', width: '100%', justifyContent: 'center', gap: '4px', fontSize: '11.5px', padding: '4px 8px' }}
+                          onClick={() => setDetailModalRequest(emp)}
+                        >
+                          {Icons.eye} Chi tiết đơn thôi việc
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Calendar Matrix (7-day grid) */}
@@ -974,9 +1306,8 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                   return (
                     <div
                       key={cell.dateStr + '-' + idx}
+                      className="calendar-day-cell"
                       style={{
-                        minHeight: '105px',
-                        padding: '8px',
                         borderRight: (idx % 7) < 6 ? '1px solid var(--border-default)' : 'none',
                         borderBottom: idx < calendarDaysMatrix.length - 7 ? '1px solid var(--border-default)' : 'none',
                         backgroundColor: !cell.isCurrentMonth
@@ -985,11 +1316,6 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                           ? 'var(--surface-subtle)'
                           : 'var(--surface-card)',
                         opacity: cell.isCurrentMonth ? 1 : 0.45,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '4px',
-                        position: 'relative',
-                        transition: 'background-color 0.15s ease',
                       }}
                     >
                       {/* Day Header with Date Number */}
@@ -1017,99 +1343,105 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                         </span>
 
                         {hasLeaves && cell.isCurrentMonth && (
-                          <span
+                          <button
+                            type="button"
+                            onClick={() => setSelectedDayLeavesModal({ dateStr: cell.dateStr, leaves: cell.leaves })}
+                            title="Bấm để xem danh sách nhân sự nghỉ trong ngày"
                             style={{
-                              fontSize: '10px',
+                              fontSize: '10.5px',
                               fontWeight: 700,
                               fontFamily: 'var(--font-mono)',
-                              color: 'var(--status-info)',
-                              padding: '1px 5px',
+                              color: 'var(--text-primary)',
+                              padding: '1px 6px',
                               borderRadius: '4px',
-                              backgroundColor: 'var(--status-info-bg)',
+                              backgroundColor: 'var(--surface-subtle)',
+                              border: '1px solid var(--border-default)',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '3px',
+                              transition: 'all 0.15s ease',
                             }}
                           >
-                            {cell.leaves.length} nghỉ
-                          </span>
+                            <span>{cell.leaves.length}</span>
+                            <span style={{ fontSize: '9.5px', fontWeight: 600, color: 'var(--text-secondary)' }}>nghỉ</span>
+                          </button>
                         )}
                       </div>
 
-                      {/* Leaves Badges in Cell */}
+                      {/* Leaves Badges in Cell (Top 2 leaves) */}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', flex: 1, overflow: 'hidden' }}>
                         {cell.leaves.slice(0, 2).map((lv) => {
                           const isUnpaid = lv.leave_type_code === 'NGHI_KHONG_LUONG' || lv.leave_type_id === 2
                           const isPaid = lv.leave_type_code === 'PHEP_NAM' || lv.leave_type_id === 1
+                          const isSick = lv.leave_type_code === 'OM_DAU' || lv.leave_type_id === 3
+                          const isMaternity = lv.leave_type_code === 'THAI_SAN' || lv.leave_type_id === 4
 
-                          const badgeBg = isUnpaid
-                            ? 'var(--status-error-bg)'
-                            : isPaid
-                            ? 'var(--status-success-bg)'
-                            : 'var(--status-info-bg)'
+                          let badgeBg = 'rgba(59, 130, 246, 0.1)'
+                          let badgeBorder = 'rgba(59, 130, 246, 0.25)'
+                          let badgeText = '#2563eb'
+                          let dotColor = '#3b82f6'
 
-                          const badgeBorder = isUnpaid
-                            ? 'var(--status-error-border)'
-                            : isPaid
-                            ? 'var(--status-success-border)'
-                            : 'var(--status-info-border)'
-
-                          const badgeText = isUnpaid
-                            ? 'var(--status-error)'
-                            : isPaid
-                            ? 'var(--status-success)'
-                            : 'var(--status-info)'
+                          if (isPaid) {
+                            badgeBg = 'rgba(16, 185, 129, 0.12)'
+                            badgeBorder = 'rgba(16, 185, 129, 0.25)'
+                            badgeText = '#059669'
+                            dotColor = '#10b981'
+                          } else if (isUnpaid) {
+                            badgeBg = 'rgba(239, 68, 68, 0.1)'
+                            badgeBorder = 'rgba(239, 68, 68, 0.25)'
+                            badgeText = '#dc2626'
+                            dotColor = '#ef4444'
+                          } else if (isSick) {
+                            badgeBg = 'rgba(245, 158, 11, 0.12)'
+                            badgeBorder = 'rgba(245, 158, 11, 0.25)'
+                            badgeText = '#d97706'
+                            dotColor = '#f59e0b'
+                          } else if (isMaternity) {
+                            badgeBg = 'rgba(168, 85, 247, 0.12)'
+                            badgeBorder = 'rgba(168, 85, 247, 0.25)'
+                            badgeText = '#7e22ce'
+                            dotColor = '#a855f7'
+                          }
 
                           return (
                             <div
-                              key={lv.request_id}
+                              key={'lv-badge-' + lv.request_id}
+                              className="calendar-leave-chip"
                               title={`${lv.employee_name} (${lv.employee_code || ''}) - ${lv.leave_type_name}: ${formatDate(lv.start_date)} đến ${formatDate(lv.end_date)}`}
-                              onClick={() => setDetailModalRequest(lv)}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleOpenDetailModal(lv)
+                              }}
                               style={{
-                                padding: '3px 6px',
-                                borderRadius: '4px',
-                                fontSize: '11px',
-                                fontWeight: 500,
                                 backgroundColor: badgeBg,
                                 border: `1px solid ${badgeBorder}`,
                                 color: badgeText,
-                                cursor: 'pointer',
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                transition: 'transform 0.1s ease',
                               }}
-                              onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.02)')}
-                              onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
                             >
-                              <span style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                {lv.employee_name?.split(' ').slice(-2).join(' ') || lv.employee_name}
-                              </span>
-                              <span style={{ opacity: 0.75, fontSize: '10px' }}>
-                                • {lv.leave_type_name?.replace('Nghỉ ', '') || 'Phép'}
+                              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: dotColor, flexShrink: 0 }} />
+                              <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                                {lv.employee_name}
                               </span>
                             </div>
                           )
                         })}
 
+                        {/* Button Xem thêm nếu có nhiều hơn 2 người nghỉ */}
                         {cell.leaves.length > 2 && (
                           <div
-                            style={{
-                              fontSize: '10.5px',
-                              fontWeight: 600,
-                              color: 'var(--text-secondary)',
-                              padding: '2px 4px',
-                              textAlign: 'center',
-                              borderRadius: '4px',
-                              backgroundColor: 'var(--surface-subtle)',
-                              cursor: 'pointer',
-                            }}
-                            onClick={() => {
-                              const firstLeave = cell.leaves[2]
-                              if (firstLeave) setDetailModalRequest(firstLeave)
+                            className="calendar-more-chip"
+                            title={`Bấm để xem toàn bộ ${cell.leaves.length} nhân sự nghỉ ngày ${cell.dayNumber}/${calendarMonth.split('-')[1]}`}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setSelectedDayLeavesModal({
+                                dateStr: cell.dateStr,
+                                leaves: cell.leaves,
+                              })
                             }}
                           >
-                            +{cell.leaves.length - 2} nhân sự khác
+                            <span>+{cell.leaves.length - 2} nhân sự khác</span>
+                            <span style={{ fontSize: '10px' }}>&rarr;</span>
                           </div>
                         )}
                       </div>
@@ -1121,24 +1453,26 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
 
             {/* Detailed Cards List */}
             <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                  Danh Sách Đơn Nghỉ Phép Trong Tháng ({calendarLeaves.length})
-                </h4>
-                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                  Hiển thị tất cả nhân viên có lịch nghỉ trong tháng {calendarMonth}
-                </span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
+                <div>
+                  <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    Danh Sách Đơn Nghỉ Phép Trong Tháng {formatMonthDisplay(calendarMonth)} ({filteredCalendarLeaves.length})
+                  </h4>
+                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                    Hiển thị các nhân viên có lịch nghỉ được duyệt trong tháng {formatMonthDisplay(calendarMonth)}
+                  </span>
+                </div>
               </div>
 
-              {calendarLeaves.length === 0 ? (
+              {filteredCalendarLeaves.length === 0 ? (
                 <EmptyState
                   icon={Icons.calendar}
-                  title={`Không có nhân sự nào nghỉ phép trong tháng ${calendarMonth}`}
-                  description="Toàn bộ nhân viên tại chi nhánh đều đi làm đầy đủ trong tháng này."
+                  title={`Không có nhân sự nào nghỉ phép trong tháng ${formatMonthDisplay(calendarMonth)}`}
+                  description="Không tìm thấy lịch nghỉ phép nào phù hợp với bộ lọc tìm kiếm hiện tại."
                 />
               ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: '16px' }}>
-                  {calendarLeaves.map((item) => (
+                  {filteredCalendarLeaves.map((item) => (
                     <div
                       key={item.request_id}
                       style={{
@@ -1157,7 +1491,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                       <div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
                           <span className="badge badge-blue">{item.leave_type_name}</span>
-                          <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--status-info)', fontFamily: 'var(--font-mono)' }}>
+                          <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>
                             {item.total_days} ngày
                           </span>
                         </div>
@@ -1178,9 +1512,10 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                       </div>
 
                       <button
+                        type="button"
                         className="btn btn-secondary btn-sm"
                         style={{ width: '100%', justifyContent: 'center', gap: '6px' }}
-                        onClick={() => setDetailModalRequest(item)}
+                        onClick={() => handleOpenDetailModal(item)}
                       >
                         {Icons.eye} Xem chi tiết đơn
                       </button>
@@ -1706,7 +2041,11 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
             onClick={(e) => e.stopPropagation()}
           >
             <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600 }}>Chi Tiết Đơn Nghỉ Phép #{detailModalRequest.request_id}</h3>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600 }}>
+                {detailModalRequest.request_id > 0
+                  ? `Chi Tiết Đơn Nghỉ Phép #${detailModalRequest.request_id}`
+                  : `Hồ Sơ Nhân Sự Thôi Việc / Chấm Dứt HĐLĐ`}
+              </h3>
               <button
                 style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', color: '#9ca3af' }}
                 onClick={() => setDetailModalRequest(null)}
@@ -1839,12 +2178,22 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
                 <div>
-                  <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary, #6b7280)', textTransform: 'uppercase', fontWeight: 600 }}>Thời gian nghỉ</label>
-                  <div className="table-cell-mono font-bold">{formatDate(detailModalRequest.start_date)} &rarr; {formatDate(detailModalRequest.end_date)}</div>
+                  <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary, #6b7280)', textTransform: 'uppercase', fontWeight: 600 }}>
+                    {isResignationRecord(detailModalRequest) ? 'Ngày chính thức thôi việc' : 'Thời gian nghỉ'}
+                  </label>
+                  <div className="table-cell-mono font-bold">
+                    {detailModalRequest.start_date === detailModalRequest.end_date || !detailModalRequest.end_date
+                      ? formatDate(detailModalRequest.start_date)
+                      : `${formatDate(detailModalRequest.start_date)} → ${formatDate(detailModalRequest.end_date)}`}
+                  </div>
                 </div>
                 <div>
                   <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary, #6b7280)', textTransform: 'uppercase', fontWeight: 600 }}>Tổng số ngày</label>
-                  <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--primary-color, #2563eb)' }}>{detailModalRequest.total_days} ngày</div>
+                  <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--primary-color, #2563eb)' }}>
+                    {detailModalRequest.total_days === 0 && isResignationRecord(detailModalRequest)
+                      ? 'Chấm dứt HĐLĐ'
+                      : `${detailModalRequest.total_days} ngày`}
+                  </div>
                 </div>
               </div>
 
@@ -1878,25 +2227,34 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                     1
                   </div>
                   <div>
-                    <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Nhân viên gửi đơn</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary, #6b7280)' }}>{formatDate(detailModalRequest.created_at)}</div>
+                    <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>
+                      {isResignationRecord(detailModalRequest) ? 'Tiếp nhận hồ sơ nhân sự thôi việc' : 'Nhân viên gửi đơn'}
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary, #6b7280)' }}>
+                      {formatDate(detailModalRequest.created_at || detailModalRequest.resignation_date || detailModalRequest.start_date)}
+                    </div>
                   </div>
                 </div>
 
                 {/* Bước 2: Cửa hàng trưởng duyệt */}
                 {(() => {
+                  const isResignation = isResignationRecord(detailModalRequest)
                   const isDetailApplicantCht = Boolean(
                     detailModalRequest.is_store_manager_request ||
                     detailModalRequest.position_name === 'Cửa hàng trưởng' ||
                     !detailModalRequest.store_id
                   )
+                  const isHrApproved = detailModalRequest.status === 'HR_APPROVED' || Boolean(detailModalRequest.hr_approved_at)
+
                   // Bước 2 không áp dụng khi:
-                  // 1. Nhân viên nộp là CHT hoặc Khối Trụ sở văn phòng
-                  // 2. HR đã duyệt thẳng Cấp 2 khi CHT chưa duyệt
-                  // 3. HR / Admin đã trực tiếp từ chối đơn khi CHT chưa xử lý
+                  // 1. Hồ sơ thôi việc
+                  // 2. Nhân viên nộp là CHT hoặc Khối Trụ sở văn phòng
+                  // 3. HR đã duyệt Cấp 2 mà CHT chưa duyệt (Duyệt thẳng)
+                  // 4. HR / Admin đã trực tiếp từ chối đơn khi CHT chưa xử lý
                   const isStoreStepNotApplicable = Boolean(
+                    isResignation ||
                     isDetailApplicantCht ||
-                    (detailModalRequest.hr_approved_at && !detailModalRequest.store_approved_at) ||
+                    (isHrApproved && !detailModalRequest.store_approved_at) ||
                     (detailModalRequest.status === 'REJECTED' && !detailModalRequest.store_approved_at && (detailModalRequest.rejected_by_role === 'Phòng Nhân sự' || detailModalRequest.rejected_by_role === 'Ban Giám đốc / Admin'))
                   )
 
@@ -1951,10 +2309,12 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                               Không áp dụng
                             </span>
                             <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary, #6b7280)' }}>
-                              {isDetailApplicantCht
+                              {isResignation
+                                ? '(Hồ sơ thôi việc do Phòng Nhân sự / Ban Giám đốc quản lý trực tiếp)'
+                                : isDetailApplicantCht
                                 ? '(Đơn CHT / Khối văn phòng, chuyển thẳng HR duyệt)'
-                                : detailModalRequest.hr_approved_at
-                                ? '(Phòng Nhân sự đã trực tiếp duyệt thẳng Cấp 2)'
+                                : isHrApproved
+                                ? '(Phòng Nhân sự đã trực tiếp duyệt thẳng Cấp 2, bỏ qua bước CHT)'
                                 : '(Phòng Nhân sự đã trực tiếp xử lý từ chối)'}
                             </span>
                           </div>
@@ -1983,6 +2343,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
 
                 {/* Bước 3: HR duyệt */}
                 {(() => {
+                  const isResignation = isResignationRecord(detailModalRequest)
                   const isStoreRejected = Boolean(
                     detailModalRequest.status === 'REJECTED' &&
                     (detailModalRequest.rejected_by_role === 'Cửa hàng trưởng' ||
@@ -1993,6 +2354,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
 
                   const wasHrApprovedBeforeReject = detailModalRequest.status === 'REJECTED' && Boolean(detailModalRequest.hr_approved_at)
                   const isHrRejected = !isHrStepNotApplicable && detailModalRequest.status === 'REJECTED' && (detailModalRequest.rejected_by_role === 'Phòng Nhân sự' || detailModalRequest.rejected_by_role === 'Ban Giám đốc / Admin')
+                  const isHrApproved = detailModalRequest.status === 'HR_APPROVED' || Boolean(detailModalRequest.hr_approved_at)
 
                   return (
                     <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
@@ -2004,7 +2366,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                           ? '#e5e7eb'
                           : wasHrApprovedBeforeReject || isHrRejected
                           ? '#dc2626'
-                          : detailModalRequest.hr_approved_at
+                          : isHrApproved
                           ? '#10b981'
                           : '#3b82f6',
                         color: isHrStepNotApplicable ? '#6b7280' : '#fff',
@@ -2014,7 +2376,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                         fontSize: '0.75rem',
                         fontWeight: 700
                       }}>
-                        {isHrStepNotApplicable ? '—' : (wasHrApprovedBeforeReject || isHrRejected) ? '✕' : detailModalRequest.hr_approved_at ? '✓' : '3'}
+                        {isHrStepNotApplicable ? '—' : (wasHrApprovedBeforeReject || isHrRejected) ? '✕' : isHrApproved ? '✓' : '3'}
                       </div>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontWeight: 600, fontSize: '0.9rem', color: isHrStepNotApplicable ? '#6b7280' : undefined }}>
@@ -2022,6 +2384,8 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                             <span style={{ color: '#dc2626' }}>Phòng Nhân sự: Đã Hủy Phê Duyệt & Từ Chối</span>
                           ) : isHrRejected ? (
                             <span style={{ color: '#dc2626' }}>Phòng Nhân sự: Đã từ chối (Cấp 2)</span>
+                          ) : isResignation ? (
+                            'Phòng Nhân sự phê duyệt quyết định thôi việc'
                           ) : (
                             'Phòng Nhân sự phê duyệt chính thức (Cấp 2)'
                           )}
@@ -2054,9 +2418,10 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                           <div style={{ fontSize: '0.8rem', color: '#dc2626' }}>
                             Người từ chối: {detailModalRequest.rejected_by_name || 'Phòng Nhân sự'} ({formatDate(detailModalRequest.rejected_at)})
                           </div>
-                        ) : detailModalRequest.hr_approved_at ? (
+                        ) : isHrApproved ? (
                           <div style={{ fontSize: '0.8rem', color: '#059669' }}>
-                            Người duyệt: {detailModalRequest.hr_approver_name || 'Trưởng phòng Nhân sự'} ({formatDate(detailModalRequest.hr_approved_at)})
+                            Người duyệt: {detailModalRequest.hr_approver_name || 'Trưởng phòng Nhân sự'}
+                            {detailModalRequest.hr_approved_at ? ` (${formatDate(detailModalRequest.hr_approved_at)})` : ''}
                           </div>
                         ) : (
                           <div style={{ fontSize: '0.75rem', color: '#2563eb' }}>
@@ -2080,6 +2445,200 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                   Đóng
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: DANH SÁCH TẤT CẢ NHÂN SỰ NGHỈ TRONG NGÀY */}
+      {/* ========================================================================= */}
+      {selectedDayLeavesModal && (
+        <div
+          className="modal-overlay"
+          onClick={() => setSelectedDayLeavesModal(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '16px',
+            backdropFilter: 'blur(2px)',
+          }}
+        >
+          <div
+            className="card"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: '680px',
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: 'var(--shadow-lg, 0 20px 25px -5px rgba(0,0,0,0.2))',
+              borderRadius: 'var(--radius-lg, 12px)',
+              overflow: 'hidden',
+              animation: 'modalSlideIn 0.2s ease',
+            }}
+          >
+            {/* Modal Header */}
+            <div
+              className="card-header"
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '16px 20px',
+                borderBottom: '1px solid var(--border-default)',
+                backgroundColor: 'var(--surface-subtle)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: '38px',
+                    height: '38px',
+                    borderRadius: '8px',
+                    backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                    color: 'var(--action-primary)',
+                  }}
+                >
+                  {Icons.calendar}
+                </span>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    Nhân Sự Nghỉ Phép Ngày {formatDate(selectedDayLeavesModal.dateStr)}
+                  </h3>
+                  <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                    Tổng cộng {selectedDayLeavesModal.leaves.length} nhân sự vắng mặt theo lịch đã duyệt
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setSelectedDayLeavesModal(null)}
+                style={{ padding: '6px', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                {Icons.close}
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div
+              className="card-body"
+              style={{
+                padding: '16px 20px',
+                overflowY: 'auto',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px',
+                maxHeight: 'calc(90vh - 140px)',
+              }}
+            >
+              {selectedDayLeavesModal.leaves.map((lv) => (
+                <div
+                  key={'day-modal-lv-' + lv.request_id}
+                  style={{
+                    border: '1px solid var(--border-default)',
+                    borderRadius: 'var(--radius-md)',
+                    padding: '14px',
+                    backgroundColor: 'var(--surface-card)',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: '12px',
+                    flexWrap: 'wrap',
+                    transition: 'border-color 0.15s ease',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: '240px', flex: 1 }}>
+                    <div
+                      style={{
+                        width: '40px',
+                        height: '40px',
+                        borderRadius: '50%',
+                        backgroundColor: 'var(--surface-subtle)',
+                        border: '1px solid var(--border-default)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontWeight: 700,
+                        fontSize: '14px',
+                        color: 'var(--action-primary)',
+                        flexShrink: 0,
+                      }}
+                    >
+                      {lv.employee_name?.split(' ').slice(-1)[0]?.charAt(0) || 'NV'}
+                    </div>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
+                          {lv.employee_name}
+                        </span>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                          ({lv.employee_code})
+                        </span>
+                        <span className="badge badge-blue" style={{ fontSize: '10.5px' }}>
+                          {lv.leave_type_name}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                        {lv.store_name || lv.department_name || 'TechZone'} {lv.position_name ? `• ${lv.position_name}` : ''}
+                      </div>
+                      <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                        Thời gian nghỉ: <strong style={{ color: 'var(--text-primary)' }}>{formatDate(lv.start_date)}</strong> &rarr; <strong style={{ color: 'var(--text-primary)' }}>{formatDate(lv.end_date)}</strong> ({lv.total_days} ngày)
+                      </div>
+                      {lv.reason && (
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontStyle: 'italic', marginTop: '4px' }}>
+                          &ldquo;{lv.reason}&rdquo;
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{ gap: '6px', fontSize: '12px' }}
+                      onClick={() => {
+                        setSelectedDayLeavesModal(null)
+                        handleOpenDetailModal(lv)
+                      }}
+                    >
+                      {Icons.eye} Chi tiết đơn
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Modal Footer */}
+            <div
+              className="card-footer"
+              style={{
+                display: 'flex',
+                justifyContent: 'flex-end',
+                padding: '12px 20px',
+                borderTop: '1px solid var(--border-default)',
+                backgroundColor: 'var(--surface-subtle)',
+              }}
+            >
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setSelectedDayLeavesModal(null)}
+              >
+                Đóng
+              </button>
             </div>
           </div>
         </div>
