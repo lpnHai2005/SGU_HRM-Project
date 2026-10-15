@@ -2935,3 +2935,166 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 .month-picker-dialog { max-width:min(360px, calc(100vw - 32px)); padding:20px; }
 .month-picker-dialog > div { min-width:0; }
 .month-picker-dialog .btn { min-width:0; white-space:nowrap; }
+
+/* ==========================================================================
+   LEAVE MANAGEMENT & CALENDAR ENHANCEMENTS
+   ========================================================================== */
+.leave-requests-header {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 16px !important;
+  padding: 12px 20px !important;
+  border-bottom: 1px solid var(--border-default) !important;
+  flex-wrap: nowrap !important;
+  overflow-x: auto !important;
+  scrollbar-width: thin;
+}
+
+.leave-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  transition: all 0.15s ease;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.leave-tab-btn:hover {
+  color: var(--text-primary);
+  background-color: var(--surface-subtle);
+}
+
+.leave-tab-btn.active {
+  color: var(--action-primary);
+  border-bottom-color: var(--action-primary);
+  font-weight: 700;
+}
+
+.leave-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 9999px;
+  background-color: var(--surface-subtle);
+  color: var(--text-primary);
+  border: 1px solid var(--border-default);
+}
+
+.leave-tab-btn.active .leave-tab-badge {
+  background-color: var(--surface-card);
+  color: var(--text-primary);
+  border-color: var(--border-default);
+}
+
+/* Resigned Staff Notice Panel */
+.resigned-staff-panel {
+  border: 1px solid var(--border-default);
+  background: var(--surface-card);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  margin-bottom: 24px;
+  box-shadow: var(--shadow-card);
+}
+
+.resigned-staff-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.resigned-staff-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.resigned-staff-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid #dc2626;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.resigned-staff-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+/* Calendar Matrix Cell styling */
+.calendar-day-cell {
+  min-height: 125px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: relative;
+  transition: background-color 0.15s ease;
+}
+
+.calendar-day-cell:hover {
+  background-color: var(--surface-hover) !important;
+}
+
+.calendar-leave-chip {
+  padding: 3px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: transform 0.1s ease, filter 0.1s ease;
+}
+
+.calendar-leave-chip:hover {
+  transform: scale(1.02);
+  filter: brightness(0.97);
+}
+
+.calendar-more-chip {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  padding: 3px 6px;
+  text-align: center;
+  border-radius: 4px;
+  background-color: var(--surface-subtle);
+  border: 1px solid var(--border-default);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.calendar-more-chip:hover {
+  background-color: var(--surface-hover);
+  border-color: var(--border-hover, #94a3b8);
+}
+

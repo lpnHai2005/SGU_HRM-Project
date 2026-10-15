@@ -115,13 +115,43 @@ async def get_leave_calendar(
         SELECT lr.request_id, lr.employee_id, e.employee_code, e.full_name as employee_name,
                e.store_id, s.store_name, d.department_name, pos.position_name,
                lr.leave_type_id, lt.type_code as leave_type_code, lt.type_name as leave_type_name,
-               lt.is_paid, lr.start_date, lr.end_date, lr.total_days, lr.reason, lr.status
+               lt.is_paid, lr.start_date, lr.end_date, lr.total_days, lr.reason, lr.status,
+               lr.attachment_url,
+               lr.store_manager_id, sm.full_name as store_manager_name, lr.store_approved_at, lr.store_manager_note,
+               lr.hr_approver_id, hr.full_name as hr_approver_name, lr.hr_approved_at, 
+               lr.rejection_reason, lr.rejected_by_id, rj.full_name as rejected_by_name, lr.rejected_at,
+               CASE 
+                   WHEN rj.employee_id = 1 THEN 'Ban Giám đốc / Admin'
+                   WHEN rj_pos.position_code = 'HR_DIR' THEN 'Phòng Nhân sự'
+                   WHEN rj_pos.position_code = 'STORE_MGR' THEN 'Cửa hàng trưởng'
+                   WHEN lr.rejected_by_id = lr.store_manager_id THEN 'Cửa hàng trưởng'
+                   WHEN lr.rejected_by_id = lr.hr_approver_id THEN 'Phòng Nhân sự'
+                   WHEN rj_pos.is_store_role = FALSE THEN 'Phòng Nhân sự'
+                   WHEN lr.rejected_by_id IS NOT NULL THEN 'Cửa hàng trưởng'
+                   ELSE NULL
+               END as rejected_by_role,
+               CASE 
+                   WHEN pos.position_code = 'STORE_MGR' THEN TRUE
+                   WHEN EXISTS (
+                       SELECT 1 FROM user_roles ur2 
+                       JOIN roles r2 ON ur2.role_id = r2.role_id 
+                       JOIN users u2 ON ur2.user_id = u2.user_id 
+                       WHERE u2.employee_id = lr.employee_id AND r2.role_code = 'STORE_MANAGER'
+                   ) THEN TRUE
+                   ELSE FALSE 
+               END as is_store_manager_request,
+               lr.created_at, lr.updated_at,
+               e.employment_status, e.resignation_date
         FROM leave_requests lr
         JOIN employees e ON lr.employee_id = e.employee_id
         JOIN leave_types lt ON lr.leave_type_id = lt.leave_type_id
         LEFT JOIN stores s ON e.store_id = s.store_id
         LEFT JOIN departments d ON e.department_id = d.department_id
         LEFT JOIN positions pos ON e.position_id = pos.position_id
+        LEFT JOIN employees sm ON lr.store_manager_id = sm.employee_id
+        LEFT JOIN employees hr ON lr.hr_approver_id = hr.employee_id
+        LEFT JOIN employees rj ON lr.rejected_by_id = rj.employee_id
+        LEFT JOIN positions rj_pos ON rj.position_id = rj_pos.position_id
         WHERE lr.status = 'HR_APPROVED'
           AND (to_char(lr.start_date, 'YYYY-MM') = :month OR to_char(lr.end_date, 'YYYY-MM') = :month)
     """
@@ -147,7 +177,56 @@ async def get_leave_calendar(
 
     query += " ORDER BY lr.start_date ASC"
     res = await db.execute(text(query), params)
-    return res.mappings().all()
+    leave_rows = [dict(r) for r in res.mappings().all()]
+
+    # Also query employees who resigned in this month but might not have an approved THOI_VIEC leave_request
+    resigned_query = """
+        SELECT (-e.employee_id) as request_id, e.employee_id, e.employee_code, e.full_name as employee_name,
+               e.store_id, s.store_name, d.department_name, pos.position_name,
+               6 as leave_type_id, 'THOI_VIEC' as leave_type_code, 'Thôi việc / Chấm dứt HĐLĐ' as leave_type_name,
+               false as is_paid, e.resignation_date as start_date, e.resignation_date as end_date, 0 as total_days,
+               'Đã thôi việc' as reason, 'HR_APPROVED' as status,
+               null as attachment_url,
+               null as store_manager_id, null as store_manager_name, null as store_approved_at, null as store_manager_note,
+               1 as hr_approver_id, 'Phòng Nhân sự' as hr_approver_name, e.resignation_date as hr_approved_at,
+               null as rejection_reason, null as rejected_by_id, null as rejected_by_name, null as rejected_at,
+               null as rejected_by_role,
+               false as is_store_manager_request,
+               e.resignation_date as created_at, e.resignation_date as updated_at,
+               e.employment_status, e.resignation_date
+        FROM employees e
+        LEFT JOIN stores s ON e.store_id = s.store_id
+        LEFT JOIN departments d ON e.department_id = d.department_id
+        LEFT JOIN positions pos ON e.position_id = pos.position_id
+        WHERE e.employment_status = 'RESIGNED'
+          AND to_char(e.resignation_date, 'YYYY-MM') = :month
+    """
+    resigned_params: Dict[str, Any] = {"month": target_month}
+    if "ADMIN" not in roles and "HR_MANAGER" not in roles:
+        if "STORE_MANAGER" in roles:
+            resigned_query += " AND e.store_id = :user_store_id"
+            resigned_params["user_store_id"] = current_user.get("store_id")
+        else:
+            resigned_query += " AND (e.employee_id = :user_emp_id OR e.store_id = :user_store_id)"
+            resigned_params["user_emp_id"] = current_user.get("employee_id")
+            resigned_params["user_store_id"] = current_user.get("store_id")
+    elif store_id:
+        resigned_query += " AND e.store_id = :filter_store_id"
+        resigned_params["filter_store_id"] = store_id
+
+    if employee_id is not None:
+        resigned_query += " AND e.employee_id = :employee_id"
+        resigned_params["employee_id"] = employee_id
+
+    res_resigned = await db.execute(text(resigned_query), resigned_params)
+    resigned_rows = [dict(r) for r in res_resigned.mappings().all()]
+
+    existing_emp_ids = {r["employee_id"] for r in leave_rows if r.get("leave_type_code") == "THOI_VIEC" or r.get("leave_type_id") == 6}
+    for r in resigned_rows:
+        if r["employee_id"] not in existing_emp_ids:
+            leave_rows.append(r)
+
+    return leave_rows
 
 
 # ===================================================================================
