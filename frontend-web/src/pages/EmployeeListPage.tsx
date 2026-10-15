@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { createPortal } from 'react-dom'
 import { Icons } from '../components/common/Icons'
 import { EmptyState } from '../components/common/EmptyState'
@@ -24,6 +25,7 @@ const todayVietnam = () => new Intl.DateTimeFormat('en-CA', {
 }).format(new Date())
 
 export function EmployeeListPage({ user }: EmployeeListPageProps) {
+  const navigate = useNavigate()
   const [employees, setEmployees] = useState<Employee[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
@@ -33,17 +35,6 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
 
   // Modal state
   const [showModal, setShowModal] = useState(false);
-  // Shift edit modal state (Phân ca chuẩn MOD-04)
-  const [showShiftModal, setShowShiftModal] = useState(false);
-  const [shiftDate, setShiftDate] = useState(todayVietnam);
-  const [shiftDateError, setShiftDateError] = useState('');
-  const [selectedShiftId, setSelectedShiftId] = useState<number>(1);
-  const [shiftNotes, setShiftNotes] = useState('');
-  const [fixedShift, setFixedShift] = useState(false);
-  const [activeFixedRule, setActiveFixedRule] = useState<{ rule_id: number; start_date: string; last_error: string | null } | null>(null);
-  const [fixedRuleLoading, setFixedRuleLoading] = useState(false);
-  const dailyShiftNotes = useRef('Phân ca theo kế hoạch tuần');
-  const [shiftSaving, setShiftSaving] = useState(false);
 
 
   const [modalMode, setModalMode] = useState<ModalMode>('view')
@@ -129,15 +120,6 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
     toastTimeoutRef.current = window.setTimeout(() => setToast(null), 3000)
   }, [])
 
-  useEffect(() => {
-    if (!showShiftModal || !selectedEmployee) return
-    let active = true
-    import('../services/api').then(({ attendanceApi }) => attendanceApi.getFixedSchedules(selectedEmployee.employee_id))
-      .then(rows => { if (active) setActiveFixedRule(rows[0] || null) })
-      .catch(() => { if (active) showToast('error', 'Không tải được trạng thái ca cố định. Vui lòng mở lại bảng phân ca.') })
-      .finally(() => { if (active) setFixedRuleLoading(false) })
-    return () => { active = false }
-  }, [showShiftModal, selectedEmployee, showToast])
 
   // Close menu when clicking outside, scrolling, resizing, or pressing Escape
   useEffect(() => {
@@ -328,88 +310,6 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
     setFormError('')
     setOpenMenuId(null)
     setMenuPos(null)
-  }
-
-  // Danh mục 3 ca bán lẻ chuẩn + 1 ca hành chính theo đặc tả MOD-04 4.1
-  const standardShifts = [
-    { id: 1, name: 'Ca Sáng (08:00 - 16:00)', code: 'CA_SANG', hours: '7.0h', desc: 'Ca bán lẻ sáng' },
-    { id: 2, name: 'Ca Chiều (13:00 - 21:00)', code: 'CA_CHIEU', hours: '7.0h', desc: 'Ca bán lẻ chiều' },
-    { id: 3, name: 'Ca Full cuối tuần (08:00 - 21:00)', code: 'CA_FULL', hours: '11.0h', desc: 'Ca toàn thời gian cuối tuần' },
-    { id: 4, name: 'Ca Hành chính (08:00 - 17:00)', code: 'CA_HANH_CHINH', hours: '8.0h', desc: 'Ca văn phòng / hành chính' },
-  ]
-
-  // --- Shift edit modal handlers ---
-  const openShiftEditModal = (employee: Employee) => {
-    if (!isAssignableEmployeeStatus(employee.employment_status)) {
-      showToast('error', 'Chỉ nhân viên đang làm việc hoặc thử việc mới được phân ca hoặc sửa ca.')
-      return
-    }
-    setSelectedEmployee(employee)
-    setOpenMenuId(null)
-    setMenuPos(null)
-    setShiftDate(todayVietnam())
-    setShiftDateError('')
-    setSelectedShiftId(1)
-    setActiveFixedRule(null)
-    setFixedRuleLoading(true)
-    setFixedShift(false)
-    dailyShiftNotes.current = 'Phân ca theo kế hoạch tuần'
-    setShiftNotes('Phân ca theo kế hoạch tuần')
-    setShowShiftModal(true)
-  }
-
-  const closeShiftModal = () => {
-    setShowShiftModal(false)
-    setSelectedEmployee(null)
-    setShiftNotes('')
-    setShiftSaving(false)
-    setOpenMenuId(null)
-    setMenuPos(null)
-  }
-
-  const handleShiftSave = async () => {
-    if (!selectedEmployee) return
-    const workDate = shiftDate
-    if (fixedShift && workDate < new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' })) {
-      setShiftDateError('Ngày bắt đầu ca cố định không được ở quá khứ.')
-      return
-    }
-    setShiftDateError('')
-    const storeId = selectedEmployee.store_id || user?.store_id
-    if (!storeId) {
-      showToast('error', 'Nhân viên chưa được phân cửa hàng để xếp ca')
-      return
-    }
-    setShiftSaving(true)
-    try {
-      const { attendanceApi } = await import('../services/api')
-      const res = await (fixedShift ? attendanceApi.assignFixedSchedule : attendanceApi.assignShiftSchedule)({
-        employee_id: selectedEmployee.employee_id,
-        store_id: storeId,
-        shift_id: selectedShiftId,
-        work_date: workDate,
-        notes: shiftNotes || 'Phân ca làm việc',
-      })
-      showToast('success', res.message || `Đã phân ca thành công cho ${selectedEmployee.full_name} (${shiftDate})!`)
-      closeShiftModal()
-    } catch (err: any) {
-      showToast('error', err.response?.data?.detail || err.message || 'Lỗi khi lưu phân ca làm việc')
-    } finally {
-      setShiftSaving(false)
-    }
-  }
-
-  const handleStopFixedShift = async () => {
-    if (!activeFixedRule) return
-    setShiftSaving(true)
-    try {
-      const { attendanceApi } = await import('../services/api')
-      const result = await attendanceApi.stopFixedSchedule(activeFixedRule.rule_id)
-      setActiveFixedRule(null)
-      showToast('success', result.message)
-    } catch (err: any) {
-      showToast('error', err.message || 'Không dừng được ca cố định')
-    } finally { setShiftSaving(false) }
   }
 
   const loadEmployeeContracts = async (employeeId: number) => {
@@ -1494,17 +1394,15 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
         )}
         {(isManagerOfBranch || canManage) && (
           <button
-            className={`action-dropdown-item ${!isAssignableEmployeeStatus(emp.employment_status) ? 'disabled' : ''}`}
-            disabled={!isAssignableEmployeeStatus(emp.employment_status)}
-            title={!isAssignableEmployeeStatus(emp.employment_status) ? 'Không thể phân ca hoặc sửa ca khi nhân viên đang nghỉ việc hoặc đã nghỉ việc.' : undefined}
+            className="action-dropdown-item"
             onClick={() => {
               setOpenMenuId(null)
               setMenuPos(null)
-              openShiftEditModal(emp)
+              navigate(`/work-schedules?employee_id=${emp.employee_id}`)
             }}
           >
-            <span className="action-icon icon-edit">{Icons.edit}</span>
-            <span>Phân ca & Sửa ca</span>
+            <span className="action-icon">{Icons.calendar}</span>
+            <span>Xem lịch làm việc</span>
           </button>
         )}
         {canManage && (
@@ -1695,18 +1593,17 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
                             >
                               {Icons.eye}
                             </button>
-                            {/* Nút sửa ca: hiện với STORE_MANAGER cùng chi nhánh hoặc HR/Admin */}
+                            {/* Nút xem lịch làm việc liên kết sang Calendar */}
                             {(canManage || (role === 'STORE_MANAGER' && user?.store_id === emp.store_id)) && (
                               <button
                                 className="btn btn-secondary btn-sm btn-icon"
-                                title={isAssignableEmployeeStatus(emp.employment_status) ? 'Phân ca / Sửa ca làm' : 'Không thể phân ca hoặc sửa ca khi nhân viên đang nghỉ việc hoặc đã nghỉ việc'}
-                                disabled={!isAssignableEmployeeStatus(emp.employment_status) || (role === 'STORE_MANAGER' && emp.employee_id === user?.employee_id)}
+                                title="Xem lịch làm việc"
                                 onClick={(e) => {
                                   e.stopPropagation()
-                                  openShiftEditModal(emp)
+                                  navigate(`/work-schedules?employee_id=${emp.employee_id}`)
                                 }}
                               >
-                                {Icons.clock}
+                                {Icons.calendar}
                               </button>
                             )}
                             {(canManage || (role === 'STORE_MANAGER' && user?.store_id === emp.store_id)) && (
@@ -1754,145 +1651,7 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
           </div>
         </div>
       )}
-      {/* Shift Edit Modal (Chuẩn hóa theo MOD-04 Quy trình phân ca làm việc) */}
-      {showShiftModal && selectedEmployee && (
-        <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && closeShiftModal()}>
-          <div className="modal" style={{ maxWidth: '540px' }}>
-            <div className="modal-header">
-              <h3 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span className="modal-title-icon icon-clock">{Icons.clock}</span>
-                <span>Phân ca & Sửa ca làm việc</span>
-              </h3>
-              <button className="modal-close" onClick={closeShiftModal} title="Đóng">
-                {Icons.x}
-              </button>
-            </div>
-            <div className="modal-body">
-              <div style={{ padding: '10px 14px', background: 'var(--surface-subtle)', borderRadius: 'var(--radius-sm)', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '14px' }}>{selectedEmployee.full_name}</div>
-                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Mã NV: {selectedEmployee.employee_code || `NV-${selectedEmployee.employee_id}`}</div>
-                </div>
-                <div style={{ textAlign: 'right', fontSize: '12px' }}>
-                  <div style={{ fontWeight: 600, color: 'var(--status-info)' }}>{selectedEmployee.store_name || user?.store_name || 'Chi nhánh'}</div>
-                  <div style={{ color: 'var(--text-secondary)' }}>{selectedEmployee.position_name || 'Nhân viên'}</div>
-                </div>
-              </div>
 
-              <fieldset className="form-group" style={{ margin: '0 0 14px', padding: '12px', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-md)' }} disabled={shiftSaving}>
-                <legend className="form-label" style={{ fontWeight: 600 }}>Hình thức phân ca</legend>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', color: 'var(--text-primary)' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                    <input type="radio" name="assignment_mode" checked={!fixedShift} onChange={() => {
-                      setFixedShift(false)
-                      setShiftNotes(dailyShiftNotes.current)
-                    }} /> Phân ca theo ngày
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                    <input type="radio" name="assignment_mode" checked={fixedShift} onChange={() => {
-                      dailyShiftNotes.current = shiftNotes
-                      setFixedShift(true)
-                      setShiftNotes('Phân ca nhân viên chính thức')
-                    }} /> Ca cố định
-                  </label>
-                </div>
-                <p style={{ margin: '8px 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                  {fixedShift ? 'Ca cố định không có ngày hết hạn: lặp thứ Hai–thứ Bảy từ ngày bắt đầu, nghỉ Chủ nhật, đến khi quản lý dừng hoặc đổi ca.' : 'Phân một ngày cụ thể, phù hợp lịch linh hoạt và nhân viên thực tập.'}
-                </p>
-                {fixedRuleLoading && <p role="status" style={{ color: 'var(--text-secondary)' }}>Đang tải ca cố định…</p>}
-                {activeFixedRule && <div style={{ marginTop: '12px', color: 'var(--text-primary)' }}>
-                  <p>Đã có ca cố định từ {formatDate(activeFixedRule.start_date)}. Muốn đổi ca, dừng lịch cố định cũ rồi phân lại.</p>
-                  {activeFixedRule.last_error && <p role="alert">Cần xử lý: {activeFixedRule.last_error}</p>}
-                  <button type="button" className="btn btn-secondary" onClick={handleStopFixedShift} disabled={shiftSaving}>
-                    Dừng ca cố định và hủy lịch chưa phát sinh công từ hôm nay
-                  </button>
-                </div>}
-              </fieldset>
-              <div style={{ marginBottom: '14px' }}>
-                <DatePicker
-                  key={shiftDate}
-                  value={shiftDate}
-                  label={fixedShift ? 'Ngày bắt đầu (Work Date)' : 'Ngày làm việc (Work Date)'}
-                  disabled={shiftSaving}
-                  error={shiftDateError}
-                  onChange={date => { setShiftDate(date); setShiftDateError('') }}
-                />
-              </div>
-
-              <div className="form-group" style={{ marginBottom: '16px' }}>
-                <label className="form-label" style={{ fontWeight: 600, display: 'block', marginBottom: '8px' }}>
-                  Chọn ca làm việc (Danh mục ca chuẩn MOD-04):
-                </label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {standardShifts.map((shift) => {
-                    const isSelected = selectedShiftId === shift.id
-                    return (
-                      <div
-                        key={shift.id}
-                        onClick={() => setSelectedShiftId(shift.id)}
-                        style={{
-                          border: isSelected ? '2px solid var(--action-primary, #09090b)' : '1px solid var(--border-default)',
-                          background: isSelected ? 'var(--surface-subtle)' : 'var(--surface-card)',
-                          borderRadius: 'var(--radius-md)',
-                          padding: '10px 14px',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          transition: 'all 0.15s ease',
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <input
-                            type="radio"
-                            name="work_shift_choice"
-                            checked={isSelected}
-                            onChange={() => setSelectedShiftId(shift.id)}
-                            style={{ cursor: 'pointer' }}
-                          />
-                          <div>
-                            <div style={{ fontWeight: 600, fontSize: '13.5px', color: 'var(--text-primary)' }}>
-                              {shift.name}
-                            </div>
-                            <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
-                              {shift.desc}
-                            </div>
-                          </div>
-                        </div>
-                        <div style={{ textAlign: 'right' }}>
-                          <span className="status-pill active" style={{ fontSize: '11px', fontWeight: 600 }}>
-                            {shift.hours} công
-                          </span>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-
-              <div className="form-group" style={{ marginBottom: '14px' }}>
-                <label className="form-label" style={{ fontWeight: 600 }}>Ghi chú phân ca</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  placeholder="Ghi chú phân công ca trực tuần..."
-                  value={shiftNotes}
-                  onChange={(e) => setShiftNotes(e.target.value)}
-                  style={{ height: '38px' }}
-                />
-              </div>
-            </div>
-            <div className="modal-footer" style={{ justifyContent: 'flex-end', gap: '8px' }}>
-              <button className="btn btn-secondary" onClick={closeShiftModal} disabled={shiftSaving}>
-                Hủy
-              </button>
-              <button className="btn btn-primary" onClick={handleShiftSave} disabled={shiftSaving || !shiftDate || (fixedShift && (fixedRuleLoading || !!activeFixedRule))}>
-                {shiftSaving ? 'Đang lưu...' : 'Lưu phân ca'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Confirmation Modal */}
       {confirmAction && (

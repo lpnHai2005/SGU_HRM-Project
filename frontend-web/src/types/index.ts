@@ -363,12 +363,15 @@ export interface WorkSchedule {
   employee_name: string;
   department_id?: number | null;
   employment_status?: string | null;
+  position_id?: number | null;
+  position_name?: string | null;
   store_id: number;
   store_name: string;
   shift_id: number;
   shift_name: string;
   start_time: string;
   end_time: string;
+  work_hours?: number;
   work_date: string;
   notes?: string | null;
   cancelled_at?: string | null;
@@ -377,8 +380,11 @@ export interface WorkSchedule {
 
 export interface WorkScheduleQuery {
   position_id?: number;
+  shift_id?: number;
   day: string;
   view: 'day' | 'week' | 'month';
+  date_from?: string;
+  date_to?: string;
   employee_id?: number;
   department_id?: number;
   store_id?: number;
