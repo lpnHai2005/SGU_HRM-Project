@@ -98,6 +98,18 @@ async def list_contracts(
         WHERE 1=1
     """
     params = {}
+    roles = current_user.get("roles", [])
+    if not any(role in roles for role in ("ADMIN", "HR_MANAGER")):
+        if "STORE_MANAGER" in roles:
+            if not current_user.get("store_id"):
+                raise HTTPException(status_code=403, detail="Tài khoản chưa được gán cửa hàng")
+            q += " AND e.store_id = :assigned_store_id"
+            params["assigned_store_id"] = current_user["store_id"]
+        else:
+            if not current_user.get("employee_id"):
+                raise HTTPException(status_code=403, detail="Tài khoản chưa liên kết nhân viên")
+            q += " AND c.employee_id = :self_employee_id"
+            params["self_employee_id"] = current_user["employee_id"]
     if employee_id:
         q += " AND c.employee_id = :emp_id"
         params["emp_id"] = employee_id

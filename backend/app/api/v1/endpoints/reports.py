@@ -260,7 +260,7 @@ async def get_demographics_report(
 @router.get("/payroll-fund", summary="Báo cáo tổng hợp chi phí tiền lương theo chi nhánh & phòng ban")
 async def get_payroll_fund_summary(
     period: Optional[str] = Query("2026-09", description="Kỳ lương (YYYY-MM)"),
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "STORE_MANAGER"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -268,7 +268,17 @@ async def get_payroll_fund_summary(
     Tổng lương cơ bản, Tổng làm thêm OT, Tổng hoa hồng, Tổng các loại phụ cấp,
     Tổng trích nộp bảo hiểm 10.5% và Tổng ngân sách lương thực chi.
     """
-    store_stats = (await db.execute(text("""
+    roles = current_user.get("roles", [])
+    branch_only = "STORE_MANAGER" in roles and not any(role in roles for role in ("ADMIN", "HR_MANAGER"))
+    assigned_store_id = current_user.get("store_id") if branch_only else None
+    if branch_only and not assigned_store_id:
+        raise HTTPException(status_code=403, detail="Tài khoản chưa được gán cửa hàng")
+    scope_params = {"period": period}
+    scope_sql = ""
+    if branch_only:
+        scope_params["store_id"] = assigned_store_id
+        scope_sql = " AND e.store_id = :store_id"
+    store_stats = (await db.execute(text(f"""
         SELECT 
             COALESCE(s.store_name, d.department_name, 'Khác') as unit_name,
             COUNT(p.payroll_id) as employee_count,
@@ -285,22 +295,23 @@ async def get_payroll_fund_summary(
         JOIN employees e ON p.employee_id = e.employee_id
         LEFT JOIN stores s ON e.store_id = s.store_id
         LEFT JOIN departments d ON e.department_id = d.department_id
-        WHERE p.salary_period = :period
+        WHERE p.salary_period = :period {scope_sql}
         GROUP BY COALESCE(s.store_name, d.department_name, 'Khác')
         ORDER BY total_gross DESC
-    """), {"period": period})).mappings().all()
+    """), scope_params)).mappings().all()
 
     # Tổng cộng toàn chuỗi
-    total_res = (await db.execute(text("""
+    total_res = (await db.execute(text(f"""
         SELECT 
             COUNT(payroll_id) as total_headcount,
             COALESCE(SUM(gross_income), 0) as total_gross_fund,
             COALESCE(SUM(net_salary), 0) as total_net_fund,
             COALESCE(SUM(total_insurance), 0) as total_insurance_fund,
             COALESCE(SUM(commission_amount), 0) as total_commission_fund
-        FROM payrolls
-        WHERE salary_period = :period
-    """), {"period": period})).mappings().first()
+        FROM payrolls p
+        JOIN employees e ON e.employee_id = p.employee_id
+        WHERE p.salary_period = :period {scope_sql}
+    """), scope_params)).mappings().first()
 
     return {
         "salary_period": period,

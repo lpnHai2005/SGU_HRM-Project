@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { api, employeeApi } from '../services/api'
 import { Icons } from '../components/common/Icons'
 import { DatePicker } from '../components/common/DatePicker'
+import { StoreMapPicker } from '../components/StoreMapPicker'
 import './StoreManagementPage.css'
 
 type Store = {
@@ -11,15 +12,24 @@ type Store = {
   latitude: number | string; longitude: number | string; radius_meters: number | string; wifi_networks: string[]
 }
 type Person = { employee_id: number; store_id?: number | null; full_name?: string | null }
+type Province = { name: string; code: number; wards: { name: string; code: number }[] }
+type TrackAsiaFeature = { geometry: { type: string; coordinates: [number, number] }; properties: { name?: string; label?: string; old_label?: string; housenumber?: string; street?: string; region?: string; locality?: string; county?: string; old_region?: string; old_locality?: string; layer?: string; confidence?: number } }
 const emptyStore = (): Store => ({store_code:'',store_name:'',address:'',district:'',city:'TP. Hồ Chí Minh',
   open_date:new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Ho_Chi_Minh'}),is_active:true,
   latitude:'',longitude:'',radius_meters:100,wifi_networks:[]})
+const normalizeAdministrativeName = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/^(thanh pho|tinh|tp\.?|phuong|xa)\s*/,'').replace(/[^a-z0-9]/g,'')
 
 export function StoresPage() {
   const [rows,setRows] = useState<Store[]>([])
   const [people,setPeople] = useState<Person[]>([])
+  const [provinces,setProvinces] = useState<Province[]>([])
   const [form,setForm] = useState<Store | null>(null)
   const [wifiText,setWifiText] = useState('')
+  const [poiQuery,setPoiQuery] = useState('')
+  const [poiResults,setPoiResults] = useState<TrackAsiaFeature[]>([])
+  const [poiBusy,setPoiBusy] = useState(false)
+  const [poiError,setPoiError] = useState('')
+  const [focusStore,setFocusStore] = useState(false)
   const [busy,setBusy] = useState(false)
   const [loading,setLoading] = useState(true)
   const [error,setError] = useState('')
@@ -29,9 +39,51 @@ export function StoresPage() {
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Không tải được cửa hàng') }
     finally { setLoading(false) }
   }
-  useEffect(() => { void load(); employeeApi.getAll().then(setPeople).catch(() => setPeople([])) }, [])
-  const edit = (store: Store) => { setForm({...store}); setWifiText((store.wifi_networks || []).join('\n')) }
+  useEffect(() => {
+    void load()
+    employeeApi.getAll().then(setPeople).catch(() => setPeople([]))
+    fetch('/data/province.json').then(response => { if (!response.ok) throw new Error('Không tải được dữ liệu địa chỉ'); return response.json() })
+      .then((data: Province[]) => setProvinces(data)).catch(() => toast.error('Không tải được danh mục tỉnh/phường'))
+  }, [])
+  const edit = (store: Store) => { setForm({...store}); setWifiText((store.wifi_networks || []).join('\n')); setPoiQuery(''); setPoiResults([]); setPoiError(''); setFocusStore(false) }
   const update = (key: keyof Store, value: Store[keyof Store]) => setForm(current => current ? {...current,[key]:value} : current)
+  const selectedProvince = useMemo(() => provinces.find(item => normalizeAdministrativeName(item.name) === normalizeAdministrativeName(String(form?.city || ''))), [provinces, form?.city])
+  const selectedWard = useMemo(() => selectedProvince?.wards.find(item => normalizeAdministrativeName(item.name) === normalizeAdministrativeName(String(form?.district || ''))), [selectedProvince, form?.district])
+
+  useEffect(() => {
+    const query = poiQuery.trim()
+    if (!form || query.length < 3) { setPoiResults([]); setPoiError(''); return }
+    let active = true
+    const timer = window.setTimeout(async () => {
+      setPoiBusy(true); setPoiError('')
+      try {
+        const params: Record<string, string | number> = { q: query }
+        if (focusStore) {
+          const lat = Number(form.latitude), lon = Number(form.longitude)
+          if (Number.isFinite(lat) && Number.isFinite(lon) && (lat !== 0 || lon !== 0)) { params.focus_lat = lat; params.focus_lon = lon }
+        }
+        const response = await api.get<{ features: TrackAsiaFeature[] }>('/stores/poi-search', params)
+        if (active) {
+          setPoiResults(response.features || [])
+          if (!response.features?.length) setPoiError('Không tìm thấy địa điểm phù hợp. Thử tên cửa hàng, đường hoặc địa danh khác.')
+        }
+      } catch (cause) { if (active) setPoiError(cause instanceof Error ? cause.message : 'Không tìm được địa điểm') }
+      finally { if (active) setPoiBusy(false) }
+    }, 400)
+    return () => { active = false; window.clearTimeout(timer) }
+  }, [poiQuery, focusStore, form?.latitude, form?.longitude, Boolean(form)])
+
+  const selectPoi = (feature: TrackAsiaFeature) => {
+    const [longitude, latitude] = feature.geometry.coordinates
+    const properties = feature.properties
+    const city = properties.region || properties.old_region || form?.city || ''
+    const district = properties.locality || properties.old_locality || properties.county || ''
+    const address = properties.label || properties.old_label || [properties.housenumber, properties.street, district, city].filter(Boolean).join(', ')
+    setForm(current => current ? { ...current, address: address.slice(0,255), district, city, latitude, longitude } : current)
+    setPoiQuery('')
+    setPoiResults([])
+    setPoiError('')
+  }
   const save = async (event: React.FormEvent) => {
     event.preventDefault()
     if (!form) return
@@ -56,10 +108,22 @@ export function StoresPage() {
     {form && <div className="modal-overlay" onMouseDown={event => { if (event.target === event.currentTarget && !busy) setForm(null) }}><form className="modal store-editor" role="dialog" aria-modal="true" aria-label="Cấu hình cửa hàng" onSubmit={save}>
       <header className="store-editor-header"><div><h2>{form.store_id ? 'Cập nhật cửa hàng' : 'Thêm cửa hàng'}</h2><p>Thông tin được lưu và ghi vào nhật ký thao tác.</p></div><button type="button" className="modal-close" aria-label="Đóng" onClick={() => setForm(null)}>{Icons.x}</button></header>
       <div className="store-editor-body"><h3>Thông tin chi nhánh</h3><div className="store-editor-grid">
-        {([['store_code','Mã cửa hàng'],['store_name','Tên cửa hàng'],['address','Địa chỉ'],['district','Quận / Huyện'],['city','Tỉnh / Thành']] as const).map(([key,label]) => <label className="form-group" key={key}><span className="form-label">{label}</span><input className="form-input" required maxLength={key==='store_code'?20:key==='store_name'?150:255} value={String(form[key] ?? '')} onChange={event => update(key,event.target.value)} /></label>)}
+        {([['store_code','Mã cửa hàng'],['store_name','Tên cửa hàng'],['address','Số nhà, tên đường']] as const).map(([key,label]) => <label className="form-group" key={key}><span className="form-label">{label}</span><input className="form-input" required maxLength={key==='store_code'?20:key==='store_name'?150:255} value={String(form[key] ?? '')} onChange={event => update(key,event.target.value)} /></label>)}
       </div><DatePicker label="Ngày mở cửa" value={form.open_date} onChange={value => update('open_date',value)}/>
+      <h3>Địa chỉ hành chính</h3><div className="store-editor-grid">
+        <label className="form-group"><span className="form-label">Tỉnh / Thành phố</span><select className="form-select" required value={selectedProvince ? String(selectedProvince.code) : `legacy:${form.city}`} onChange={event => { const province=provinces.find(item=>String(item.code)===event.target.value); if(province){update('city',province.name);update('district','')} }}><option value="">Chọn tỉnh / thành phố</option>{form.city && !selectedProvince && <option value={`legacy:${form.city}`}>{form.city} (địa chỉ hiện tại)</option>}{provinces.map(item=><option key={item.code} value={item.code}>{item.name}</option>)}</select></label>
+        <label className="form-group"><span className="form-label">Phường / Xã</span><select className="form-select" required disabled={!selectedProvince} value={selectedWard ? String(selectedWard.code) : `legacy:${form.district}`} onChange={event => { const ward=selectedProvince?.wards.find(item=>String(item.code)===event.target.value); if(ward) update('district',ward.name) }}><option value="">Chọn phường / xã</option>{form.district && !selectedWard && <option value={`legacy:${form.district}`}>{form.district} (địa chỉ hiện tại)</option>}{selectedProvince?.wards.map(item=><option key={item.code} value={item.code}>{item.name}</option>)}</select></label>
+      </div>
+      <div className="store-poi-panel"><label className="form-group"><span className="form-label">Tìm kiếm cửa hàng / địa chỉ / POI</span><input className="form-input" value={poiQuery} onChange={event => setPoiQuery(event.target.value)} placeholder="Ví dụ: cửa hàng TechZone, 12 Nguyễn Huệ, ATM…" autoComplete="off" /></label>
+        <label className="store-focus-toggle"><input type="checkbox" checked={focusStore} onChange={event => setFocusStore(event.target.checked)} /> Ưu tiên kết quả gần tọa độ cửa hàng hiện tại</label>
+        <small>Tọa độ chỉ gửi khi bật tùy chọn trên. GPS của nhân viên không được dùng cho tìm kiếm địa điểm.</small>
+        {poiBusy && <p className="store-poi-state" role="status">Đang tìm trên TrackAsia…</p>}
+        {poiError && !poiBusy && <p className="store-poi-state" role="status">{poiError}</p>}
+        {poiResults.length > 0 && <div className="store-poi-results" role="listbox" aria-label="Kết quả tìm địa điểm">{poiResults.map((feature,index) => { const p=feature.properties; const name=p.name || p.label || `Địa điểm ${index+1}`; const label=p.label || p.old_label || [p.street,p.locality,p.region].filter(Boolean).join(', '); return <button type="button" role="option" className="store-poi-option" key={`${name}-${feature.geometry.coordinates.join(',')}`} onClick={() => selectPoi(feature)}><span>{Icons.store}</span><span><strong>{name}</strong><small>{label}</small></span></button> })}</div>}
+      </div>
       <label className="form-group"><span className="form-label">Người phụ trách</span><select className="form-select" disabled={!form.store_id} value={form.manager_employee_id || ''} onChange={event => update('manager_employee_id',event.target.value ? Number(event.target.value) : null)}><option value="">Chưa phân công</option>{people.filter(person => person.store_id === form.store_id).map(person => <option key={person.employee_id} value={person.employee_id}>{person.full_name || `#${person.employee_id}`}</option>)}</select></label>
       <h3>Vùng chấm công GPS</h3><div className="store-editor-grid">{([['latitude','Vĩ độ (Latitude)',-90,90],['longitude','Kinh độ (Longitude)',-180,180],['radius_meters','Bán kính (m)',10,5000]] as const).map(([key,label,min,max]) => <label className="form-group" key={key}><span className="form-label">{label}</span><input className="form-input" type="number" required step={key==='radius_meters'?'1':'any'} min={min} max={max} value={form[key]} onChange={event => update(key,event.target.value)} /></label>)}</div>
+      {Number(form.latitude) !== 0 && Number(form.longitude) !== 0 && <StoreMapPicker latitude={Number(form.latitude)} longitude={Number(form.longitude)} radius={Number(form.radius_meters)} onChange={(latitude,longitude) => setForm(current => current ? {...current,latitude,longitude} : current)} />}
       <h3>IP cho chấm công web</h3><label className="form-group"><span className="form-label">IP hoặc dải CIDR, mỗi dòng một giá trị</span><textarea className="form-input store-networks-input" value={wifiText} onChange={event => setWifiText(event.target.value)} placeholder={'192.168.1.0/24\n203.0.113.25/32'} /><small>Backend kiểm tra IP nguồn thực tế của kết nối. Để trống thì không giới hạn IP. Trình duyệt không cung cấp tên Wi-Fi/SSID để xác minh.</small></label>
       <label className="store-active-switch"><input type="checkbox" checked={form.is_active} onChange={event => update('is_active',event.target.checked)}/> Cửa hàng hoạt động / cho phép chấm công</label></div>
       <footer className="modal-footer"><button type="button" className="btn btn-secondary" disabled={busy} onClick={() => setForm(null)}>Đóng</button><button className="btn btn-primary" disabled={busy}>{busy?'Đang lưu…':'Lưu cấu hình'}</button></footer>

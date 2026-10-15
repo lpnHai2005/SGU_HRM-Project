@@ -566,9 +566,10 @@ async def list_sales_records(
             params["emp_id"] = employee_id
     elif "STORE_MANAGER" in roles:
         user_store_id = current_user.get("store_id")
-        if user_store_id:
-            query += " AND es.store_id = :mgr_store_id"
-            params["mgr_store_id"] = user_store_id
+        if not user_store_id:
+            raise HTTPException(status_code=403, detail="Tài khoản chưa được gán cửa hàng")
+        query += " AND es.store_id = :mgr_store_id"
+        params["mgr_store_id"] = user_store_id
         if employee_id:
             query += " AND es.employee_id = :emp_id"
             params["emp_id"] = employee_id
@@ -591,6 +592,16 @@ async def record_sales(
     Ghi nhận doanh số bán lẻ 3 ngành hàng (Điện thoại, Laptop, Phụ kiện) kèm KPI mục tiêu.
     Hệ thống tự động kích hoạt Stored Procedure tính hoa hồng.
     """
+    roles = current_user.get("roles", [])
+    if "STORE_MANAGER" in roles and not any(role in roles for role in ("ADMIN", "HR_MANAGER")):
+        if not current_user.get("store_id") or req.store_id != current_user["store_id"]:
+            raise HTTPException(status_code=403, detail="Chỉ được ghi doanh số cửa hàng được giao")
+    employee_store = (await db.execute(
+        text("SELECT store_id FROM employees WHERE employee_id = :employee_id"),
+        {"employee_id": req.employee_id},
+    )).scalar_one_or_none()
+    if employee_store is None or employee_store != req.store_id:
+        raise HTTPException(status_code=400, detail="Nhân viên không thuộc cửa hàng ghi doanh số")
     res = await db.execute(text("""
         INSERT INTO employee_sales (
             employee_id, store_id, salary_period,
@@ -654,7 +665,7 @@ async def get_my_commission(
 @router.get("/commissions/calculate/{month}", response_model=List[CommissionOut], summary="Chạy tính hoa hồng và trả về kết quả theo tháng (Week 3.1)")
 async def calculate_commissions_endpoint(
     month: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
     db: AsyncSession = Depends(get_db)
 ):
     await db.execute(text("CALL sp_calculate_monthly_commission(:period)"), {"period": month})
@@ -690,9 +701,10 @@ async def list_commissions(
             params["emp_id"] = employee_id
     elif "STORE_MANAGER" in roles:
         user_store_id = current_user.get("store_id")
-        if user_store_id:
-            query += " AND es.store_id = :mgr_store_id"
-            params["mgr_store_id"] = user_store_id
+        if not user_store_id:
+            raise HTTPException(status_code=403, detail="Tài khoản chưa được gán cửa hàng")
+        query += " AND es.store_id = :mgr_store_id"
+        params["mgr_store_id"] = user_store_id
     else:
         query += " AND c.employee_id = :self_emp_id"
         params["self_emp_id"] = current_user.get("employee_id")
@@ -714,11 +726,32 @@ async def list_projects_with_allowances(
     """
     Lấy danh sách tất cả các dự án kèm danh sách nhân viên tham gia và mức phụ cấp dự án project_allowance.
     """
-    res_proj = await db.execute(text("SELECT * FROM projects ORDER BY project_id ASC"))
+    roles = current_user.get("roles", [])
+    params = {}
+    project_filter = ""
+    member_filter = ""
+    if not any(role in roles for role in ("ADMIN", "HR_MANAGER")):
+        if "STORE_MANAGER" in roles:
+            store_id = current_user.get("store_id")
+            if not store_id:
+                raise HTTPException(status_code=403, detail="Tài khoản chưa được gán cửa hàng")
+            params["store_id"] = store_id
+            project_filter = "WHERE EXISTS (SELECT 1 FROM project_members pm JOIN employees e ON e.employee_id = pm.employee_id WHERE pm.project_id = projects.project_id AND e.store_id = :store_id)"
+            member_filter = "AND e.store_id = :store_id"
+        else:
+            employee_id = current_user.get("employee_id")
+            if not employee_id:
+                raise HTTPException(status_code=403, detail="Tài khoản chưa liên kết nhân viên")
+            params["employee_id"] = employee_id
+            project_filter = "WHERE EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = projects.project_id AND pm.employee_id = :employee_id)"
+            member_filter = "AND pm.employee_id = :employee_id"
+    res_proj = await db.execute(text(f"SELECT * FROM projects {project_filter} ORDER BY project_id ASC"), params)
     projects = res_proj.mappings().all()
     result = []
     for p in projects:
         p_dict = dict(p)
+        if not any(role in roles for role in ("ADMIN", "HR_MANAGER")):
+            p_dict["budget"] = None
         res_mem = await db.execute(text("""
             SELECT pm.project_member_id, pm.project_id, pm.employee_id, pm.project_role,
                    pm.project_allowance, pm.joined_date, pm.left_date, pm.is_active,
@@ -727,8 +760,9 @@ async def list_projects_with_allowances(
             JOIN employees e ON pm.employee_id = e.employee_id
             JOIN positions pos ON e.position_id = pos.position_id
             WHERE pm.project_id = :pid
+            """ + member_filter + """
             ORDER BY pm.project_member_id ASC
-        """), {"pid": p["project_id"]})
+        """), {"pid": p["project_id"], **params})
         p_dict["members"] = res_mem.mappings().all()
         result.append(p_dict)
     return result

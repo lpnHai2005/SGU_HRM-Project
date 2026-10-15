@@ -2,16 +2,58 @@
 import json
 import ipaddress
 from datetime import date
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
+import httpx
 from app.api.deps import require_roles
 from app.core.database import get_db
+from app.core.config import settings
 
 router = APIRouter()
 admin = require_roles(['ADMIN'])
+
+@router.get('/poi-search')
+async def search_store_poi(
+    q: str = Query(min_length=3, max_length=150),
+    focus_lat: float | None = Query(default=None, ge=-90, le=90),
+    focus_lon: float | None = Query(default=None, ge=-180, le=180),
+    _user=Depends(admin),
+):
+    """Search addresses and POIs through TrackAsia without exposing its API key to browsers."""
+    if not settings.TRACKASIA_API_KEY:
+        raise HTTPException(503, 'Chưa cấu hình TrackAsia API key trên backend')
+    if (focus_lat is None) != (focus_lon is None):
+        raise HTTPException(422, 'Cần gửi đồng thời focus_lat và focus_lon')
+
+    params = {
+        'text': q.strip(),
+        'key': settings.TRACKASIA_API_KEY,
+        'lang': 'vi',
+        'new_admin': 'true',
+        'include_old_admin': 'true',
+        'size': '7',
+    }
+    if focus_lat is not None and focus_lon is not None:
+        params['focus.point.lat'] = str(focus_lat)
+        params['focus.point.lon'] = str(focus_lon)
+
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            response = await client.get('https://maps.track-asia.com/api/v1/search', params=params)
+            response.raise_for_status()
+            payload = response.json()
+    except httpx.TimeoutException:
+        raise HTTPException(504, 'TrackAsia tìm địa điểm quá thời gian cho phép')
+    except (httpx.HTTPError, ValueError):
+        raise HTTPException(502, 'Không truy vấn được dịch vụ TrackAsia Search')
+
+    if not isinstance(payload, dict) or not isinstance(payload.get('features'), list):
+        raise HTTPException(502, 'TrackAsia trả về dữ liệu địa điểm không hợp lệ')
+    return {'type': 'FeatureCollection', 'features': payload['features'][:7]}
+
 class StoreWrite(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
     store_code: str = Field(min_length=1,max_length=20)

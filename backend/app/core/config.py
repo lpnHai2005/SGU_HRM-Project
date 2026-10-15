@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     CLOUDINARY_CLOUD_NAME: str = ""
     CLOUDINARY_API_KEY: str = ""
     CLOUDINARY_API_SECRET: str = ""
+    TRACKASIA_API_KEY: str = ""
     PROJECT_NAME: str = "TechZone HRM API"
     API_V1_STR: str = "/api/v1"
     

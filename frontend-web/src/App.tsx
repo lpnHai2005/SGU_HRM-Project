@@ -15,6 +15,14 @@ import { Sidebar } from './components/layout/Sidebar'
 import { Topbar } from './components/layout/Topbar'
 import { BottomNav } from './components/layout/BottomNav'
 import { getRoleFromUser } from './utils/formatters'
+import { canAccessPath } from './constants/navigation'
+import { UserAccessPage } from './pages/UserAccessPage'
+import { SalesCommissionPage } from './pages/SalesCommissionPage'
+import { MyPayslipPage } from './pages/MyPayslipPage'
+import { ProjectsPage } from './pages/ProjectsPage'
+import { ContractsMovementPage } from './pages/ContractsMovementPage'
+import { PayrollFundPage } from './pages/PayrollFundPage'
+import { PayrollSettlementsPage } from './pages/PayrollSettlementsPage'
 
 // Pages
 import { LoginPage } from './pages/LoginPage'
@@ -28,10 +36,9 @@ import { AuditLogPage } from './pages/AuditLogPage'
 import { WorkSchedulesPage } from './pages/WorkSchedulesPage'
 
 // ProtectedRoute: chặn EMPLOYEE truy cập các trang quản lý
-function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode; allowedRoles: string[] }) {
+function ProtectedRoute({ children, path }: { children: React.ReactNode; path: string }) {
   const { user } = useAuth()
-  const role = getRoleFromUser(user)
-  if (!allowedRoles.includes(role)) {
+  if (!canAccessPath(path, user)) {
     return (
       <div style={{
         display: 'flex',
@@ -165,24 +172,33 @@ export function App() {
           />
           <Route path="/dashboard" element={<Navigate to="/" replace />} />
           <Route path="/account" element={<AccountPage user={user}/>} />
-          <Route path="/stores" element={<ProtectedRoute allowedRoles={['ADMIN']}><StoresPage/></ProtectedRoute>} />
-          <Route path="/employees" element={<ProtectedRoute allowedRoles={['ADMIN', 'HR_MANAGER', 'STORE_MANAGER']}><EmployeeListPage user={user} /></ProtectedRoute>} />
-          <Route path="/activity" element={<ActivityPage user={user} />} />
-<Route path="/my-schedules" element={<PersonalSchedulesPage />} />
-<Route path="/my-attendance" element={<AttendancePage key="personal" user={user} personal />} />
-<Route path="/attendance" element={<ProtectedRoute allowedRoles={['ADMIN', 'HR_MANAGER', 'STORE_MANAGER']}><MonthlyAttendancePage user={user}/></ProtectedRoute>} />
-          <Route path="/work-schedules" element={<ProtectedRoute allowedRoles={['ADMIN', 'HR_MANAGER', 'STORE_MANAGER']}><WorkSchedulesPage user={user} /></ProtectedRoute>} />
+          <Route path="/stores" element={<ProtectedRoute path="/stores"><StoresPage/></ProtectedRoute>} />
+          <Route path="/users" element={<ProtectedRoute path="/users"><UserAccessPage currentUserId={user!.user_id} /></ProtectedRoute>} />
+          <Route path="/employees" element={<ProtectedRoute path="/employees"><EmployeeListPage user={user} /></ProtectedRoute>} />
+          <Route path="/contracts" element={<ProtectedRoute path="/contracts"><ContractsMovementPage /></ProtectedRoute>} />
+          <Route path="/activity" element={<ProtectedRoute path="/activity"><ActivityPage user={user} /></ProtectedRoute>} />
+          <Route path="/my-activity" element={<ProtectedRoute path="/my-activity"><ActivityPage user={user} personal /></ProtectedRoute>} />
+          <Route path="/my-schedules" element={<ProtectedRoute path="/my-schedules"><PersonalSchedulesPage /></ProtectedRoute>} />
+          <Route path="/my-attendance" element={<ProtectedRoute path="/my-attendance"><AttendancePage key="personal" user={user} personal /></ProtectedRoute>} />
+          <Route path="/attendance" element={<ProtectedRoute path="/attendance"><MonthlyAttendancePage user={user}/></ProtectedRoute>} />
+          <Route path="/work-schedules" element={<ProtectedRoute path="/work-schedules"><WorkSchedulesPage user={user} /></ProtectedRoute>} />
           <Route path="/leave" element={<LeaveRequestsPage user={user} />} />
-          <Route path="/payroll" element={<PayrollPage user={user} />} />
-          <Route path="/reports" element={<ProtectedRoute allowedRoles={['ADMIN', 'HR_MANAGER', 'STORE_MANAGER']}><ReportsPage user={user} /></ProtectedRoute>} />
-          <Route path="/audit" element={<ProtectedRoute allowedRoles={['ADMIN', 'HR_MANAGER']}><AuditLogPage user={user} /></ProtectedRoute>} />
+          <Route path="/my-leave" element={<ProtectedRoute path="/my-leave"><LeaveRequestsPage user={user} personal /></ProtectedRoute>} />
+          <Route path="/payroll" element={<ProtectedRoute path="/payroll"><PayrollPage user={user} /></ProtectedRoute>} />
+          <Route path="/payroll-fund" element={<ProtectedRoute path="/payroll-fund"><PayrollFundPage branch={userRole === 'STORE_MANAGER'} /></ProtectedRoute>} />
+          <Route path="/settlements" element={<ProtectedRoute path="/settlements"><PayrollSettlementsPage /></ProtectedRoute>} />
+          <Route path="/my-payroll" element={<ProtectedRoute path="/my-payroll"><MyPayslipPage employeeId={user!.employee_id!} /></ProtectedRoute>} />
+          <Route path="/sales" element={<ProtectedRoute path="/sales"><SalesCommissionPage /></ProtectedRoute>} />
+          <Route path="/projects" element={<ProtectedRoute path="/projects"><ProjectsPage /></ProtectedRoute>} />
+          <Route path="/reports" element={<ProtectedRoute path="/reports"><ReportsPage user={user} /></ProtectedRoute>} />
+          <Route path="/audit" element={<ProtectedRoute path="/audit"><AuditLogPage user={user} /></ProtectedRoute>} />
           <Route path="/login" element={<Navigate to="/" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
       <BottomNav
         onOpenMenu={() => setMobileMenuOpen(true)}
-        role={userRole}
+        user={user}
       />
     </div>
   )

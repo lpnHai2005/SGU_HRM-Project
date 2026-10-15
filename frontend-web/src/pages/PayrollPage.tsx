@@ -9,6 +9,7 @@ import './PayslipPrint.css'
 import { PayrollOvertimePanel } from './PayrollOvertimePanel'
 import { PayrollAdjustmentDialog } from './PayrollAdjustmentDialog'
 import { PayrollRegulationDialog } from './PayrollRegulationDialog'
+import { AttendanceRegulationDialog } from './AttendanceRegulationDialog'
 import { PayrollReopenDialog } from './PayrollReopenDialog'
 import { PayrollUnconfirmDialog } from './PayrollUnconfirmDialog'
 import { toast } from 'sonner'
@@ -72,7 +73,8 @@ export function PayrollPage({ user }: PayrollPageProps) {
   const [annualLoading, setAnnualLoading] = useState(false)
 
   // Modals state
-  const [isFormulaModalOpen, setIsFormulaModalOpen] = useState(false)
+  const [isPayrollRegulationOpen, setIsPayrollRegulationOpen] = useState(false)
+  const [isAttendanceRulesOpen, setIsAttendanceRulesOpen] = useState(false)
   const [isMonthlyPrintModalOpen, setIsMonthlyPrintModalOpen] = useState(false)
   const [isAnnualPrintModalOpen, setIsAnnualPrintModalOpen] = useState(false)
   const [monthlyPrintData, setMonthlyPrintData] = useState<any>(null)
@@ -477,7 +479,11 @@ export function PayrollPage({ user }: PayrollPageProps) {
         <div className="no-print" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {/* Sub Toolbar: Month Selector & Batch Actions */}
           <div className="card" style={{ padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <button type="button" className="btn btn-secondary" onClick={() => setIsAttendanceRulesOpen(true)} title="Xem quy định chấm công và đối chiếu giờ công">
+                {Icons.clock}
+                Quy định chấm công
+              </button>
               <span className="text-secondary" style={{ fontSize: '13px', fontWeight: 600 }}>Kỳ tính lương:</span>
               <select
                 className="form-select"
@@ -543,7 +549,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
               <div style={{ display: 'flex', gap: '6px' }}>
                 <button
                   className="btn btn-secondary"
-                  onClick={() => setIsFormulaModalOpen(true)}
+                  onClick={() => setIsPayrollRegulationOpen(true)}
                   title="Xem quy chế & công thức tính lương TechZone Retail"
                 >
                   <span style={{ fontStyle: 'italic', fontWeight: 700, fontFamily: 'serif' }}>i</span>
@@ -827,7 +833,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                           </span>
                           <button
                             type="button"
-                            onClick={() => setIsFormulaModalOpen(true)}
+                            onClick={() => setIsPayrollRegulationOpen(true)}
                             title="Xem chi tiết cách tính lương"
                             style={{
                               width: '20px',
@@ -1110,13 +1116,14 @@ export function PayrollPage({ user }: PayrollPageProps) {
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL 1: FORMULA BREAKDOWN EXPLANATION POPUP OVERLAY */}
+      {/* Modal quy định chấm công và quy chế tính lương */}
       {/* ========================================================================= */}
       {confirmation&&<div className="modal-overlay no-print"><div className="modal" role="alertdialog" aria-modal="true" aria-label="Xác nhận thao tác bảng lương" style={{maxWidth:440,padding:24}}><h2>Xác nhận bảng lương</h2><p>{confirmation.message}</p><div className="modal-footer"><button className="btn btn-secondary" onClick={()=>setConfirmation(null)}>Hủy</button><button className="btn btn-primary" onClick={()=>{const action=confirmation.action;setConfirmation(null);void action()}}>Xác nhận</button></div></div></div>}
       {reopenDialogOpen&&<PayrollReopenDialog period={selectedPeriod} busy={actionLoading} onClose={()=>setReopenDialogOpen(false)} onSubmit={handleReopenPeriod}/>}
       {unconfirmPayroll&&<PayrollUnconfirmDialog payroll={unconfirmPayroll} busy={actionLoading} onClose={()=>setUnconfirmPayroll(null)} onSubmit={handleUnconfirmPayroll}/>}
       {adjustmentPayroll&&<PayrollAdjustmentDialog payroll={adjustmentPayroll} busy={actionLoading} onClose={()=>setAdjustmentPayroll(null)} onSave={handleSaveAdjustment}/>}
-      {isFormulaModalOpen && <PayrollRegulationDialog onClose={() => setIsFormulaModalOpen(false)} />}
+      {isAttendanceRulesOpen && <AttendanceRegulationDialog onClose={() => setIsAttendanceRulesOpen(false)} />}
+      {isPayrollRegulationOpen && <PayrollRegulationDialog onClose={() => setIsPayrollRegulationOpen(false)} />}
 
       {/* ========================================================================= */}
       {/* MODAL 2: PRINTABLE MONTHLY PAYSLIP POPUP OVERLAY (PDF / A4) */}

@@ -9,6 +9,7 @@ import { leaveApi } from '../services/api'
 
 export interface LeaveRequestsPageProps {
   user: any
+  personal?: boolean
 }
 
 function getStatusBadgeClass(status: string): string {
@@ -46,7 +47,7 @@ function getStatusDisplayLabel(status: string, req?: LeaveRequest | null): strin
   }
 }
 
-export function LeaveRequestsPage({ user }: LeaveRequestsPageProps) {
+export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageProps) {
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([])
   const [leaveBalance, setLeaveBalance] = useState<LeaveBalance | null>(null)
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([])
@@ -83,9 +84,9 @@ export function LeaveRequestsPage({ user }: LeaveRequestsPageProps) {
 
   // Roles determination
   const userRoles = useMemo(() => user?.roles || [], [user])
-  const isAdmin = userRoles.includes('ADMIN')
-  const isHrManager = userRoles.includes('HR_MANAGER')
-  const isStoreManager = userRoles.includes('STORE_MANAGER')
+  const isAdmin = !personal && userRoles.includes('ADMIN')
+  const isHrManager = !personal && userRoles.includes('HR_MANAGER')
+  const isStoreManager = !personal && userRoles.includes('STORE_MANAGER')
 
   // Leave balances and limits
   const annualTotal = leaveBalance?.annual_leave_total ?? 12
@@ -142,12 +143,12 @@ export function LeaveRequestsPage({ user }: LeaveRequestsPageProps) {
     setIsLoading(true)
     try {
       const [requests, balance, types, stats] = await Promise.all([
-        leaveApi.getAll(),
+        leaveApi.getAll(personal ? { employee_id: user.employee_id } : undefined),
         leaveApi.getMyBalance(),
         leaveApi.getTypes(),
-        leaveApi.getStats().catch(() => null),
+        personal ? Promise.resolve(null) : leaveApi.getStats().catch(() => null),
       ])
-      setLeaveRequests(requests || [])
+      setLeaveRequests(personal ? (requests || []).filter(req => req.employee_id === user.employee_id) : (requests || []))
       setLeaveBalance(balance)
       setLeaveTypes(types || [])
       setLeaveStats(stats)
@@ -159,18 +160,18 @@ export function LeaveRequestsPage({ user }: LeaveRequestsPageProps) {
     } finally {
       setIsLoading(false)
     }
-  }, [newRequest.leave_type_id])
+  }, [newRequest.leave_type_id, personal, user.employee_id])
 
   // Fetch calendar leaves when calendar tab is active or month changes
   const fetchCalendarData = useCallback(async (month: string) => {
     try {
-      const data = await leaveApi.getCalendar({ month })
-      setCalendarLeaves(data || [])
+      const data = await leaveApi.getCalendar({ month, ...(personal ? { employee_id: user.employee_id } : {}) })
+      setCalendarLeaves(personal ? (data || []).filter(req => req.employee_id === user.employee_id) : (data || []))
     } catch (err) {
       console.error('Error fetching calendar leaves:', err)
       setCalendarLeaves([])
     }
-  }, [])
+  }, [personal, user.employee_id])
 
   useEffect(() => {
     fetchLeaveData()

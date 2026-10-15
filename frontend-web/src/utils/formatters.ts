@@ -43,12 +43,11 @@ export function getInitials(name: string | null | undefined): string {
 
 export function getRoleFromUser(user: any): UserRole {
   if (!user) return 'EMPLOYEE'
-  const roleName = user.role || user.roles?.[0] || 'EMPLOYEE'
-  if (typeof roleName === 'string') {
-    const upper = roleName.toUpperCase()
-    if (upper.includes('ADMIN')) return 'ADMIN'
-    if (upper.includes('HR')) return 'HR_MANAGER'
-    if (upper.includes('STORE') || upper.includes('MANAGER')) return 'STORE_MANAGER'
+  const roles = [user.role, ...(Array.isArray(user.roles) ? user.roles : [])]
+    .filter((value): value is string => typeof value === 'string')
+    .map(value => value.toUpperCase())
+  for (const role of ['ADMIN', 'HR_MANAGER', 'STORE_MANAGER'] as const) {
+    if (roles.includes(role)) return role
   }
   return 'EMPLOYEE'
 }

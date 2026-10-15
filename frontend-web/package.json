@@ -16,7 +16,8 @@
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.4",
-    "sonner": "^2.0.8"
+    "sonner": "^2.0.8",
+    "trackasia-gl": "^2.0.1"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",
