@@ -265,11 +265,29 @@ export const workScheduleApi = {
   getAll: (params: WorkScheduleQuery): Promise<WorkSchedule[]> =>
     api.get<WorkSchedule[]>('/work-schedules', params),
 
+  create: (data: WorkScheduleWrite): Promise<WorkSchedule> =>
+    api.post<WorkSchedule>('/work-schedules', data),
+
+  createBatch: (assignments: WorkScheduleWrite[]): Promise<WorkSchedule[]> =>
+    api.post<WorkSchedule[]>('/work-schedules/batch', { assignments }),
+
   update: (scheduleId: number, data: WorkScheduleWrite): Promise<WorkSchedule> =>
     api.put<WorkSchedule>(`/work-schedules/${scheduleId}`, data),
 
   cancel: (scheduleId: number, reason: string): Promise<WorkSchedule> =>
     api.post<WorkSchedule>(`/work-schedules/${scheduleId}/cancel`, { reason }),
+
+  assignFixed: (data: { employee_id: number; store_id: number; shift_id: number; work_date: string; notes?: string; weekdays?: string; end_date?: string }): Promise<{ message: string; rule_id?: number }> =>
+    api.post('/fixed-schedules', data),
+
+  assignFixedBatch: (assignments: Array<{ employee_id: number; store_id: number; shift_id: number; work_date: string; notes?: string; weekdays?: string; end_date?: string }>): Promise<{ rules: any[]; message: string }> =>
+    api.post('/fixed-schedules/batch', { assignments }),
+
+  getFixedRules: (employee_id: number): Promise<any[]> =>
+    api.get('/fixed-schedules', { employee_id }),
+
+  stopFixed: (ruleId: number, reason: string): Promise<{ message: string }> =>
+    api.post(`/fixed-schedules/${ruleId}/stop`, { reason }),
 };
 
 // ============================================
