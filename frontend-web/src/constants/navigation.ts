@@ -46,13 +46,13 @@ export const NAVIGATION: NavItemConfig[] = [
   { id: 'my-attendance', path: '/my-attendance', label: 'Bảng công của tôi', icon: 'clock', section: 'Cá nhân', roles: managers, requiresEmployee: true },
   { id: 'my-activity', path: '/my-activity', label: 'Nhật ký của tôi', icon: 'chart', section: 'Cá nhân', roles: managers, requiresEmployee: true },
   { id: 'my-leave', path: '/my-leave', label: 'Nghỉ phép của tôi', icon: 'leave', section: 'Cá nhân', roles: managers, requiresEmployee: true },
-  { id: 'my-payroll', path: '/my-payroll', label: 'Phiếu lương của tôi', icon: 'wallet', section: 'Cá nhân', roles: managers, requiresEmployee: true },
+  { id: 'my-payroll', path: '/my-payroll', label: 'Lương & Hợp đồng của tôi', icon: 'wallet', section: 'Cá nhân', roles: managers, requiresEmployee: true },
   { id: 'my-attendance-staff', path: '/my-attendance', label: 'Bảng công cá nhân', icon: 'clock', section: 'Công việc của tôi', roles: ['EMPLOYEE'], requiresEmployee: true },
   { id: 'my-schedules-staff', path: '/my-schedules', label: 'Lịch ca & Phân công', icon: 'calendar', section: 'Công việc của tôi', roles: ['EMPLOYEE'], requiresEmployee: true },
   { id: 'my-activity-staff', path: '/my-activity', label: 'Nhật ký làm việc', icon: 'chart', section: 'Công việc của tôi', roles: ['EMPLOYEE'], requiresEmployee: true },
   { id: 'projects-staff', path: '/projects', label: 'Dự án tham gia', icon: 'briefcase', section: 'Công việc của tôi', roles: ['EMPLOYEE'], requiresEmployee: true },
   { id: 'leave-staff', path: '/leave', label: 'Nghỉ phép & Đơn của tôi', icon: 'fileText', section: 'Đơn từ', roles: ['EMPLOYEE'] },
-  { id: 'my-payroll-staff', path: '/my-payroll', label: 'Phiếu lương & Thu nhập', icon: 'wallet', section: 'Thu nhập', roles: ['EMPLOYEE'], requiresEmployee: true },
+  { id: 'my-payroll-staff', path: '/my-payroll', label: 'Lương & Hợp đồng', icon: 'wallet', section: 'Thu nhập', roles: ['EMPLOYEE'], requiresEmployee: true },
 ]
 export function canAccessNavigation(item: NavItemConfig, user: NavigationUser | null | undefined): boolean {
   if (!user) return false

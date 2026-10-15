@@ -187,7 +187,8 @@ export function App() {
           <Route path="/payroll" element={<ProtectedRoute path="/payroll"><PayrollPage user={user} /></ProtectedRoute>} />
           <Route path="/payroll-fund" element={<ProtectedRoute path="/payroll-fund"><PayrollFundPage branch={userRole === 'STORE_MANAGER'} /></ProtectedRoute>} />
           <Route path="/settlements" element={<ProtectedRoute path="/settlements"><PayrollSettlementsPage /></ProtectedRoute>} />
-          <Route path="/my-payroll" element={<ProtectedRoute path="/my-payroll"><MyPayslipPage employeeId={user!.employee_id!} /></ProtectedRoute>} />
+          <Route path="/my-payroll" element={<ProtectedRoute path="/my-payroll"><MyPayslipPage user={user} employeeId={user?.employee_id || undefined} /></ProtectedRoute>} />
+          <Route path="/my-contracts" element={<Navigate to="/my-payroll?tab=contracts" replace />} />
           <Route path="/sales" element={<ProtectedRoute path="/sales"><SalesCommissionPage /></ProtectedRoute>} />
           <Route path="/projects" element={<ProtectedRoute path="/projects"><ProjectsPage /></ProtectedRoute>} />
           <Route path="/reports" element={<ProtectedRoute path="/reports"><ReportsPage user={user} /></ProtectedRoute>} />

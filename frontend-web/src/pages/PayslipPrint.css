@@ -1,27 +1,40 @@
-.payslip-a4-modal { font-family: Arial, sans-serif; overflow-wrap: anywhere; }
-.payslip-a4-header { gap: 24px; }
+.payslip-a4-modal { font-family: var(--font-sans); overflow-wrap: anywhere; }
+.payslip-a4-header { gap: 16px; }
 .payslip-a4-header > div { min-width: 0; }
-.payslip-columns { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 16px; }
-.payslip-a4-attendance-summary svg { width: 15px; height: 15px; vertical-align: -3px; margin-right: 3px; }
-.payslip-attendance-values { display: flex; gap: 12px 18px; flex-wrap: wrap; }
+.payslip-columns { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 12px; }
+.payslip-a4-attendance-summary svg { width: 14px; height: 14px; vertical-align: -2px; margin-right: 3px; }
+.payslip-attendance-values { display: flex; gap: 8px 14px; flex-wrap: wrap; }
 .payslip-a4-table { table-layout: fixed; }
 .payslip-a4-table td { overflow-wrap: anywhere; }
-.payslip-a4-table td:last-child { font-variant-numeric: tabular-nums; }
-.print-modal .modal-header { flex-wrap: wrap; gap: 12px; }
-.payslip-a4-highlight-box { gap: 16px; flex-wrap: wrap; }
+.payslip-a4-table td:last-child { font-variant-numeric: tabular-nums; font-family: var(--font-mono); }
+.print-modal .modal-header { flex-wrap: wrap; gap: 10px; }
+.payslip-a4-highlight-box { gap: 12px; flex-wrap: wrap; }
 @media screen and (max-width: 650px) {
-  .payslip-a4-modal { padding: 20px 16px; }
+  .payslip-a4-modal { padding: 16px 12px; }
   .payslip-a4-header { flex-direction: column; }
   .payslip-a4-info-grid, .payslip-columns { grid-template-columns: 1fr; }
-  .payslip-a4-signatures { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; }
+  .payslip-a4-signatures { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
 }
 @media print {
+  *, *::before, *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
   .modal-overlay.print-active-overlay { backdrop-filter: none !important; animation: none !important; }
-  .payslip-a4-modal { width: 186mm !important; max-width: 186mm !important; }
-  .payslip-a4-modal { break-inside: auto !important; page-break-inside: auto !important; font-family: Arial, sans-serif !important; }
-  .payslip-columns { display: block; }
+  .payslip-a4-modal {
+    width: 190mm !important;
+    max-width: 190mm !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    font-family: 'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif !important;
+    line-height: 1.35 !important;
+  }
+  .payslip-columns { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 12px !important; }
   .payslip-a4-table thead { display: table-header-group; }
   .payslip-a4-table tr, .payslip-a4-info-grid, .payslip-a4-highlight-box { break-inside: avoid; }
-  .payslip-a4-table th, .payslip-a4-table td { padding: 5px 8px !important; }
-  .payslip-a4-table { font-size: 11px !important; }
+  .payslip-a4-table th, .payslip-a4-table td { padding: 4px 7px !important; }
+  .payslip-a4-table { font-size: 11px !important; font-family: 'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif !important; margin-bottom: 8px !important; }
+  .payslip-a4-table td:last-child { font-family: 'JetBrains Mono', 'SF Mono', Consolas, Menlo, monospace !important; font-variant-numeric: tabular-nums !important; }
+  .payslip-a4-signatures { display: grid !important; grid-template-columns: repeat(4, 1fr) !important; gap: 8px !important; margin-top: 10px !important; break-inside: avoid !important; }
+  .payslip-a4-sign-space { height: 38px !important; }
 }
