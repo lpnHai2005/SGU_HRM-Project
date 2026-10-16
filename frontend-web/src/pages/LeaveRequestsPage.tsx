@@ -1,11 +1,12 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Icons } from '../components/common/Icons'
 import { StatCard } from '../components/common/StatCard'
 import { EmptyState } from '../components/common/EmptyState'
 import { LEAVE_STATUS_LABELS } from '../constants/navigation'
 import { formatDate } from '../utils/formatters'
-import type { LeaveRequest, LeaveBalance, LeaveType, LeaveRequestCreate } from '../types'
-import { leaveApi } from '../services/api'
+import type { LeaveRequest, LeaveBalance, LeaveType, LeaveRequestCreate, Employee } from '../types'
+import { leaveApi, employeeApi } from '../services/api'
+import './PayslipPrint.css'
 
 export interface LeaveRequestsPageProps {
   user: any
@@ -57,13 +58,71 @@ function formatMonthDisplay(monthStr: string): string {
   return monthStr
 }
 
+function formatFileSize(bytes: number): string {
+  if (bytes <= 0) return '0 B'
+  const kb = bytes / 1024
+  if (kb < 1024) return `${Math.round(kb)} KB`
+  return `${(kb / 1024).toFixed(1)} MB`
+}
+
+function parseAttachmentUrls(rawUrl?: string | null): {
+  cloudinaryUrls: string[]
+  cloudinaryUrl: string | null
+  driveUrl: string | null
+} {
+  if (!rawUrl) return { cloudinaryUrls: [], cloudinaryUrl: null, driveUrl: null }
+  const parts = rawUrl.split('|').map(s => s.trim()).filter(Boolean)
+  const cloudinaryUrls: string[] = []
+  let driveUrl: string | null = null
+
+  for (const p of parts) {
+    if (p.includes('cloudinary.com') || /\.(jpe?g|png|webp|gif|bmp|svg|pdf)($|\?)/i.test(p)) {
+      cloudinaryUrls.push(p)
+    } else if (!driveUrl) {
+      driveUrl = p
+    } else {
+      cloudinaryUrls.push(p)
+    }
+  }
+
+  if (cloudinaryUrls.length === 0 && !driveUrl && parts.length > 0) {
+    driveUrl = parts[0]
+  }
+
+  return {
+    cloudinaryUrls,
+    cloudinaryUrl: cloudinaryUrls[0] || null,
+    driveUrl,
+  }
+}
+
+function getCloudinaryDisplayUrl(url?: string | null): string {
+  if (!url) return ''
+  // Nếu là tệp PDF lưu trên Cloudinary (/image/upload/ hoặc đuôi .pdf),
+  // tự động chuyển đổi phần mở rộng sang .jpg để Cloudinary render trang xem trước,
+  // tránh lỗi 401 deny or ACL failure của Cloudinary đối với direct .pdf delivery
+  if (url.includes('cloudinary.com') && /\.pdf($|\?)/i.test(url)) {
+    return url.replace(/\.pdf($|\?)/i, '.jpg$1')
+  }
+  return url
+}
+
+interface LocalProofFile {
+  id: string
+  file: File
+  previewUrl: string
+  name: string
+  size: number
+  isImage: boolean
+}
+
 export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageProps) {
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([])
   const [leaveBalance, setLeaveBalance] = useState<LeaveBalance | null>(null)
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([])
   const [leaveStats, setLeaveStats] = useState<any>(null)
   const [calendarLeaves, setCalendarLeaves] = useState<LeaveRequest[]>([])
-  
+
   const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'approved' | 'rejected' | 'calendar'>('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedTypeFilter, setSelectedTypeFilter] = useState<string>('all')
@@ -76,13 +135,27 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
   // Modals state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [detailModalRequest, setDetailModalRequest] = useState<LeaveRequest | null>(null)
+  const [printModalRequest, setPrintModalRequest] = useState<LeaveRequest | null>(null)
   const [selectedDayLeavesModal, setSelectedDayLeavesModal] = useState<{ dateStr: string; leaves: LeaveRequest[] } | null>(null)
   const [storeApproveModalRequest, setStoreApproveModalRequest] = useState<LeaveRequest | null>(null)
   const [hrApproveModalRequest, setHrApproveModalRequest] = useState<LeaveRequest | null>(null)
   const [rejectModalRequest, setRejectModalRequest] = useState<LeaveRequest | null>(null)
 
   // Form states
+  const [employeeList, setEmployeeList] = useState<Employee[]>([])
+  const [employeeSearchText, setEmployeeSearchText] = useState('')
+  const [isEmpDropdownOpen, setIsEmpDropdownOpen] = useState(false)
+  const empComboboxRef = useRef<HTMLDivElement>(null)
+  const [selectedEmpBalance, setSelectedEmpBalance] = useState<LeaveBalance | null>(null)
+  const [loadingEmployees, setLoadingEmployees] = useState(false)
+
+  // Selected local proof files (max 5) & drive link states
+  const [selectedProofFiles, setSelectedProofFiles] = useState<LocalProofFile[]>([])
+  const [manualDriveLink, setManualDriveLink] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   const [newRequest, setNewRequest] = useState<LeaveRequestCreate>({
+    employee_id: null,
     leave_type_id: 1,
     start_date: new Date().toISOString().slice(0, 10),
     end_date: new Date().toISOString().slice(0, 10),
@@ -95,9 +168,16 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
 
   // Roles determination
   const userRoles = useMemo(() => user?.roles || [], [user])
-  const isAdmin = !personal && userRoles.includes('ADMIN')
-  const isHrManager = !personal && userRoles.includes('HR_MANAGER')
-  const isStoreManager = !personal && userRoles.includes('STORE_MANAGER')
+  const canManageLeaves = useMemo(() => {
+    return userRoles.includes('ADMIN') || userRoles.includes('HR_MANAGER') || userRoles.includes('STORE_MANAGER')
+  }, [userRoles])
+
+  // Giao diện cá nhân: Khi có cờ personal=true HOẶC khi là nhân viên bình thường (không có quyền quản lý)
+  const isPersonalView = personal || !canManageLeaves
+
+  const isAdmin = !isPersonalView && userRoles.includes('ADMIN')
+  const isHrManager = !isPersonalView && userRoles.includes('HR_MANAGER')
+  const isStoreManager = !isPersonalView && userRoles.includes('STORE_MANAGER')
 
   // Leave balances and limits
   const annualTotal = leaveBalance?.annual_leave_total ?? 12
@@ -105,20 +185,113 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
   const annualUsed = leaveBalance?.annual_leave_used ?? 0
   const pendingCount = leaveStats?.pending_store_approval ?? leaveRequests.filter(r => r.status === 'PENDING').length
 
+  const selectedEmp = useMemo(() => {
+    if (!newRequest.employee_id) return null
+    return employeeList.find(e => e.employee_id === newRequest.employee_id) || null
+  }, [employeeList, newRequest.employee_id])
+
+  const filteredEmployees = useMemo(() => {
+    if (!employeeSearchText.trim()) return employeeList
+    const kw = employeeSearchText.toLowerCase().trim()
+    return employeeList.filter(emp => {
+      const code = (emp.employee_code || '').toLowerCase()
+      const name = (emp.full_name || '').toLowerCase()
+      return code.includes(kw) || name.includes(kw)
+    })
+  }, [employeeList, employeeSearchText])
+
+  const activeModalBalance = (!isPersonalView && selectedEmpBalance) ? selectedEmpBalance : leaveBalance
+  const activeAnnualRemaining = activeModalBalance?.annual_leave_remaining ?? 12
+  const activeAnnualTotal = activeModalBalance?.annual_leave_total ?? 12
+
   const selectedTypeInfo = useMemo(() => {
     return leaveTypes.find(t => t.leave_type_id === newRequest.leave_type_id)
   }, [leaveTypes, newRequest.leave_type_id])
 
+  const handleSelectEmployee = async (emp: Employee) => {
+    setNewRequest(prev => ({ ...prev, employee_id: emp.employee_id }))
+    setEmployeeSearchText(`${emp.employee_code ? `[${emp.employee_code}] ` : ''}${emp.full_name}`)
+    setIsEmpDropdownOpen(false)
+    try {
+      const bal = await leaveApi.getEmployeeBalance(emp.employee_id)
+      setSelectedEmpBalance(bal)
+      if (selectedTypeInfo?.type_code === 'PHEP_NAM') {
+        const rem = bal.annual_leave_remaining ?? 12
+        setNewRequest(prev => ({
+          ...prev,
+          total_days: prev.total_days > rem ? rem : prev.total_days,
+        }))
+      }
+    } catch (err) {
+      console.error('Lỗi khi tra cứu số dư phép nhân viên:', err)
+      setSelectedEmpBalance(null)
+    }
+  }
+
+  const handleProofFilesSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+
+    const newFiles = Array.from(files)
+    const currentCount = selectedProofFiles.length
+    const availableSlots = 5 - currentCount
+
+    if (availableSlots <= 0) {
+      showNotification('error', 'Bạn chỉ có thể đính kèm tối đa 5 tệp.')
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      return
+    }
+
+    const filesToAdd = newFiles.slice(0, availableSlots)
+    if (newFiles.length > availableSlots) {
+      showNotification('error', `Chỉ chọn được tối đa 5 tệp. Đã nhận ${availableSlots} tệp hợp lệ.`)
+    }
+
+    const validNewLocalFiles: LocalProofFile[] = []
+    for (const file of filesToAdd) {
+      if (file.size > 10 * 1024 * 1024) {
+        showNotification('error', `Tệp "${file.name}" quá lớn (vượt quá 10MB trước khi nén).`)
+        continue
+      }
+      const isImage = file.type.startsWith('image/')
+      const previewUrl = URL.createObjectURL(file)
+      validNewLocalFiles.push({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        file,
+        previewUrl,
+        name: file.name,
+        size: file.size,
+        isImage,
+      })
+    }
+
+    if (validNewLocalFiles.length > 0) {
+      setSelectedProofFiles(prev => [...prev, ...validNewLocalFiles])
+    }
+
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const handleRemoveProofFile = (id: string) => {
+    setSelectedProofFiles(prev => {
+      const target = prev.find(f => f.id === id)
+      if (target?.previewUrl) {
+        URL.revokeObjectURL(target.previewUrl)
+      }
+      return prev.filter(f => f.id !== id)
+    })
+  }
+
   const maxAllowedDays = useMemo(() => {
     if (!selectedTypeInfo) return 180
     if (selectedTypeInfo.type_code === 'PHEP_NAM') {
-      return annualRemaining
+      return activeAnnualRemaining
     }
     if (selectedTypeInfo.max_days_allowed && selectedTypeInfo.max_days_allowed > 0) {
       return Number(selectedTypeInfo.max_days_allowed)
     }
     return 180
-  }, [selectedTypeInfo, annualRemaining])
+  }, [selectedTypeInfo, activeAnnualRemaining])
 
   // Auto calculate total days when dates change in create modal
   const handleStartDateChange = (val: string) => {
@@ -154,42 +327,124 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
     setIsLoading(true)
     try {
       const [requests, balance, types, stats] = await Promise.all([
-        leaveApi.getAll(personal ? { employee_id: user.employee_id } : undefined),
+        leaveApi.getAll(isPersonalView ? { employee_id: user.employee_id } : undefined),
         leaveApi.getMyBalance(),
         leaveApi.getTypes(),
-        personal ? Promise.resolve(null) : leaveApi.getStats().catch(() => null),
+        isPersonalView ? Promise.resolve(null) : leaveApi.getStats().catch(() => null),
       ])
-      setLeaveRequests(personal ? (requests || []).filter(req => req.employee_id === user.employee_id) : (requests || []))
+      setLeaveRequests(isPersonalView ? (requests || []).filter(req => req.employee_id === user.employee_id) : (requests || []))
       setLeaveBalance(balance)
       setLeaveTypes(types || [])
       setLeaveStats(stats)
       if (types && types.length > 0 && !newRequest.leave_type_id) {
         setNewRequest(prev => ({ ...prev, leave_type_id: types[0].leave_type_id }))
       }
+
+      if (!isPersonalView) {
+        setLoadingEmployees(true)
+        employeeApi.getAll({ status: 'ACTIVE' })
+          .then(emps => setEmployeeList(emps || []))
+          .catch(err => console.error('Error fetching employees:', err))
+          .finally(() => setLoadingEmployees(false))
+      }
     } catch (err) {
       console.error('Error fetching leave data:', err)
     } finally {
       setIsLoading(false)
     }
-  }, [newRequest.leave_type_id, personal, user.employee_id])
+  }, [newRequest.leave_type_id, isPersonalView, user.employee_id])
+
+  // Open Create Modal and optionally preselect employee
+  const handleOpenCreateModal = async (targetEmpId?: number) => {
+    let activeEmployees = employeeList
+    if (!isPersonalView && employeeList.length === 0) {
+      setLoadingEmployees(true)
+      try {
+        const emps = await employeeApi.getAll({ status: 'ACTIVE' })
+        activeEmployees = emps || []
+        setEmployeeList(activeEmployees)
+      } catch (err) {
+        console.error('Lỗi tải danh sách nhân viên:', err)
+      } finally {
+        setLoadingEmployees(false)
+      }
+    }
+
+    const initialEmpId = targetEmpId ?? (isPersonalView ? (user?.employee_id || null) : null)
+    setNewRequest({
+      employee_id: initialEmpId,
+      leave_type_id: leaveTypes[0]?.leave_type_id || 1,
+      start_date: new Date().toISOString().slice(0, 10),
+      end_date: new Date().toISOString().slice(0, 10),
+      total_days: 1.0,
+      reason: '',
+      attachment_url: '',
+    })
+
+    if (!isPersonalView && initialEmpId) {
+      const matchedEmp = activeEmployees.find(e => e.employee_id === initialEmpId)
+      if (matchedEmp) {
+        setEmployeeSearchText(`${matchedEmp.employee_code ? `[${matchedEmp.employee_code}] ` : ''}${matchedEmp.full_name}`)
+      } else {
+        setEmployeeSearchText('')
+      }
+      try {
+        const bal = await leaveApi.getEmployeeBalance(initialEmpId)
+        setSelectedEmpBalance(bal)
+      } catch {
+        setSelectedEmpBalance(null)
+      }
+    } else {
+      setEmployeeSearchText('')
+      setSelectedEmpBalance(null)
+    }
+
+    selectedProofFiles.forEach(f => {
+      if (f.previewUrl) URL.revokeObjectURL(f.previewUrl)
+    })
+    setSelectedProofFiles([])
+    setManualDriveLink('')
+    if (fileInputRef.current) fileInputRef.current.value = ''
+    setIsEmpDropdownOpen(false)
+    setIsCreateModalOpen(true)
+  }
 
   // Fetch calendar leaves when calendar tab is active or month changes
   const fetchCalendarData = useCallback(async (month: string) => {
     try {
-      const data = await leaveApi.getCalendar({ month, ...(personal ? { employee_id: user.employee_id } : {}) })
-      setCalendarLeaves(personal ? (data || []).filter(req => req.employee_id === user.employee_id) : (data || []))
+      const data = await leaveApi.getCalendar({ month, ...(isPersonalView ? { employee_id: user.employee_id } : {}) })
+      setCalendarLeaves(isPersonalView ? (data || []).filter(req => req.employee_id === user.employee_id) : (data || []))
     } catch (err) {
       console.error('Error fetching calendar leaves:', err)
       setCalendarLeaves([])
     }
-  }, [personal, user.employee_id])
+  }, [isPersonalView, user.employee_id])
 
   useEffect(() => {
     fetchLeaveData()
   }, [fetchLeaveData])
 
   useEffect(() => {
-    const handleClickOutside = () => setOpenMenuId(null)
+    const handleClickOutside = (e: MouseEvent) => {
+      setOpenMenuId(null)
+      if (empComboboxRef.current && !empComboboxRef.current.contains(e.target as Node)) {
+        setIsEmpDropdownOpen(false)
+        setNewRequest((latest) => {
+          if (latest.employee_id) {
+            setEmployeeList((list) => {
+              const cur = list.find((emp) => emp.employee_id === latest.employee_id)
+              if (cur) {
+                setEmployeeSearchText(`${cur.employee_code ? `[${cur.employee_code}] ` : ''}${cur.full_name}`)
+              }
+              return list
+            })
+          } else {
+            setEmployeeSearchText('')
+          }
+          return latest
+        })
+      }
+    }
     document.addEventListener('click', handleClickOutside)
     return () => document.removeEventListener('click', handleClickOutside)
   }, [])
@@ -351,15 +606,15 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
     const [yearStr, monthStr] = calendarMonth.split('-')
     const year = parseInt(yearStr, 10) || new Date().getFullYear()
     const month = parseInt(monthStr, 10) || (new Date().getMonth() + 1)
-    
+
     // First day of month (0 = Sun, 1 = Mon, ..., 6 = Sat)
     // Convert to Monday = 0, ..., Sunday = 6
     const firstDay = new Date(year, month - 1, 1).getDay()
     const startingBlankDays = (firstDay + 6) % 7
-    
+
     // Total days in current month
     const totalDaysInMonth = new Date(year, month, 0).getDate()
-    
+
     // Total days in previous month
     const prevMonthDays = new Date(year, month - 1, 0).getDate()
 
@@ -462,6 +717,10 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
   // Action: Submit Leave Request
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!isPersonalView && !newRequest.employee_id) {
+      showNotification('error', 'Vui lòng chọn nhân viên cần tạo đơn nghỉ phép.')
+      return
+    }
     if (newRequest.total_days <= 0) {
       showNotification('error', 'Số ngày xin nghỉ phải lớn hơn 0.')
       return
@@ -475,11 +734,48 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
     }
     setActionLoading(true)
     try {
-      const res = await leaveApi.create(newRequest)
+      // Tải các tệp lên Cloudinary CHỈ KHI nộp đơn (tối đa 5 tệp)
+      const uploadedCloudinaryUrls: string[] = []
+      if (selectedProofFiles.length > 0) {
+        try {
+          for (const item of selectedProofFiles) {
+            const uploadRes = await leaveApi.uploadProof(item.file)
+            if (uploadRes?.proof_url) {
+              uploadedCloudinaryUrls.push(uploadRes.proof_url)
+            }
+          }
+        } catch (uploadErr: any) {
+          showNotification('error', uploadErr.response?.data?.detail || uploadErr.message || 'Lỗi khi tải tệp minh chứng lên Cloudinary.')
+          setActionLoading(false)
+          return
+        }
+      }
+
+      // Kết hợp các link Cloudinary và link Drive ngoài nếu có
+      const cleanDrive = manualDriveLink.trim()
+      const allAttachmentLinks = [...uploadedCloudinaryUrls, ...(cleanDrive ? [cleanDrive] : [])]
+      const combinedAttachmentUrl: string | null = allAttachmentLinks.length > 0 ? allAttachmentLinks.join(' | ') : null
+
+      const payload: LeaveRequestCreate = {
+        ...newRequest,
+        employee_id: isPersonalView ? (user?.employee_id || null) : newRequest.employee_id,
+        attachment_url: combinedAttachmentUrl || undefined,
+      }
+      const res = await leaveApi.create(payload)
       showNotification('success', res.message || 'Nộp đơn nghỉ phép thành công!')
       setIsCreateModalOpen(false)
+
+      // Dọn dẹp preview và link sau khi nộp thành công
+      selectedProofFiles.forEach(f => {
+        if (f.previewUrl) URL.revokeObjectURL(f.previewUrl)
+      })
+      setSelectedProofFiles([])
+      setManualDriveLink('')
+      if (fileInputRef.current) fileInputRef.current.value = ''
+
       // Reset form
       setNewRequest({
+        employee_id: isPersonalView ? (user?.employee_id || null) : null,
         leave_type_id: leaveTypes[0]?.leave_type_id || 1,
         start_date: new Date().toISOString().slice(0, 10),
         end_date: new Date().toISOString().slice(0, 10),
@@ -487,6 +783,9 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
         reason: '',
         attachment_url: '',
       })
+      setEmployeeSearchText('')
+      setIsEmpDropdownOpen(false)
+      setSelectedEmpBalance(null)
       await fetchLeaveData()
     } catch (err: any) {
       showNotification('error', err.response?.data?.detail || err.message || 'Lỗi khi nộp đơn nghỉ phép')
@@ -597,15 +896,15 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
       {/* Page Header */}
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
         <div>
-          <h1 className="page-title">Quản lý Nghỉ Phép</h1>
+          <h1 className="page-title">{isPersonalView ? 'Nghỉ Phép & Đơn Của Tôi' : 'Quản lý Nghỉ Phép'}</h1>
           <p style={{ color: 'var(--text-secondary, #6b7280)', fontSize: '0.9rem', marginTop: '4px' }}>
-            Theo dõi và phê duyệt đơn xin nghỉ phép nhân sự TechZone
+            {isPersonalView ? 'Theo dõi số dư phép năm và gửi đơn xin nghỉ phép cá nhân' : 'Theo dõi và phê duyệt đơn xin nghỉ phép nhân sự TechZone'}
           </p>
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <button className="btn btn-primary" onClick={() => setIsCreateModalOpen(true)}>
+          <button className="btn btn-primary" onClick={() => handleOpenCreateModal()}>
             {Icons.plus}
-            Tạo đơn nghỉ phép mới
+            {isPersonalView ? 'Tạo đơn xin nghỉ phép' : 'Tạo đơn cho nhân viên'}
           </button>
         </div>
       </div>
@@ -627,7 +926,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
         <StatCard
           icon={Icons.clock}
           iconColor="amber"
-          label="Chờ CHT duyệt"
+          label={isPersonalView ? 'Đơn đang chờ duyệt' : 'Chờ CHT duyệt'}
           value={`${pendingCount} đơn`}
         />
         <StatCard
@@ -822,21 +1121,33 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                     const wasHrApprovedBeforeReject = isRejected && !!req.hr_approved_at
                     const isApplicantStoreManager = Boolean(req.is_store_manager_request || req.position_name === 'Cửa hàng trưởng')
 
+                    // Kiểm tra thời gian nghỉ phép đã qua hay chưa (theo ngày hiện tại cục bộ)
+                    const now = new Date()
+                    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+                    const leaveEndDate = req.end_date || req.resignation_date || req.start_date || ''
+                    const isLeavePassed = Boolean(leaveEndDate && leaveEndDate < todayStr)
+
+                    // Kiểm tra đơn đã được phê duyệt ở bất kỳ cấp nào hay chưa (Cấp 1 CHT hoặc Cấp 2 HR)
+                    const isApprovedAnyLevel = req.status === 'STORE_APPROVED' || req.status === 'HR_APPROVED' || Boolean(req.store_approved_at) || Boolean(req.hr_approved_at)
+
                     // Cửa hàng trưởng không thể tự duyệt đơn của mình và không duyệt đơn của CHT khác
                     const canStoreApprove = (isStoreManager || isAdmin) && req.status === 'PENDING' && !isOwner && !isApplicantStoreManager
-                    
+
                     // HR có thể duyệt thẳng (Cấp 2) kể cả trước khi Cửa hàng trưởng duyệt Cấp 1
                     const canHrApprove = (isHrManager || isAdmin) && (
                       req.status === 'STORE_APPROVED' || req.status === 'PENDING'
                     ) && (!isOwner || isAdmin)
 
-                    const canRejectPending = (
+                    // Nếu đã qua thời gian mà nhân viên xin nghỉ trước đó thì không được hiện chức năng hủy duyệt/ từ chối (do cấp trên thực hiện) nữa
+                    const canRejectPending = !isLeavePassed && (
                       (isStoreManager && !isApplicantStoreManager && !isOwner && req.status === 'PENDING') ||
                       ((isHrManager || isAdmin) && (req.status === 'PENDING' || req.status === 'STORE_APPROVED'))
                     )
-                    const canRevokeHrApproved = (isHrManager || isAdmin) && req.status === 'HR_APPROVED'
-                    const canCancel = isOwner && req.status === 'PENDING'
-                    const hasAnyAction = Boolean(canStoreApprove || canHrApprove || canRejectPending || canRevokeHrApproved || canCancel)
+                    const canRevokeHrApproved = !isLeavePassed && (isHrManager || isAdmin) && req.status === 'HR_APPROVED'
+
+                    // Nếu đã được duyệt bất kì cấp nào thì nhân viên cũng không được tự ý hủy đơn giữa chừng
+                    const canCancel = isOwner && req.status === 'PENDING' && !isApprovedAnyLevel
+                    const hasAnyAction = true
 
                     // Kiểm tra bước CHT có áp dụng hay không
                     const isChtStepNotApplicable = isApplicantStoreManager ||
@@ -872,7 +1183,22 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                           <span style={{ fontWeight: 600 }}>{req.total_days} ngày</span>
                         </td>
                         <td style={{ maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={req.reason || ''}>
-                          {req.reason || '-'}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            {req.attachment_url && (
+                              <span
+                                title="Có đính kèm minh chứng"
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  color: '#2563eb',
+                                  flexShrink: 0,
+                                }}
+                              >
+                                {Icons.paperclip}
+                              </span>
+                            )}
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{req.reason || '-'}</span>
+                          </div>
                         </td>
                         <td>
                           <span
@@ -880,15 +1206,15 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                             style={
                               isRejected
                                 ? {
-                                    backgroundColor: '#fef2f2',
-                                    color: '#dc2626',
-                                    borderColor: '#fca5a5',
-                                    fontWeight: 700,
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '5px',
-                                    padding: '3px 8px',
-                                  }
+                                  backgroundColor: '#fef2f2',
+                                  color: '#dc2626',
+                                  borderColor: '#fca5a5',
+                                  fontWeight: 700,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '5px',
+                                  padding: '3px 8px',
+                                }
                                 : undefined
                             }
                             title={getStatusDisplayLabel(req.status, req)}
@@ -1005,6 +1331,30 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                                   minWidth: '195px',
                                 }}
                               >
+                                <button
+                                  className="action-dropdown-item"
+                                  onClick={() => {
+                                    setOpenMenuId(null)
+                                    setPrintModalRequest(req)
+                                  }}
+                                >
+                                  <span className="action-icon" style={{ color: '#2563eb' }}>{Icons.printer}</span>
+                                  <span>In đơn nghỉ phép (PDF)</span>
+                                </button>
+
+                                {!isPersonalView && (
+                                  <button
+                                    className="action-dropdown-item"
+                                    onClick={() => {
+                                      setOpenMenuId(null)
+                                      handleOpenCreateModal(req.employee_id)
+                                    }}
+                                  >
+                                    <span className="action-icon" style={{ color: '#059669' }}>{Icons.plus}</span>
+                                    <span>Tạo đơn hộ nhân viên này</span>
+                                  </button>
+                                )}
+
                                 {canStoreApprove && (
                                   <button
                                     className="action-dropdown-item"
@@ -1280,11 +1630,12 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                       padding: '10px 8px',
                       textAlign: 'center',
                       fontSize: '12px',
-                      fontWeight: 700,
-                      color: idx >= 5 ? 'var(--text-muted)' : 'var(--text-secondary)',
+                      fontWeight: idx === 6 ? 800 : 600,
+                      color: idx === 6 ? '#dc2626' : 'var(--text-secondary)',
                       textTransform: 'uppercase',
                       letterSpacing: '0.05em',
                       borderRight: idx < 6 ? '1px solid var(--border-default)' : 'none',
+                      backgroundColor: idx === 6 ? 'rgba(239, 68, 68, 0.05)' : undefined,
                     }}
                   >
                     {dayName}
@@ -1300,7 +1651,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                 }}
               >
                 {calendarDaysMatrix.map((cell, idx) => {
-                  const isWeekend = (idx % 7) === 5 || (idx % 7) === 6
+                  const isSunday = (idx % 7) === 6
                   const hasLeaves = cell.leaves.length > 0
 
                   return (
@@ -1312,9 +1663,9 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                         borderBottom: idx < calendarDaysMatrix.length - 7 ? '1px solid var(--border-default)' : 'none',
                         backgroundColor: !cell.isCurrentMonth
                           ? 'var(--surface-subtle)'
-                          : isWeekend
-                          ? 'var(--surface-subtle)'
-                          : 'var(--surface-card)',
+                          : isSunday
+                            ? 'rgba(239, 68, 68, 0.03)'
+                            : 'var(--surface-card)',
                         opacity: cell.isCurrentMonth ? 1 : 0.45,
                       }}
                     >
@@ -1335,8 +1686,8 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                             color: cell.isToday
                               ? 'var(--action-primary-text)'
                               : cell.isCurrentMonth
-                              ? 'var(--text-primary)'
-                              : 'var(--text-muted)',
+                                ? 'var(--text-primary)'
+                                : 'var(--text-muted)',
                           }}
                         >
                           {cell.dayNumber}
@@ -1543,7 +1894,6 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
             zIndex: 1000,
             padding: '16px',
           }}
-          onClick={() => !actionLoading && setIsCreateModalOpen(false)}
         >
           <div
             className="card"
@@ -1558,7 +1908,9 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
             onClick={(e) => e.stopPropagation()}
           >
             <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600 }}>Tạo Đơn Xin Nghỉ Phép Mới</h3>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600 }}>
+                {isPersonalView ? 'Tạo Đơn Xin Nghỉ Phép Mới' : 'Tạo Đơn Nghỉ Phép Cho Nhân Viên'}
+              </h3>
               <button
                 style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', color: '#9ca3af' }}
                 onClick={() => setIsCreateModalOpen(false)}
@@ -1568,6 +1920,186 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
             </div>
 
             <form onSubmit={handleCreateSubmit} style={{ padding: '20px' }}>
+              {/* Chọn nhân viên khi quản lý/HR/Admin tạo đơn hộ (Searchable Combobox) */}
+              {!isPersonalView && (
+                <div style={{ marginBottom: '16px' }} ref={empComboboxRef}>
+                  <label style={{ display: 'block', fontWeight: 600, fontSize: '0.9rem', marginBottom: '6px' }}>
+                    Nhân viên xin nghỉ <span style={{ color: '#ef4444' }}>*</span>
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                      <span
+                        style={{
+                          position: 'absolute',
+                          left: '12px',
+                          color: '#9ca3af',
+                          pointerEvents: 'none',
+                          display: 'flex',
+                          alignItems: 'center',
+                        }}
+                      >
+                        {Icons.search}
+                      </span>
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="Nhập mã hoặc họ tên để tìm nhân viên..."
+                        value={employeeSearchText}
+                        onChange={(e) => {
+                          setEmployeeSearchText(e.target.value)
+                          setIsEmpDropdownOpen(true)
+                        }}
+                        onFocus={() => setIsEmpDropdownOpen(true)}
+                        onBlur={() => {
+                          // Khi người dùng không còn focus ô tìm kiếm nữa (click ngoài / chuyển ô khác), tự động hoàn trả lại giá trị đúng
+                          setTimeout(() => {
+                            setIsEmpDropdownOpen(false)
+                            if (newRequest.employee_id) {
+                              const cur = employeeList.find(emp => emp.employee_id === newRequest.employee_id)
+                              if (cur) {
+                                setEmployeeSearchText(`${cur.employee_code ? `[${cur.employee_code}] ` : ''}${cur.full_name}`)
+                              }
+                            } else {
+                              setEmployeeSearchText('')
+                            }
+                          }, 150)
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Escape') {
+                            setIsEmpDropdownOpen(false)
+                            if (newRequest.employee_id) {
+                              const cur = employeeList.find(emp => emp.employee_id === newRequest.employee_id)
+                              if (cur) {
+                                setEmployeeSearchText(`${cur.employee_code ? `[${cur.employee_code}] ` : ''}${cur.full_name}`)
+                              }
+                            } else {
+                              setEmployeeSearchText('')
+                            }
+                            ; (e.target as HTMLInputElement).blur()
+                          } else if (e.key === 'Enter') {
+                            if (isEmpDropdownOpen && filteredEmployees.length === 1) {
+                              e.preventDefault()
+                              handleSelectEmployee(filteredEmployees[0])
+                            }
+                          }
+                        }}
+                        style={{
+                          paddingLeft: '36px',
+                          paddingRight: employeeSearchText ? '32px' : '12px',
+                          borderColor: !newRequest.employee_id && employeeSearchText ? '#f59e0b' : undefined,
+                        }}
+                        autoComplete="off"
+                        required={!newRequest.employee_id}
+                      />
+                      {employeeSearchText && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEmployeeSearchText('')
+                            setNewRequest(prev => ({ ...prev, employee_id: null }))
+                            setSelectedEmpBalance(null)
+                            setIsEmpDropdownOpen(true)
+                          }}
+                          style={{
+                            position: 'absolute',
+                            right: '8px',
+                            top: '50%',
+                            transform: 'translateY(-50%)',
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            color: '#9ca3af',
+                            fontSize: '13px',
+                            padding: '4px 6px',
+                          }}
+                          title="Xóa tìm kiếm và chọn lại"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+
+                    {isEmpDropdownOpen && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: '100%',
+                          left: 0,
+                          right: 0,
+                          marginTop: '4px',
+                          maxHeight: '220px',
+                          overflowY: 'auto',
+                          backgroundColor: '#ffffff',
+                          border: '1px solid #e5e7eb',
+                          borderRadius: '8px',
+                          boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+                          zIndex: 60,
+                        }}
+                      >
+                        {loadingEmployees ? (
+                          <div style={{ padding: '10px 14px', fontSize: '0.85rem', color: '#6b7280' }}>
+                            Đang tải danh sách nhân viên...
+                          </div>
+                        ) : filteredEmployees.length === 0 ? (
+                          <div style={{ padding: '10px 14px', fontSize: '0.85rem', color: '#6b7280' }}>
+                            Không tìm thấy nhân viên phù hợp với từ khóa
+                          </div>
+                        ) : (
+                          filteredEmployees.map((emp) => {
+                            const isSelected = newRequest.employee_id === emp.employee_id
+                            const label = `${emp.employee_code ? `[${emp.employee_code}] ` : ''}${emp.full_name}`
+                            return (
+                              <div
+                                key={emp.employee_id}
+                                onMouseDown={(e) => {
+                                  e.preventDefault()
+                                  handleSelectEmployee(emp)
+                                }}
+                                onClick={() => handleSelectEmployee(emp)}
+                                style={{
+                                  padding: '9px 14px',
+                                  cursor: 'pointer',
+                                  fontSize: '0.88rem',
+                                  backgroundColor: isSelected ? '#eff6ff' : 'transparent',
+                                  color: isSelected ? '#2563eb' : '#1f2937',
+                                  fontWeight: isSelected ? 600 : 400,
+                                  borderBottom: '1px solid #f3f4f6',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                }}
+                                onMouseEnter={(e) => {
+                                  if (!isSelected) (e.currentTarget as HTMLElement).style.backgroundColor = '#f9fafb'
+                                }}
+                                onMouseLeave={(e) => {
+                                  if (!isSelected) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'
+                                }}
+                              >
+                                <span>{label}</span>
+                                {isSelected && <span style={{ color: '#2563eb', fontWeight: 'bold' }}>✓</span>}
+                              </div>
+                            )
+                          })
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {selectedEmp && (
+                    <div style={{ fontSize: '0.8rem', color: '#059669', marginTop: '6px', display: 'flex', gap: '10px', flexWrap: 'wrap', backgroundColor: '#f0fdf4', padding: '6px 10px', borderRadius: '6px', border: '1px solid #bbf7d0' }}>
+                      <span>Mã: <strong>{selectedEmp.employee_code || `#${selectedEmp.employee_id}`}</strong></span>
+                      {selectedEmp.store_name && <span>Chi nhánh: <strong>{selectedEmp.store_name}</strong></span>}
+                      {selectedEmp.position_name && <span>Chức vụ: <strong>{selectedEmp.position_name}</strong></span>}
+                    </div>
+                  )}
+                  {!selectedEmp && (
+                    <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: '4px' }}>
+                      Nhấp vào ô hoặc gõ để chọn nhân viên từ danh sách gợi ý.
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Loại đơn nghỉ phép */}
               <div style={{ marginBottom: '16px' }}>
                 <label style={{ display: 'block', fontWeight: 600, fontSize: '0.9rem', marginBottom: '6px' }}>
@@ -1580,7 +2112,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                     const newTypeId = Number(e.target.value)
                     const targetType = leaveTypes.find(t => t.leave_type_id === newTypeId)
                     let limit = 180
-                    if (targetType?.type_code === 'PHEP_NAM') limit = annualRemaining
+                    if (targetType?.type_code === 'PHEP_NAM') limit = activeAnnualRemaining
                     else if (targetType?.max_days_allowed && targetType.max_days_allowed > 0) limit = Number(targetType.max_days_allowed)
                     setNewRequest(prev => ({
                       ...prev,
@@ -1599,9 +2131,15 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                 {selectedTypeInfo && (
                   <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary, #6b7280)', marginTop: '4px' }}>
                     {selectedTypeInfo.type_code === 'PHEP_NAM' && (
-                      <span style={{ color: '#2563eb' }}>
-                        Số dư phép năm hiện tại: <strong>{annualRemaining} ngày</strong> (Tổng hạn mức: {annualTotal} ngày)
-                      </span>
+                      !isPersonalView && !newRequest.employee_id ? (
+                        <span style={{ color: '#d97706' }}>
+                          Vui lòng chọn nhân viên ở trên để tra cứu số dư phép năm khả dụng.
+                        </span>
+                      ) : (
+                        <span style={{ color: '#2563eb' }}>
+                          Số dư phép năm khả dụng: <strong>{activeAnnualRemaining} ngày</strong> (Tổng hạn mức: {activeAnnualTotal} ngày)
+                        </span>
+                      )
                     )}
                     {selectedTypeInfo.type_code !== 'PHEP_NAM' && selectedTypeInfo.max_days_allowed > 0 && (
                       <span style={{ color: '#4b5563', fontWeight: 500 }}>
@@ -1699,18 +2237,207 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                 />
               </div>
 
-              {/* Đính kèm tài liệu */}
-              <div style={{ marginBottom: '24px' }}>
-                <label style={{ display: 'block', fontWeight: 600, fontSize: '0.9rem', marginBottom: '6px' }}>
-                  Link đính kèm tài liệu / Giấy khám bệnh (nếu có)
-                </label>
+              {/* Đính kèm minh chứng & Liên kết ngoài / Drive (Cùng 1 hàng: 85-90% ô link, icon tệp ở bên phải) */}
+              <div style={{ marginBottom: '22px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <label style={{ fontWeight: 600, fontSize: '0.88rem', margin: 0 }}>
+                    Minh chứng đính kèm / Link Drive (Tùy chọn)
+                  </label>
+                  {selectedProofFiles.length > 0 && (
+                    <span style={{ fontSize: '0.75rem', color: '#2563eb', fontWeight: 600 }}>
+                      Đã chọn {selectedProofFiles.length}/5 tệp
+                    </span>
+                  )}
+                </div>
+
+                {/* Ẩn file input thực tế (cho phép tải tối đa 5 tệp) */}
                 <input
-                  type="url"
-                  className="form-input"
-                  placeholder="https://drive.google.com/... hoặc link ảnh chứng từ y tế"
-                  value={newRequest.attachment_url || ''}
-                  onChange={(e) => setNewRequest({ ...newRequest, attachment_url: e.target.value })}
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept="image/*,application/pdf"
+                  style={{ display: 'none' }}
+                  onChange={handleProofFilesSelect}
                 />
+
+                {/* Cùng 1 hàng: Ô link chiếm 85-90% + Icon tệp bên phải */}
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <div style={{ flex: '1 1 88%', position: 'relative' }}>
+                    <input
+                      type="url"
+                      className="form-input"
+                      placeholder="Dán link Google Drive, OneDrive hoặc tài liệu ngoài..."
+                      value={manualDriveLink}
+                      onChange={(e) => setManualDriveLink(e.target.value)}
+                      style={{
+                        width: '100%',
+                        fontSize: '0.85rem',
+                        paddingRight: manualDriveLink ? '32px' : '12px',
+                      }}
+                    />
+                    {manualDriveLink && (
+                      <button
+                        type="button"
+                        onClick={() => setManualDriveLink('')}
+                        style={{
+                          position: 'absolute',
+                          right: '8px',
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          color: '#9ca3af',
+                          fontSize: '13px',
+                          padding: '4px',
+                          lineHeight: 1,
+                        }}
+                        title="Xóa link"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={selectedProofFiles.length >= 5}
+                    title={selectedProofFiles.length >= 5 ? 'Đã đạt tối đa 5 tệp đính kèm' : 'Chọn tệp ảnh hoặc PDF từ máy (Tối đa 5 tệp)'}
+                    style={{
+                      flex: '0 0 auto',
+                      width: '42px',
+                      height: '38px',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: 0,
+                      borderRadius: 'var(--radius-md, 6px)',
+                      cursor: selectedProofFiles.length >= 5 ? 'not-allowed' : 'pointer',
+                      opacity: selectedProofFiles.length >= 5 ? 0.5 : 1,
+                    }}
+                  >
+                    {Icons.paperclip}
+                  </button>
+                </div>
+
+                {/* Danh sách các tệp preview đã chọn (tối đa 5 tệp, nhấp vào xem được, nút X đen trắng đơn giản) */}
+                {selectedProofFiles.length > 0 && (
+                  <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {selectedProofFiles.map((item) => (
+                      <div
+                        key={item.id}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '8px 12px',
+                          backgroundColor: 'var(--surface-subtle)',
+                          border: '1px solid var(--border-default)',
+                          borderRadius: '8px',
+                          gap: '10px',
+                        }}
+                      >
+                        {/* Nhấp vào tệp preview để mở xem trong tab mới */}
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '10px',
+                            minWidth: 0,
+                            cursor: 'pointer',
+                            flex: 1,
+                          }}
+                          onClick={() => window.open(item.previewUrl, '_blank')}
+                          title="Nhấp để xem trước tệp trong tab mới"
+                        >
+                          {item.isImage ? (
+                            <img
+                              src={item.previewUrl}
+                              alt={item.name}
+                              style={{
+                                width: '36px',
+                                height: '36px',
+                                objectFit: 'cover',
+                                borderRadius: '4px',
+                                border: '1px solid var(--border-default)',
+                                flexShrink: 0,
+                              }}
+                            />
+                          ) : (
+                            <div
+                              style={{
+                                width: '36px',
+                                height: '36px',
+                                borderRadius: '4px',
+                                backgroundColor: '#fee2e2',
+                                color: '#dc2626',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '1.2rem',
+                                flexShrink: 0,
+                                fontWeight: 700,
+                              }}
+                            >
+                              📄
+                            </div>
+                          )}
+                          <div style={{ minWidth: 0 }}>
+                            <div
+                              style={{
+                                fontWeight: 600,
+                                fontSize: '0.84rem',
+                                color: 'var(--text-primary)',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {item.name}
+                            </div>
+                            <div style={{ fontSize: '0.74rem', color: 'var(--text-secondary, #6b7280)', marginTop: '1px' }}>
+                              {formatFileSize(item.size)}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Nút X đơn giản màu trắng đen */}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveProofFile(item.id)}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: '#4b5563',
+                            cursor: 'pointer',
+                            fontSize: '14px',
+                            fontWeight: 700,
+                            padding: '4px 8px',
+                            borderRadius: '4px',
+                            lineHeight: 1,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = '#e5e7eb'
+                            e.currentTarget.style.color = '#000000'
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = 'transparent'
+                            e.currentTarget.style.color = '#4b5563'
+                          }}
+                          title="Hủy chọn tệp này"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Action Buttons */}
@@ -1726,9 +2453,9 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                 <button
                   type="submit"
                   className="btn btn-primary"
-                  disabled={actionLoading}
+                  disabled={actionLoading || (!isPersonalView && !newRequest.employee_id)}
                 >
-                  {actionLoading ? 'Đang gửi...' : 'Gửi đơn phê duyệt'}
+                  {actionLoading ? 'Đang gửi...' : (isPersonalView ? 'Gửi đơn phê duyệt' : 'Tạo đơn cho nhân viên')}
                 </button>
               </div>
             </form>
@@ -2002,8 +2729,8 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                   {actionLoading
                     ? 'Đang xử lý...'
                     : rejectModalRequest.status === 'HR_APPROVED'
-                    ? 'Xác nhận Thu hồi & Từ chối'
-                    : 'Xác nhận từ chối đơn'}
+                      ? 'Xác nhận Thu hồi & Từ chối'
+                      : 'Xác nhận từ chối đơn'}
                 </button>
               </div>
             </div>
@@ -2046,12 +2773,23 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                   ? `Chi Tiết Đơn Nghỉ Phép #${detailModalRequest.request_id}`
                   : `Hồ Sơ Nhân Sự Thôi Việc / Chấm Dứt HĐLĐ`}
               </h3>
-              <button
-                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', color: '#9ca3af' }}
-                onClick={() => setDetailModalRequest(null)}
-              >
-                {Icons.x}
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => setPrintModalRequest(detailModalRequest)}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                >
+                  {Icons.printer}
+                  <span>In PDF</span>
+                </button>
+                <button
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', color: '#9ca3af', display: 'flex', alignItems: 'center' }}
+                  onClick={() => setDetailModalRequest(null)}
+                >
+                  {Icons.x}
+                </button>
+              </div>
             </div>
             <div style={{ padding: '20px' }}>
               {/* KHỐI CẢNH BÁO TỪ CHỐI RÕ RÀNG VỚI DẤU X VÀ CHỮ MÀU ĐỎ NỔI BẬT */}
@@ -2204,16 +2942,173 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                 </div>
               </div>
 
-              {detailModalRequest.attachment_url && (
-                <div style={{ marginBottom: '16px' }}>
-                  <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary, #6b7280)', textTransform: 'uppercase', fontWeight: 600 }}>Tài liệu minh chứng</label>
-                  <div>
-                    <a href={detailModalRequest.attachment_url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary-color, #2563eb)', textDecoration: 'underline', fontSize: '0.85rem' }}>
-                      Xem tài liệu đính kèm &rarr;
-                    </a>
+              {detailModalRequest.attachment_url && (() => {
+                const { cloudinaryUrls, driveUrl } = parseAttachmentUrls(detailModalRequest.attachment_url)
+                if (cloudinaryUrls.length === 0 && !driveUrl) return null
+
+                return (
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary, #6b7280)', textTransform: 'uppercase', fontWeight: 600, display: 'block', marginBottom: '8px' }}>
+                      Tài liệu / Tệp minh chứng đính kèm ({cloudinaryUrls.length + (driveUrl ? 1 : 0)})
+                    </label>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {/* Danh sách tệp minh chứng Cloudinary */}
+                      {cloudinaryUrls.map((url, idx) => {
+                        const isPdf = /\.pdf($|\?)/i.test(url)
+                        const displayUrl = getCloudinaryDisplayUrl(url)
+                        return (
+                          <div
+                            key={idx}
+                            style={{
+                              backgroundColor: 'var(--surface-subtle)',
+                              border: '1px solid var(--border-default)',
+                              borderRadius: '8px',
+                              padding: '10px 14px',
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                              <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                {isPdf ? `📄 Tài liệu PDF ${cloudinaryUrls.length > 1 ? `#${idx + 1}` : ''}` : `🖼️ Ảnh minh chứng ${cloudinaryUrls.length > 1 ? `#${idx + 1}` : ''}`}
+                              </span>
+                              <span style={{ fontSize: '0.72rem', backgroundColor: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', padding: '1px 8px', borderRadius: '12px', fontWeight: 500 }}>
+                                ✓ Cloudinary Verified
+                              </span>
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                              {/* Thumbnail preview có thể bấm để mở tệp nguyên bản */}
+                              <a
+                                href={url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title="Bấm để mở tệp nguyên bản"
+                                style={{
+                                  display: 'block',
+                                  borderRadius: '6px',
+                                  overflow: 'hidden',
+                                  border: '1px solid var(--border-default)',
+                                  flexShrink: 0,
+                                  backgroundColor: '#0000000a',
+                                  cursor: 'pointer',
+                                  width: '56px',
+                                  height: '56px',
+                                }}
+                              >
+                                <img
+                                  src={getCloudinaryDisplayUrl(url)}
+                                  alt={`Minh chứng #${idx + 1}`}
+                                  style={{
+                                    width: '56px',
+                                    height: '56px',
+                                    objectFit: 'cover',
+                                    display: 'block',
+                                    transition: 'transform 0.2s',
+                                  }}
+                                  onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.08)')}
+                                  onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+                                />
+                              </a>
+
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: '0.84rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '2px' }}>
+                                  {isPdf ? 'Tài liệu PDF nguyên bản' : 'Ảnh chụp chứng từ'}
+                                </div>
+                                <div
+                                  style={{
+                                    fontSize: '0.74rem',
+                                    color: 'var(--text-secondary, #6b7280)',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                  title={url}
+                                >
+                                  {url}
+                                </div>
+                              </div>
+
+                              {/* Biểu tượng kính lúp nằm bên phải lấy từ thư viện icon Icons.search */}
+                              <a
+                                href={url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="btn btn-secondary btn-icon"
+                                title="Mở tệp nguyên bản kích thước đầy đủ"
+                                style={{
+                                  width: '36px',
+                                  height: '36px',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  borderRadius: '6px',
+                                  color: 'var(--primary-color, #2563eb)',
+                                  backgroundColor: '#eff6ff',
+                                  border: '1px solid #bfdbfe',
+                                  flexShrink: 0,
+                                  textDecoration: 'none',
+                                }}
+                              >
+                                {Icons.search}
+                              </a>
+                            </div>
+                          </div>
+                        )
+                      })}
+
+                      {/* Đường dẫn Google Drive / OneDrive ngoài nếu có */}
+                      {driveUrl && (
+                        <div style={{
+                          backgroundColor: 'var(--surface-subtle)',
+                          border: '1px solid var(--border-default)',
+                          borderRadius: '8px',
+                          padding: '10px 14px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '12px',
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                            <div style={{ width: '38px', height: '38px', borderRadius: '8px', backgroundColor: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', flexShrink: 0 }}>
+                              🔗
+                            </div>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontSize: '0.84rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                Đường dẫn Drive / tài liệu ngoài
+                              </div>
+                              <div style={{ fontSize: '0.74rem', color: 'var(--text-secondary, #6b7280)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={driveUrl}>
+                                {driveUrl}
+                              </div>
+                            </div>
+                          </div>
+                          <a
+                            href={driveUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn btn-secondary btn-icon"
+                            title="Mở liên kết Drive / tài liệu ngoài"
+                            style={{
+                              width: '36px',
+                              height: '36px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              borderRadius: '6px',
+                              color: 'var(--primary-color, #2563eb)',
+                              backgroundColor: '#eff6ff',
+                              border: '1px solid #bfdbfe',
+                              flexShrink: 0,
+                              textDecoration: 'none',
+                            }}
+                          >
+                            {Icons.search}
+                          </a>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
+                )
+              })()}
 
               {/* Approval Timeline */}
               <div style={{ borderTop: '1px solid var(--border-color, #e5e7eb)', paddingTop: '16px', marginTop: '16px' }}>
@@ -2274,10 +3169,10 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                         backgroundColor: isStoreStepNotApplicable
                           ? '#e5e7eb'
                           : isStoreRejected
-                          ? '#dc2626'
-                          : detailModalRequest.store_approved_at
-                          ? '#10b981'
-                          : '#f59e0b',
+                            ? '#dc2626'
+                            : detailModalRequest.store_approved_at
+                              ? '#10b981'
+                              : '#f59e0b',
                         color: isStoreStepNotApplicable ? '#6b7280' : '#fff',
                         display: 'flex',
                         alignItems: 'center',
@@ -2312,10 +3207,10 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                               {isResignation
                                 ? '(Hồ sơ thôi việc do Phòng Nhân sự / Ban Giám đốc quản lý trực tiếp)'
                                 : isDetailApplicantCht
-                                ? '(Đơn CHT / Khối văn phòng, chuyển thẳng HR duyệt)'
-                                : isHrApproved
-                                ? '(Phòng Nhân sự đã trực tiếp duyệt thẳng Cấp 2, bỏ qua bước CHT)'
-                                : '(Phòng Nhân sự đã trực tiếp xử lý từ chối)'}
+                                  ? '(Đơn CHT / Khối văn phòng, chuyển thẳng HR duyệt)'
+                                  : isHrApproved
+                                    ? '(Phòng Nhân sự đã trực tiếp duyệt thẳng Cấp 2, bỏ qua bước CHT)'
+                                    : '(Phòng Nhân sự đã trực tiếp xử lý từ chối)'}
                             </span>
                           </div>
                         ) : isStoreRejected ? (
@@ -2365,10 +3260,10 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                         backgroundColor: isHrStepNotApplicable
                           ? '#e5e7eb'
                           : wasHrApprovedBeforeReject || isHrRejected
-                          ? '#dc2626'
-                          : isHrApproved
-                          ? '#10b981'
-                          : '#3b82f6',
+                            ? '#dc2626'
+                            : isHrApproved
+                              ? '#10b981'
+                              : '#3b82f6',
                         color: isHrStepNotApplicable ? '#6b7280' : '#fff',
                         display: 'flex',
                         alignItems: 'center',
@@ -2436,7 +3331,16 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                 })()}
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px' }}>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => setPrintModalRequest(detailModalRequest)}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+                >
+                  {Icons.printer}
+                  <span>In đơn nghỉ phép (PDF)</span>
+                </button>
                 <button
                   type="button"
                   className="btn btn-secondary"
@@ -2643,6 +3547,384 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
           </div>
         </div>
       )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: PRINTABLE LEAVE REQUEST POPUP OVERLAY (PDF / A4)                   */}
+      {/* ========================================================================= */}
+      {printModalRequest && (() => {
+        const isApplicantStoreManager = Boolean(
+          printModalRequest.is_store_manager_request ||
+          printModalRequest.position_name === 'Cửa hàng trưởng' ||
+          !printModalRequest.store_id
+        )
+        const isRejected = printModalRequest.status === 'REJECTED'
+        const wasHrApprovedBeforeReject = isRejected && Boolean(printModalRequest.hr_approved_at)
+        const isHrApproved = printModalRequest.status === 'HR_APPROVED'
+        const isStoreApproved = Boolean(printModalRequest.store_approved_at)
+        const isChtStepNotApplicable = isApplicantStoreManager ||
+          Boolean(isHrApproved && !printModalRequest.store_approved_at) ||
+          Boolean(isRejected && !printModalRequest.store_approved_at && (printModalRequest.rejected_by_role === 'Phòng Nhân sự' || printModalRequest.rejected_by_role === 'Ban Giám đốc / Admin'))
+        const isResignation = isResignationRecord(printModalRequest)
+
+        return (
+          <div className="modal-overlay print-active-overlay" onClick={() => setPrintModalRequest(null)}>
+            <div className="modal print-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '880px', padding: '0', maxHeight: '92vh' }}>
+              {/* Modal Header (Hidden on print) */}
+              <div className="modal-header no-print">
+                <h2 className="modal-title" style={{ fontSize: '16px' }}>
+                  Bản In Đơn Xin Nghỉ Phép (Khổ A4)
+                </h2>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <button className="btn btn-primary btn-sm" onClick={() => window.print()}>
+                    {Icons.printer}
+                    In đơn nghỉ phép (PDF)
+                  </button>
+                  <button
+                    className="modal-close"
+                    onClick={() => setPrintModalRequest(null)}
+                    title="Đóng"
+                  >
+                    {Icons.close}
+                  </button>
+                </div>
+              </div>
+
+              {/* A4 Sheet Body */}
+              <div className="payslip-modal-body" style={{ overflowY: 'auto', padding: '16px', background: 'var(--surface-ground)' }}>
+                <div className="payslip-a4-modal">
+                  {/* Header */}
+                  <div className="payslip-a4-header">
+                    <div>
+                      <div className="payslip-a4-company-name">TECHZONE RETAIL SYSTEM</div>
+                      <div className="payslip-a4-company-sub">Hệ Thống Phân Phối & Chuỗi Bán Lẻ Công Nghệ Toàn Quốc</div>
+                      <div className="payslip-a4-company-sub">Địa chỉ: 273 An Dương Vương, Phường 3, Quận 5, TP.HCM • Hotline: 1900 6868</div>
+                      {printModalRequest.store_name && (
+                        <div className="payslip-a4-company-sub" style={{ fontWeight: 600, color: '#1e3a8a', marginTop: '2px' }}>
+                          Đơn vị công tác: {printModalRequest.store_name}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '12px', fontWeight: 700, color: '#1e3a8a' }}>
+                        MÃ ĐƠN: <span style={{ fontFamily: 'var(--font-mono)' }}>#LR-{printModalRequest.request_id}</span>
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#475569', marginTop: '3px' }}>
+                        NGÀY GỬI: <strong>{formatDate(printModalRequest.created_at || printModalRequest.start_date)}</strong>
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                        TRẠNG THÁI:{' '}
+                        <strong
+                          style={{
+                            color: wasHrApprovedBeforeReject
+                              ? '#dc2626'
+                              : isHrApproved
+                                ? '#059669'
+                                : isRejected
+                                  ? '#dc2626'
+                                  : '#2563eb',
+                          }}
+                        >
+                          {wasHrApprovedBeforeReject
+                            ? 'ĐÃ HỦY DUYỆT'
+                            : getStatusDisplayLabel(printModalRequest.status, printModalRequest)}
+                        </strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Title Box */}
+                  <div className="payslip-a4-title-box">
+                    <div className="payslip-a4-main-title">
+                      {isResignation ? 'ĐƠN XIN THÔI VIỆC' : 'ĐƠN XIN NGHỈ PHÉP'}
+                    </div>
+                    <div className="payslip-a4-period-subtitle">
+                      Kính gửi: Ban Giám Đốc - Phòng Quản Lý Nhân Sự & Trưởng Đơn Vị Trực Thuộc
+                    </div>
+                  </div>
+
+                  {/* Cảnh báo rõ ràng đối với đơn đã từng duyệt nhưng sau đó bị hủy duyệt / thu hồi */}
+                  {wasHrApprovedBeforeReject && (
+                    <div
+                      style={{
+                        backgroundColor: '#fef2f2',
+                        border: '1.5px solid #f87171',
+                        borderRadius: '6px',
+                        padding: '9px 13px',
+                        marginBottom: '12px',
+                        fontSize: '11px',
+                        lineHeight: 1.45,
+                      }}
+                    >
+                      <div style={{ fontWeight: 800, color: '#dc2626', textTransform: 'uppercase', marginBottom: '2px', fontSize: '11.5px' }}>
+                        ✕ LƯU Ý: ĐƠN NÀY ĐÃ BỊ HỦY PHÊ DUYỆT & TỪ CHỐI
+                      </div>
+                      <div style={{ color: '#991b1b' }}>
+                        Đơn từng được Phòng Nhân sự phê duyệt vào ngày{' '}
+                        <strong>{formatDate(printModalRequest.hr_approved_at)}</strong>, nhưng sau đó đã bị thu hồi / hủy duyệt bởi{' '}
+                        <strong>{printModalRequest.rejected_by_name || 'Phòng Nhân sự'}</strong>
+                        {printModalRequest.rejected_at ? ` vào ngày ${formatDate(printModalRequest.rejected_at)}` : ''}.
+                      </div>
+                      {printModalRequest.rejection_reason && (
+                        <div style={{ color: '#7f1d1d', fontStyle: 'italic', marginTop: '2px' }}>
+                          Lý do hủy duyệt: {printModalRequest.rejection_reason}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Employee Info Grid */}
+                  <div className="payslip-a4-info-grid">
+                    <div>Họ và tên nhân sự: <strong>{printModalRequest.employee_name || ''}</strong></div>
+                    <div>Mã nhân viên: <strong>{printModalRequest.employee_code || (`NV-${printModalRequest.employee_id}`)}</strong></div>
+                    <div>Chức vụ / Vị trí: <strong>{printModalRequest.position_name || 'Nhân viên'}</strong></div>
+                    <div>Chi nhánh / Bộ phận: <strong>{printModalRequest.store_name || printModalRequest.department_name || 'Khối Văn phòng'}</strong></div>
+                  </div>
+
+                  {/* Leave Details Table */}
+                  <div style={{ fontWeight: 700, fontSize: '12.5px', marginBottom: '6px', color: '#1e3a8a', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                    I. Chi Tiết Nghỉ Phép & Công Việc
+                  </div>
+                  <table className="payslip-a4-table" style={{ marginBottom: '14px' }}>
+                    <tbody>
+                      <tr>
+                        <td style={{ width: '28%', fontWeight: 600, background: '#f8fafc' }}>Loại đơn / Hình thức:</td>
+                        <td style={{ width: '72%' }}>
+                          <strong style={{ color: '#1e3a8a' }}>{printModalRequest.leave_type_name || 'Nghỉ phép'}</strong>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style={{ fontWeight: 600, background: '#f8fafc' }}>
+                          {isResignation ? 'Ngày chính thức thôi việc:' : 'Thời gian nghỉ phép:'}
+                        </td>
+                        <td>
+                          {printModalRequest.start_date === printModalRequest.end_date || !printModalRequest.end_date ? (
+                            <strong>{formatDate(printModalRequest.start_date)}</strong>
+                          ) : (
+                            <span>
+                              Từ ngày <strong>{formatDate(printModalRequest.start_date)}</strong> đến hết ngày <strong>{formatDate(printModalRequest.end_date)}</strong>
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style={{ fontWeight: 600, background: '#f8fafc' }}>Tổng thời gian:</td>
+                        <td>
+                          <strong style={{ color: '#2563eb', fontSize: '13px' }}>{printModalRequest.total_days} ngày</strong>
+                          <span style={{ color: '#64748b', fontSize: '11px', marginLeft: '8px' }}>
+                            ({printModalRequest.leave_type_code === 'NGHI_KHONG_LUONG' ? 'Nghỉ không hưởng lương' : 'Nghỉ hưởng nguyên lương theo chế độ lao động'})
+                          </span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style={{ fontWeight: 600, background: '#f8fafc' }}>Lý do xin nghỉ:</td>
+                        <td>{printModalRequest.reason || 'Lý do việc cá nhân'}</td>
+                      </tr>
+                      <tr>
+                        <td style={{ fontWeight: 600, background: '#f8fafc' }}>Kế hoạch bàn giao:</td>
+                        <td style={{ fontStyle: 'italic', color: '#475569' }}>
+                          Đã hoàn tất bàn giao công việc ca kíp, tài sản và các tài liệu liên quan cho nhân sự trực cùng bộ phận trước khi nghỉ.
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style={{ fontWeight: 600, background: '#f8fafc' }}>Tài liệu minh chứng:</td>
+                        <td>
+                          {printModalRequest.attachment_url ? (
+                            <span style={{ color: '#059669', fontWeight: 600 }}>
+                              ✓ Đã đính kèm hồ sơ / chứng từ minh chứng hợp lệ trên hệ thống
+                            </span>
+                          ) : (
+                            <span style={{ color: '#64748b', fontStyle: 'italic' }}>
+                              Không đính kèm minh chứng
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+
+                  {/* Section II: Approval history / Steps - Nếu không có thì để trống hoàn toàn để in ra ghi thuận tiện */}
+                  <div style={{ fontWeight: 700, fontSize: '12.5px', marginBottom: '6px', color: '#1e3a8a', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                    II. Tiến Trình Xem Xét & Ý Kiến Phê Duyệt Của Cấp Có Thẩm Quyền
+                  </div>
+                  <table className="payslip-a4-table" style={{ marginBottom: '14px' }}>
+                    <thead>
+                      <tr>
+                        <th style={{ width: '26%' }}>Cấp phê duyệt</th>
+                        <th style={{ width: '24%' }}>Người thực hiện</th>
+                        <th style={{ width: '20%' }}>Thời gian</th>
+                        <th style={{ width: '30%' }}>Ý kiến phê duyệt</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr style={{ height: '36px' }}>
+                        <td style={{ fontWeight: 600 }}>Cấp 1: CHT / Quản lý trực tiếp</td>
+                        <td>
+                          {isStoreApproved ? (printModalRequest.store_manager_name || '') : ''}
+                        </td>
+                        <td>
+                          {isStoreApproved && printModalRequest.store_approved_at ? formatDate(printModalRequest.store_approved_at) : ''}
+                        </td>
+                        <td style={{ fontSize: '11px' }}>
+                          {isStoreApproved
+                            ? (printModalRequest.store_manager_note || 'Đã kiểm tra và duyệt sơ bộ')
+                            : ''}
+                        </td>
+                      </tr>
+                      <tr style={{ height: '36px' }}>
+                        <td style={{ fontWeight: 600 }}>Cấp 2: Phòng Nhân sự / BGĐ</td>
+                        <td>
+                          {wasHrApprovedBeforeReject
+                            ? (printModalRequest.rejected_by_name || printModalRequest.hr_approver_name || 'Phòng Nhân sự')
+                            : isRejected
+                              ? (printModalRequest.rejected_by_name || 'Phòng Nhân sự')
+                              : isHrApproved
+                                ? (printModalRequest.hr_approver_name || 'Phòng Nhân sự')
+                                : ''}
+                        </td>
+                        <td>
+                          {wasHrApprovedBeforeReject
+                            ? (printModalRequest.rejected_at ? formatDate(printModalRequest.rejected_at) : (printModalRequest.updated_at ? formatDate(printModalRequest.updated_at) : ''))
+                            : isRejected
+                              ? (printModalRequest.rejected_at ? formatDate(printModalRequest.rejected_at) : '')
+                              : isHrApproved
+                                ? (printModalRequest.hr_approved_at ? formatDate(printModalRequest.hr_approved_at) : '')
+                                : ''}
+                        </td>
+                        <td style={{ fontSize: '11px' }}>
+                          {wasHrApprovedBeforeReject ? (
+                            <span style={{ color: '#dc2626', fontWeight: 600 }}>
+                              ĐÃ HỦY DUYỆT: {printModalRequest.rejection_reason || 'Thu hồi phê duyệt'}{printModalRequest.hr_approved_at ? ` (Từng duyệt ngày ${formatDate(printModalRequest.hr_approved_at)})` : ''}
+                            </span>
+                          ) : isRejected ? (
+                            <span style={{ color: '#dc2626', fontWeight: 600 }}>
+                              TỪ CHỐI: {printModalRequest.rejection_reason || 'Không chấp thuận'}
+                            </span>
+                          ) : isHrApproved ? (
+                            'Đã đối soát ngày công, số dư phép và phê duyệt chính thức'
+                          ) : (
+                            ''
+                          )}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+
+                  {/* Signatures Section: 3 Columns with Blank Space Above Names for Real Signatures */}
+                  <div className="leave-a4-signatures">
+                    {/* Signature 1: Employee */}
+                    <div>
+                      <div className="payslip-a4-sign-title">NGƯỜI LÀM ĐƠN</div>
+                      <div className="payslip-a4-sign-note">(Ký, ghi rõ họ tên)</div>
+                      <div style={{ height: '55px' }}></div>
+                      <div style={{ fontWeight: 700, fontSize: '12px', color: '#0f172a' }}>
+                        {printModalRequest.employee_name || ''}
+                      </div>
+                      {printModalRequest.created_at && (
+                        <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>
+                          Ngày: {formatDate(printModalRequest.created_at)}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Signature 2: Store Manager / Direct Manager */}
+                    <div>
+                      <div className="payslip-a4-sign-title">CỬA HÀNG TRƯỞNG / QLTT</div>
+                      <div className="payslip-a4-sign-note">(Ký, ghi rõ họ tên)</div>
+                      <div style={{ height: '55px' }}></div>
+                      <div style={{ fontWeight: 700, fontSize: '12px', color: '#0f172a' }}>
+                        {isStoreApproved ? (printModalRequest.store_manager_name || '') : ''}
+                      </div>
+                      {isStoreApproved && printModalRequest.store_approved_at && (
+                        <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>
+                          Ngày: {formatDate(printModalRequest.store_approved_at)}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Signature 3: HR / Director */}
+                    <div>
+                      <div className="payslip-a4-sign-title">PHÒNG NHÂN SỰ / BAN GIÁM ĐỐC</div>
+                      <div className="payslip-a4-sign-note">(Ký, ghi rõ họ tên & đóng dấu)</div>
+                      {wasHrApprovedBeforeReject ? (
+                        <div style={{ height: '55px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                          <div style={{
+                            color: '#dc2626',
+                            fontWeight: 800,
+                            fontSize: '11px',
+                            textTransform: 'uppercase',
+                            border: '1.5px solid #dc2626',
+                            padding: '2px 8px',
+                            borderRadius: '4px',
+                            background: '#fef2f2'
+                          }}>
+                            ĐÃ HỦY DUYỆT
+                          </div>
+                          <div style={{ fontSize: '10px', color: '#b91c1c', marginTop: '3px' }}>
+                            {printModalRequest.rejected_by_name ? `Người hủy: ${printModalRequest.rejected_by_name}` : ''}
+                          </div>
+                        </div>
+                      ) : isRejected ? (
+                        <div style={{ height: '55px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                          <div style={{
+                            color: '#dc2626',
+                            fontWeight: 800,
+                            fontSize: '11px',
+                            textTransform: 'uppercase',
+                            border: '1.5px solid #dc2626',
+                            padding: '2px 8px',
+                            borderRadius: '4px',
+                            background: '#fef2f2'
+                          }}>
+                            TỪ CHỐI
+                          </div>
+                          <div style={{ fontSize: '10px', color: '#b91c1c', marginTop: '3px' }}>
+                            {printModalRequest.rejected_by_name ? `Người từ chối: ${printModalRequest.rejected_by_name}` : ''}
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ height: '55px' }}></div>
+                      )}
+                      <div style={{ fontWeight: 700, fontSize: '12px', color: '#0f172a' }}>
+                        {wasHrApprovedBeforeReject ? (
+                          <span style={{ color: '#dc2626', fontStyle: 'italic', fontSize: '11px' }}>
+                            (Đã hủy phê duyệt)
+                          </span>
+                        ) : isHrApproved ? (
+                          printModalRequest.hr_approver_name || 'Trưởng phòng Nhân sự'
+                        ) : (
+                          ''
+                        )}
+                      </div>
+                      {isHrApproved && printModalRequest.hr_approved_at && (
+                        <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>
+                          Ngày: {formatDate(printModalRequest.hr_approved_at)}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Footer notes */}
+                  <div style={{ marginTop: '22px', paddingTop: '10px', borderTop: '1px dashed #cbd5e1', fontSize: '10.5px', color: '#64748b', display: 'flex', justifyContent: 'space-between' }}>
+                    <div>Văn bản điện tử được trích xuất từ Hệ thống Quản trị Nhân sự TechZone HRM</div>
+                    <div>Thời gian in: {new Date().toLocaleString('vi-VN')}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal Footer (Hidden on print) */}
+              <div className="modal-footer no-print" style={{ padding: '14px 20px', background: 'var(--surface-card)', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                <button className="btn btn-secondary" onClick={() => setPrintModalRequest(null)}>
+                  Đóng
+                </button>
+                <button className="btn btn-primary" onClick={() => window.print()}>
+                  {Icons.printer}
+                  In đơn nghỉ phép (PDF)
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }

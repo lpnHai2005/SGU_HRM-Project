@@ -46,10 +46,12 @@ class ApiClient {
     this.baseUrl = baseUrl;
   }
 
-  private getHeaders(): HeadersInit {
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-    };
+  private getHeaders(isFormData: boolean = false): HeadersInit {
+    const headers: Record<string, string> = {};
+
+    if (!isFormData) {
+      headers['Content-Type'] = 'application/json';
+    }
 
     const token = tokenService.get();
     if (token) {
@@ -76,11 +78,12 @@ class ApiClient {
   async request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
     const { params, ...fetchOptions } = options;
     const url = this.buildUrl(endpoint, params);
+    const isFormData = fetchOptions.body instanceof FormData;
 
     const config: RequestInit = {
       ...fetchOptions,
       headers: {
-        ...this.getHeaders(),
+        ...this.getHeaders(isFormData),
         ...fetchOptions.headers,
       },
     };
@@ -133,6 +136,13 @@ class ApiClient {
 
   delete<T>(endpoint: string): Promise<T> {
     return this.request<T>(endpoint, { method: 'DELETE' });
+  }
+
+  upload<T>(endpoint: string, formData: FormData): Promise<T> {
+    return this.request<T>(endpoint, {
+      method: 'POST',
+      body: formData,
+    });
   }
 }
 
@@ -439,6 +449,12 @@ export const leaveApi = {
 
   cancel: async (requestId: number): Promise<{ message: string }> => {
     return api.post(`/leaves/${requestId}/cancel`);
+  },
+
+  uploadProof: async (file: File): Promise<{ proof_url: string; filename: string; size_bytes: number; content_type: string }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.upload('/leaves/upload-proof', formData);
   },
 };
 
