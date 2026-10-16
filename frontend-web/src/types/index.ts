@@ -460,6 +460,7 @@ export interface LeaveRequest {
 }
 
 export interface LeaveRequestCreate {
+  employee_id?: number | null;
   leave_type_id: number;
   start_date: string;
   end_date: string;

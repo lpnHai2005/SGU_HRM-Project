@@ -1135,7 +1135,7 @@ export default function RequestsScreen() {
               bg: p.card,
               step: 'Đang xử lý',
             };
-            const canCancel = item.status === 'PENDING' || item.status === 'STORE_APPROVED';
+            const canCancel = item.status === 'PENDING';
 
             return (
               <Card key={item.request_id}>
@@ -2253,22 +2253,24 @@ export default function RequestsScreen() {
                             disabled={actionBusy}
                           />
                         </View>
-                        <View style={{ flex: 1 }}>
-                          <Button
-                            title="Từ chối"
-                            secondary
-                            onPress={() => {
-                              setSelectedRequest(detailItem);
-                              setRejectionReasonInput('');
-                              setModalMode('reject');
-                            }}
-                            disabled={actionBusy}
-                          />
-                        </View>
+                        {!((detailItem.end_date || detailItem.start_date) && (detailItem.end_date || detailItem.start_date) < new Date().toISOString().slice(0, 10)) && (
+                          <View style={{ flex: 1 }}>
+                            <Button
+                              title="Từ chối"
+                              secondary
+                              onPress={() => {
+                                setSelectedRequest(detailItem);
+                                setRejectionReasonInput('');
+                                setModalMode('reject');
+                              }}
+                              disabled={actionBusy}
+                            />
+                          </View>
+                        )}
                       </View>
                     )}
 
-                    {(detailItem.status === 'PENDING' || detailItem.status === 'STORE_APPROVED') && detailItem.employee_id === profile?.employee_id ? (
+                    {detailItem.status === 'PENDING' && detailItem.employee_id === profile?.employee_id ? (
                       <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
                         {/* Nút hủy đơn: màu đỏ, nhỏ gọn hơn, nằm bên trái */}
                         <Pressable

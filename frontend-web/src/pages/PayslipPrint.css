@@ -15,6 +15,14 @@
   .payslip-a4-info-grid, .payslip-columns { grid-template-columns: 1fr; }
   .payslip-a4-signatures { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
 }
+.leave-a4-signatures {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  text-align: center;
+  margin-top: 20px;
+  gap: 16px;
+  font-size: 11px;
+}
 @media print {
   *, *::before, *::after {
     -webkit-print-color-adjust: exact !important;
@@ -36,5 +44,7 @@
   .payslip-a4-table { font-size: 11px !important; font-family: 'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif !important; margin-bottom: 8px !important; }
   .payslip-a4-table td:last-child { font-family: 'JetBrains Mono', 'SF Mono', Consolas, Menlo, monospace !important; font-variant-numeric: tabular-nums !important; }
   .payslip-a4-signatures { display: grid !important; grid-template-columns: repeat(4, 1fr) !important; gap: 8px !important; margin-top: 10px !important; break-inside: avoid !important; }
+  .leave-a4-signatures { display: grid !important; grid-template-columns: repeat(3, 1fr) !important; gap: 14px !important; margin-top: 20px !important; break-inside: avoid !important; }
   .payslip-a4-sign-space { height: 38px !important; }
 }
+

@@ -1,9 +1,16 @@
-from typing import Optional, List, Dict, Any
+import io
+import time
+import hashlib
+from uuid import uuid4
+from typing import Optional, List, Dict, Any, Tuple
 from datetime import date, datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException, Query, status, Request
+import httpx
+from PIL import Image
+from fastapi import APIRouter, Depends, HTTPException, Query, status, Request, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from app.core.database import get_db
+from app.core.config import settings
 from app.api.deps import get_current_user, require_roles, log_audit
 from app.schemas.schemas import (
     LeaveTypeOut, LeaveRequestCreate, LeaveApproveRequest, LeaveRejectRequest,
@@ -416,6 +423,102 @@ async def get_leave_detail(
     return row
 
 
+def compress_image_if_needed(data: bytes, max_bytes: int = 1024 * 1024) -> Tuple[bytes, Optional[str]]:
+    """
+    Tự động nén ảnh (JPEG/PNG/WEBP) nếu dung lượng vượt quá max_bytes (1MB).
+    Trả về (dữ_liệu_sau_xử_lý, mime_type)
+    """
+    if len(data) <= max_bytes:
+        return data, None
+    try:
+        img = Image.open(io.BytesIO(data))
+        format_to_save = "JPEG"
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+        quality = 85
+        output = io.BytesIO()
+        img.save(output, format=format_to_save, quality=quality, optimize=True)
+        while output.tell() > max_bytes and quality > 20:
+            quality -= 15
+            w, h = img.size
+            if output.tell() > max_bytes * 1.4:
+                img = img.resize((max(1, int(w * 0.8)), max(1, int(h * 0.8))), Image.Resampling.LANCZOS)
+            output = io.BytesIO()
+            img.save(output, format=format_to_save, quality=quality, optimize=True)
+        return output.getvalue(), "image/jpeg"
+    except Exception:
+        # Nếu không phải định dạng ảnh xử lý được bởi Pillow (ví dụ file PDF, text), trả về nguyên bản
+        return data, None
+
+
+@router.post("/upload-proof", summary="Tải lên tệp minh chứng nghỉ phép lên Cloudinary (Nén <= 1MB)")
+async def upload_leave_proof(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Tải lên tệp minh chứng xin nghỉ phép:
+    - Hỗ trợ định dạng hình ảnh (JPG, PNG, WEBP) và tài liệu văn bản (PDF).
+    - Tự động nén ảnh vượt quá 1MB xuống dưới ngưỡng 1MB theo yêu cầu hệ thống.
+    - Tài liệu văn bản (PDF) được kiểm tra dung lượng tối đa 1MB.
+    - Tải trực tiếp lên Cloudinary và trả về đường dẫn an toàn (secure_url).
+    """
+    if not all([settings.CLOUDINARY_CLOUD_NAME, settings.CLOUDINARY_API_KEY, settings.CLOUDINARY_API_SECRET]):
+        raise HTTPException(
+            status_code=503,
+            detail="Dịch vụ lưu trữ tệp Cloudinary chưa được cấu hình. Vui lòng liên hệ quản trị viên."
+        )
+
+    # Đọc dữ liệu tệp (giới hạn an toàn 10MB trước khi xử lý để chống cạn kiệt RAM)
+    raw_data = await file.read(10 * 1024 * 1024 + 1)
+    if len(raw_data) > 10 * 1024 * 1024:
+        raise HTTPException(
+            status_code=400,
+            detail="Dung lượng tệp ban đầu quá lớn (vượt quá 10MB). Vui lòng chọn tệp nhỏ hơn."
+        )
+
+    # Tự động nén ảnh nếu vượt quá 1MB
+    data, compressed_mime = compress_image_if_needed(raw_data, max_bytes=1024 * 1024)
+    if len(data) > 1024 * 1024:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Tệp '{file.filename}' có dung lượng ({round(len(data) / (1024 * 1024), 2)}MB) vượt quá quy định 1MB sau khi nén."
+        )
+
+    content_type = compressed_mime or file.content_type or "application/octet-stream"
+    original_filename = file.filename or "attachment"
+    timestamp = int(time.time())
+    nonce = str(uuid4())[:12]
+    user_id = current_user.get("user_id") or "common"
+    public_id = f"techzone-leaves/{user_id}/{nonce}"
+    signature = hashlib.sha1(f"public_id={public_id}&timestamp={timestamp}{settings.CLOUDINARY_API_SECRET}".encode()).hexdigest()
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            res = await client.post(
+                f"https://api.cloudinary.com/v1_1/{settings.CLOUDINARY_CLOUD_NAME}/auto/upload",
+                data={
+                    "api_key": settings.CLOUDINARY_API_KEY,
+                    "timestamp": str(timestamp),
+                    "public_id": public_id,
+                    "signature": signature
+                },
+                files={"file": (original_filename, data, content_type)}
+            )
+            res.raise_for_status()
+            res_data = res.json()
+            url = res_data.get("secure_url") or res_data.get("url")
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Không thể tải tệp lên Cloudinary: {str(exc)}")
+
+    return {
+        "proof_url": url,
+        "filename": original_filename,
+        "size_bytes": len(data),
+        "content_type": content_type
+    }
+
+
 # ===================================================================================
 # 4. TẠO ĐƠN & QUY TRÌNH PHÊ DUYỆT 2 CẤP (WORKFLOW & RUBRIC III.3.2.2 & III.3.1.3)
 # ===================================================================================
@@ -428,16 +531,63 @@ async def create_leave_request(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Nhân viên nộp đơn xin nghỉ phép trực tuyến:
-    1. Kiểm tra ngày bắt đầu không sau ngày kết thúc.
-    2. Kiểm tra số ngày nghỉ > 0.
-    3. Kiểm tra số dư phép năm còn lại (nếu nghỉ phép năm).
+    Nhân viên nộp đơn xin nghỉ phép trực tuyến hoặc cấp quản lý (Store Manager, HR, Admin) tạo đơn hộ:
+    1. Xác định nhân viên được tạo đơn (chính chủ hoặc tạo hộ).
+    2. Kiểm tra tính hợp lệ của ngày tháng và số ngày nghỉ > 0.
+    3. Kiểm tra số dư phép năm còn lại hoặc hạn mức tối đa của loại phép.
     4. Kiểm tra không bị trùng lặp thời gian với các đơn đã nộp.
-    5. Đơn tự động khởi tạo ở trạng thái 'PENDING' chờ Cửa hàng trưởng duyệt Cấp 1.
+    5. Đơn tự động khởi tạo ở trạng thái 'PENDING'.
     """
-    emp_id = current_user.get("employee_id")
-    if not emp_id:
-        raise HTTPException(status_code=400, detail="Tài khoản chưa liên kết hồ sơ nhân viên trong hệ thống.")
+    roles = current_user.get("roles", [])
+    user_emp_id = current_user.get("employee_id")
+    user_store_id = current_user.get("store_id")
+
+    # Xác định nhân viên được nộp đơn:
+    # Nếu chỉ định req.employee_id khác với user_emp_id -> cần quyền CHT, HR hoặc ADMIN
+    target_emp_id = req.employee_id if req.employee_id is not None else user_emp_id
+    if not target_emp_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Vui lòng chỉ định nhân viên cần tạo đơn nghỉ phép hoặc liên kết tài khoản với hồ sơ nhân viên."
+        )
+
+    # Lấy thông tin nhân viên được tạo đơn
+    emp_query = text("""
+        SELECT e.employee_id, e.full_name, e.store_id, e.employment_status, s.store_name
+        FROM employees e
+        LEFT JOIN stores s ON e.store_id = s.store_id
+        WHERE e.employee_id = :id
+    """)
+    emp_res = await db.execute(emp_query, {"id": target_emp_id})
+    target_emp = emp_res.mappings().first()
+    if not target_emp:
+        raise HTTPException(status_code=404, detail="Không tìm thấy nhân viên được chọn trong hệ thống.")
+
+    # Phân quyền khi tạo đơn thay cho nhân viên khác
+    if user_emp_id is None or target_emp_id != user_emp_id:
+        is_admin = "ADMIN" in roles
+        is_hr = "HR_MANAGER" in roles
+        is_store_mgr = "STORE_MANAGER" in roles
+
+        if not (is_admin or is_hr or is_store_mgr):
+            raise HTTPException(
+                status_code=403,
+                detail="Bạn không có quyền tạo đơn nghỉ phép thay cho nhân viên khác."
+            )
+
+        # Cửa hàng trưởng chỉ được tạo đơn cho nhân viên thuộc chi nhánh mình
+        if is_store_mgr and not (is_admin or is_hr):
+            if target_emp["store_id"] != user_store_id:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Cửa hàng trưởng chỉ có thể tạo đơn cho nhân viên thuộc chi nhánh của mình."
+                )
+
+    if target_emp.get("employment_status") in ["RESIGNED", "TERMINATED"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Nhân viên {target_emp['full_name']} đã nghỉ việc, không thể tạo đơn nghỉ phép."
+        )
 
     # 1. Kiểm tra tính hợp lệ của ngày tháng
     if req.start_date > req.end_date:
@@ -457,11 +607,12 @@ async def create_leave_request(
 
     # 3. Kiểm tra hạn mức số ngày nghỉ tối đa theo loại đơn
     if leave_type["type_code"] == "PHEP_NAM":
-        balance = await get_employee_leave_balance(emp_id, current_user, db)
+        balance = await get_employee_leave_balance(target_emp_id, current_user, db)
         if req.total_days > balance.annual_leave_remaining:
+            who = f"của nhân viên {target_emp['full_name']}" if (target_emp_id != user_emp_id) else "của bạn"
             raise HTTPException(
                 status_code=400,
-                detail=f"Số ngày phép yêu cầu ({req.total_days} ngày) vượt quá số dư phép năm còn lại ({balance.annual_leave_remaining} ngày). Vui lòng điều chỉnh hoặc chọn loại nghỉ không lương."
+                detail=f"Số ngày phép yêu cầu ({req.total_days} ngày) vượt quá số dư phép năm còn lại {who} ({balance.annual_leave_remaining} ngày). Vui lòng điều chỉnh hoặc chọn loại nghỉ không lương."
             )
     else:
         max_days = leave_type.get("max_days_allowed")
@@ -480,15 +631,16 @@ async def create_leave_request(
           AND start_date <= :end_date AND end_date >= :start_date
         LIMIT 1
     """), {
-        "emp_id": emp_id,
+        "emp_id": target_emp_id,
         "start_date": req.start_date,
         "end_date": req.end_date
     })
     overlap = overlap_res.mappings().first()
     if overlap:
+        who = f"Nhân viên {target_emp['full_name']}" if (target_emp_id != user_emp_id) else "Bạn"
         raise HTTPException(
             status_code=400,
-            detail=f"Bạn đã có đơn nghỉ phép (Mã #{overlap['request_id']}) trong khoảng thời gian {overlap['start_date']} đến {overlap['end_date']} đang chờ duyệt hoặc đã được phê duyệt."
+            detail=f"{who} đã có đơn nghỉ phép (Mã #{overlap['request_id']}) trong khoảng thời gian {overlap['start_date']} đến {overlap['end_date']} đang chờ duyệt hoặc đã được phê duyệt."
         )
 
     # 5. Lưu đơn vào CSDL
@@ -500,7 +652,7 @@ async def create_leave_request(
         ) RETURNING request_id;
     """)
     res = await db.execute(insert_query, {
-        "employee_id": emp_id,
+        "employee_id": target_emp_id,
         "leave_type_id": req.leave_type_id,
         "start_date": req.start_date,
         "end_date": req.end_date,
@@ -520,7 +672,10 @@ async def create_leave_request(
         entity_name="leave_requests",
         entity_id=str(req_id),
         new_values={
-            "employee_id": emp_id,
+            "employee_id": target_emp_id,
+            "employee_name": target_emp.get("full_name"),
+            "created_by_user_id": current_user.get("user_id"),
+            "created_on_behalf": target_emp_id != user_emp_id,
             "leave_type": leave_type["type_name"],
             "start_date": str(req.start_date),
             "end_date": str(req.end_date),
@@ -530,12 +685,15 @@ async def create_leave_request(
         ip_address=client_ip
     )
 
-    is_cht = "STORE_MANAGER" in current_user.get("roles", [])
-    msg = f"Nộp đơn {leave_type['type_name']} thành công!"
-    if is_cht:
-        msg += " Đơn của Cửa hàng trưởng được chuyển trực tiếp cho Phòng Nhân sự phê duyệt."
+    if target_emp_id != user_emp_id:
+        msg = f"Đã tạo đơn {leave_type['type_name']} thành công cho nhân viên {target_emp['full_name']}!"
     else:
-        msg += " Đơn đang chờ Cửa hàng trưởng phê duyệt."
+        is_cht = "STORE_MANAGER" in roles
+        msg = f"Nộp đơn {leave_type['type_name']} thành công!"
+        if is_cht:
+            msg += " Đơn của Cửa hàng trưởng được chuyển trực tiếp cho Phòng Nhân sự phê duyệt."
+        else:
+            msg += " Đơn đang chờ Cửa hàng trưởng phê duyệt."
 
     return {
         "message": msg,
@@ -825,6 +983,7 @@ async def reject_leave(
     # Lấy thông tin đơn
     req_res = await db.execute(text("""
         SELECT lr.request_id, lr.employee_id, lr.status, lr.leave_type_id,
+               lr.start_date, lr.end_date,
                e.store_id, e.full_name as employee_name, lt.type_code
         FROM leave_requests lr
         JOIN employees e ON lr.employee_id = e.employee_id
@@ -838,6 +997,14 @@ async def reject_leave(
 
     if leave_req["status"] == "REJECTED":
         raise HTTPException(status_code=400, detail="Đơn này hiện tại đã ở trạng thái từ chối.")
+
+    # Không cho phép hủy duyệt hoặc từ chối nếu thời gian xin nghỉ phép đã qua
+    leave_end = leave_req.get("end_date") or leave_req.get("start_date")
+    if leave_end and str(leave_end) < str(date.today()):
+        raise HTTPException(
+            status_code=400,
+            detail="Thời gian xin nghỉ phép đã qua, cấp trên không thể hủy duyệt hoặc từ chối đơn này nữa."
+        )
 
     # Kiểm tra quyền từ chối:
     # 1. Cửa hàng trưởng chỉ được từ chối nhân viên chi nhánh mình
@@ -947,10 +1114,10 @@ async def cancel_leave_request(
     if "ADMIN" not in roles and "HR_MANAGER" not in roles:
         if leave_req["employee_id"] != user_emp_id:
             raise HTTPException(status_code=403, detail="Bạn chỉ có thể hủy đơn nghỉ phép của chính mình.")
-        if leave_req["status"] not in ("PENDING", "STORE_APPROVED"):
+        if leave_req["status"] != "PENDING":
             raise HTTPException(
                 status_code=400,
-                detail=f"Không thể tự hủy đơn ở trạng thái '{leave_req['status']}'. Vui lòng liên hệ Phòng Nhân sự để được hỗ trợ."
+                detail="Đơn nghỉ phép đã được phê duyệt ở ít nhất một cấp, nhân viên không thể tự ý hủy đơn giữa chừng. Vui lòng liên hệ cấp trên hoặc Phòng Nhân sự để được hỗ trợ."
             )
 
     await db.execute(text("""

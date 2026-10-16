@@ -465,6 +465,7 @@ class LeaveBalanceOut(BaseModel):
 
 
 class LeaveRequestCreate(BaseModel):
+    employee_id: Optional[int] = None
     leave_type_id: int
     start_date: date
     end_date: date
