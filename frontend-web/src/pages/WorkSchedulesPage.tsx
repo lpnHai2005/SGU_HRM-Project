@@ -115,7 +115,7 @@ export function WorkSchedulesPage({ user }: { user: any }) {
         setEmployees(employeeData)
       })
       .catch((err: unknown) => {
-        if (active) setError(err instanceof Error ? err.message : 'Không tải được danh mục lịch làm việc.')
+        if (active) setError(`Không tải được danh mục lịch (GET /employees/metadata/lookups hoặc /employees): ${err instanceof Error ? err.message : 'Lỗi không xác định.'}`)
       })
     return () => { active = false }
   }, [])
@@ -154,7 +154,7 @@ export function WorkSchedulesPage({ user }: { user: any }) {
         }
       })
       .catch((err: unknown) => {
-        if (active) setError(err instanceof Error ? err.message : 'Không tải được lịch làm việc.')
+        if (active) setError(`Không tải được lịch làm việc (GET /work-schedules): ${err instanceof Error ? err.message : 'Lỗi không xác định.'}`)
       })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }

@@ -11,6 +11,59 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 const TOKEN_KEY = 'hrm_token';
 const USER_KEY = 'hrm_user';
 
+const friendlyApiMessages: Record<string, string> = {
+  SCHEDULE_CONFLICT: 'Nhân viên đã có ca làm việc trùng thời gian. Hãy chọn ca khác hoặc điều chỉnh lịch đang xung đột.',
+  SCHEDULE_AMBIGUOUS: 'Có nhiều lịch phù hợp với thao tác này. Hãy chọn đúng ca được phân công rồi thử lại.',
+  SCHEDULE_REFERENCED: 'Lịch này đã được dùng để chấm công nên không thể sửa trực tiếp. Hãy dùng quy trình điều chỉnh lịch có ghi nhận.',
+  STORE_INACTIVE: 'Cửa hàng đang ngừng hoạt động nên không thể thực hiện thao tác này.',
+  EMPLOYEE_NOT_ELIGIBLE: 'Nhân viên hiện không đủ điều kiện được phân ca. Hãy kiểm tra trạng thái làm việc của nhân viên.',
+  STORE_HAS_OPEN_ATTENDANCE: 'Cửa hàng còn phiên chấm công chưa kết thúc. Hãy hoàn tất các phiên trước rồi thử lại.',
+  STORE_MANAGER_REQUIRED: 'Cần phân công cửa hàng trưởng trước khi kích hoạt cửa hàng.',
+  STORE_MANAGER_INVALID: 'Cửa hàng trưởng hiện không còn đủ điều kiện phụ trách. Hãy chọn người phụ trách khác.',
+  STORE_MANAGER_ALREADY_ASSIGNED: 'Cửa hàng trưởng đang phụ trách một chi nhánh khác. Hãy xử lý phân công hiện tại trước.',
+  STORE_GEOFENCE_REQUIRED: 'Cửa hàng chưa có tọa độ và bán kính GPS hợp lệ. Hãy cập nhật vùng chấm công trước.',
+  STORE_MUST_BE_INACTIVE: 'Hãy ngừng hoạt động cửa hàng trước khi xóa.',
+  STORE_CONFIRMATION_MISMATCH: 'Mã xác nhận chưa khớp với mã cửa hàng.',
+  STORE_HAS_LINKED_RECORDS: 'Cửa hàng còn dữ liệu liên quan nên không thể xóa. Hãy giữ cửa hàng ở trạng thái ngừng hoạt động.',
+  STORE_DELETE_CONSTRAINT: 'Cửa hàng còn dữ liệu nghiệp vụ liên kết nên chưa thể xóa an toàn.',
+  STORE_HANDOFF_CONFIRMATION_REQUIRED: 'Cần xác nhận phương án bàn giao nhân sự và lịch còn hiệu lực trước khi ngừng cửa hàng.',
+  PROOF_IMAGE_PROVIDER_ERROR: 'Nhà cung cấp ảnh chưa xử lý được minh chứng. Kiểm tra lại ảnh hoặc báo quản trị viên kèm mã HTTP hiển thị.',
+};
+
+export function formatApiError(detail: unknown, status?: number): string {
+  let value = detail;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      try { value = JSON.parse(trimmed); } catch { /* keep the original message */ }
+    }
+  }
+  if (value && typeof value === 'object') {
+    const payload = value as Record<string, unknown>;
+    const code = typeof payload.code === 'string' ? payload.code : '';
+    if (code && friendlyApiMessages[code]) {
+      if (code === 'PROOF_IMAGE_PROVIDER_ERROR' && payload.provider_status === 400) {
+        return 'Dịch vụ ảnh từ chối xử lý minh chứng (HTTP 400). Quản trị viên cần kiểm tra quyền truy cập và cấu hình biến đổi ảnh Cloudinary; bạn không cần chấm công lại.';
+      }
+      const upstreamStatus = typeof payload.provider_status === 'number' ? ` (HTTP ${payload.provider_status})` : '';
+      return friendlyApiMessages[code] + upstreamStatus;
+    }
+    if (typeof payload.message === 'string' && payload.message.trim()) return formatApiError(payload.message, status);
+    if (code === 'SCHEDULE_CONFLICT') return friendlyApiMessages.SCHEDULE_CONFLICT;
+    return status ? `Không thể hoàn tất yêu cầu (HTTP ${status}). Vui lòng kiểm tra dữ liệu và thử lại.` : 'Không thể hoàn tất yêu cầu. Vui lòng kiểm tra dữ liệu và thử lại.';
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const raw = value.trim();
+    const prefix = raw.match(/^([A-Z][A-Z0-9_]+):\s*(.*)$/);
+    if (prefix) {
+      if (friendlyApiMessages[prefix[1]]) return friendlyApiMessages[prefix[1]];
+      return prefix[2] || (status ? `Yêu cầu chưa thể thực hiện (HTTP ${status}).` : 'Yêu cầu chưa thể thực hiện.');
+    }
+    return raw;
+  }
+  return status ? `Yêu cầu thất bại (HTTP ${status}). Vui lòng thử lại.` : 'Yêu cầu thất bại. Vui lòng thử lại.';
+}
+
 export const tokenService = {
   get: () => localStorage.getItem(TOKEN_KEY),
   set: (token: string) => localStorage.setItem(TOKEN_KEY, token),
@@ -106,14 +159,13 @@ class ApiClient {
         }
         // No token in storage → treat as a regular API error (e.g. bad API key).
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || 'Yêu cầu không được xác thực (401)');
+        throw new Error(formatApiError(errorData.detail, response.status));
       }
 
       // Handle other errors
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        const detail = typeof errorData.detail === 'string' ? errorData.detail : errorData.detail?.message || JSON.stringify(errorData.detail || {});
-        throw new Error(detail || `Yêu cầu thất bại (${response.status})`);
+        throw new Error(formatApiError(errorData.detail, response.status));
       }
 
       // Handle empty responses
@@ -130,6 +182,25 @@ class ApiClient {
   // HTTP Methods
   get<T>(endpoint: string, params?: Record<string, any>): Promise<T> {
     return this.request<T>(endpoint, { method: 'GET', params });
+  }
+
+  async getBlob(endpoint: string, params?: Record<string, any>): Promise<Blob> {
+    const response = await fetch(this.buildUrl(endpoint, params), {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    if (response.status === 401) {
+      if (tokenService.get()) {
+        clearAuth();
+        window.location.href = '/login';
+      }
+      throw new Error('Không có quyền tải minh chứng hoặc phiên đăng nhập đã hết hạn.');
+    }
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(formatApiError(errorData.detail, response.status));
+    }
+    return response.blob();
   }
 
   post<T>(endpoint: string, data?: any): Promise<T> {

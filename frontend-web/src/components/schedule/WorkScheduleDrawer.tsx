@@ -328,18 +328,7 @@ export function WorkScheduleDrawer({
         onClose()
       }
     } catch (err: any) {
-      const detail = err.response?.data?.detail
-      if (typeof detail === 'string') {
-        setError(detail)
-      } else if (detail && typeof detail === 'object') {
-        if (detail.code === 'SCHEDULE_CONFLICT') {
-          setError('Phát hiện trùng lịch làm việc với ca đã được phân công trước đó.')
-        } else {
-          setError(JSON.stringify(detail))
-        }
-      } else {
-        setError(err.message || 'Không thể lưu phân ca làm việc.')
-      }
+      setError(err instanceof Error ? err.message : 'Không thể lưu phân ca làm việc. Vui lòng kiểm tra lịch và thử lại.')
     } finally {
       setSaving(false)
     }
