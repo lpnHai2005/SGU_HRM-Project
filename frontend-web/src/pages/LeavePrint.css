@@ -1,0 +1,348 @@
+/* ===============================================================================
+ * LEAVE REQUEST A4 PRINT & PREVIEW STYLES (VIETNAMESE OFFICIAL ADMINISTRATIVE FORMAT)
+ * Chuẩn thể thức văn bản hành chính Việt Nam (Nghị định 30/2020/NĐ-CP)
+ * Tối ưu vừa vặn trong DUY NHẤT 1 TRANG A4 khi in (Ctrl+P / In PDF)
+ * =============================================================================== */
+
+.leave-a4-container {
+  font-family: 'Times New Roman', Times, 'Liberation Serif', Georgia, serif;
+  color: #111827;
+  background: #ffffff;
+  padding: 24px 32px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  border-radius: 4px;
+  line-height: 1.4;
+  font-size: 12px;
+  max-width: 820px;
+  margin: 0 auto;
+}
+
+/* Header 2 cột Quốc hiệu - Tên cơ quan */
+.leave-a4-national-header {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 10px;
+  align-items: start;
+}
+
+.leave-hdr-org {
+  text-align: center;
+}
+
+.leave-org-name {
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  color: #0f172a;
+  line-height: 1.3;
+}
+
+.leave-org-sub {
+  font-size: 10px;
+  font-weight: 600;
+  color: #334155;
+  margin-top: 2px;
+  text-transform: uppercase;
+}
+
+.leave-doc-number {
+  font-size: 11px;
+  color: #1e3a8a;
+  margin-top: 3px;
+  font-weight: 600;
+  font-family: 'Times New Roman', Times, serif;
+}
+
+.leave-hdr-motto {
+  text-align: center;
+}
+
+.leave-motto-country {
+  font-weight: 700;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  color: #0f172a;
+  letter-spacing: 0.2px;
+}
+
+.leave-motto-subtitle {
+  font-weight: 700;
+  font-size: 11.5px;
+  color: #0f172a;
+  margin-top: 1px;
+}
+
+.leave-motto-line {
+  width: 120px;
+  height: 1px;
+  background-color: #0f172a;
+  margin: 3px auto 4px;
+}
+
+.leave-doc-date {
+  font-style: italic;
+  font-size: 11px;
+  color: #374151;
+}
+
+/* Tiêu đề chính */
+.leave-a4-title-section {
+  text-align: center;
+  margin: 10px 0 8px;
+}
+
+.leave-doc-main-title {
+  font-size: 17px;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: #0f172a;
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
+}
+
+.leave-doc-legal-basis {
+  font-style: italic;
+  font-size: 11px;
+  color: #4b5563;
+}
+
+/* Kính gửi */
+.leave-kinh-gui-box {
+  margin: 8px 0 10px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.leave-kinh-gui-title {
+  font-weight: 700;
+  font-style: italic;
+  text-decoration: underline;
+  margin-right: 6px;
+}
+
+/* Tiêu đề mục */
+.leave-sec-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #1e3a8a;
+  margin: 10px 0 4px;
+  letter-spacing: 0.2px;
+}
+
+/* Bảng biểu hành chính */
+.leave-admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 8px;
+  font-size: 11.5px;
+}
+
+.leave-admin-table th,
+.leave-admin-table td {
+  border: 1px solid #cbd5e1;
+  padding: 4px 8px;
+  vertical-align: middle;
+}
+
+.leave-admin-table th {
+  background-color: #f8fafc;
+  font-weight: 700;
+  color: #0f172a;
+  text-align: center;
+  padding: 4px 6px;
+}
+
+.leave-info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 16px;
+  margin-bottom: 8px;
+  font-size: 11.5px;
+}
+
+.leave-commit-text {
+  text-align: justify;
+  text-indent: 20px;
+  margin-bottom: 6px;
+  line-height: 1.45;
+  font-size: 11.5px;
+}
+
+/* Phần chữ ký & phê duyệt 3 bên tích hợp (gọn gàng, vừa vặn 1 trang) */
+.leave-3col-signatures {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  text-align: center;
+  margin-top: 14px;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.leave-sign-col-title {
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  color: #0f172a;
+}
+
+.leave-sign-col-sub {
+  font-style: italic;
+  font-size: 10px;
+  color: #64748b;
+  margin-top: 1px;
+  margin-bottom: 4px;
+}
+
+.leave-sign-opinion {
+  font-size: 10px;
+  color: #334155;
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-style: italic;
+  margin-bottom: 4px;
+  padding: 0 4px;
+}
+
+.leave-sign-box {
+  min-height: 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.leave-sign-space {
+  height: 60px;
+}
+
+.leave-sign-name {
+  font-weight: 700;
+  font-size: 11.5px;
+  color: #0f172a;
+  margin-top: 2px;
+}
+
+.leave-stamp-approved {
+  border: 1.5px solid #059669;
+  border-radius: 3px;
+  padding: 2px 6px;
+  background-color: #ecfdf5;
+  color: #059669;
+  font-weight: 800;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.2px;
+  text-align: center;
+  line-height: 1.25;
+}
+
+.leave-stamp-sm-approved {
+  border: 1.5px solid #2563eb;
+  border-radius: 3px;
+  padding: 2px 6px;
+  background-color: #eff6ff;
+  color: #2563eb;
+  font-weight: 700;
+  font-size: 9px;
+  text-transform: uppercase;
+  text-align: center;
+  line-height: 1.25;
+}
+
+.leave-stamp-rejected {
+  border: 1.5px solid #dc2626;
+  border-radius: 3px;
+  padding: 2px 6px;
+  background-color: #fef2f2;
+  color: #dc2626;
+  font-weight: 800;
+  font-size: 9px;
+  text-transform: uppercase;
+  text-align: center;
+  line-height: 1.25;
+}
+
+/* Quy chuẩn khi in trình duyệt (Ctrl+P / window.print) ĐẢM BẢO DUY NHẤT 1 TRANG A4 */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 8mm 14mm 8mm 14mm;
+  }
+  
+  *, *::before, *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  html, body {
+    height: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  .print-active-overlay,
+  .print-active-overlay * {
+    visibility: visible;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .modal-overlay.print-active-overlay {
+    position: static !important;
+    background: #ffffff !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+
+  .print-modal {
+    position: static !important;
+    max-width: 100% !important;
+    max-height: none !important;
+    overflow: visible !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .payslip-modal-body {
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #ffffff !important;
+  }
+
+  .leave-a4-container {
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    font-family: 'Times New Roman', Times, 'Liberation Serif', Georgia, serif !important;
+    line-height: 1.38 !important;
+    font-size: 11.5px !important;
+    page-break-after: avoid !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .leave-3col-signatures {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    margin-top: 10px !important;
+  }
+}

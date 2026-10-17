@@ -56,6 +56,28 @@ function getStatusLabel(status?: string): string {
   }
 }
 
+function parsePrintDate(dateStr?: string) {
+  if (dateStr) {
+    if (dateStr.includes('/')) {
+      const parts = dateStr.split('/')
+      if (parts.length === 3) {
+        return { day: parts[0], month: parts[1], year: parts[2] }
+      }
+    } else if (dateStr.includes('-')) {
+      const parts = dateStr.split('-')
+      if (parts.length === 3) {
+        return { day: parts[2], month: parts[1], year: parts[0] }
+      }
+    }
+  }
+  const now = new Date()
+  return {
+    day: String(now.getDate()).padStart(2, '0'),
+    month: String(now.getMonth() + 1).padStart(2, '0'),
+    year: String(now.getFullYear()),
+  }
+}
+
 export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPayslipPageProps) {
   const [searchParams, setSearchParams] = useSearchParams()
   const tabParam = searchParams.get('tab') as 'monthly' | 'annual' | 'contracts' | null
@@ -1034,376 +1056,422 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
       {/* ========================================================================= */}
       {/* MODAL 1: BẢN IN PHIẾU LƯƠNG THÁNG (KHỔ A4) */}
       {/* ========================================================================= */}
-      {isMonthlyPrintModalOpen && monthlyPrintData && (
-        <div className="modal-overlay print-active-overlay" onClick={() => setIsMonthlyPrintModalOpen(false)}>
-          <div className="modal print-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '880px', padding: 0, maxHeight: '92vh' }}>
-            {/* Header */}
-            <div className="modal-header no-print">
-              <h2 className="modal-title" style={{ fontSize: '16px' }}>
-                Bản In Phiếu Lương Tháng (Khổ A4)
-              </h2>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <button className="btn btn-primary btn-sm" onClick={() => window.print()}>
+      {/* ========================================================================= */}
+      {/* MODAL 1: BẢN IN PHIẾU LƯƠNG THÁNG (KHỔ A4) */}
+      {/* ========================================================================= */}
+      {isMonthlyPrintModalOpen && monthlyPrintData && (() => {
+        const printDate = parsePrintDate(monthlyPrintData.generated_date)
+        const grossIncome = monthlyPrintData.summary?.gross_income ?? currentPayroll?.gross_income
+        const totalDeduction = monthlyPrintData.summary?.total_deduction ?? currentPayroll?.total_deduction
+        const netSalary = monthlyPrintData.summary?.net_salary ?? currentPayroll?.net_salary
+        const netInWords = monthlyPrintData.summary?.net_salary_in_words ?? (currentPayroll as any)?.net_salary_in_words
+
+        return (
+          <div className="modal-overlay print-active-overlay" onClick={() => setIsMonthlyPrintModalOpen(false)}>
+            <div className="modal print-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '880px', padding: 0, maxHeight: '92vh' }}>
+              {/* Header */}
+              <div className="modal-header no-print">
+                <h2 className="modal-title" style={{ fontSize: '16px' }}>
+                  Bản In Phiếu Lương Tháng (Khổ A4)
+                </h2>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <button className="btn btn-primary btn-sm" onClick={() => window.print()}>
+                    {Icons.printer}
+                    In phiếu lương (PDF)
+                  </button>
+                  <button
+                    className="modal-close"
+                    onClick={() => setIsMonthlyPrintModalOpen(false)}
+                    title="Đóng"
+                  >
+                    {Icons.close}
+                  </button>
+                </div>
+              </div>
+
+              {/* A4 Sheet Body */}
+              <div className="payslip-modal-body" style={{ overflowY: 'auto', padding: '16px', background: 'var(--surface-ground)' }}>
+                <div className="payslip-a4-modal">
+                  {/* 1. Header 2 cột Quốc hiệu - Tên cơ quan */}
+                  <div className="payslip-a4-national-header">
+                    <div className="payslip-hdr-org">
+                      <div className="payslip-org-name">{monthlyPrintData.company?.name || 'CÔNG TY CỔ PHẦN CÔNG NGHỆ TECHZONE VIỆT NAM'}</div>
+                      <div className="payslip-org-sub">HỆ THỐNG PHÂN PHỐI & CHUỖI BÁN LẺ TOÀN QUỐC</div>
+                      <div style={{ fontSize: '10.5px', color: '#1e3a8a', fontWeight: 600, marginTop: '1px' }}>
+                        Đơn vị: {monthlyPrintData.employee?.store_name || 'Hệ thống TechZone'}
+                      </div>
+                      <div className="payslip-doc-number">
+                        Số: <strong>#{monthlyPrintData.payroll_code || 'PLT'}</strong>/PL-TZ
+                      </div>
+                    </div>
+
+                    <div className="payslip-hdr-motto">
+                      <div className="payslip-motto-country">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</div>
+                      <div className="payslip-motto-subtitle">Độc lập – Tự do – Hạnh phúc</div>
+                      <div className="payslip-motto-line"></div>
+                      <div className="payslip-doc-date">
+                        TP. Hồ Chí Minh, ngày {printDate.day} tháng {printDate.month} năm {printDate.year}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 2. Tiêu đề văn bản */}
+                  <div className="payslip-a4-title-section">
+                    <div className="payslip-doc-main-title">
+                      {monthlyPrintData.payslip_title || 'PHIẾU THANH TOÁN TIỀN LƯƠNG'}
+                    </div>
+                    <div style={{ fontWeight: 600, fontSize: '12px', color: '#1e3a8a', marginBottom: '2px' }}>
+                      Kỳ chi trả: {monthlyPrintData.salary_period} • Đơn vị tính: Việt Nam Đồng (VNĐ)
+                    </div>
+                    <div className="payslip-doc-legal-basis">
+                      (Căn cứ Bộ luật Lao động số 45/2019/QH14 và Quy chế trả lương, trả thưởng nội bộ TechZone)
+                    </div>
+                  </div>
+
+                  {/* 3. Phần I: Thông tin nhân sự */}
+                  <div className="payslip-sec-title">I. THÔNG TIN NHÂN SỰ THỤ HƯỞNG</div>
+                  <div className="payslip-a4-info-grid">
+                    <div>Họ và tên nhân viên: <strong style={{ textTransform: 'uppercase' }}>{monthlyPrintData.employee?.full_name}</strong></div>
+                    <div>Mã số nhân viên: <strong>{monthlyPrintData.employee?.employee_code}</strong></div>
+                    <div>Chức danh / Vị trí: <strong>{monthlyPrintData.employee?.position_name}</strong></div>
+                    <div>Đơn vị / Chi nhánh: <strong>{monthlyPrintData.employee?.store_name}</strong></div>
+                    <div>Tài khoản ngân hàng: <strong>{monthlyPrintData.employee?.bank_account_no || monthlyPrintData.employee?.bank_account || 'Chưa cập nhật'}</strong></div>
+                    <div>Ngân hàng thụ hưởng: <strong>{monthlyPrintData.employee?.bank_name || 'Chưa cập nhật'}</strong></div>
+                  </div>
+
+                  {/* 4. Phần II: Thống kê ngày công & chế độ nghỉ phép */}
+                  <div className="payslip-sec-title">II. THỐNG KÊ NGÀY CÔNG & CHẾ ĐỘ NGHỈ PHÉP</div>
+                  <div className="payslip-a4-attendance-grid">
+                    <div>Công chuẩn: <strong>{monthlyPrintData.attendance?.standard_working_days ?? currentPayroll?.standard_working_days ?? 26} ngày</strong></div>
+                    <div>Công thực tế: <strong>{monthlyPrintData.attendance?.actual_working_days ?? currentPayroll?.actual_working_days ?? 0} ngày</strong></div>
+                    <div>Phép năm có lương: <strong>{monthlyPrintData.attendance?.paid_leave_days ?? currentPayroll?.paid_leave_days ?? 0} ngày</strong></div>
+                    <div>Nghỉ không lương: <strong>{monthlyPrintData.attendance?.unpaid_leave_days ?? currentPayroll?.unpaid_leave_days ?? 0} ngày</strong></div>
+                    <div>Giờ công thực: <strong>{monthlyPrintData.attendance?.actual_work_hours ?? 0} giờ</strong></div>
+                    <div>OT làm thêm: <strong>{monthlyPrintData.attendance?.approved_overtime_hours ?? monthlyPrintData.attendance?.actual_overtime_hours ?? 0} giờ</strong></div>
+                    {(monthlyPrintData.attendance?.unworked_hours ?? currentPayroll?.unworked_hours ?? 0) > 0 && (
+                      <div style={{ gridColumn: 'span 2' }}>
+                        Giờ trễ / thiếu: <strong>{monthlyPrintData.attendance?.unworked_hours ?? currentPayroll?.unworked_hours} giờ</strong>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 5. Phần III: Các khoản thu nhập & khấu trừ */}
+                  <div className="payslip-sec-title">III. CHI TIẾT THU NHẬP & CÁC KHOẢN KHẤU TRỪ</div>
+                  <div className="payslip-columns">
+                    {/* Cột 1: Thu nhập GROSS */}
+                    <div>
+                      <table className="payslip-a4-table">
+                        <thead>
+                          <tr>
+                            <th style={{ width: '60%' }}>1. CÁC KHOẢN THU NHẬP (GROSS)</th>
+                            <th style={{ textAlign: 'right', width: '40%' }}>Số tiền (VNĐ)</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {monthlyPrintData.earnings?.map((e: any, idx: number) => (
+                            <tr key={idx}>
+                              <td>
+                                <div style={{ fontWeight: 600 }}>{e.item_name || e.name}</div>
+                                {e.calculation_formula && (
+                                  <div style={{ fontSize: '10px', color: '#64748b', fontStyle: 'italic' }}>
+                                    {e.calculation_formula}
+                                  </div>
+                                )}
+                              </td>
+                              <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                                {formatCurrency(e.amount)}
+                              </td>
+                            </tr>
+                          ))}
+                          <tr className="payslip-a4-total-row">
+                            <td style={{ fontWeight: 700, color: '#1e3a8a' }}>TỔNG THU NHẬP (GROSS)</td>
+                            <td style={{ textAlign: 'right', color: '#1e3a8a', fontSize: '12px', fontWeight: 700 }}>
+                              {formatCurrency(grossIncome)}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Cột 2: Khấu trừ */}
+                    <div>
+                      <table className="payslip-a4-table">
+                        <thead>
+                          <tr>
+                            <th style={{ width: '60%' }}>2. CÁC KHOẢN GIẢM TRỪ (DEDUCTIONS)</th>
+                            <th style={{ textAlign: 'right', width: '40%' }}>Số tiền (VNĐ)</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {monthlyPrintData.deductions?.map((d: any, idx: number) => (
+                            <tr key={idx}>
+                              <td>
+                                <div style={{ fontWeight: 600, color: '#991b1b' }}>{d.item_name || d.name}</div>
+                                {d.calculation_formula && (
+                                  <div style={{ fontSize: '10px', color: '#64748b', fontStyle: 'italic' }}>
+                                    {d.calculation_formula}
+                                  </div>
+                                )}
+                              </td>
+                              <td style={{ textAlign: 'right', color: '#dc2626', fontWeight: 600 }}>
+                                -{formatCurrency(d.amount)}
+                              </td>
+                            </tr>
+                          ))}
+                          <tr className="payslip-a4-total-row">
+                            <td style={{ fontWeight: 700, color: '#991b1b' }}>TỔNG GIẢM TRỪ</td>
+                            <td style={{ textAlign: 'right', color: '#dc2626', fontSize: '12px', fontWeight: 700 }}>
+                              -{formatCurrency(totalDeduction)}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Thực lĩnh NET */}
+                  <div className="payslip-a4-highlight-box">
+                    <div className="payslip-a4-net-label">THỰC LĨNH CHUYỂN KHOẢN (NET):</div>
+                    <div className="payslip-a4-net-amount">{formatCurrency(netSalary)}</div>
+                  </div>
+
+                  {netInWords && (
+                    <div className="payslip-a4-words">
+                      Số tiền bằng chữ: <strong>{netInWords}</strong>
+                    </div>
+                  )}
+
+                  {/* 6. Phần IV: Xác nhận & Chữ ký các bên */}
+                  <div className="payslip-sec-title">IV. XÁC NHẬN & CHỮ KÝ CÁC BÊN</div>
+                  <div className="payslip-a4-signatures">
+                    <div>
+                      <div className="payslip-a4-sign-title">NGƯỜI NHẬN LƯƠNG</div>
+                      <div className="payslip-a4-sign-note">(Ký, ghi rõ họ tên)</div>
+                      <div className="payslip-a4-sign-space"></div>
+                      <div className="payslip-a4-sign-name" style={{ textTransform: 'uppercase' }}>
+                        {monthlyPrintData.employee?.full_name || ''}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="payslip-a4-sign-title">KẾ TOÁN TIỀN LƯƠNG</div>
+                      <div className="payslip-a4-sign-note">(Ký, ghi rõ họ tên)</div>
+                      <div className="payslip-a4-sign-space"></div>
+                      <div className="payslip-a4-sign-name">Người lập biểu</div>
+                    </div>
+                    <div>
+                      <div className="payslip-a4-sign-title">KẾ TOÁN TRƯỞNG</div>
+                      <div className="payslip-a4-sign-note">(Ký, ghi rõ họ tên)</div>
+                      <div className="payslip-a4-sign-space"></div>
+                      <div className="payslip-a4-sign-name">Ban Tài chính - Kế toán</div>
+                    </div>
+                    <div>
+                      <div className="payslip-a4-sign-title">GIÁM ĐỐC ĐIỀU HÀNH</div>
+                      <div className="payslip-a4-sign-note">(Ký, đóng dấu)</div>
+                      <div className="payslip-a4-sign-space"></div>
+                      <div className="payslip-a4-sign-name">Đại diện pháp luật</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="modal-footer no-print" style={{ padding: '14px 20px', background: 'var(--surface-card)' }}>
+                <button className="btn btn-secondary" onClick={() => setIsMonthlyPrintModalOpen(false)}>
+                  Đóng
+                </button>
+                <button className="btn btn-primary" onClick={() => window.print()}>
                   {Icons.printer}
                   In phiếu lương (PDF)
                 </button>
-                <button
-                  className="modal-close"
-                  onClick={() => setIsMonthlyPrintModalOpen(false)}
-                  title="Đóng"
-                >
-                  {Icons.close}
-                </button>
               </div>
-            </div>
-
-            {/* A4 Sheet Body */}
-            <div className="payslip-modal-body" style={{ overflowY: 'auto', padding: '16px', background: 'var(--surface-ground)' }}>
-              <div className="payslip-a4-modal">
-                {/* Header */}
-                <div className="payslip-a4-header">
-                  <div>
-                    <div className="payslip-a4-company-name">{monthlyPrintData.company?.name || 'TECHZONE RETAIL'}</div>
-                    {monthlyPrintData.company?.address && (
-                      <div className="payslip-a4-company-sub">Địa chỉ: {monthlyPrintData.company.address}</div>
-                    )}
-                    {monthlyPrintData.company?.tax_id && (
-                      <div className="payslip-a4-company-sub">Mã số thuế: {monthlyPrintData.company.tax_id}</div>
-                    )}
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: '12px', fontWeight: 700, color: '#1e3a8a' }}>
-                      MÃ PHIẾU: <span style={{ fontFamily: 'var(--font-mono)' }}>#{monthlyPrintData.payroll_code}</span>
-                    </div>
-                    <div style={{ fontSize: '12px', color: '#475569', marginTop: '3px' }}>
-                      NGÀY TẠO: <strong>{monthlyPrintData.generated_date}</strong>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Title */}
-                <div className="payslip-a4-title-box">
-                  <div className="payslip-a4-main-title">{monthlyPrintData.payslip_title}</div>
-                  <div className="payslip-a4-period-subtitle">
-                    Kỳ tính lương: {monthlyPrintData.salary_period} • Đơn vị tiền tệ: Việt Nam Đồng (VNĐ)
-                  </div>
-                </div>
-
-                {/* Employee Info Grid */}
-                <div className="payslip-a4-info-grid">
-                  <div>Họ và tên: <strong>{monthlyPrintData.employee?.full_name}</strong></div>
-                  <div>Mã nhân viên: <strong>{monthlyPrintData.employee?.employee_code}</strong></div>
-                  <div>Vị trí công việc: <strong>{monthlyPrintData.employee?.position_name}</strong></div>
-                  <div>Chi nhánh làm việc: <strong>{monthlyPrintData.employee?.store_name}</strong></div>
-                  <div>Số tài khoản: <strong>{monthlyPrintData.employee?.bank_account_no || monthlyPrintData.employee?.bank_account || 'Chưa cập nhật'}</strong></div>
-                  <div>Ngân hàng: <strong>{monthlyPrintData.employee?.bank_name || 'Chưa cập nhật'}</strong></div>
-                </div>
-
-                {/* Attendance Summary Bar */}
-                <div className="payslip-a4-attendance-summary" style={{ marginBottom: '10px', fontSize: '11px', background: '#f8fafc', padding: '6px 10px', border: '1px solid #cbd5e1', borderRadius: '6px', lineHeight: 1.4 }}>
-                  <div style={{ fontWeight: 700, color: '#1e3a8a', marginBottom: '3px', textTransform: 'uppercase', fontSize: '11px', letterSpacing: '0.5px' }}>
-                    THỐNG KÊ NGÀY CÔNG & NGHỈ PHÉP (LIÊN KẾT CHẤM CÔNG & ĐƠN NGHỈ PHÉP)
-                  </div>
-                  <div className="payslip-attendance-values">
-                    <div>Công chuẩn: <strong>{monthlyPrintData.attendance?.standard_working_days ?? currentPayroll?.standard_working_days ?? '—'}</strong> ngày</div>
-                    <div>Công thực tế: <strong>{monthlyPrintData.attendance?.actual_working_days ?? currentPayroll?.actual_working_days ?? '—'}</strong> ngày</div>
-                    <div>Phép năm có lương: <strong style={{ color: '#2563eb' }}>{monthlyPrintData.attendance?.paid_leave_days ?? currentPayroll?.paid_leave_days ?? 0}</strong> ngày</div>
-                    <div>
-                      Nghỉ không lương: <strong style={{ color: (monthlyPrintData.attendance?.unpaid_leave_days ?? currentPayroll?.unpaid_leave_days ?? 0) > 0 ? '#dc2626' : 'inherit' }}>
-                        {monthlyPrintData.attendance?.unpaid_leave_days ?? currentPayroll?.unpaid_leave_days ?? 0} ngày
-                      </strong>
-                    </div>
-                    {(monthlyPrintData.attendance?.unworked_hours ?? currentPayroll?.unworked_hours ?? 0) > 0 && (
-                      <div>Giờ trễ/thiếu: <strong style={{ color: '#dc2626' }}>{monthlyPrintData.attendance?.unworked_hours ?? currentPayroll?.unworked_hours} giờ</strong></div>
-                    )}
-                    {monthlyPrintData.attendance?.actual_work_hours !== undefined && <div>Giờ công thực tế: <strong>{monthlyPrintData.attendance.actual_work_hours}</strong></div>}
-                    {monthlyPrintData.attendance?.late_minutes !== undefined && <div>Đi trễ: <strong>{monthlyPrintData.attendance.late_minutes}</strong> phút</div>}
-                    {monthlyPrintData.attendance?.early_minutes !== undefined && <div>Về sớm: <strong>{monthlyPrintData.attendance.early_minutes}</strong> phút</div>}
-                    {monthlyPrintData.attendance?.actual_overtime_hours !== undefined && <div>OT thực tế: <strong>{monthlyPrintData.attendance.actual_overtime_hours}</strong> giờ</div>}
-                    {monthlyPrintData.attendance?.approved_overtime_hours !== undefined && <div>OT được duyệt: <strong>{monthlyPrintData.attendance.approved_overtime_hours}</strong> giờ</div>}
-                  </div>
-                </div>
-
-                {/* Tables: Earnings & Deductions */}
-                <div className="payslip-columns">
-                  {/* Earnings */}
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: '13px', marginBottom: '8px', color: '#1e3a8a' }}>
-                      I. CÁC KHOẢN THU NHẬP (GROSS)
-                    </div>
-                    <table className="payslip-a4-table">
-                      <thead>
-                        <tr>
-                          <th style={{ width: '55%' }}>Khoản mục thu nhập</th>
-                          <th style={{ textAlign: 'right', width: '45%' }}>Số tiền (VNĐ)</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {monthlyPrintData.earnings?.map((e: any, idx: number) => (
-                          <tr key={idx}>
-                            <td>
-                              <div style={{ fontWeight: 600 }}>{e.item_name || e.name}</div>
-                              {e.calculation_formula && (
-                                <div style={{ fontSize: '10.5px', color: '#64748b', fontStyle: 'italic' }}>
-                                  {e.calculation_formula}
-                                </div>
-                              )}
-                            </td>
-                            <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
-                              {formatCurrency(e.amount)}
-                            </td>
-                          </tr>
-                        ))}
-                        <tr className="payslip-a4-total-row">
-                          <td>TỔNG THU NHẬP (GROSS)</td>
-                          <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: '#1e3a8a', fontSize: '13.5px' }}>
-                            {formatCurrency(monthlyPrintData.summary?.gross_income ?? currentPayroll?.gross_income)}
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Deductions */}
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: '13px', marginBottom: '8px', color: '#b91c1c' }}>
-                      II. CÁC KHOẢN GIẢM TRỪ (DEDUCTIONS)
-                    </div>
-                    <table className="payslip-a4-table">
-                      <thead>
-                        <tr>
-                          <th style={{ width: '55%' }}>Khoản mục khấu trừ</th>
-                          <th style={{ textAlign: 'right', width: '45%' }}>Số tiền (VNĐ)</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {monthlyPrintData.deductions?.map((d: any, idx: number) => (
-                          <tr key={idx}>
-                            <td>
-                              <div style={{ fontWeight: 600, color: '#991b1b' }}>{d.item_name || d.name}</div>
-                              {d.calculation_formula && (
-                                <div style={{ fontSize: '10.5px', color: '#64748b', fontStyle: 'italic' }}>
-                                  {d.calculation_formula}
-                                </div>
-                              )}
-                            </td>
-                            <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: '#dc2626', fontWeight: 600 }}>
-                              -{formatCurrency(d.amount)}
-                            </td>
-                          </tr>
-                        ))}
-                        <tr className="payslip-a4-total-row">
-                          <td>TỔNG GIẢM TRỪ</td>
-                          <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: '#dc2626', fontSize: '13.5px' }}>
-                            -{formatCurrency(monthlyPrintData.summary?.total_deduction ?? currentPayroll?.total_deduction)}
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* Net Highlight */}
-                <div className="payslip-a4-highlight-box">
-                  <div className="payslip-a4-net-label">THỰC LĨNH CHUYỂN KHOẢN (NET):</div>
-                  <div className="payslip-a4-net-amount">{formatCurrency(monthlyPrintData.summary?.net_salary)}</div>
-                </div>
-
-                {monthlyPrintData.summary?.net_salary_in_words && (
-                  <div className="payslip-a4-words">
-                    Số tiền bằng chữ: <strong>{monthlyPrintData.summary.net_salary_in_words}</strong>
-                  </div>
-                )}
-
-                {/* Signatures */}
-                <div className="payslip-a4-signatures">
-                  <div>
-                    <div className="payslip-a4-sign-title">NGƯỜI LẬP PHIẾU</div>
-                    <div className="payslip-a4-sign-note">(Ký, họ tên)</div>
-                    <div className="payslip-a4-sign-space"></div>
-                  </div>
-                  <div>
-                    <div className="payslip-a4-sign-title">KẾ TOÁN TRƯỞNG</div>
-                    <div className="payslip-a4-sign-note">(Ký, họ tên)</div>
-                    <div className="payslip-a4-sign-space"></div>
-                  </div>
-                  <div>
-                    <div className="payslip-a4-sign-title">GIÁM ĐỐC</div>
-                    <div className="payslip-a4-sign-note">(Ký, đóng dấu)</div>
-                    <div className="payslip-a4-sign-space"></div>
-                  </div>
-                  <div>
-                    <div className="payslip-a4-sign-title">NGƯỜI NHẬN LƯƠNG</div>
-                    <div className="payslip-a4-sign-note">(Ký xác nhận)</div>
-                    <div className="payslip-a4-sign-space"></div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div className="modal-footer no-print" style={{ padding: '14px 20px', background: 'var(--surface-card)' }}>
-              <button className="btn btn-secondary" onClick={() => setIsMonthlyPrintModalOpen(false)}>
-                Đóng
-              </button>
-              <button className="btn btn-primary" onClick={() => window.print()}>
-                {Icons.printer}
-                In phiếu lương (PDF)
-              </button>
             </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* ========================================================================= */}
       {/* MODAL 2: BẢN IN BẢNG LƯƠNG NĂM (KHỔ A4) */}
       {/* ========================================================================= */}
-      {isAnnualPrintModalOpen && annualData && (
-        <div className="modal-overlay print-active-overlay" onClick={() => setIsAnnualPrintModalOpen(false)}>
-          <div className="modal print-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '900px', padding: 0, maxHeight: '92vh' }}>
-            {/* Header */}
-            <div className="modal-header no-print">
-              <h2 className="modal-title" style={{ fontSize: '16px' }}>
-                Bản In Bảng Lương Năm {annualData.salary_year || selectedYear} (Khổ A4)
-              </h2>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <button className="btn btn-primary btn-sm" onClick={() => window.print()}>
+      {isAnnualPrintModalOpen && annualData && (() => {
+        const printDate = parsePrintDate(annualData.generated_date)
+        const salaryYear = annualData.salary_year || selectedYear
+
+        return (
+          <div className="modal-overlay print-active-overlay" onClick={() => setIsAnnualPrintModalOpen(false)}>
+            <div className="modal print-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '900px', padding: 0, maxHeight: '92vh' }}>
+              {/* Header */}
+              <div className="modal-header no-print">
+                <h2 className="modal-title" style={{ fontSize: '16px' }}>
+                  Bản In Bảng Lương Năm {salaryYear} (Khổ A4)
+                </h2>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <button className="btn btn-primary btn-sm" onClick={() => window.print()}>
+                    {Icons.printer}
+                    In bảng lương năm (PDF)
+                  </button>
+                  <button
+                    className="modal-close"
+                    onClick={() => setIsAnnualPrintModalOpen(false)}
+                    title="Đóng"
+                  >
+                    {Icons.close}
+                  </button>
+                </div>
+              </div>
+
+              {/* A4 Sheet Body */}
+              <div className="payslip-modal-body" style={{ overflowY: 'auto', padding: '16px', background: 'var(--surface-ground)' }}>
+                <div className="payslip-a4-modal">
+                  {/* 1. Header 2 cột Quốc hiệu - Tên cơ quan */}
+                  <div className="payslip-a4-national-header">
+                    <div className="payslip-hdr-org">
+                      <div className="payslip-org-name">{annualData.company?.name || 'CÔNG TY CỔ PHẦN CÔNG NGHỆ TECHZONE VIỆT NAM'}</div>
+                      <div className="payslip-org-sub">HỆ THỐNG PHÂN PHỐI & CHUỖI BÁN LẺ TOÀN QUỐC</div>
+                      <div style={{ fontSize: '10.5px', color: '#1e3a8a', fontWeight: 600, marginTop: '1px' }}>
+                        Đơn vị: {annualData.employee?.store_name || 'Hệ thống TechZone'}
+                      </div>
+                      <div className="payslip-doc-number">
+                        Số: <strong>#{salaryYear}</strong>/BTTN-TZ
+                      </div>
+                    </div>
+
+                    <div className="payslip-hdr-motto">
+                      <div className="payslip-motto-country">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</div>
+                      <div className="payslip-motto-subtitle">Độc lập – Tự do – Hạnh phúc</div>
+                      <div className="payslip-motto-line"></div>
+                      <div className="payslip-doc-date">
+                        TP. Hồ Chí Minh, ngày {printDate.day} tháng {printDate.month} năm {printDate.year}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 2. Tiêu đề văn bản */}
+                  <div className="payslip-a4-title-section">
+                    <div className="payslip-doc-main-title">
+                      BẢNG TỔNG HỢP THU NHẬP NĂM {salaryYear}
+                    </div>
+                    <div className="payslip-doc-legal-basis">
+                      (Phục vụ quyết toán thuế TNCN, đối soát bảo hiểm xã hội và lưu trữ hồ sơ nhân sự TechZone)
+                    </div>
+                  </div>
+
+                  {/* 3. Phần I: Thông tin nhân sự */}
+                  <div className="payslip-sec-title">I. THÔNG TIN NHÂN SỰ</div>
+                  <div className="payslip-a4-info-grid">
+                    <div>Họ và tên nhân viên: <strong style={{ textTransform: 'uppercase' }}>{annualData.employee?.full_name}</strong></div>
+                    <div>Mã số nhân viên: <strong>{annualData.employee?.employee_code}</strong></div>
+                    <div>Chức danh / Vị trí: <strong>{annualData.employee?.position || annualData.employee?.position_name || 'Nhân viên'}</strong></div>
+                    <div>Đơn vị / Chi nhánh: <strong>{annualData.employee?.store_name || 'TechZone Retail'}</strong></div>
+                    <div>Số CMND / CCCD: <strong>{annualData.employee?.id_card_number || '—'}</strong></div>
+                    <div>Mã số thuế cá nhân: <strong>{annualData.employee?.tax_code || '—'}</strong></div>
+                  </div>
+
+                  {/* 4. Phần II: Bảng chi tiết 12 tháng */}
+                  <div className="payslip-sec-title">II. BẢNG CHI TIẾT CÁC KỲ THU NHẬP TRONG NĂM</div>
+                  <table className="payslip-a4-table" style={{ fontSize: '10.5px' }}>
+                    <thead>
+                      <tr>
+                        <th style={{ width: '12%' }}>Kỳ tháng</th>
+                        <th style={{ textAlign: 'center', width: '8%' }}>Công</th>
+                        <th style={{ textAlign: 'right', width: '11%' }}>Lương CB</th>
+                        <th style={{ textAlign: 'right', width: '11%' }}>Phụ cấp</th>
+                        <th style={{ textAlign: 'right', width: '11%' }}>Hoa hồng</th>
+                        <th style={{ textAlign: 'right', width: '11%' }}>Thưởng</th>
+                        <th style={{ textAlign: 'right', width: '12%' }}>Tổng Gross</th>
+                        <th style={{ textAlign: 'right', width: '11%' }}>Bảo hiểm</th>
+                        <th style={{ textAlign: 'right', width: '14%' }}>Thực lĩnh NET</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {annualData.monthly_records?.map((rec: any, idx: number) => {
+                        const allowances = (rec.position_allowance || 0) + (rec.seniority_allowance || 0) + (rec.project_allowance || 0) + (rec.meal_transport_allowance || 0)
+                        return (
+                          <tr key={idx}>
+                            <td style={{ fontWeight: 600 }}>
+                              {rec.salary_period ? `Tháng ${parseInt(rec.salary_period.split('-')[1], 10)}/${rec.salary_period.split('-')[0]}` : rec.month_name || `Kỳ ${idx + 1}`}
+                            </td>
+                            <td style={{ textAlign: 'center' }}>{rec.actual_working_days ?? '—'}</td>
+                            <td style={{ textAlign: 'right' }}>{formatCurrency(rec.actual_base_salary)}</td>
+                            <td style={{ textAlign: 'right' }}>{formatCurrency(allowances)}</td>
+                            <td style={{ textAlign: 'right' }}>{formatCurrency(rec.commission_amount)}</td>
+                            <td style={{ textAlign: 'right' }}>{formatCurrency(rec.bonus_amount)}</td>
+                            <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatCurrency(rec.gross_income)}</td>
+                            <td style={{ textAlign: 'right', color: '#dc2626' }}>-{formatCurrency(rec.total_insurance)}</td>
+                            <td style={{ textAlign: 'right', fontWeight: 700, color: '#15803d' }}>{formatCurrency(rec.net_salary)}</td>
+                          </tr>
+                        )
+                      })}
+                      <tr className="payslip-a4-total-row" style={{ fontSize: '11px' }}>
+                        <td colSpan={2} style={{ fontWeight: 700 }}>TỔNG CẢ NĂM</td>
+                        <td colSpan={2} style={{ textAlign: 'center' }}>—</td>
+                        <td style={{ textAlign: 'right' }}>{formatCurrency(annualData.total_commission_year)}</td>
+                        <td style={{ textAlign: 'right' }}>{formatCurrency(annualData.total_bonus_year)}</td>
+                        <td style={{ textAlign: 'right', color: '#1e3a8a', fontWeight: 700 }}>{formatCurrency(annualData.total_gross_income_year)}</td>
+                        <td style={{ textAlign: 'right', color: '#dc2626', fontWeight: 700 }}>-{formatCurrency(annualData.total_insurance_deducted_year)}</td>
+                        <td style={{ textAlign: 'right', color: '#15803d', fontSize: '12px', fontWeight: 700 }}>{formatCurrency(annualData.total_net_salary_year)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+
+                  {/* Hộp thực lĩnh cả năm */}
+                  <div className="payslip-a4-highlight-box">
+                    <div className="payslip-a4-net-label">TỔNG THU NHẬP THỰC NHẬN CẢ NĂM (NET):</div>
+                    <div className="payslip-a4-net-amount">{formatCurrency(annualData.total_net_salary_year)}</div>
+                  </div>
+
+                  {annualData.net_salary_in_words && (
+                    <div className="payslip-a4-words">
+                      Số tiền bằng chữ: <strong>{annualData.net_salary_in_words}</strong>
+                    </div>
+                  )}
+
+                  {/* 5. Phần III: Xác nhận & Chữ ký các bên */}
+                  <div className="payslip-sec-title">III. XÁC NHẬN & CHỮ KÝ CÁC BÊN</div>
+                  <div className="payslip-a4-signatures">
+                    <div>
+                      <div className="payslip-a4-sign-title">NGƯỜI LAO ĐỘNG</div>
+                      <div className="payslip-a4-sign-note">(Ký, ghi rõ họ tên)</div>
+                      <div className="payslip-a4-sign-space"></div>
+                      <div className="payslip-a4-sign-name" style={{ textTransform: 'uppercase' }}>
+                        {annualData.employee?.full_name || ''}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="payslip-a4-sign-title">KẾ TOÁN LẬP BẢNG</div>
+                      <div className="payslip-a4-sign-note">(Ký, ghi rõ họ tên)</div>
+                      <div className="payslip-a4-sign-space"></div>
+                      <div className="payslip-a4-sign-name">Người lập biểu</div>
+                    </div>
+                    <div>
+                      <div className="payslip-a4-sign-title">KẾ TOÁN TRƯỞNG</div>
+                      <div className="payslip-a4-sign-note">(Ký, ghi rõ họ tên)</div>
+                      <div className="payslip-a4-sign-space"></div>
+                      <div className="payslip-a4-sign-name">Ban Tài chính - Kế toán</div>
+                    </div>
+                    <div>
+                      <div className="payslip-a4-sign-title">GIÁM ĐỐC ĐIỀU HÀNH</div>
+                      <div className="payslip-a4-sign-note">(Ký, đóng dấu)</div>
+                      <div className="payslip-a4-sign-space"></div>
+                      <div className="payslip-a4-sign-name">Đại diện pháp luật</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="modal-footer no-print" style={{ padding: '14px 20px', background: 'var(--surface-card)' }}>
+                <button className="btn btn-secondary" onClick={() => setIsAnnualPrintModalOpen(false)}>
+                  Đóng
+                </button>
+                <button className="btn btn-primary" onClick={() => window.print()}>
                   {Icons.printer}
                   In bảng lương năm (PDF)
                 </button>
-                <button
-                  className="modal-close"
-                  onClick={() => setIsAnnualPrintModalOpen(false)}
-                  title="Đóng"
-                >
-                  {Icons.close}
-                </button>
               </div>
-            </div>
-
-            {/* A4 Sheet Body */}
-            <div className="payslip-modal-body" style={{ overflowY: 'auto', padding: '16px', background: 'var(--surface-ground)' }}>
-              <div className="payslip-a4-modal">
-                <div className="payslip-a4-header">
-                  <div>
-                    <div className="payslip-a4-company-name">{annualData.company?.name || 'CÔNG TY TNHH TM DV TECH ZONE'}</div>
-                    <div className="payslip-a4-company-sub">Địa chỉ: {annualData.company?.address || '273 An Dương Vương, P.3, Q.5, TP.HCM'}</div>
-                    <div className="payslip-a4-company-sub">Mã số thuế: {annualData.company?.tax_id || '0317894562'} • Hotline: 1900 6868</div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: '11px', color: '#64748b' }}>BÁO CÁO NĂM: {annualData.salary_year || selectedYear}</div>
-                    <div style={{ fontSize: '11px', color: '#64748b' }}>NGÀY XUẤT: {annualData.generated_date}</div>
-                  </div>
-                </div>
-
-                <div className="payslip-a4-title-box">
-                  <div className="payslip-a4-main-title">BẢNG TỔNG HỢP THU NHẬP NĂM {annualData.salary_year || selectedYear}</div>
-                  <div className="payslip-a4-period-subtitle">Phục vụ quyết toán thuế TNCN và lưu trữ hồ sơ cá nhân TechZone</div>
-                </div>
-
-                <div className="payslip-a4-info-grid">
-                  <div>Họ và tên: <strong>{annualData.employee?.full_name}</strong></div>
-                  <div>Mã nhân viên: <strong>{annualData.employee?.employee_code}</strong></div>
-                  <div>Vị trí: <strong>{annualData.employee?.position || 'Nhân viên'}</strong></div>
-                  <div>Chi nhánh: <strong>{annualData.employee?.store_name || 'TechZone Retail'}</strong></div>
-                  <div>Số CMND/CCCD: <strong>{annualData.employee?.id_card_number || '-'}</strong></div>
-                  <div>Mã số thuế cá nhân: <strong>{annualData.employee?.tax_code || '-'}</strong></div>
-                </div>
-
-                <table className="payslip-a4-table" style={{ fontSize: '11.5px' }}>
-                  <thead>
-                    <tr>
-                      <th>Kỳ tháng</th>
-                      <th style={{ textAlign: 'center' }}>Công</th>
-                      <th style={{ textAlign: 'right' }}>Lương CB</th>
-                      <th style={{ textAlign: 'right' }}>Phụ cấp</th>
-                      <th style={{ textAlign: 'right' }}>Hoa hồng</th>
-                      <th style={{ textAlign: 'right' }}>Thưởng</th>
-                      <th style={{ textAlign: 'right' }}>Tổng Gross</th>
-                      <th style={{ textAlign: 'right' }}>Bảo hiểm</th>
-                      <th style={{ textAlign: 'right' }}>Thực lĩnh NET</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {annualData.monthly_records?.map((rec: any, idx: number) => {
-                      const allowances = (rec.position_allowance || 0) + (rec.seniority_allowance || 0) + (rec.project_allowance || 0) + (rec.meal_transport_allowance || 0)
-                      return (
-                        <tr key={idx}>
-                          <td style={{ fontWeight: 600 }}>
-                            {rec.salary_period ? `Tháng ${parseInt(rec.salary_period.split('-')[1], 10)}/${rec.salary_period.split('-')[0]}` : rec.month_name || `Kỳ ${idx + 1}`}
-                          </td>
-                          <td style={{ textAlign: 'center' }}>{rec.actual_working_days ?? '-'}</td>
-                          <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{formatCurrency(rec.actual_base_salary)}</td>
-                          <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{formatCurrency(allowances)}</td>
-                          <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{formatCurrency(rec.commission_amount)}</td>
-                          <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{formatCurrency(rec.bonus_amount)}</td>
-                          <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{formatCurrency(rec.gross_income)}</td>
-                          <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: '#dc2626' }}>-{formatCurrency(rec.total_insurance)}</td>
-                          <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, color: '#15803d' }}>{formatCurrency(rec.net_salary)}</td>
-                        </tr>
-                      )
-                    })}
-                    <tr className="payslip-a4-total-row" style={{ fontSize: '12px' }}>
-                      <td colSpan={2}>TỔNG CẢ NĂM</td>
-                      <td colSpan={2}>-</td>
-                      <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{formatCurrency(annualData.total_commission_year)}</td>
-                      <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{formatCurrency(annualData.total_bonus_year)}</td>
-                      <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{formatCurrency(annualData.total_gross_income_year)}</td>
-                      <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: '#dc2626' }}>-{formatCurrency(annualData.total_insurance_deducted_year)}</td>
-                      <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: '#15803d', fontSize: '13px' }}>{formatCurrency(annualData.total_net_salary_year)}</td>
-                    </tr>
-                  </tbody>
-                </table>
-
-                <div className="payslip-a4-highlight-box">
-                  <div className="payslip-a4-net-label">TỔNG THU NHẬP THỰC NHẬN CẢ NĂM (NET):</div>
-                  <div className="payslip-a4-net-amount">{formatCurrency(annualData.total_net_salary_year)}</div>
-                </div>
-
-                {annualData.net_salary_in_words && (
-                  <div className="payslip-a4-words">
-                    Số tiền bằng chữ: <strong>{annualData.net_salary_in_words}</strong>
-                  </div>
-                )}
-
-                <div className="payslip-a4-signatures">
-                  <div>
-                    <div className="payslip-a4-sign-title">NGƯỜI LẬP BẢNG</div>
-                    <div className="payslip-a4-sign-note">(Ký, họ tên)</div>
-                    <div className="payslip-a4-sign-space"></div>
-                  </div>
-                  <div>
-                    <div className="payslip-a4-sign-title">KẾ TOÁN TRƯỞNG</div>
-                    <div className="payslip-a4-sign-note">(Ký, họ tên)</div>
-                    <div className="payslip-a4-sign-space"></div>
-                  </div>
-                  <div>
-                    <div className="payslip-a4-sign-title">GIÁM ĐỐC ĐIỀU HÀNH</div>
-                    <div className="payslip-a4-sign-note">(Ký, đóng dấu)</div>
-                    <div className="payslip-a4-sign-space"></div>
-                  </div>
-                  <div>
-                    <div className="payslip-a4-sign-title">NGƯỜI LAO ĐỘNG</div>
-                    <div className="payslip-a4-sign-note">(Ký xác nhận)</div>
-                    <div className="payslip-a4-sign-space"></div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div className="modal-footer no-print" style={{ padding: '14px 20px', background: 'var(--surface-card)' }}>
-              <button className="btn btn-secondary" onClick={() => setIsAnnualPrintModalOpen(false)}>
-                Đóng
-              </button>
-              <button className="btn btn-primary" onClick={() => window.print()}>
-                {Icons.printer}
-                In bảng lương năm (PDF)
-              </button>
             </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* ========================================================================= */}
       {/* MODAL 3: BẢN IN HỢP ĐỒNG LAO ĐỘNG (KHỔ A4) */}

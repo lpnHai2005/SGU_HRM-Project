@@ -11,7 +11,6 @@ from sqlalchemy import text
 import os
 import json
 import io
-import aiohttp
 import httpx
 import logging
 
