@@ -1,30 +1,10 @@
 import io
 from typing import List, Dict, Any, Optional
-import openpyxl
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from openpyxl.utils import get_column_letter
+# Lazy import of openpyxl moved inside create_styled_excel function to avoid import errors during test collection
 
-# TechZone Theme Colors
-HEADER_FILL = PatternFill(start_color="1E3A8A", end_color="1E3A8A", fill_type="solid")  # Navy Blue
-HEADER_FONT = Font(name="Segoe UI", size=11, bold=True, color="FFFFFF")
-TITLE_FONT = Font(name="Segoe UI", size=16, bold=True, color="1E3A8A")
-SUBTITLE_FONT = Font(name="Segoe UI", size=10, italic=True, color="475569")
-BOLD_FONT = Font(name="Segoe UI", size=10, bold=True)
-REGULAR_FONT = Font(name="Segoe UI", size=10)
-TOTAL_FILL = PatternFill(start_color="F1F5F9", end_color="F1F5F9", fill_type="solid")
+# Style constants will be defined lazily inside create_styled_excel
 
-THIN_BORDER = Border(
-    left=Side(style='thin', color='CBD5E1'),
-    right=Side(style='thin', color='CBD5E1'),
-    top=Side(style='thin', color='CBD5E1'),
-    bottom=Side(style='thin', color='CBD5E1')
-)
-DOUBLE_BOTTOM_BORDER = Border(
-    left=Side(style='thin', color='CBD5E1'),
-    right=Side(style='thin', color='CBD5E1'),
-    top=Side(style='thin', color='CBD5E1'),
-    bottom=Side(style='double', color='0F172A')
-)
+# Border definitions will be defined lazily inside create_styled_excel
 
 def create_styled_excel(
     title: str,
@@ -37,7 +17,30 @@ def create_styled_excel(
     """
     Generate professional styled Excel file with TechZone branding.
     """
-    wb = openpyxl.Workbook()
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    wb = Workbook()
+    # Define lazy style constants
+    HEADER_FILL = PatternFill(start_color="1E3A8A", end_color="1E3A8A", fill_type="solid")  # Navy Blue
+    HEADER_FONT = Font(name="Segoe UI", size=11, bold=True, color="FFFFFF")
+    TITLE_FONT = Font(name="Segoe UI", size=16, bold=True, color="1E3A8A")
+    SUBTITLE_FONT = Font(name="Segoe UI", size=10, italic=True, color="475569")
+    BOLD_FONT = Font(name="Segoe UI", size=10, bold=True)
+    REGULAR_FONT = Font(name="Segoe UI", size=10)
+    TOTAL_FILL = PatternFill(start_color="F1F5F9", end_color="F1F5F9", fill_type="solid")
+    THIN_BORDER = Border(
+        left=Side(style='thin', color='CBD5E1'),
+        right=Side(style='thin', color='CBD5E1'),
+        top=Side(style='thin', color='CBD5E1'),
+        bottom=Side(style='thin', color='CBD5E1')
+    )
+    DOUBLE_BOTTOM_BORDER = Border(
+        left=Side(style='thin', color='CBD5E1'),
+        right=Side(style='thin', color='CBD5E1'),
+        top=Side(style='thin', color='CBD5E1'),
+        bottom=Side(style='double', color='0F172A')
+    )
     ws = wb.active
     ws.title = "Báo cáo"
     ws.views.sheetView[0].showGridLines = True

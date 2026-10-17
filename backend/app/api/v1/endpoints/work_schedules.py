@@ -26,13 +26,15 @@ class Cancel(BaseModel):
     reason: str = Field(min_length=3, max_length=500)
 
 def bounds(day, view):
-    if view=='week':
-        start=day-timedelta(days=day.weekday())
-        return start,start+timedelta(days=6)
-    if view=='month':
-        start=day.replace(day=1)
-        return start,(start.replace(day=28)+timedelta(days=4)).replace(day=1)-timedelta(days=1)
-    return day,day
+    if view == 'week':
+        # Week starts on Monday and ends on Saturday
+        start = day - timedelta(days=day.weekday())
+        end = start + timedelta(days=5)
+        return start, end
+    if view == 'month':
+        start = day.replace(day=1)
+        return start, (start.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+    return day, day
 
 async def listing(db,user,start,end,employee_id=None,department_id=None,store_id=None,include_cancelled=False,position_id=None,shift_id=None):
     if end<start or (end-start).days>366:

@@ -27,6 +27,11 @@ const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_
 
 const displayDate = (value: string) => new Date(`${value}T00:00:00`).toLocaleDateString('vi-VN')
 const displayTime = (value: string) => value.slice(0, 5)
+const nextSunday = (value: string) => {
+  const date = new Date(`${value}T12:00:00`)
+  date.setDate(date.getDate() + ((7 - date.getDay()) % 7))
+  return localDate(date)
+}
 
 function moveDate(value: string, view: ViewMode, direction: number) {
   const [year, month, day] = value.split('-').map(Number)
@@ -76,6 +81,11 @@ export function WorkSchedulesPage({ user }: { user: any }) {
   const [lookups, setLookups] = useState<Lookups | null>(null)
   const [dialog, setDialog] = useState<DialogState>(null)
   const [cancelFixedScope, setCancelFixedScope] = useState<'day_only' | 'stop_rule'>('day_only')
+  const [editFixedScope, setEditFixedScope] = useState<'day_only' | 'future'>('day_only')
+  const [effectiveDate, setEffectiveDate] = useState(today)
+  const [fixedWeekdays, setFixedWeekdays] = useState('1,2,3,4,5,6')
+  const [fixedEndDate, setFixedEndDate] = useState<string | null>(null)
+  const [fixedRuleStart, setFixedRuleStart] = useState<string | null>(null)
   const [form, setForm] = useState<WorkScheduleWrite | null>(null)
   const [reason, setReason] = useState('')
   const [loading, setLoading] = useState(true)
@@ -188,6 +198,21 @@ export function WorkSchedulesPage({ user }: { user: any }) {
       reason: '',
     })
     setReason('')
+    setEditFixedScope('day_only')
+    setEffectiveDate(schedule.work_date >= today() ? schedule.work_date : today())
+    setFixedWeekdays('1,2,3,4,5,6')
+    setFixedEndDate(null)
+    setFixedRuleStart(null)
+    if (schedule.fixed_rule_id) {
+      workScheduleApi.getFixedRules(schedule.employee_id).then(rules => {
+        const rule = rules.find((item: any) => item.rule_id === schedule.fixed_rule_id)
+        if (rule) {
+          setFixedWeekdays(rule.weekdays || '1,2,3,4,5,6')
+          setFixedEndDate(rule.end_date || null)
+          setFixedRuleStart(rule.start_date || null)
+        }
+      }).catch(() => setError('Không tải được quy tắc ca cố định để chỉnh sửa.'))
+    }
     setDialog({ action: 'edit', schedule })
     setNotice('')
   }
@@ -195,6 +220,7 @@ export function WorkSchedulesPage({ user }: { user: any }) {
   const beginCancel = (schedule: WorkSchedule) => {
     setReason('')
     setCancelFixedScope('day_only')
+    setEffectiveDate(schedule.work_date >= today() ? schedule.work_date : today())
     setDialog({ action: 'cancel', schedule })
     setNotice('')
   }
@@ -214,14 +240,26 @@ export function WorkSchedulesPage({ user }: { user: any }) {
     try {
       if (dialog.action === 'edit') {
         if (!form) return
-        await workScheduleApi.update(dialog.schedule.schedule_id, { ...form, reason: reason.trim() })
-        setNotice('Đã cập nhật lịch làm việc.')
+        if (dialog.schedule.fixed_rule_id && editFixedScope === 'future') {
+          await workScheduleApi.updateFixed(dialog.schedule.fixed_rule_id, {
+            effective_date: effectiveDate,
+            shift_id: form.shift_id,
+            weekdays: fixedWeekdays,
+            notes: form.notes || 'Phân ca nhân viên chính thức',
+            end_date: fixedEndDate,
+            reason: reason.trim(),
+          })
+          setNotice(`Đã cập nhật mọi ca cố định từ ${displayDate(effectiveDate)} trở đi.`)
+        } else {
+          await workScheduleApi.update(dialog.schedule.schedule_id, { ...form, reason: reason.trim() })
+          setNotice('Đã cập nhật lịch làm việc của ngày được chọn.')
+        }
       } else {
         // Cancel action
         if (dialog.schedule.fixed_rule_id && cancelFixedScope === 'stop_rule') {
           // Stop entire fixed rule
-          await workScheduleApi.stopFixed(dialog.schedule.fixed_rule_id, reason.trim())
-          setNotice('Đã dừng ca cố định và hủy các lịch làm việc chưa phát sinh công từ hôm nay.')
+          await workScheduleApi.stopFixed(dialog.schedule.fixed_rule_id, reason.trim(), effectiveDate)
+          setNotice(`Đã dừng ca cố định từ ${displayDate(effectiveDate)}; giữ nguyên lịch sử đã chấm công.`)
         } else {
           // Cancel only this occurrence
           await workScheduleApi.cancel(dialog.schedule.schedule_id, reason.trim())
@@ -649,12 +687,60 @@ export function WorkSchedulesPage({ user }: { user: any }) {
                     )}
                   </div>
 
+                  {dialog.schedule.fixed_rule_id && (
+                    <div className="form-group cancel-fixed-scope-options">
+                      <span className="form-label">Phạm vi chỉnh sửa ca cố định</span>
+                      <div className="radio-options-column">
+                        <label className="radio-option-label">
+                          <input type="radio" name="edit_scope" checked={editFixedScope === 'day_only'} onChange={() => setEditFixedScope('day_only')} />
+                          <span>Chỉ ngày này ({displayDate(dialog.schedule.work_date)})</span>
+                        </label>
+                        <label className="radio-option-label">
+                          <input type="radio" name="edit_scope" checked={editFixedScope === 'future'} onChange={() => setEditFixedScope('future')} />
+                          <span>Từ ngày hiệu lực trở đi (toàn bộ ca tương lai)</span>
+                        </label>
+                      </div>
+                      {editFixedScope === 'future' && (
+                        <>
+                          <DatePicker key={`effective-${effectiveDate}`} value={effectiveDate} label="Ngày bắt đầu áp dụng" onChange={date => {
+                            const aligned = fixedWeekdays === '7' ? nextSunday(date) : date
+                            setEffectiveDate(aligned)
+                            if (fixedWeekdays === '7' && fixedEndDate) setFixedEndDate(aligned)
+                          }} disabled={saving} />
+                          <small className="form-hint">Những ca trước ngày này và các ngày đã hủy vẫn được giữ nguyên. Quy tắc bắt đầu {fixedRuleStart ? displayDate(fixedRuleStart) : 'đang tải...'}; ngày hiệu lực tối đa trong 90 ngày tới.</small>
+                          <label className="form-label">Lặp lại vào các thứ</label>
+                          <div className="weekday-pill-group">
+                            {[1, 2, 3, 4, 5, 6, 7].map(day => {
+                              const selected = fixedWeekdays.split(',').includes(String(day))
+                              return <button key={day} type="button" className={`weekday-pill ${selected ? 'active' : ''}`} onClick={() => {
+                                const next = new Set(fixedWeekdays.split(',').map(Number))
+                                if (selected && next.size > 1) next.delete(day)
+                                else next.add(day)
+                                setFixedWeekdays([...next].sort((a, b) => a - b).join(','))
+                                if (day === 7 && !selected) {
+                                  const sunday = nextSunday(effectiveDate)
+                                  setEffectiveDate(sunday)
+                                  if (fixedEndDate) setFixedEndDate(sunday)
+                                }
+                              }}>{day === 7 ? 'CN' : `T${day + 1}`}</button>
+                            })}
+                          </div>
+                          <label className="radio-option-label">
+                            <input type="checkbox" checked={Boolean(fixedEndDate)} onChange={event => setFixedEndDate(event.target.checked ? effectiveDate : null)} />
+                            <span>Có ngày kết thúc</span>
+                          </label>
+                          {fixedEndDate && <DatePicker key={`end-${fixedEndDate}`} value={fixedEndDate} label="Ngày kết thúc" onChange={date => setFixedEndDate(date)} disabled={saving} />}
+                        </>
+                      )}
+                    </div>
+                  )}
+
                   <label className="form-group">
                     <span className="form-label">Cửa hàng</span>
                     <select
                       className="form-select"
                       value={form.store_id}
-                      disabled={isStoreManager}
+                      disabled={isStoreManager || (Boolean(dialog.schedule.fixed_rule_id) && editFixedScope === 'future')}
                       onChange={event => setForm(current => (current ? { ...current, store_id: Number(event.target.value) } : current))}
                     >
                       {storeOptions
@@ -675,7 +761,16 @@ export function WorkSchedulesPage({ user }: { user: any }) {
                     <select
                       className="form-select"
                       value={form.shift_id}
-                      onChange={event => setForm(current => (current ? { ...current, shift_id: Number(event.target.value) } : current))}
+                      onChange={event => {
+                        const shift = shiftOptions.find(item => item.shift_id === Number(event.target.value))
+                        if (dialog.schedule.fixed_rule_id && editFixedScope === 'future' && shift?.shift_name.toLowerCase().includes('cuối tuần')) {
+                          setFixedWeekdays('7')
+                          const sunday = nextSunday(effectiveDate)
+                          setEffectiveDate(sunday)
+                          if (fixedEndDate) setFixedEndDate(sunday)
+                        }
+                        setForm(current => (current ? { ...current, shift_id: Number(event.target.value) } : current))
+                      }}
                       required
                     >
                       {shiftOptions.map(shift => (
@@ -731,6 +826,9 @@ export function WorkSchedulesPage({ user }: { user: any }) {
                         <p className="radio-desc">Dừng quy tắc và hủy toàn bộ lịch trong tương lai chưa phát sinh chấm công.</p>
                       </div>
                     </label>
+                    {cancelFixedScope === 'stop_rule' && (
+                      <DatePicker key={`stop-${effectiveDate}`} value={effectiveDate} label="Ngày hiệu lực dừng" onChange={setEffectiveDate} disabled={saving} />
+                    )}
                   </div>
                 </div>
               )}

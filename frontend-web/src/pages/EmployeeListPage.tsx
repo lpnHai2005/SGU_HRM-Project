@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { createPortal } from 'react-dom'
 import { Icons } from '../components/common/Icons'
 import { EmptyState } from '../components/common/EmptyState'
@@ -26,10 +26,14 @@ const todayVietnam = () => new Intl.DateTimeFormat('en-CA', {
 
 export function EmployeeListPage({ user }: EmployeeListPageProps) {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [employees, setEmployees] = useState<Employee[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
-  const [filterStore, setFilterStore] = useState<number | null>(null)
+  const [filterStore, setFilterStore] = useState<number | null>(() => {
+    const value = Number(searchParams.get('store_id'))
+    return Number.isSafeInteger(value) && value > 0 ? value : null
+  })
   const [filterPosition, setFilterPosition] = useState<number | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 

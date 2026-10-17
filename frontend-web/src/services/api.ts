@@ -92,16 +92,28 @@ class ApiClient {
       const response = await fetch(url, config);
 
       // Handle 401 Unauthorized
+      // Only treat 401 as session-expiry when the user was authenticated.
+      // A 401 forwarded from an upstream proxy (e.g. /stores/poi-search →
+      // TrackAsia) must NOT clear auth or redirect – it is a server-side
+      // configuration problem, not a user session problem.
       if (response.status === 401) {
-        clearAuth();
-        window.location.href = '/login';
-        throw new Error('Phiên đăng nhập đã hết hạn');
+        const token = tokenService.get();
+        if (token) {
+          // The backend rejected our own JWT → genuine session expiry.
+          clearAuth();
+          window.location.href = '/login';
+          throw new Error('Phiên đăng nhập đã hết hạn');
+        }
+        // No token in storage → treat as a regular API error (e.g. bad API key).
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Yêu cầu không được xác thực (401)');
       }
 
       // Handle other errors
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || `Yêu cầu thất bại (${response.status})`);
+        const detail = typeof errorData.detail === 'string' ? errorData.detail : errorData.detail?.message || JSON.stringify(errorData.detail || {});
+        throw new Error(detail || `Yêu cầu thất bại (${response.status})`);
       }
 
       // Handle empty responses
@@ -287,17 +299,20 @@ export const workScheduleApi = {
   cancel: (scheduleId: number, reason: string): Promise<WorkSchedule> =>
     api.post<WorkSchedule>(`/work-schedules/${scheduleId}/cancel`, { reason }),
 
-  assignFixed: (data: { employee_id: number; store_id: number; shift_id: number; work_date: string; notes?: string; weekdays?: string; end_date?: string }): Promise<{ message: string; rule_id?: number }> =>
+  assignFixed: (data: { employee_id: number; store_id: number; shift_id: number; work_date: string; notes?: string; reason?: string; weekdays?: string; end_date?: string }): Promise<{ message: string; rule_id?: number }> =>
     api.post('/fixed-schedules', data),
 
-  assignFixedBatch: (assignments: Array<{ employee_id: number; store_id: number; shift_id: number; work_date: string; notes?: string; weekdays?: string; end_date?: string }>): Promise<{ rules: any[]; message: string }> =>
+  assignFixedBatch: (assignments: Array<{ employee_id: number; store_id: number; shift_id: number; work_date: string; notes?: string; reason?: string; weekdays?: string; end_date?: string }>): Promise<{ rules: any[]; message: string }> =>
     api.post('/fixed-schedules/batch', { assignments }),
 
   getFixedRules: (employee_id: number): Promise<any[]> =>
     api.get('/fixed-schedules', { employee_id }),
 
-  stopFixed: (ruleId: number, reason: string): Promise<{ message: string }> =>
-    api.post(`/fixed-schedules/${ruleId}/stop`, { reason }),
+  updateFixed: (ruleId: number, data: { effective_date: string; shift_id: number; weekdays: string; notes: string; end_date: string | null; reason: string }): Promise<{ message: string; created_count: number }> =>
+    api.put(`/fixed-schedules/${ruleId}`, data),
+
+  stopFixed: (ruleId: number, reason: string, effective_date?: string): Promise<{ message: string }> =>
+    api.post(`/fixed-schedules/${ruleId}/stop`, { reason, effective_date }),
 };
 
 // ============================================
