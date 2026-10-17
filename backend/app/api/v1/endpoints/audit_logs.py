@@ -12,14 +12,14 @@ router = APIRouter()
     "",
     response_model=List[AuditLogResponse],
     summary="Nhật ký thanh tra hoạt động hệ thống (Audit Logs)",
-    description="Truy xuất lịch sử các thao tác người dùng (Đăng nhập, Tạo/Sửa dữ liệu, Duyệt đơn, Tính lương). Yêu cầu vai trò ADMIN hoặc HR_MANAGER."
+    description="Truy xuất lịch sử các thao tác người dùng. Yêu cầu vai trò ADMIN, HR_MANAGER hoặc DIRECTOR."
 )
 async def get_audit_logs(
     limit: int = Query(50, ge=1, le=200, description="Số lượng bản ghi tối đa"),
     action: Optional[str] = Query(None, description="Lọc theo hành động (VD: LOGIN, CREATE_USER...)"),
     entity_name: Optional[str] = Query(None, description="Lọc theo bảng đối tượng (VD: users, payrolls...)"),
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"]))
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"]))
 ):
     sql = """
         SELECT a.log_id, a.user_id, u.username, a.action, a.entity_name, a.entity_id,

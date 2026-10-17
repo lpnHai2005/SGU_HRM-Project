@@ -210,8 +210,8 @@ async def get_me(current_user: dict = Depends(get_current_user)):
 @router.get(
     "/test-accounts",
     response_model=List[TestAccountResponse],
-    summary="Danh sách 5 tài khoản test demo nhanh (Mật khẩu: 123456)",
-    description="Cung cấp danh sách 5 tài khoản demo tương ứng với 4 vai trò chính của chuỗi TechZone để hội đồng và nhóm kiểm thử nhanh."
+    summary="Danh sách tài khoản test demo nhanh (Mật khẩu: 123456)",
+    description="Cung cấp danh sách tài khoản demo tương ứng với các vai trò của chuỗi TechZone để hội đồng và nhóm kiểm thử nhanh."
 )
 async def get_test_accounts():
     return [
@@ -222,10 +222,16 @@ async def get_test_accounts():
             "desc": "Toàn quyền quản trị tài khoản, ma trận phân quyền và nhật ký hệ thống (Audit Log)"
         },
         {
+            "username": "director",
+            "role": "Giám đốc (DIRECTOR)",
+            "name": "Nguyễn Văn Giám Đốc",
+            "desc": "Phê duyệt đơn nghỉ phép / thôi việc của HR và Admin (No Self-Approval), xem báo cáo tổng hợp toàn công ty"
+        },
+        {
             "username": "hr_manager",
             "role": "Trưởng phòng Nhân sự (HR_MANAGER)",
             "name": "Trần Thị Bình",
-            "desc": "Quản lý hồ sơ nhân sự, phê duyệt nghỉ phép cấp 2, thăng chức đổi role, chốt lương và xem báo cáo"
+            "desc": "Quản lý hồ sơ nhân sự, phê duyệt nghỉ phép cấp 2 (Employee/Store Manager), thăng chức đổi role, chốt lương và xem báo cáo"
         },
         {
             "username": "store_mgr_q1",

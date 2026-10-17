@@ -388,11 +388,11 @@ async def get_sales_performance_report(
 # 6. NHẬT KÝ HỆ THỐNG AUDIT LOGS (RUBRIC II.2 - GIAO DIỆN ADMIN)
 # ===================================================================================
 
-@router.get("/audit-logs", summary="Nhật ký hoạt động hệ thống phục vụ Admin (Rubric II.2)")
+@router.get("/audit-logs", summary="Nhật ký hoạt động hệ thống (Admin, Giám đốc)")
 async def get_audit_logs(
     limit: int = Query(50, ge=1, le=500),
     action: Optional[str] = Query(None, description="Lọc theo hành động"),
-    current_user: dict = Depends(require_roles(["ADMIN"])),
+    current_user: dict = Depends(require_roles(["ADMIN", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     query = """

@@ -69,8 +69,8 @@ async def get_leave_stats(
     where_clause = "WHERE 1=1"
     params: Dict[str, Any] = {}
 
-    # Phân quyền: Nhân viên chỉ thấy thống kê cá nhân; Cửa hàng trưởng thấy chi nhánh; HR/Admin thấy toàn chuỗi
-    if "ADMIN" not in roles and "HR_MANAGER" not in roles:
+    # Phân quyền: Nhân viên chỉ thấy thống kê cá nhân; Cửa hàng trưởng thấy chi nhánh; HR/Admin/Director thấy toàn chuỗi
+    if "ADMIN" not in roles and "HR_MANAGER" not in roles and "DIRECTOR" not in roles:
         if "STORE_MANAGER" in roles:
             where_clause += " AND (e.store_id = :store_id OR lr.employee_id = :emp_id)"
             params["store_id"] = store_id
@@ -80,7 +80,7 @@ async def get_leave_stats(
             params["emp_id"] = emp_id
 
     query = f"""
-        SELECT 
+        SELECT
             COUNT(*) as total_requests,
             COUNT(*) FILTER (WHERE lr.status = 'PENDING') as pending_store_approval,
             COUNT(*) FILTER (WHERE lr.status = 'STORE_APPROVED') as pending_hr_approval,
@@ -125,7 +125,8 @@ async def get_leave_calendar(
                lt.is_paid, lr.start_date, lr.end_date, lr.total_days, lr.reason, lr.status,
                lr.attachment_url,
                lr.store_manager_id, sm.full_name as store_manager_name, lr.store_approved_at, lr.store_manager_note,
-               lr.hr_approver_id, hr.full_name as hr_approver_name, lr.hr_approved_at, 
+               lr.hr_approver_id, hr.full_name as hr_approver_name, lr.hr_approved_at,
+               lr.director_approver_id, dir.full_name as director_approver_name, lr.director_approved_at,
                lr.rejection_reason, lr.rejected_by_id, rj.full_name as rejected_by_name, lr.rejected_at,
                CASE 
                    WHEN rj.employee_id = 1 THEN 'Ban Giám đốc / Admin'
@@ -157,6 +158,7 @@ async def get_leave_calendar(
         LEFT JOIN positions pos ON e.position_id = pos.position_id
         LEFT JOIN employees sm ON lr.store_manager_id = sm.employee_id
         LEFT JOIN employees hr ON lr.hr_approver_id = hr.employee_id
+        LEFT JOIN employees dir ON lr.director_approver_id = dir.employee_id
         LEFT JOIN employees rj ON lr.rejected_by_id = rj.employee_id
         LEFT JOIN positions rj_pos ON rj.position_id = rj_pos.position_id
         WHERE lr.status = 'HR_APPROVED'
@@ -164,7 +166,7 @@ async def get_leave_calendar(
     """
     params: Dict[str, Any] = {"month": target_month}
 
-    if "ADMIN" not in roles and "HR_MANAGER" not in roles:
+    if "ADMIN" not in roles and "HR_MANAGER" not in roles and "DIRECTOR" not in roles:
         if "STORE_MANAGER" in roles:
             query += " AND e.store_id = :user_store_id"
             params["user_store_id"] = current_user.get("store_id")
@@ -209,7 +211,7 @@ async def get_leave_calendar(
           AND to_char(e.resignation_date, 'YYYY-MM') = :month
     """
     resigned_params: Dict[str, Any] = {"month": target_month}
-    if "ADMIN" not in roles and "HR_MANAGER" not in roles:
+    if "ADMIN" not in roles and "HR_MANAGER" not in roles and "DIRECTOR" not in roles:
         if "STORE_MANAGER" in roles:
             resigned_query += " AND e.store_id = :user_store_id"
             resigned_params["user_store_id"] = current_user.get("store_id")
@@ -265,7 +267,8 @@ async def list_leaves(
                lr.start_date, lr.end_date, lr.total_days, lr.reason, lr.status,
                lr.attachment_url, 
                lr.store_manager_id, sm.full_name as store_manager_name, lr.store_approved_at, lr.store_manager_note,
-               lr.hr_approver_id, hr.full_name as hr_approver_name, lr.hr_approved_at, 
+               lr.hr_approver_id, hr.full_name as hr_approver_name, lr.hr_approved_at,
+               lr.director_approver_id, dir.full_name as director_approver_name, lr.director_approved_at,
                lr.rejection_reason, lr.rejected_by_id, rj.full_name as rejected_by_name, lr.rejected_at,
                CASE 
                    WHEN rj.employee_id = 1 THEN 'Ban Giám đốc / Admin'
@@ -296,6 +299,7 @@ async def list_leaves(
         LEFT JOIN positions pos ON e.position_id = pos.position_id
         LEFT JOIN employees sm ON lr.store_manager_id = sm.employee_id
         LEFT JOIN employees hr ON lr.hr_approver_id = hr.employee_id
+        LEFT JOIN employees dir ON lr.director_approver_id = dir.employee_id
         LEFT JOIN employees rj ON lr.rejected_by_id = rj.employee_id
         LEFT JOIN positions rj_pos ON rj.position_id = rj_pos.position_id
         WHERE 1=1
@@ -306,7 +310,7 @@ async def list_leaves(
     user_store_id = current_user.get("store_id")
 
     # Áp dụng RBAC
-    if "ADMIN" not in roles and "HR_MANAGER" not in roles:
+    if "ADMIN" not in roles and "HR_MANAGER" not in roles and "DIRECTOR" not in roles:
         if "STORE_MANAGER" in roles:
             # Cửa hàng trưởng xem nhân viên chi nhánh mình + đơn của mình
             query += " AND (e.store_id = :user_store_id OR lr.employee_id = :user_emp_id)"
@@ -325,7 +329,7 @@ async def list_leaves(
     # Các bộ lọc tìm kiếm
     if employee_id:
         # Nhân viên thường không được xem đơn người khác
-        if "ADMIN" not in roles and "HR_MANAGER" not in roles and "STORE_MANAGER" not in roles:
+        if "ADMIN" not in roles and "HR_MANAGER" not in roles and "DIRECTOR" not in roles and "STORE_MANAGER" not in roles:
             if employee_id != user_emp_id:
                 raise HTTPException(status_code=403, detail="Bạn không có quyền xem đơn nghỉ phép của nhân viên khác.")
         query += " AND lr.employee_id = :employee_id"
@@ -366,7 +370,8 @@ async def get_leave_detail(
                lr.start_date, lr.end_date, lr.total_days, lr.reason, lr.status,
                lr.attachment_url, 
                lr.store_manager_id, sm.full_name as store_manager_name, lr.store_approved_at, lr.store_manager_note,
-               lr.hr_approver_id, hr.full_name as hr_approver_name, lr.hr_approved_at, 
+               lr.hr_approver_id, hr.full_name as hr_approver_name, lr.hr_approved_at,
+               lr.director_approver_id, dir.full_name as director_approver_name, lr.director_approved_at,
                lr.rejection_reason, lr.rejected_by_id, rj.full_name as rejected_by_name, lr.rejected_at,
                CASE 
                    WHEN rj.employee_id = 1 THEN 'Ban Giám đốc / Admin'
@@ -397,6 +402,7 @@ async def get_leave_detail(
         LEFT JOIN positions pos ON e.position_id = pos.position_id
         LEFT JOIN employees sm ON lr.store_manager_id = sm.employee_id
         LEFT JOIN employees hr ON lr.hr_approver_id = hr.employee_id
+        LEFT JOIN employees dir ON lr.director_approver_id = dir.employee_id
         LEFT JOIN employees rj ON lr.rejected_by_id = rj.employee_id
         LEFT JOIN positions rj_pos ON rj.position_id = rj_pos.position_id
         WHERE lr.request_id = :id
@@ -412,7 +418,7 @@ async def get_leave_detail(
     user_store_id = current_user.get("store_id")
 
     # Kiểm tra quyền xem chi tiết
-    if "ADMIN" not in roles and "HR_MANAGER" not in roles:
+    if "ADMIN" not in roles and "HR_MANAGER" not in roles and "DIRECTOR" not in roles:
         if "STORE_MANAGER" in roles:
             if row["store_id"] != user_store_id and row["employee_id"] != user_emp_id:
                 raise HTTPException(status_code=403, detail="Bạn không có quyền xem đơn của nhân sự chi nhánh khác")
@@ -689,9 +695,12 @@ async def create_leave_request(
         msg = f"Đã tạo đơn {leave_type['type_name']} thành công cho nhân viên {target_emp['full_name']}!"
     else:
         is_cht = "STORE_MANAGER" in roles
+        is_hr_or_admin = "HR_MANAGER" in roles or "ADMIN" in roles
         msg = f"Nộp đơn {leave_type['type_name']} thành công!"
         if is_cht:
-            msg += " Đơn của Cửa hàng trưởng được chuyển trực tiếp cho Phòng Nhân sự phê duyệt."
+            msg += " Đơn của Cửa hàng trưởng được chuyển đến Phòng Nhân sự và Giám đốc phê duyệt."
+        elif is_hr_or_admin:
+            msg += " Đơn của bạn sẽ được chuyển đến Giám đốc phê duyệt (nguyên tắc No Self-Approval)."
         else:
             msg += " Đơn đang chờ Cửa hàng trưởng phê duyệt."
 
@@ -708,7 +717,7 @@ async def store_approve_leave(
     request_id: int,
     request: Request,
     body: Optional[LeaveApproveRequest] = None,
-    current_user: dict = Depends(require_roles(["STORE_MANAGER", "ADMIN"])),
+    current_user: dict = Depends(require_roles(["STORE_MANAGER", "DIRECTOR", "ADMIN"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -767,7 +776,7 @@ async def store_approve_leave(
         SELECT 1 FROM user_roles ur
         JOIN roles r ON ur.role_id = r.role_id
         JOIN users u ON ur.user_id = u.user_id
-        WHERE u.employee_id = :eid AND r.role_code IN ('STORE_MANAGER', 'HR_MANAGER', 'ADMIN')
+        WHERE u.employee_id = :eid AND r.role_code IN ('STORE_MANAGER', 'HR_MANAGER', 'ADMIN', 'DIRECTOR')
     """), {"eid": leave_req["employee_id"]})
     if applicant_mgr_check.first():
         raise HTTPException(
@@ -814,18 +823,17 @@ async def hr_approve_leave(
     request_id: int,
     request: Request,
     body: Optional[LeaveApproveRequest] = None,
-    current_user: dict = Depends(require_roles(["HR_MANAGER", "ADMIN"])),
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "ADMIN", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Quy trình duyệt Cấp 2 (Trưởng phòng HR):
-    - Phòng Nhân sự xem xét phê duyệt chính thức cuối cùng.
-    - HR có thể duyệt thẳng (Cấp 2) kể cả trước khi Cửa hàng trưởng duyệt Cấp 1 (chấp nhận trạng thái 'STORE_APPROVED' hoặc 'PENDING').
-    - Tự động hóa tác vụ nhân sự đi kèm:
-      * Nếu là đơn thôi việc (leave_type_id = 6 / THOI_VIEC): Tự động chuyển hồ sơ nhân viên thành 'RESIGNED', ghi ngày thôi việc và khóa tài khoản người dùng.
-      * Nếu là đơn thai sản (leave_type_id = 3 / THAI_SAN): Tự động chuyển trạng thái nhân viên thành 'ON_LEAVE'.
+    Quy trình duyệt Cấp 2:
+    - HR duyệt đơn của Employee/Store Manager.
+    - DIRECTOR duyệt đơn của HR_MANAGER/ADMIN (nguyên tắc No Self-Approval).
+    - Tự động hóa tác vụ nhân sự đi kèm (thôi việc/thai sản).
     """
     emp_id = current_user.get("employee_id")
+    user_roles = current_user.get("roles", [])
 
     req_res = await db.execute(text("""
         SELECT lr.request_id, lr.employee_id, lr.leave_type_id, lr.status, lr.start_date, lr.end_date, lr.total_days,
@@ -841,7 +849,7 @@ async def hr_approve_leave(
         raise HTTPException(status_code=404, detail="Không tìm thấy đơn nghỉ phép")
 
     if leave_req["status"] == "HR_APPROVED":
-        raise HTTPException(status_code=400, detail="Đơn này đã được Phòng Nhân sự phê duyệt chính thức trước đó.")
+        raise HTTPException(status_code=400, detail="Đơn này đã được phê duyệt chính thức trước đó.")
     elif leave_req["status"] == "REJECTED":
         raise HTTPException(status_code=400, detail="Không thể duyệt đơn đã bị từ chối.")
     elif leave_req["status"] == "CANCELLED":
@@ -849,17 +857,59 @@ async def hr_approve_leave(
     elif leave_req["status"] not in ("PENDING", "STORE_APPROVED"):
         raise HTTPException(status_code=400, detail=f"Trạng thái đơn không hợp lệ để duyệt: {leave_req['status']}")
 
+    # ===== NO SELF-APPROVAL CHECK =====
+    # Lấy roles của người nộp đơn
+    applicant_roles_res = await db.execute(text("""
+        SELECT DISTINCT r.role_code
+        FROM user_roles ur
+        JOIN roles r ON ur.role_id = r.role_id
+        JOIN users u ON ur.user_id = u.user_id
+        WHERE u.employee_id = :eid
+    """), {"eid": leave_req["employee_id"]})
+    applicant_roles = [r["role_code"] for r in applicant_roles_res.mappings().all()]
+
+    is_hr_or_admin = any(r in applicant_roles for r in ("HR_MANAGER", "ADMIN"))
+    is_director = "DIRECTOR" in user_roles
+
+    # Đơn của HR/Admin phải do DIRECTOR duyệt, KHÔNG được HR tự duyệt
+    if is_hr_or_admin and not is_director:
+        raise HTTPException(
+            status_code=403,
+            detail="Đơn nghỉ phép của Trưởng phòng Nhân sự / Quản trị viên chỉ được Giám đốc phê duyệt (nguyên tắc No Self-Approval)."
+        )
+
+    # DIRECTOR duyệt đơn của HR/Admin phải kiểm tra trạng thái PENDING (bỏ qua Store)
+    # Đơn của Employee/Store Manager đã qua Store mới đến HR
+    if is_director and not is_hr_or_admin:
+        # DIRECTOR chỉ duyệt khi đơn của HR/Admin
+        raise HTTPException(
+            status_code=403,
+            detail="Giám đốc chỉ duyệt đơn nghỉ phép của Trưởng phòng Nhân sự / Quản trị viên."
+        )
+
     old_status = leave_req["status"]
 
-    # Cập nhật duyệt chính thức Cấp 2 (Xóa bỏ dấu từ chối nếu có)
-    await db.execute(text("""
-        UPDATE leave_requests
-        SET status = 'HR_APPROVED', hr_approver_id = :hr_id,
-            hr_approved_at = CURRENT_TIMESTAMP,
-            rejected_by_id = NULL, rejected_at = NULL, rejection_reason = NULL,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE request_id = :req_id
-    """), {"hr_id": emp_id, "req_id": request_id})
+    # Xác định ai là approver cuối (HR hay DIRECTOR)
+    if is_director:
+        # DIRECTOR duyệt đơn HR/Admin
+        await db.execute(text("""
+            UPDATE leave_requests
+            SET status = 'HR_APPROVED', director_approver_id = :approver_id,
+                director_approved_at = CURRENT_TIMESTAMP,
+                rejected_by_id = NULL, rejected_at = NULL, rejection_reason = NULL,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE request_id = :req_id
+        """), {"approver_id": emp_id, "req_id": request_id})
+    else:
+        # HR duyệt đơn Employee/Store Manager
+        await db.execute(text("""
+            UPDATE leave_requests
+            SET status = 'HR_APPROVED', hr_approver_id = :hr_id,
+                hr_approved_at = CURRENT_TIMESTAMP,
+                rejected_by_id = NULL, rejected_at = NULL, rejection_reason = NULL,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE request_id = :req_id
+        """), {"hr_id": emp_id, "req_id": request_id})
 
     # TỰ ĐỘNG HÓA NGHIỆP VỤ NHÂN SỰ
     # 1. Đơn xin thôi việc (type_code = 'THOI_VIEC' hoặc leave_type_id = 6)
@@ -959,25 +1009,27 @@ async def hr_approve_leave(
         old_values={"status": old_status},
         new_values={
             "status": "HR_APPROVED",
+            "approver_role": "DIRECTOR" if is_director else "HR_MANAGER",
             "hr_approver_id": emp_id,
             "type_code": leave_req["type_code"]
         },
         ip_address=client_ip
     )
 
+    approver_label = "Giám đốc" if is_director else "Phòng Nhân sự"
     return {
-        "message": f"Phòng Nhân sự đã phê duyệt chính thức đơn {leave_req['leave_type_name']} của nhân viên {leave_req['employee_name']} thành công!",
+        "message": f"{approver_label} đã phê duyệt chính thức đơn {leave_req['leave_type_name']} của nhân viên {leave_req['employee_name']} thành công!",
         "request_id": request_id,
         "status": "HR_APPROVED"
     }
 
 
-@router.post("/{request_id}/reject", summary="Từ chối đơn xin nghỉ phép (Cửa hàng trưởng hoặc HR)")
+@router.post("/{request_id}/reject", summary="Từ chối đơn xin nghỉ phép (Cửa hàng trưởng, HR hoặc Giám đốc)")
 async def reject_leave(
     request_id: int,
     body: LeaveRejectRequest,
     request: Request,
-    current_user: dict = Depends(require_roles(["STORE_MANAGER", "HR_MANAGER", "ADMIN"])),
+    current_user: dict = Depends(require_roles(["STORE_MANAGER", "HR_MANAGER", "ADMIN", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -1025,7 +1077,7 @@ async def reject_leave(
 
     # Kiểm tra quyền từ chối:
     # 1. Cửa hàng trưởng chỉ được từ chối nhân viên chi nhánh mình
-    if "ADMIN" not in roles and "HR_MANAGER" not in roles:
+    if "ADMIN" not in roles and "HR_MANAGER" not in roles and "DIRECTOR" not in roles:
         if leave_req["store_id"] != user_store_id:
             raise HTTPException(status_code=403, detail="Bạn không có quyền từ chối đơn của nhân sự chi nhánh khác.")
         if leave_req["status"] == "HR_APPROVED":
@@ -1128,7 +1180,7 @@ async def cancel_leave_request(
     if not leave_req:
         raise HTTPException(status_code=404, detail="Không tìm thấy đơn nghỉ phép")
 
-    if "ADMIN" not in roles and "HR_MANAGER" not in roles:
+    if "ADMIN" not in roles and "HR_MANAGER" not in roles and "DIRECTOR" not in roles:
         if leave_req["employee_id"] != user_emp_id:
             raise HTTPException(status_code=403, detail="Bạn chỉ có thể hủy đơn nghỉ phép của chính mình.")
         if leave_req["status"] != "PENDING":
@@ -1209,7 +1261,7 @@ async def get_employee_leave_balance(
         raise HTTPException(status_code=404, detail="Không tìm thấy nhân viên trong hệ thống.")
 
     # Kiểm tra phân quyền truy cập số dư
-    if "ADMIN" not in roles and "HR_MANAGER" not in roles:
+    if "ADMIN" not in roles and "HR_MANAGER" not in roles and "DIRECTOR" not in roles:
         if "STORE_MANAGER" in roles:
             if emp_row["store_id"] != user_store_id and employee_id != user_emp_id:
                 raise HTTPException(status_code=403, detail="Bạn không có quyền tra cứu số dư phép của nhân viên chi nhánh khác.")

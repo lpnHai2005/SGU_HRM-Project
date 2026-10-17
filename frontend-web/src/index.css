@@ -82,6 +82,10 @@
   --role-admin-text: #ffffff;
   --role-admin-border: #27272a;
 
+  --role-director-bg: rgba(124, 58, 237, 0.1);
+  --role-director-text: #7c3aed;
+  --role-director-border: rgba(124, 58, 237, 0.25);
+
   --role-hr-bg: rgba(2, 132, 199, 0.1);
   --role-hr-text: #0284c7;
   --role-hr-border: rgba(2, 132, 199, 0.25);
@@ -228,6 +232,10 @@
   --role-admin-bg: #27272a;
   --role-admin-text: #f4f4f5;
   --role-admin-border: #3f3f46;
+
+  --role-director-bg: rgba(167, 139, 250, 0.15);
+  --role-director-text: #c4b5fd;
+  --role-director-border: rgba(167, 139, 250, 0.3);
 
   --role-hr-bg: rgba(14, 165, 233, 0.15);
   --role-hr-text: #38bdf8;
@@ -1030,6 +1038,12 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   background-color: var(--role-hr-bg);
   color: var(--role-hr-text);
   border-color: var(--role-hr-border);
+}
+
+.role-badge.director {
+  background-color: var(--role-director-bg);
+  color: var(--role-director-text);
+  border-color: var(--role-director-border);
 }
 
 .role-badge.manager {

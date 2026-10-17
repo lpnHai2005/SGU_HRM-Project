@@ -110,7 +110,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             <div className="login-quick-access">
               <p className="login-quick-access-title">Tài khoản demo kiểm thử vai trò</p>
               <div className="quick-access-grid">
-                {testAccounts.slice(0, 4).map((account) => (
+                {testAccounts.slice(0, 6).map((account) => (
                   <button
                     key={account.username}
                     className="quick-access-btn"
@@ -126,7 +126,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           )}
 
           <div className="login-footer-notice">
-            TechZone Enterprise HRM v2.4 • Mọi truy cập đều được ghi nhật ký bảo mật
+            TechZone Enterprise HRM v2.5 • Mật khẩu mặc định: <strong>123456</strong> • Mọi truy cập đều được ghi nhật ký bảo mật
           </div>
         </div>
       </div>
