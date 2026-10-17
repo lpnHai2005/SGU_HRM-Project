@@ -533,7 +533,7 @@ async def activate_contract(
     """)
     await db.execute(query, {"contract_id": contract_id, "user_id": user_id})
 
-    # Audit log
+    # Audit log for contract
     await record_audit_log(
         db=db,
         user_id=user_id,
@@ -544,12 +544,83 @@ async def activate_contract(
         new_values={"status": "ACTIVE"}
     )
 
+    # 1. Tự động chuyển trạng thái nhân viên về ACTIVE và xóa ngày thôi việc (nếu trước đó đã nghỉ việc/hết HĐ)
+    emp_id = current_contract["employee_id"]
+    emp_res = await db.execute(
+        text("SELECT employee_id, full_name, employment_status, resignation_date FROM employees WHERE employee_id = :emp_id"),
+        {"emp_id": emp_id}
+    )
+    emp_data = emp_res.mappings().first()
+
+    employee_reactivated = False
+    if emp_data and emp_data["employment_status"] in ["RESIGNED", "TERMINATED"]:
+        await db.execute(text("""
+            UPDATE employees
+            SET employment_status = 'ACTIVE',
+                resignation_date = NULL,
+                position_id = COALESCE(:pos_id, position_id),
+                department_id = COALESCE(:dept_id, department_id),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE employee_id = :emp_id
+        """), {
+            "emp_id": emp_id,
+            "pos_id": current_contract.get("position_id"),
+            "dept_id": current_contract.get("department_id")
+        })
+        employee_reactivated = True
+        await record_audit_log(
+            db=db,
+            user_id=user_id,
+            action="EMPLOYEE_STATUS_REACTIVATED",
+            entity_name="employee",
+            entity_id=str(emp_id),
+            old_values={"employment_status": emp_data["employment_status"]},
+            new_values={"employment_status": "ACTIVE", "reason": "Contract activated"}
+        )
+
+    # 2. Tự động MỞ KHÓA tài khoản người dùng cũ nếu đang bị khóa
+    user_account_unlocked = False
+    user_res = await db.execute(
+        text("SELECT user_id, username, is_active FROM users WHERE employee_id = :emp_id"),
+        {"emp_id": emp_id}
+    )
+    user_data = user_res.mappings().first()
+    if user_data and not user_data["is_active"]:
+        await db.execute(text("""
+            UPDATE users
+            SET is_active = TRUE,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE user_id = :uid
+        """), {"uid": user_data["user_id"]})
+        user_account_unlocked = True
+        await record_audit_log(
+            db=db,
+            user_id=user_id,
+            action="USER_UNLOCKED_ON_CONTRACT_ACTIVATION",
+            entity_name="user",
+            entity_id=str(user_data["user_id"]),
+            old_values={"is_active": False},
+            new_values={"is_active": True, "reason": "Contract activated"}
+        )
+
     await db.commit()
 
+    extra_msg = []
+    if employee_reactivated:
+        extra_msg.append("hồ sơ nhân sự chuyển sang Đang làm việc (ACTIVE)")
+    if user_account_unlocked:
+        extra_msg.append(f"tài khoản '{user_data['username']}' đã được tự động mở khóa")
+
+    final_msg = "Kích hoạt hợp đồng thành công!"
+    if extra_msg:
+        final_msg += f" ({', '.join(extra_msg)})"
+
     return {
-        "message": "Kích hoạt hợp đồng thành công!",
+        "message": final_msg,
         "contract_id": contract_id,
-        "status": "ACTIVE"
+        "status": "ACTIVE",
+        "employee_reactivated": employee_reactivated,
+        "user_account_unlocked": user_account_unlocked
     }
 
 
