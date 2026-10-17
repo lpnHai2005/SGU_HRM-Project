@@ -10,6 +10,7 @@ import { type Contract, type ContractType } from '../types/contract'
 import { Icons } from './common/Icons'
 import { EmployeeSearchSelect } from './common/EmployeeSearchSelect'
 import { toast } from 'sonner'
+import { formatCurrency } from '../utils/formatters'
 
 export interface ContractFormDialogProps {
   open: boolean
@@ -183,7 +184,7 @@ export function ContractFormDialog({
           start_date: startDate,
           end_date: isIndefinite ? null : endDate,
           basic_salary: parseFloat(basicSalary),
-          insurance_salary: insuranceSalary ? parseFloat(insuranceSalary) : undefined,
+          insurance_salary: basicSalary ? parseFloat(basicSalary) : undefined,
           signed_date: signedDate,
           position_id: positionId ? parseInt(positionId) : undefined,
           department_id: departmentId ? parseInt(departmentId) : undefined,
@@ -199,7 +200,7 @@ export function ContractFormDialog({
           start_date: startDate,
           end_date: isIndefinite ? null : endDate,
           basic_salary: parseFloat(basicSalary),
-          insurance_salary: insuranceSalary ? parseFloat(insuranceSalary) : undefined,
+          insurance_salary: basicSalary ? parseFloat(basicSalary) : undefined,
           signed_date: signedDate,
           position_id: positionId ? parseInt(positionId) : undefined,
           department_id: departmentId ? parseInt(departmentId) : undefined,
@@ -391,21 +392,83 @@ export function ContractFormDialog({
                 />
               </div>
 
-              {/* Insurance Salary */}
-              <div className="form-group">
-                <label className="form-label" style={{ fontWeight: 500, fontSize: '13px', display: 'block', marginBottom: '6px' }}>
-                  Lương đóng BHXH (VNĐ)
-                </label>
-                <input
-                  type="number"
-                  className="form-input"
-                  value={insuranceSalary}
-                  onChange={(e) => setInsuranceSalary(e.target.value)}
-                  placeholder="Ví dụ: 5000000 (để trống nếu theo lương cơ bản)"
-                  min="0"
-                  step="100000"
-                />
-              </div>
+              {/* Insurance Salary & Mandatory Deductions - Auto-computed */}
+              {(() => {
+                const basicSalaryNum = parseFloat(basicSalary) || 0
+                const autoInsuranceSalary = basicSalaryNum
+                const totalInsuranceDeduction = autoInsuranceSalary * 0.105
+                const bhxhAmount = autoInsuranceSalary * 0.08
+                const bhytAmount = autoInsuranceSalary * 0.015
+                const bhtnAmount = autoInsuranceSalary * 0.01
+
+                return (
+                  <div className="form-group">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                      <label className="form-label" style={{ fontWeight: 500, fontSize: '13px', margin: 0 }}>
+                        Trích nộp Bảo hiểm Bắt buộc (10.5%)
+                      </label>
+                      <span style={{
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                        backgroundColor: 'var(--surface-subtle)',
+                        color: 'var(--text-secondary)',
+                        border: '1px solid var(--border-default)'
+                      }}>
+                        Tự động tính 10.5%
+                      </span>
+                    </div>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={basicSalary ? `- ${formatCurrency(totalInsuranceDeduction)}` : '0 VNĐ'}
+                      readOnly
+                      disabled
+                      style={{
+                        backgroundColor: 'var(--surface-subtle)',
+                        cursor: 'not-allowed',
+                        fontWeight: 600,
+                        color: basicSalary ? 'var(--status-error)' : 'var(--text-secondary)',
+                        fontFamily: 'var(--font-mono)'
+                      }}
+                    />
+                    <div style={{
+                      marginTop: '8px',
+                      padding: '10px 14px',
+                      fontSize: '12px',
+                      lineHeight: '1.6',
+                      color: 'var(--text-secondary)',
+                      backgroundColor: 'var(--surface-subtle)',
+                      border: '1px solid var(--border-default)',
+                      borderRadius: 'var(--radius-sm)'
+                    }}>
+                      <div style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: '6px',
+                        borderBottom: '1px dashed var(--border-default)',
+                        paddingBottom: '6px'
+                      }}>
+                        <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                          Mức lương làm căn cứ đóng BH (100% lương CB):
+                        </span>
+                        <strong style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>
+                          {formatCurrency(autoInsuranceSalary)}
+                        </strong>
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 12px' }}>
+                        <span>• BHXH (8.0%): <strong>{formatCurrency(bhxhAmount)}</strong></span>
+                        <span>|</span>
+                        <span>• BHYT (1.5%): <strong>{formatCurrency(bhytAmount)}</strong></span>
+                        <span>|</span>
+                        <span>• BHTN (1.0%): <strong>{formatCurrency(bhtnAmount)}</strong></span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
 
               {/* Position */}
               <div className="form-group">

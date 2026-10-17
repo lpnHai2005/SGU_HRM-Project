@@ -88,6 +88,7 @@ async def get_rbac_matrix(
                 "module": r["module"],
                 "roles": {
                     "ADMIN": True, # ADMIN luôn có full quyền
+                    "DIRECTOR": False,
                     "HR_MANAGER": False,
                     "STORE_MANAGER": False,
                     "EMPLOYEE": False

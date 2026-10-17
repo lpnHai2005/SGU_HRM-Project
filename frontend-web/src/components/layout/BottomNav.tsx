@@ -1,4 +1,4 @@
-﻿import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Icons } from '../common/Icons'
 import { navigationForUser } from '../../constants/navigation'
 import type { NavigationUser } from '../../constants/navigation'
@@ -12,7 +12,7 @@ export function BottomNav({ onOpenMenu, user }: BottomNavProps) {
   const location = useLocation()
   const navigate = useNavigate()
   const visible = navigationForUser(user)
-  const manager = user?.roles?.some(role => ['ADMIN', 'HR_MANAGER', 'STORE_MANAGER'].includes(role))
+  const manager = user?.roles?.some(role => ['ADMIN', 'DIRECTOR', 'HR_MANAGER', 'STORE_MANAGER'].includes(role))
   const preferred = manager
     ? ['dashboard', 'attendance', 'leave', 'employees']
     : ['dashboard', 'my-attendance-staff', 'leave-staff', 'my-payroll-staff']

@@ -76,7 +76,7 @@ async def monthly_attendance(period:str=Query(...,pattern=r'^\d{4}-(0[1-9]|1[0-2
 async def notifications(user=Depends(get_current_user),db:AsyncSession=Depends(get_db)):
     params={}
     where=scope(user,params,'e')
-    manager=bool(set(user.get('roles',[])) & {'ADMIN','HR_MANAGER','STORE_MANAGER'})
+    manager=bool(set(user.get('roles',[])) & {'ADMIN','HR_MANAGER','STORE_MANAGER','DIRECTOR'})
     condition="lr.status IN ('PENDING','STORE_APPROVED')" if manager else "lr.status IN ('HR_APPROVED','REJECTED','STORE_APPROVED')"
     rows=(await db.execute(text('''SELECT lr.request_id,lr.status,lr.updated_at,e.full_name
         FROM leave_requests lr JOIN employees e USING(employee_id)

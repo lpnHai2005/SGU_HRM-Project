@@ -33,8 +33,14 @@ function getStatusBadgeClass(status: string): string {
 }
 
 function getStatusDisplayLabel(status: string, req?: LeaveRequest | null): string {
-  const isChtReq = req?.is_store_manager_request || req?.position_name === 'Cửa hàng trưởng' || (req && !req.store_id)
-  const isHrOrAdminReq = req?.position_name === 'Trưởng phòng Nhân sự' || req?.position_name === 'Quản trị viên' || req?.position_name === 'Giám đốc'
+  const isHrOrAdminReq = Boolean(
+    req?.is_hr_or_admin_request ?? (
+      req?.position_name === 'Trưởng phòng Nhân sự' ||
+      req?.position_name === 'Quản trị viên' ||
+      req?.position_name === 'Giám đốc'
+    )
+  )
+  const isChtReq = Boolean(req?.is_store_manager_request || req?.position_name === 'Cửa hàng trưởng' || (!req?.store_id && !isHrOrAdminReq))
   switch (status) {
     case 'PENDING':
       if (isHrOrAdminReq) return 'Chờ Giám đốc duyệt'
@@ -42,7 +48,7 @@ function getStatusDisplayLabel(status: string, req?: LeaveRequest | null): strin
     case 'STORE_APPROVED':
       return 'Chờ HR duyệt'
     case 'HR_APPROVED':
-      return 'Đã duyệt'
+      return req?.director_approved_at ? 'Giám đốc đã duyệt' : 'Đã duyệt'
     case 'REJECTED':
       return req?.hr_approved_at || req?.director_approved_at ? 'Đã hủy duyệt' : 'Đã từ chối'
     case 'CANCELLED':
@@ -127,7 +133,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
   const [leaveStats, setLeaveStats] = useState<any>(null)
   const [calendarLeaves, setCalendarLeaves] = useState<LeaveRequest[]>([])
 
-  const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'approved' | 'rejected' | 'calendar'>('all')
+  const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'director_pending' | 'approved' | 'rejected' | 'calendar'>('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedTypeFilter, setSelectedTypeFilter] = useState<string>('all')
   const [calendarMonth, setCalendarMonth] = useState<string>(new Date().toISOString().slice(0, 7))
@@ -170,7 +176,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
   // Roles determination
   const userRoles = useMemo(() => user?.roles || [], [user])
   const canManageLeaves = useMemo(() => {
-    return userRoles.includes('ADMIN') || userRoles.includes('HR_MANAGER') || userRoles.includes('STORE_MANAGER')
+    return userRoles.includes('ADMIN') || userRoles.includes('DIRECTOR') || userRoles.includes('HR_MANAGER') || userRoles.includes('STORE_MANAGER')
   }, [userRoles])
 
   // Giao diện cá nhân: Khi có cờ personal=true HOẶC khi là nhân viên bình thường (không có quyền quản lý)
@@ -186,6 +192,15 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
   const annualRemaining = leaveBalance?.annual_leave_remaining ?? 12
   const annualUsed = leaveBalance?.annual_leave_used ?? 0
   const pendingCount = leaveStats?.pending_store_approval ?? leaveRequests.filter(r => r.status === 'PENDING').length
+
+  // Số lượng đơn của HR/Admin đang chờ Giám đốc duyệt (No Self-Approval)
+  const pendingDirectorCount = useMemo(() => {
+    return leaveRequests.filter(r =>
+      r.status === 'PENDING' &&
+      Boolean(r.is_hr_or_admin_request || r.position_name === 'Trưởng phòng Nhân sự' || r.position_name === 'Quản trị viên') &&
+      r.employee_id !== user?.employee_id
+    ).length
+  }, [leaveRequests, user?.employee_id])
 
   const selectedEmp = useMemo(() => {
     if (!newRequest.employee_id) return null
@@ -654,6 +669,10 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
       // Tab filter
       if (activeTab === 'pending') {
         if (req.status !== 'PENDING' && req.status !== 'STORE_APPROVED') return false
+      } else if (activeTab === 'director_pending') {
+        if (req.status !== 'PENDING') return false
+        const isHrAdmin = Boolean(req.is_hr_or_admin_request || req.position_name === 'Trưởng phòng Nhân sự' || req.position_name === 'Quản trị viên')
+        if (!isHrAdmin) return false
       } else if (activeTab === 'approved') {
         if (req.status !== 'HR_APPROVED') return false
       } else if (activeTab === 'rejected') {
@@ -912,6 +931,59 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
 
       {/* Main Content Card */}
       <div className="card">
+        {/* Banner thông báo dành cho Giám đốc khi có đơn HR / Admin chờ duyệt */}
+        {isDirector && pendingDirectorCount > 0 && (
+          <div
+            style={{
+              padding: '10px 18px',
+              backgroundColor: 'var(--surface-subtle)',
+              borderBottom: '1px solid var(--border-default)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '12px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--role-director-text)' }}>
+                {Icons.shield}
+              </span>
+              <span>
+                Có <strong style={{ color: 'var(--text-primary)' }}>{pendingDirectorCount}</strong> đơn nghỉ phép của Trưởng phòng Nhân sự / Quản trị viên chờ Giám đốc phê duyệt.
+              </span>
+            </div>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              style={{
+                fontSize: '12px',
+                padding: '4px 10px',
+                gap: '6px',
+              }}
+              onClick={() => setActiveTab('director_pending')}
+            >
+              <span>Xem đơn chờ duyệt</span>
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '10.5px',
+                  fontWeight: 700,
+                  padding: '0 6px',
+                  borderRadius: '9999px',
+                  backgroundColor: 'var(--role-director-bg)',
+                  color: 'var(--role-director-text)',
+                  border: '1px solid var(--role-director-border)',
+                }}
+              >
+                {pendingDirectorCount}
+              </span>
+            </button>
+          </div>
+        )}
+
         {/* Card Header & Tabs (Optimized single-row layout) */}
         <div className="card-header leave-requests-header">
           {/* Tabs */}
@@ -946,6 +1018,29 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                 {leaveRequests.filter(r => r.status === 'PENDING' || r.status === 'STORE_APPROVED').length}
               </span>
             </button>
+            {(isDirector || isAdmin) && (
+              <button
+                type="button"
+                className={`leave-tab-btn ${activeTab === 'director_pending' ? 'active' : ''}`}
+                onClick={() => setActiveTab('director_pending')}
+              >
+                <span>Chờ GĐ duyệt</span>
+                <span
+                  className="leave-tab-badge"
+                  style={
+                    pendingDirectorCount > 0
+                      ? {
+                          backgroundColor: 'var(--role-director-bg)',
+                          color: 'var(--role-director-text)',
+                          borderColor: 'var(--role-director-border)',
+                        }
+                      : undefined
+                  }
+                >
+                  {pendingDirectorCount}
+                </span>
+              </button>
+            )}
             <button
               type="button"
               className={`leave-tab-btn ${activeTab === 'approved' ? 'active' : ''}`}
@@ -1083,7 +1178,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                     <th>LÝ DO</th>
                     <th>TRẠNG THÁI</th>
                     <th>CHT DUYỆT</th>
-                    <th>HR DUYỆT</th>
+                    <th>HR / GĐ DUYỆT</th>
                     <th style={{ width: '95px', textAlign: 'center' }}>THAO TÁC</th>
                   </tr>
                 </thead>
@@ -1091,13 +1186,17 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                   {filteredRequests.map((req) => {
                     const isOwner = req.employee_id === user?.employee_id
                     const isRejected = req.status === 'REJECTED'
-                    const wasHrApprovedBeforeReject = isRejected && !!req.hr_approved_at
+                    const wasDirectorApprovedBeforeReject = isRejected && Boolean(req.director_approved_at)
+                    const wasHrApprovedBeforeReject = isRejected && Boolean(req.hr_approved_at)
+                    const wasApprovedBeforeReject = wasDirectorApprovedBeforeReject || wasHrApprovedBeforeReject
                     const isApplicantStoreManager = Boolean(req.is_store_manager_request || req.position_name === 'Cửa hàng trưởng')
                     // Đơn của HR/Admin cần Giám đốc duyệt (No Self-Approval)
                     const isApplicantHrOrAdmin = Boolean(
-                      req.position_name === 'Trưởng phòng Nhân sự' ||
-                      req.position_name === 'Quản trị viên' ||
-                      req.position_name === 'Giám đốc'
+                      req.is_hr_or_admin_request ?? (
+                        req.position_name === 'Trưởng phòng Nhân sự' ||
+                        req.position_name === 'Quản trị viên' ||
+                        req.position_name === 'Giám đốc'
+                      )
                     )
 
                     // Kiểm tra thời gian nghỉ phép đã qua hay chưa (theo ngày hiện tại cục bộ)
@@ -1109,24 +1208,29 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                     // Kiểm tra đơn đã được phê duyệt ở bất kỳ cấp nào hay chưa (Cấp 1 CHT hoặc Cấp 2 HR)
                     const isApprovedAnyLevel = req.status === 'STORE_APPROVED' || req.status === 'HR_APPROVED' || Boolean(req.store_approved_at) || Boolean(req.hr_approved_at)
 
-                    // Cửa hàng trưởng không thể tự duyệt đơn của mình và không duyệt đơn của CHT khác
-                    const canStoreApprove = (isStoreManager || isAdmin) && req.status === 'PENDING' && !isOwner && !isApplicantStoreManager
+                    // Cửa hàng trưởng không thể tự duyệt đơn của mình, không duyệt đơn của CHT khác, và không duyệt đơn của HR/Admin
+                    const canStoreApprove = (isStoreManager || isAdmin) && req.status === 'PENDING' && !isOwner && !isApplicantStoreManager && !isApplicantHrOrAdmin
 
-                    // HR có thể duyệt thẳng (Cấp 2) cho Employee/Store Manager (trừ đơn của HR/Admin)
-                    const canHrApprove = (isHrManager || isAdmin) && (
-                      req.status === 'STORE_APPROVED' || (req.status === 'PENDING' && !isApplicantHrOrAdmin)
-                    ) && (!isOwner || isAdmin)
+                    // HR duyệt Cấp 2 cho Employee / Store Manager (chỉ khi KHÔNG PHẢI đơn HR/Admin, và TUÂN THỦ nguyên tắc No Self-Approval)
+                    const canHrApprove = (isHrManager || isAdmin) && !isApplicantHrOrAdmin && !isOwner && (
+                      req.status === 'STORE_APPROVED' || req.status === 'PENDING'
+                    )
 
                     // DIRECTOR duyệt đơn của HR/Admin (No Self-Approval)
-                    const canDirectorApprove = isDirector && req.status === 'PENDING' && isApplicantHrOrAdmin && !isOwner
+                    const canDirectorApprove = isDirector && !isOwner && req.status === 'PENDING' && isApplicantHrOrAdmin
 
-                    // Nếu đã qua thời gian mà nhân viên xin nghỉ trước đó thì không được hiện chức năng hủy duyệt/ từ chối (do cấp trên thực hiện) nữa
-                    const canRejectPending = !isLeavePassed && (
-                      (isStoreManager && !isApplicantStoreManager && !isOwner && req.status === 'PENDING') ||
-                      ((isHrManager || isAdmin) && (req.status === 'PENDING' || req.status === 'STORE_APPROVED')) ||
-                      (isDirector && req.status === 'PENDING' && isApplicantHrOrAdmin)
+                    // Từ chối đơn: tuyệt đối không được tự từ chối đơn của chính mình (No Self-Approval)
+                    const canRejectPending = !isLeavePassed && !isOwner && (
+                      isApplicantHrOrAdmin
+                        ? (isDirector && req.status === 'PENDING')
+                        : (
+                            (isStoreManager && !isApplicantStoreManager && req.status === 'PENDING') ||
+                            ((isHrManager || isAdmin) && (req.status === 'PENDING' || req.status === 'STORE_APPROVED'))
+                          )
                     )
-                    const canRevokeHrApproved = !isLeavePassed && (isHrManager || isAdmin) && req.status === 'HR_APPROVED'
+                    const canRevokeHrApproved = !isLeavePassed && !isOwner && req.status === 'HR_APPROVED' && (
+                      isApplicantHrOrAdmin ? isDirector : (isHrManager || isAdmin)
+                    )
 
                     // Nếu đã được duyệt bất kì cấp nào thì nhân viên cũng không được tự ý hủy đơn giữa chừng
                     const canCancel = isOwner && req.status === 'PENDING' && !isApprovedAnyLevel
@@ -1134,6 +1238,8 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
 
                     // Kiểm tra bước CHT có áp dụng hay không
                     const isChtStepNotApplicable = isApplicantStoreManager ||
+                      isApplicantHrOrAdmin ||
+                      !req.store_id ||
                       Boolean(req.hr_approved_at && !req.store_approved_at) ||
                       Boolean(isRejected && !req.store_approved_at && (req.rejected_by_role === 'Phòng Nhân sự' || req.rejected_by_role === 'Ban Giám đốc / Admin'))
 
@@ -1173,7 +1279,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                                 style={{
                                   display: 'inline-flex',
                                   alignItems: 'center',
-                                  color: '#2563eb',
+                                  color: 'var(--status-info)',
                                   flexShrink: 0,
                                 }}
                               >
@@ -1189,10 +1295,10 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                             style={
                               isRejected
                                 ? {
-                                  backgroundColor: '#fef2f2',
-                                  color: '#dc2626',
-                                  borderColor: '#fca5a5',
-                                  fontWeight: 700,
+                                  backgroundColor: 'var(--status-error-bg)',
+                                  color: 'var(--status-error)',
+                                  borderColor: 'var(--status-error-border)',
+                                  fontWeight: 600,
                                   display: 'inline-flex',
                                   alignItems: 'center',
                                   gap: '5px',
@@ -1202,80 +1308,90 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                             }
                             title={getStatusDisplayLabel(req.status, req)}
                           >
-                            {isRejected && <span style={{ color: '#dc2626', fontWeight: 900, fontSize: '0.85rem' }}>✕</span>}
+                            {isRejected && <span style={{ color: 'var(--status-error)', fontWeight: 700, fontSize: '0.85rem' }}>✕</span>}
                             {getStatusDisplayLabel(req.status, req)}
                           </span>
                         </td>
                         <td>
                           {/* Cột CHT Duyệt */}
                           {isChtStepNotApplicable ? (
-                            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary, #9ca3af)' }}>Không áp dụng</span>
+                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Không áp dụng</span>
                           ) : isRejected && (req.rejected_by_role === 'Cửa hàng trưởng' || (!req.store_approved_at && req.rejected_by_name && !wasHrApprovedBeforeReject && req.rejected_by_role !== 'Phòng Nhân sự')) ? (
-                            <div style={{ fontSize: '0.8rem', color: '#dc2626', fontWeight: 600 }}>
+                            <div style={{ fontSize: '0.8rem', color: 'var(--status-error)', fontWeight: 600 }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <span style={{ fontWeight: 900, color: '#dc2626' }}>✕</span>
+                                <span style={{ fontWeight: 700 }}>✕</span>
                                 <span>{req.rejected_by_name || 'Cửa hàng trưởng'}</span>
                               </div>
-                              <div style={{ fontSize: '0.75rem', color: '#ef4444' }}>
+                              <div style={{ fontSize: '0.75rem', color: 'var(--status-error)' }}>
                                 CHT từ chối {req.rejected_at ? `(${formatDate(req.rejected_at)})` : ''}
                               </div>
                             </div>
                           ) : req.store_approved_at ? (
-                            <div style={{ fontSize: '0.8rem', color: '#10b981' }}>
+                            <div style={{ fontSize: '0.8rem', color: 'var(--status-success)' }}>
                               <div>{Icons.check} {req.store_manager_name || 'CHT'}</div>
-                              <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary, #6b7280)' }}>{formatDate(req.store_approved_at)}</div>
+                              <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>{formatDate(req.store_approved_at)}</div>
                             </div>
                           ) : isRejected ? (
-                            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary, #9ca3af)' }}>Không áp dụng</span>
+                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Không áp dụng</span>
                           ) : (
-                            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary, #9ca3af)' }}>Chưa duyệt</span>
+                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Chưa duyệt</span>
                           )}
                         </td>
                         <td>
-                          {/* Cột HR Duyệt */}
-                          {wasHrApprovedBeforeReject ? (
-                            <div style={{ fontSize: '0.8rem', color: '#dc2626', fontWeight: 600 }}>
+                          {/* Cột HR / GĐ Duyệt */}
+                          {wasApprovedBeforeReject ? (
+                            <div style={{ fontSize: '0.8rem', color: 'var(--status-error)', fontWeight: 600 }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <span style={{ fontWeight: 900, color: '#dc2626' }}>✕</span>
-                                <span>{req.rejected_by_name || 'Phòng Nhân sự'}</span>
+                                <span style={{ fontWeight: 700 }}>✕</span>
+                                <span>{req.rejected_by_name || (wasDirectorApprovedBeforeReject ? 'Ban Giám đốc' : 'Phòng Nhân sự')}</span>
                               </div>
-                              <div style={{ fontSize: '0.75rem', color: '#dc2626', fontWeight: 700 }}>
-                                Đã hủy duyệt
+                              <div style={{ fontSize: '0.75rem', fontWeight: 600 }}>
+                                {wasDirectorApprovedBeforeReject ? 'GĐ đã hủy duyệt' : 'HR đã hủy duyệt'}
                               </div>
                               {req.rejected_at && (
-                                <div style={{ fontSize: '0.7rem', color: '#ef4444' }}>
+                                <div style={{ fontSize: '0.7rem', color: 'var(--status-error)' }}>
                                   {formatDate(req.rejected_at)}
                                 </div>
                               )}
                             </div>
-                          ) : isRejected && (req.rejected_by_role === 'Phòng Nhân sự' || req.rejected_by_role === 'Ban Giám đốc / Admin' || req.store_approved_at || isApplicantStoreManager) ? (
-                            <div style={{ fontSize: '0.8rem', color: '#dc2626', fontWeight: 600 }}>
+                          ) : isRejected && (req.rejected_by_role === 'Phòng Nhân sự' || req.rejected_by_role === 'Ban Giám đốc / Admin' || req.store_approved_at || isApplicantStoreManager || isApplicantHrOrAdmin) ? (
+                            <div style={{ fontSize: '0.8rem', color: 'var(--status-error)', fontWeight: 600 }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <span style={{ fontWeight: 900, color: '#dc2626' }}>✕</span>
-                                <span>{req.rejected_by_name || 'Phòng Nhân sự'}</span>
+                                <span style={{ fontWeight: 700 }}>✕</span>
+                                <span>{req.rejected_by_name || (isApplicantHrOrAdmin ? 'Ban Giám đốc' : 'Phòng Nhân sự')}</span>
                               </div>
-                              <div style={{ fontSize: '0.75rem', color: '#ef4444' }}>
-                                HR từ chối {req.rejected_at ? `(${formatDate(req.rejected_at)})` : ''}
+                              <div style={{ fontSize: '0.75rem' }}>
+                                {(req.rejected_by_role === 'Ban Giám đốc / Admin' || isApplicantHrOrAdmin) ? 'GĐ từ chối' : 'HR từ chối'} {req.rejected_at ? `(${formatDate(req.rejected_at)})` : ''}
                               </div>
                             </div>
                           ) : isRejected ? (
-                            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary, #9ca3af)' }}>Không áp dụng</span>
+                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Không áp dụng</span>
                           ) : req.director_approved_at ? (
-                            <div style={{ fontSize: '0.8rem', color: '#7c3aed' }}>
-                              <div>{Icons.check} {req.director_approver_name || 'Giám đốc'}</div>
-                              <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary, #6b7280)' }}>{formatDate(req.director_approved_at)}</div>
+                            <div style={{ fontSize: '0.8rem', color: 'var(--role-director-text)' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
+                                {Icons.check}
+                                <span>{req.director_approver_name || 'Ban Giám đốc'}</span>
+                              </div>
+                              <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
+                                GĐ duyệt • {formatDate(req.director_approved_at)}
+                              </div>
                             </div>
                           ) : req.hr_approved_at ? (
-                            <div style={{ fontSize: '0.8rem', color: '#10b981' }}>
-                              <div>{Icons.check} {req.hr_approver_name || 'HR Manager'}</div>
-                              <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary, #6b7280)' }}>{formatDate(req.hr_approved_at)}</div>
+                            <div style={{ fontSize: '0.8rem', color: 'var(--status-success)' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
+                                {Icons.check}
+                                <span>{req.hr_approver_name || 'Phòng Nhân sự'}</span>
+                              </div>
+                              <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
+                                HR duyệt • {formatDate(req.hr_approved_at)}
+                              </div>
                             </div>
                           ) : req.status === 'STORE_APPROVED' || (req.status === 'PENDING' && isApplicantStoreManager) ? (
-                            <span style={{ fontSize: '0.8rem', color: '#2563eb', fontWeight: 500 }}>Chờ HR duyệt</span>
+                            <span style={{ fontSize: '0.8rem', color: 'var(--status-info)', fontWeight: 600 }}>Chờ HR duyệt</span>
                           ) : req.status === 'PENDING' && isApplicantHrOrAdmin ? (
-                            <span style={{ fontSize: '0.8rem', color: '#7c3aed', fontWeight: 500 }}>Chờ Giám đốc duyệt</span>
+                            <span style={{ fontSize: '0.8rem', color: 'var(--role-director-text)', fontWeight: 600 }}>Chờ Giám đốc duyệt</span>
                           ) : (
-                            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary, #9ca3af)' }}>Chờ duyệt</span>
+                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Chờ duyệt</span>
                           )}
                         </td>
                         <td style={{ textAlign: 'center' }}>
@@ -1288,6 +1404,17 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                             >
                               {Icons.eye}
                             </button>
+
+                            {/* Nút Phê duyệt nhanh cho Giám đốc khi có đơn HR/Admin chờ duyệt */}
+                            {canDirectorApprove && (
+                              <button
+                                className="btn btn-director btn-sm"
+                                title="Giám đốc phê duyệt đơn này"
+                                onClick={() => setHrApproveModalRequest(req)}
+                              >
+                                {Icons.check} Duyệt
+                              </button>
+                            )}
 
                             {/* Nút 2: Tùy chọn thao tác (Dấu 3 chấm) */}
                             <button
@@ -1328,7 +1455,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                                     setPrintModalRequest(req)
                                   }}
                                 >
-                                  <span className="action-icon" style={{ color: '#2563eb' }}>{Icons.printer}</span>
+                                  <span className="action-icon" style={{ color: 'var(--status-info)' }}>{Icons.printer}</span>
                                   <span>In đơn nghỉ phép (PDF / A4)</span>
                                 </button>
 
@@ -1340,7 +1467,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                                       handleOpenCreateModal(req.employee_id)
                                     }}
                                   >
-                                    <span className="action-icon" style={{ color: '#059669' }}>{Icons.plus}</span>
+                                    <span className="action-icon" style={{ color: 'var(--status-success)' }}>{Icons.plus}</span>
                                     <span>Tạo đơn hộ nhân viên này</span>
                                   </button>
                                 )}
@@ -1379,7 +1506,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                                       setHrApproveModalRequest(req)
                                     }}
                                   >
-                                    <span className="action-icon icon-edit" style={{ color: '#7c3aed' }}>{Icons.check}</span>
+                                    <span className="action-icon icon-edit" style={{ color: 'var(--role-director-text)' }}>{Icons.check}</span>
                                     <span>Phê duyệt (Giám đốc)</span>
                                   </button>
                                 )}
@@ -1634,11 +1761,11 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                       textAlign: 'center',
                       fontSize: '12px',
                       fontWeight: idx === 6 ? 800 : 600,
-                      color: idx === 6 ? '#dc2626' : 'var(--text-secondary)',
+                      color: idx === 6 ? 'var(--status-error)' : 'var(--text-secondary)',
                       textTransform: 'uppercase',
                       letterSpacing: '0.05em',
                       borderRight: idx < 6 ? '1px solid var(--border-default)' : 'none',
-                      backgroundColor: idx === 6 ? 'rgba(239, 68, 68, 0.05)' : undefined,
+                      backgroundColor: idx === 6 ? 'var(--status-error-bg)' : undefined,
                     }}
                   >
                     {dayName}
@@ -1731,31 +1858,31 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                           const isSick = lv.leave_type_code === 'OM_DAU' || lv.leave_type_id === 3
                           const isMaternity = lv.leave_type_code === 'THAI_SAN' || lv.leave_type_id === 4
 
-                          let badgeBg = 'rgba(59, 130, 246, 0.1)'
-                          let badgeBorder = 'rgba(59, 130, 246, 0.25)'
-                          let badgeText = '#2563eb'
-                          let dotColor = '#3b82f6'
+                          let badgeBg = 'var(--status-info-bg)'
+                          let badgeBorder = 'var(--status-info-border)'
+                          let badgeText = 'var(--status-info)'
+                          let dotColor = 'var(--status-info)'
 
                           if (isPaid) {
-                            badgeBg = 'rgba(16, 185, 129, 0.12)'
-                            badgeBorder = 'rgba(16, 185, 129, 0.25)'
-                            badgeText = '#059669'
-                            dotColor = '#10b981'
+                            badgeBg = 'var(--status-success-bg)'
+                            badgeBorder = 'var(--status-success-border)'
+                            badgeText = 'var(--status-success)'
+                            dotColor = 'var(--status-success)'
                           } else if (isUnpaid) {
-                            badgeBg = 'rgba(239, 68, 68, 0.1)'
-                            badgeBorder = 'rgba(239, 68, 68, 0.25)'
-                            badgeText = '#dc2626'
-                            dotColor = '#ef4444'
+                            badgeBg = 'var(--status-error-bg)'
+                            badgeBorder = 'var(--status-error-border)'
+                            badgeText = 'var(--status-error)'
+                            dotColor = 'var(--status-error)'
                           } else if (isSick) {
-                            badgeBg = 'rgba(245, 158, 11, 0.12)'
-                            badgeBorder = 'rgba(245, 158, 11, 0.25)'
-                            badgeText = '#d97706'
-                            dotColor = '#f59e0b'
+                            badgeBg = 'var(--status-warning-bg)'
+                            badgeBorder = 'var(--status-warning-border)'
+                            badgeText = 'var(--status-warning)'
+                            dotColor = 'var(--status-warning)'
                           } else if (isMaternity) {
-                            badgeBg = 'rgba(168, 85, 247, 0.12)'
-                            badgeBorder = 'rgba(168, 85, 247, 0.25)'
-                            badgeText = '#7e22ce'
-                            dotColor = '#a855f7'
+                            badgeBg = 'var(--role-director-bg)'
+                            badgeBorder = 'var(--role-director-border)'
+                            badgeText = 'var(--role-director-text)'
+                            dotColor = 'var(--role-director-text)'
                           }
 
                           return (
@@ -2031,15 +2158,16 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
               <div style={{ marginBottom: '16px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                   <label style={{ fontWeight: 600, fontSize: '0.9rem', margin: 0 }}>
-                    Tổng số ngày nghỉ <span style={{ color: '#ef4444' }}>*</span>
+                    Tổng số ngày nghỉ <span style={{ color: 'var(--status-error)' }}>*</span>
                   </label>
                   {maxAllowedDays > 0 && maxAllowedDays < 180 && (
                     <span style={{
                       fontSize: '0.75rem',
                       padding: '2px 8px',
-                      borderRadius: '4px',
-                      backgroundColor: newRequest.total_days > maxAllowedDays ? '#fee2e2' : '#eff6ff',
-                      color: newRequest.total_days > maxAllowedDays ? '#dc2626' : '#2563eb',
+                      borderRadius: 'var(--radius-xs)',
+                      backgroundColor: newRequest.total_days > maxAllowedDays ? 'var(--status-error-bg)' : 'var(--status-info-bg)',
+                      color: newRequest.total_days > maxAllowedDays ? 'var(--status-error)' : 'var(--status-info)',
+                      border: `1px solid ${newRequest.total_days > maxAllowedDays ? 'var(--status-error-border)' : 'var(--status-info-border)'}`,
                       fontWeight: 600,
                     }}>
                       Tối đa: {maxAllowedDays} ngày {selectedTypeInfo?.type_code === 'PHEP_NAM' ? '(theo phép còn lại)' : `(${selectedTypeInfo?.type_name})`}
@@ -2052,17 +2180,17 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                   min="0.5"
                   max={maxAllowedDays}
                   className="form-input"
-                  style={newRequest.total_days > maxAllowedDays ? { borderColor: '#ef4444', backgroundColor: '#fff5f5' } : {}}
+                  style={newRequest.total_days > maxAllowedDays ? { borderColor: 'var(--status-error)', backgroundColor: 'var(--status-error-bg)' } : {}}
                   value={newRequest.total_days}
                   onChange={(e) => setNewRequest({ ...newRequest, total_days: parseFloat(e.target.value) || 0.5 })}
                   required
                 />
                 {newRequest.total_days > maxAllowedDays ? (
-                  <div style={{ color: '#dc2626', fontSize: '0.8rem', marginTop: '4px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <div style={{ color: 'var(--status-error)', fontSize: '0.8rem', marginTop: '4px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <span>⚠️</span> Vượt quá giới hạn cho phép! {selectedTypeInfo?.type_name} chỉ được tối đa {maxAllowedDays} ngày.
                   </div>
                 ) : (
-                  <small style={{ color: 'var(--text-secondary, #6b7280)' }}>Hỗ trợ nghỉ nửa ngày (0.5 ngày) hoặc cả ngày (1, 2, 3... ngày).</small>
+                  <small style={{ color: 'var(--text-secondary)' }}>Hỗ trợ nghỉ nửa ngày (0.5 ngày) hoặc cả ngày (1, 2, 3... ngày).</small>
                 )}
               </div>
 
@@ -2214,9 +2342,10 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                               style={{
                                 width: '36px',
                                 height: '36px',
-                                borderRadius: '4px',
-                                backgroundColor: '#fee2e2',
-                                color: '#dc2626',
+                                borderRadius: 'var(--radius-xs)',
+                                backgroundColor: 'var(--status-error-bg)',
+                                color: 'var(--status-error)',
+                                border: '1px solid var(--status-error-border)',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
@@ -2241,25 +2370,25 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                             >
                               {item.name}
                             </div>
-                            <div style={{ fontSize: '0.74rem', color: 'var(--text-secondary, #6b7280)', marginTop: '1px' }}>
+                            <div style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: '1px' }}>
                               {formatFileSize(item.size)}
                             </div>
                           </div>
                         </div>
 
-                        {/* Nút X đơn giản màu trắng đen */}
+                        {/* Nút X đơn giản */}
                         <button
                           type="button"
                           onClick={() => handleRemoveProofFile(item.id)}
                           style={{
                             background: 'none',
                             border: 'none',
-                            color: '#4b5563',
+                            color: 'var(--text-muted)',
                             cursor: 'pointer',
                             fontSize: '14px',
                             fontWeight: 700,
                             padding: '4px 8px',
-                            borderRadius: '4px',
+                            borderRadius: 'var(--radius-xs)',
                             lineHeight: 1,
                             display: 'flex',
                             alignItems: 'center',
@@ -2267,12 +2396,12 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                             flexShrink: 0,
                           }}
                           onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = '#e5e7eb'
-                            e.currentTarget.style.color = '#000000'
+                            e.currentTarget.style.backgroundColor = 'var(--surface-subtle)'
+                            e.currentTarget.style.color = 'var(--text-primary)'
                           }}
                           onMouseLeave={(e) => {
                             e.currentTarget.style.backgroundColor = 'transparent'
-                            e.currentTarget.style.color = '#4b5563'
+                            e.currentTarget.style.color = 'var(--text-muted)'
                           }}
                           title="Hủy chọn tệp này"
                         >
@@ -2419,11 +2548,15 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                 <p style={{ margin: '0 0 6px 0' }}><strong>Loại nghỉ:</strong> {hrApproveModalRequest.leave_type_name}</p>
                 <p style={{ margin: '0 0 6px 0' }}><strong>Thời gian:</strong> {formatDate(hrApproveModalRequest.start_date)} &rarr; {formatDate(hrApproveModalRequest.end_date)} ({hrApproveModalRequest.total_days} ngày)</p>
                 {hrApproveModalRequest.store_manager_note ? (
-                  <p style={{ margin: '0 0 6px 0', color: '#059669' }}>
+                  <p style={{ margin: '0 0 6px 0', color: 'var(--status-success)' }}>
                     <strong>Ý kiến CHT:</strong> {hrApproveModalRequest.store_manager_note}
                   </p>
+                ) : Boolean(hrApproveModalRequest.is_hr_or_admin_request || hrApproveModalRequest.position_name === 'Trưởng phòng Nhân sự' || hrApproveModalRequest.position_name === 'Quản trị viên') ? (
+                  <p style={{ margin: '0 0 6px 0', color: 'var(--role-director-text)', fontSize: '0.85rem' }}>
+                    <strong>Phê duyệt Ban Giám đốc:</strong> Đơn nghỉ phép của Trưởng phòng Nhân sự / Quản trị viên do Giám đốc trực tiếp phê duyệt theo nguyên tắc No Self-Approval.
+                  </p>
                 ) : hrApproveModalRequest.status === 'PENDING' ? (
-                  <p style={{ margin: '0 0 6px 0', color: '#2563eb', fontSize: '0.85rem' }}>
+                  <p style={{ margin: '0 0 6px 0', color: 'var(--status-info)', fontSize: '0.85rem' }}>
                     ℹ️ <strong>Duyệt thẳng Cấp 2:</strong> Đơn đang ở trạng thái Chờ duyệt. Phòng Nhân sự có thẩm quyền phê duyệt chính thức trực tiếp mà không cần chờ Cửa hàng trưởng duyệt Cấp 1.
                   </p>
                 ) : null}
@@ -2431,12 +2564,12 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
               </div>
 
               {hrApproveModalRequest.leave_type_id === 6 && (
-                <div style={{ backgroundColor: '#fef2f2', border: '1px solid #f87171', padding: '10px 14px', borderRadius: '6px', marginBottom: '16px', color: '#b91c1c', fontSize: '0.85rem' }}>
+                <div style={{ backgroundColor: 'var(--status-error-bg)', border: '1px solid var(--status-error-border)', padding: '10px 14px', borderRadius: 'var(--radius-sm)', marginBottom: '16px', color: 'var(--status-error)', fontSize: '0.85rem' }}>
                   <strong>Cảnh báo nghiệp vụ:</strong> Đây là Đơn xin thôi việc. Khi bấm &ldquo;Phê duyệt chính thức&rdquo;, hệ thống sẽ tự động cập nhật trạng thái nhân sự thành <strong>RESIGNED</strong> và vô hiệu hóa tài khoản đăng nhập để bảo mật.
                 </div>
               )}
 
-              <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary, #4b5563)', marginBottom: '20px' }}>
+              <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '20px' }}>
                 Sau khi phê duyệt, số ngày phép của nhân viên sẽ tự động được khấu trừ trong số dư phép năm 2026.
               </p>
 
@@ -2451,11 +2584,11 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                 </button>
                 <button
                   type="button"
-                  className="btn btn-primary"
+                  className={isDirector ? "btn btn-director" : "btn btn-primary"}
                   disabled={actionLoading}
                   onClick={handleHrApproveSubmit}
                 >
-                  {actionLoading ? 'Đang duyệt...' : 'Xác nhận duyệt'}
+                  {actionLoading ? 'Đang duyệt...' : isDirector ? 'Xác nhận phê duyệt (Giám đốc)' : 'Xác nhận duyệt'}
                 </button>
               </div>
             </div>
@@ -2491,7 +2624,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
             onClick={(e) => e.stopPropagation()}
           >
             <div className="card-header">
-              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: '#dc2626', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: 'var(--status-error)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <span style={{ fontWeight: 900 }}>✕</span>
                 {rejectModalRequest.status === 'HR_APPROVED'
                   ? 'Thu Hồi Phê Duyệt & Từ Chối Đơn Nghỉ Phép'
@@ -2501,13 +2634,13 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
             <div style={{ padding: '20px' }}>
               {rejectModalRequest.status === 'HR_APPROVED' && (
                 <div style={{
-                  backgroundColor: '#fef2f2',
-                  border: '1px solid #f87171',
-                  borderRadius: '6px',
+                  backgroundColor: 'var(--status-error-bg)',
+                  border: '1px solid var(--status-error-border)',
+                  borderRadius: 'var(--radius-sm)',
                   padding: '12px',
                   marginBottom: '16px',
                   fontSize: '0.85rem',
-                  color: '#991b1b',
+                  color: 'var(--status-error)',
                 }}>
                   <div style={{ fontWeight: 700, marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <span>⚠️</span> CẢNH BÁO: ĐƠN ĐÃ ĐƯỢC DUYỆT CHÍNH THỨC
@@ -2533,7 +2666,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                 <p style={{ margin: '0 0 6px 0' }}><strong>Loại nghỉ:</strong> {rejectModalRequest.leave_type_name} ({rejectModalRequest.total_days} ngày)</p>
                 <p style={{ margin: '0 0 6px 0' }}><strong>Thời gian:</strong> {formatDate(rejectModalRequest.start_date)} &rarr; {formatDate(rejectModalRequest.end_date)}</p>
                 {rejectModalRequest.hr_approved_at && (
-                  <p style={{ margin: 0, color: '#059669', fontSize: '0.8rem' }}>
+                  <p style={{ margin: 0, color: 'var(--status-success)', fontSize: '0.8rem' }}>
                     Đã từng được duyệt chính thức bởi: {rejectModalRequest.hr_approver_name || 'Phòng Nhân sự'} ({formatDate(rejectModalRequest.hr_approved_at)})
                   </p>
                 )}
@@ -2541,7 +2674,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
 
               <div style={{ marginBottom: '20px' }}>
                 <label style={{ display: 'block', fontWeight: 600, fontSize: '0.9rem', marginBottom: '6px' }}>
-                  Lý do từ chối đơn <span style={{ color: '#ef4444' }}>*</span>
+                  Lý do từ chối đơn <span style={{ color: 'var(--status-error)' }}>*</span>
                 </label>
                 <textarea
                   className="form-input"
@@ -2641,20 +2774,19 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
               {/* KHỐI CẢNH BÁO TỪ CHỐI RÕ RÀNG VỚI DẤU X VÀ CHỮ MÀU ĐỎ NỔI BẬT */}
               {detailModalRequest.status === 'REJECTED' && (
                 <div style={{
-                  backgroundColor: '#fef2f2',
-                  border: '2px solid #f87171',
-                  borderRadius: '8px',
+                  backgroundColor: 'var(--status-error-bg)',
+                  border: '1px solid var(--status-error-border)',
+                  borderRadius: 'var(--radius-md)',
                   padding: '16px',
                   marginBottom: '20px',
-                  boxShadow: '0 2px 4px rgba(220, 38, 38, 0.08)'
                 }}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
                     <div style={{
                       width: '32px',
                       height: '32px',
                       borderRadius: '50%',
-                      backgroundColor: '#dc2626',
-                      color: '#fff',
+                      backgroundColor: 'var(--status-error)',
+                      color: 'var(--action-primary-text)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -2665,33 +2797,33 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                       ✕
                     </div>
                     <div style={{ flex: 1 }}>
-                      <div style={{ color: '#dc2626', fontWeight: 700, fontSize: '1rem', textTransform: 'uppercase', marginBottom: '4px' }}>
+                      <div style={{ color: 'var(--status-error)', fontWeight: 700, fontSize: '1rem', textTransform: 'uppercase', marginBottom: '4px' }}>
                         {detailModalRequest.hr_approved_at
                           ? 'Đơn đã bị Hủy phê duyệt & Từ chối'
                           : 'Đơn xin nghỉ phép đã bị Từ chối'}
                       </div>
-                      <div style={{ fontSize: '0.85rem', color: '#991b1b', marginBottom: '8px' }}>
+                      <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>
                         Người từ chối:{' '}
-                        <strong style={{ color: '#7f1d1d' }}>{detailModalRequest.rejected_by_name || 'Người có thẩm quyền'}</strong>
+                        <strong style={{ color: 'var(--text-primary)' }}>{detailModalRequest.rejected_by_name || 'Người có thẩm quyền'}</strong>
                         {detailModalRequest.rejected_by_role && (
-                          <span style={{ marginLeft: '4px', backgroundColor: '#fee2e2', padding: '1px 6px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600 }}>
+                          <span style={{ marginLeft: '4px', backgroundColor: 'var(--surface-subtle)', color: 'var(--status-error)', border: '1px solid var(--status-error-border)', padding: '1px 6px', borderRadius: 'var(--radius-xs)', fontSize: '0.75rem', fontWeight: 600 }}>
                             {detailModalRequest.rejected_by_role}
                           </span>
                         )}
                         {detailModalRequest.rejected_at && (
-                          <span style={{ marginLeft: '8px', color: '#b91c1c' }}>
+                          <span style={{ marginLeft: '8px', color: 'var(--text-muted)' }}>
                             • lúc {formatDate(detailModalRequest.rejected_at)}
                           </span>
                         )}
                       </div>
 
                       <div style={{
-                        backgroundColor: '#fff',
+                        backgroundColor: 'var(--surface-card)',
                         padding: '10px 14px',
-                        borderRadius: '6px',
-                        border: '1px solid #fca5a5',
+                        borderRadius: 'var(--radius-sm)',
+                        border: '1px solid var(--border-default)',
                         fontSize: '0.875rem',
-                        color: '#7f1d1d',
+                        color: 'var(--text-primary)',
                         lineHeight: 1.5
                       }}>
                         <strong>Lý do từ chối:</strong> {detailModalRequest.rejection_reason || 'Không có lý do giải trình'}
@@ -2700,7 +2832,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                       {detailModalRequest.hr_approved_at && (
                         <div style={{
                           fontSize: '0.8rem',
-                          color: '#991b1b',
+                          color: 'var(--status-error)',
                           marginTop: '8px',
                           display: 'flex',
                           alignItems: 'flex-start',
@@ -2744,9 +2876,9 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                     <span
                       className={`status-pill ${getStatusBadgeClass(detailModalRequest.status)}`}
                       style={detailModalRequest.status === 'REJECTED' ? {
-                        backgroundColor: '#fef2f2',
-                        color: '#dc2626',
-                        borderColor: '#fca5a5',
+                        backgroundColor: 'var(--status-error-bg)',
+                        color: 'var(--status-error)',
+                        borderColor: 'var(--status-error-border)',
                         fontWeight: 700,
                         display: 'inline-flex',
                         alignItems: 'center',
@@ -2762,7 +2894,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
                 <div>
-                  <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary, #6b7280)', textTransform: 'uppercase', fontWeight: 600 }}>
+                  <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>
                     {isResignationRecord(detailModalRequest) ? 'Ngày chính thức thôi việc' : 'Thời gian nghỉ'}
                   </label>
                   <div className="table-cell-mono font-bold">
@@ -2772,8 +2904,8 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                   </div>
                 </div>
                 <div>
-                  <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary, #6b7280)', textTransform: 'uppercase', fontWeight: 600 }}>Tổng số ngày</label>
-                  <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--primary-color, #2563eb)' }}>
+                  <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Tổng số ngày</label>
+                  <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)' }}>
                     {detailModalRequest.total_days === 0 && isResignationRecord(detailModalRequest)
                       ? 'Chấm dứt HĐLĐ'
                       : `${detailModalRequest.total_days} ngày`}
@@ -2782,7 +2914,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
               </div>
 
               <div style={{ marginBottom: '16px' }}>
-                <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary, #6b7280)', textTransform: 'uppercase', fontWeight: 600 }}>Lý do xin nghỉ</label>
+                <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Lý do xin nghỉ</label>
                 <div style={{ backgroundColor: 'var(--surface-subtle)', border: '1px solid var(--border-default)', padding: '10px 12px', borderRadius: 'var(--radius-sm)', marginTop: '4px', color: 'var(--text-primary)' }}>
                   {detailModalRequest.reason || 'Không có ghi chú'}
                 </div>
@@ -2794,7 +2926,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
 
                 return (
                   <div style={{ marginBottom: '16px' }}>
-                    <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary, #6b7280)', textTransform: 'uppercase', fontWeight: 600, display: 'block', marginBottom: '8px' }}>
+                    <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600, display: 'block', marginBottom: '8px' }}>
                       Tài liệu / Tệp minh chứng đính kèm ({cloudinaryUrls.length + (driveUrl ? 1 : 0)})
                     </label>
 
@@ -2809,7 +2941,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                             style={{
                               backgroundColor: 'var(--surface-subtle)',
                               border: '1px solid var(--border-default)',
-                              borderRadius: '8px',
+                              borderRadius: 'var(--radius-sm)',
                               padding: '10px 14px',
                             }}
                           >
@@ -2817,7 +2949,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                               <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                                 {isPdf ? `📄 Tài liệu PDF ${cloudinaryUrls.length > 1 ? `#${idx + 1}` : ''}` : `🖼️ Ảnh minh chứng ${cloudinaryUrls.length > 1 ? `#${idx + 1}` : ''}`}
                               </span>
-                              <span style={{ fontSize: '0.72rem', backgroundColor: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', padding: '1px 8px', borderRadius: '12px', fontWeight: 500 }}>
+                              <span style={{ fontSize: '0.72rem', backgroundColor: 'var(--status-success-bg)', color: 'var(--status-success)', border: '1px solid var(--status-success-border)', padding: '1px 8px', borderRadius: 'var(--radius-xs)', fontWeight: 500 }}>
                                 ✓ Cloudinary Verified
                               </span>
                             </div>
@@ -2831,11 +2963,11 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                                 title="Bấm để mở tệp nguyên bản"
                                 style={{
                                   display: 'block',
-                                  borderRadius: '6px',
+                                  borderRadius: 'var(--radius-xs)',
                                   overflow: 'hidden',
                                   border: '1px solid var(--border-default)',
                                   flexShrink: 0,
-                                  backgroundColor: '#0000000a',
+                                  backgroundColor: 'var(--surface-card)',
                                   cursor: 'pointer',
                                   width: '56px',
                                   height: '56px',
@@ -2863,7 +2995,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                                 <div
                                   style={{
                                     fontSize: '0.74rem',
-                                    color: 'var(--text-secondary, #6b7280)',
+                                    color: 'var(--text-secondary)',
                                     overflow: 'hidden',
                                     textOverflow: 'ellipsis',
                                     whiteSpace: 'nowrap',
@@ -2874,7 +3006,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                                 </div>
                               </div>
 
-                              {/* Biểu tượng kính lúp nằm bên phải lấy từ thư viện icon Icons.search */}
+                              {/* Biểu tượng kính lúp */}
                               <a
                                 href={url}
                                 target="_blank"
@@ -2887,10 +3019,10 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                                   display: 'inline-flex',
                                   alignItems: 'center',
                                   justifyContent: 'center',
-                                  borderRadius: '6px',
-                                  color: 'var(--primary-color, #2563eb)',
-                                  backgroundColor: '#eff6ff',
-                                  border: '1px solid #bfdbfe',
+                                  borderRadius: 'var(--radius-sm)',
+                                  color: 'var(--text-primary)',
+                                  backgroundColor: 'var(--surface-card)',
+                                  border: '1px solid var(--border-default)',
                                   flexShrink: 0,
                                   textDecoration: 'none',
                                 }}
@@ -2907,7 +3039,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                         <div style={{
                           backgroundColor: 'var(--surface-subtle)',
                           border: '1px solid var(--border-default)',
-                          borderRadius: '8px',
+                          borderRadius: 'var(--radius-sm)',
                           padding: '10px 14px',
                           display: 'flex',
                           alignItems: 'center',
@@ -2915,14 +3047,14 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                           gap: '12px',
                         }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-                            <div style={{ width: '38px', height: '38px', borderRadius: '8px', backgroundColor: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', flexShrink: 0 }}>
+                            <div style={{ width: '38px', height: '38px', borderRadius: 'var(--radius-sm)', backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-default)', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', flexShrink: 0 }}>
                               🔗
                             </div>
                             <div style={{ minWidth: 0 }}>
                               <div style={{ fontSize: '0.84rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                                 Đường dẫn Drive / tài liệu ngoài
                               </div>
-                              <div style={{ fontSize: '0.74rem', color: 'var(--text-secondary, #6b7280)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={driveUrl}>
+                              <div style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={driveUrl}>
                                 {driveUrl}
                               </div>
                             </div>
@@ -2939,10 +3071,10 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                               display: 'inline-flex',
                               alignItems: 'center',
                               justifyContent: 'center',
-                              borderRadius: '6px',
-                              color: 'var(--primary-color, #2563eb)',
-                              backgroundColor: '#eff6ff',
-                              border: '1px solid #bfdbfe',
+                              borderRadius: 'var(--radius-sm)',
+                              color: 'var(--text-primary)',
+                              backgroundColor: 'var(--surface-card)',
+                              border: '1px solid var(--border-default)',
                               flexShrink: 0,
                               textDecoration: 'none',
                             }}
@@ -2957,21 +3089,33 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
               })()}
 
               {/* Approval Timeline */}
-              <div style={{ borderTop: '1px solid var(--border-color, #e5e7eb)', paddingTop: '16px', marginTop: '16px' }}>
-                <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary, #6b7280)', textTransform: 'uppercase', fontWeight: 700, display: 'block', marginBottom: '12px' }}>
+              <div style={{ borderTop: '1px solid var(--border-default)', paddingTop: '16px', marginTop: '16px' }}>
+                <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, display: 'block', marginBottom: '12px' }}>
                   Dòng thời gian phê duyệt & Lịch sử xử lý
                 </label>
 
                 {/* Bước 1: Gửi đơn */}
                 <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
-                  <div style={{ width: '24px', height: '24px', borderRadius: '50%', backgroundColor: '#10b981', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700 }}>
+                  <div style={{
+                    width: '24px',
+                    height: '24px',
+                    borderRadius: '50%',
+                    backgroundColor: 'var(--status-success-bg)',
+                    color: 'var(--status-success)',
+                    border: '1px solid var(--status-success-border)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '0.75rem',
+                    fontWeight: 700
+                  }}>
                     1
                   </div>
                   <div>
                     <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>
                       {isResignationRecord(detailModalRequest) ? 'Tiếp nhận hồ sơ nhân sự thôi việc' : 'Nhân viên gửi đơn'}
                     </div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary, #6b7280)' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
                       {formatDate(detailModalRequest.created_at || detailModalRequest.resignation_date || detailModalRequest.start_date)}
                     </div>
                   </div>
@@ -2980,20 +3124,29 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                 {/* Bước 2: Cửa hàng trưởng duyệt */}
                 {(() => {
                   const isResignation = isResignationRecord(detailModalRequest)
+                  const isDetailApplicantHrOrAdmin = Boolean(
+                    detailModalRequest.is_hr_or_admin_request ?? (
+                      detailModalRequest.position_name === 'Trưởng phòng Nhân sự' ||
+                      detailModalRequest.position_name === 'Quản trị viên' ||
+                      detailModalRequest.position_name === 'Giám đốc'
+                    )
+                  )
                   const isDetailApplicantCht = Boolean(
                     detailModalRequest.is_store_manager_request ||
                     detailModalRequest.position_name === 'Cửa hàng trưởng' ||
                     !detailModalRequest.store_id
                   )
-                  const isHrApproved = detailModalRequest.status === 'HR_APPROVED' || Boolean(detailModalRequest.hr_approved_at)
+                  const isHrApproved = detailModalRequest.status === 'HR_APPROVED' || Boolean(detailModalRequest.hr_approved_at || detailModalRequest.director_approved_at)
 
                   // Bước 2 không áp dụng khi:
                   // 1. Hồ sơ thôi việc
-                  // 2. Nhân viên nộp là CHT hoặc Khối Trụ sở văn phòng
-                  // 3. HR đã duyệt Cấp 2 mà CHT chưa duyệt (Duyệt thẳng)
-                  // 4. HR / Admin đã trực tiếp từ chối đơn khi CHT chưa xử lý
+                  // 2. Đơn của Trưởng phòng NS / Quản trị viên (chuyển thẳng Giám đốc duyệt)
+                  // 3. Nhân viên nộp là CHT hoặc Khối Trụ sở văn phòng (chuyển thẳng HR duyệt)
+                  // 4. HR/Giám đốc đã duyệt Cấp 2 mà CHT chưa duyệt (Duyệt thẳng)
+                  // 5. Cấp trên đã trực tiếp từ chối đơn khi CHT chưa xử lý
                   const isStoreStepNotApplicable = Boolean(
                     isResignation ||
+                    isDetailApplicantHrOrAdmin ||
                     isDetailApplicantCht ||
                     (isHrApproved && !detailModalRequest.store_approved_at) ||
                     (detailModalRequest.status === 'REJECTED' && !detailModalRequest.store_approved_at && (detailModalRequest.rejected_by_role === 'Phòng Nhân sự' || detailModalRequest.rejected_by_role === 'Ban Giám đốc / Admin'))
@@ -3003,7 +3156,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                     !isStoreStepNotApplicable &&
                     detailModalRequest.status === 'REJECTED' &&
                     (detailModalRequest.rejected_by_role === 'Cửa hàng trưởng' ||
-                      (!detailModalRequest.store_approved_at && !detailModalRequest.hr_approved_at && detailModalRequest.rejected_by_role !== 'Phòng Nhân sự'))
+                      (!detailModalRequest.store_approved_at && !detailModalRequest.hr_approved_at && !detailModalRequest.director_approved_at && detailModalRequest.rejected_by_role !== 'Phòng Nhân sự'))
                   )
 
                   return (
@@ -3013,13 +3166,28 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                         height: '24px',
                         borderRadius: '50%',
                         backgroundColor: isStoreStepNotApplicable
-                          ? '#e5e7eb'
+                          ? 'var(--surface-subtle)'
                           : isStoreRejected
-                            ? '#dc2626'
+                            ? 'var(--status-error-bg)'
                             : detailModalRequest.store_approved_at
-                              ? '#10b981'
-                              : '#f59e0b',
-                        color: isStoreStepNotApplicable ? '#6b7280' : '#fff',
+                              ? 'var(--status-success-bg)'
+                              : 'var(--status-warning-bg)',
+                        color: isStoreStepNotApplicable
+                          ? 'var(--text-muted)'
+                          : isStoreRejected
+                            ? 'var(--status-error)'
+                            : detailModalRequest.store_approved_at
+                              ? 'var(--status-success)'
+                              : 'var(--status-warning)',
+                        border: `1px solid ${
+                          isStoreStepNotApplicable
+                            ? 'var(--border-default)'
+                            : isStoreRejected
+                              ? 'var(--status-error-border)'
+                              : detailModalRequest.store_approved_at
+                                ? 'var(--status-success-border)'
+                                : 'var(--status-warning-border)'
+                        }`,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
@@ -3029,9 +3197,9 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                         {isStoreStepNotApplicable ? '—' : isStoreRejected ? '✕' : detailModalRequest.store_approved_at ? '✓' : '2'}
                       </div>
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 600, fontSize: '0.9rem', color: isStoreStepNotApplicable ? '#6b7280' : undefined }}>
+                        <div style={{ fontWeight: 600, fontSize: '0.9rem', color: isStoreStepNotApplicable ? 'var(--text-muted)' : undefined }}>
                           {isStoreRejected ? (
-                            <span style={{ color: '#dc2626' }}>Cửa hàng trưởng: Đã từ chối (Cấp 1)</span>
+                            <span style={{ color: 'var(--status-error)' }}>Cửa hàng trưởng: Đã từ chối (Cấp 1)</span>
                           ) : (
                             'Cửa hàng trưởng duyệt sơ bộ (Cấp 1)'
                           )}
@@ -3041,39 +3209,41 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                             <span style={{
                               fontSize: '0.75rem',
                               fontWeight: 600,
-                              backgroundColor: '#f3f4f6',
-                              color: '#6b7280',
+                              backgroundColor: 'var(--surface-subtle)',
+                              color: 'var(--text-secondary)',
                               padding: '1px 8px',
-                              borderRadius: '4px',
-                              border: '1px solid #d1d5db'
+                              borderRadius: 'var(--radius-xs)',
+                              border: '1px solid var(--border-default)'
                             }}>
                               Không áp dụng
                             </span>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary, #6b7280)' }}>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
                               {isResignation
                                 ? '(Hồ sơ thôi việc do Phòng Nhân sự / Ban Giám đốc quản lý trực tiếp)'
-                                : isDetailApplicantCht
-                                  ? '(Đơn CHT / Khối văn phòng, chuyển thẳng HR duyệt)'
-                                  : isHrApproved
-                                    ? '(Phòng Nhân sự đã trực tiếp duyệt thẳng Cấp 2, bỏ qua bước CHT)'
-                                    : '(Phòng Nhân sự đã trực tiếp xử lý từ chối)'}
+                                : isDetailApplicantHrOrAdmin
+                                  ? '(Đơn Trưởng phòng NS / Quản trị viên, chuyển thẳng Giám đốc duyệt)'
+                                  : isDetailApplicantCht
+                                    ? '(Đơn CHT / Khối văn phòng, chuyển thẳng HR duyệt)'
+                                    : isHrApproved
+                                      ? '(Phòng Nhân sự đã trực tiếp duyệt thẳng Cấp 2, bỏ qua bước CHT)'
+                                      : '(Phòng Nhân sự đã trực tiếp xử lý từ chối)'}
                             </span>
                           </div>
                         ) : isStoreRejected ? (
-                          <div style={{ fontSize: '0.8rem', color: '#dc2626' }}>
+                          <div style={{ fontSize: '0.8rem', color: 'var(--status-error)' }}>
                             Người từ chối: {detailModalRequest.rejected_by_name || 'Cửa hàng trưởng'} ({formatDate(detailModalRequest.rejected_at)})
                           </div>
                         ) : detailModalRequest.store_approved_at ? (
                           <>
-                            <div style={{ fontSize: '0.8rem', color: '#059669' }}>
+                            <div style={{ fontSize: '0.8rem', color: 'var(--status-success)' }}>
                               Người duyệt: {detailModalRequest.store_manager_name || 'Cửa hàng trưởng'} ({formatDate(detailModalRequest.store_approved_at)})
                             </div>
                             {detailModalRequest.store_manager_note && (
-                              <div style={{ fontSize: '0.75rem', fontStyle: 'italic', color: '#4b5563' }}>&ldquo;{detailModalRequest.store_manager_note}&rdquo;</div>
+                              <div style={{ fontSize: '0.75rem', fontStyle: 'italic', color: 'var(--text-secondary)' }}>&ldquo;{detailModalRequest.store_manager_note}&rdquo;</div>
                             )}
                           </>
                         ) : (
-                          <div style={{ fontSize: '0.75rem', color: '#d97706' }}>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--status-warning)' }}>
                             Đang chờ Cửa hàng trưởng xem xét duyệt (hoặc HR có thể duyệt thẳng)...
                           </div>
                         )}
@@ -3082,20 +3252,30 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                   )
                 })()}
 
-                {/* Bước 3: HR duyệt */}
+                {/* Bước 3: HR hoặc Giám đốc duyệt */}
                 {(() => {
                   const isResignation = isResignationRecord(detailModalRequest)
+                  const isDetailApplicantHrOrAdmin = Boolean(
+                    detailModalRequest.is_hr_or_admin_request ?? (
+                      detailModalRequest.position_name === 'Trưởng phòng Nhân sự' ||
+                      detailModalRequest.position_name === 'Quản trị viên' ||
+                      detailModalRequest.position_name === 'Giám đốc'
+                    )
+                  )
                   const isStoreRejected = Boolean(
                     detailModalRequest.status === 'REJECTED' &&
                     (detailModalRequest.rejected_by_role === 'Cửa hàng trưởng' ||
-                      (!detailModalRequest.store_approved_at && !detailModalRequest.hr_approved_at && detailModalRequest.rejected_by_role !== 'Phòng Nhân sự'))
+                      (!detailModalRequest.store_approved_at && !detailModalRequest.hr_approved_at && !detailModalRequest.director_approved_at && detailModalRequest.rejected_by_role !== 'Phòng Nhân sự'))
                   )
-                  // Bước HR duyệt Cấp 2 không áp dụng khi đơn đã bị CHT từ chối ngay tại Cấp 1
-                  const isHrStepNotApplicable = isStoreRejected
+                  const isFinalStepNotApplicable = isStoreRejected
 
-                  const wasHrApprovedBeforeReject = detailModalRequest.status === 'REJECTED' && Boolean(detailModalRequest.hr_approved_at)
-                  const isHrRejected = !isHrStepNotApplicable && detailModalRequest.status === 'REJECTED' && (detailModalRequest.rejected_by_role === 'Phòng Nhân sự' || detailModalRequest.rejected_by_role === 'Ban Giám đốc / Admin')
-                  const isHrApproved = detailModalRequest.status === 'HR_APPROVED' || Boolean(detailModalRequest.hr_approved_at)
+                  const wasApprovedBeforeReject = detailModalRequest.status === 'REJECTED' && Boolean(detailModalRequest.hr_approved_at || detailModalRequest.director_approved_at)
+                  const isRejectedByHigher = !isFinalStepNotApplicable && detailModalRequest.status === 'REJECTED' && (
+                    detailModalRequest.rejected_by_role === 'Phòng Nhân sự' ||
+                    detailModalRequest.rejected_by_role === 'Ban Giám đốc / Admin' ||
+                    Boolean(detailModalRequest.rejected_by_name)
+                  )
+                  const isApproved = detailModalRequest.status === 'HR_APPROVED' || Boolean(detailModalRequest.hr_approved_at || detailModalRequest.director_approved_at)
 
                   return (
                     <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
@@ -3103,69 +3283,102 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                         width: '24px',
                         height: '24px',
                         borderRadius: '50%',
-                        backgroundColor: isHrStepNotApplicable
-                          ? '#e5e7eb'
-                          : wasHrApprovedBeforeReject || isHrRejected
-                            ? '#dc2626'
-                            : isHrApproved
-                              ? '#10b981'
-                              : '#3b82f6',
-                        color: isHrStepNotApplicable ? '#6b7280' : '#fff',
+                        backgroundColor: isFinalStepNotApplicable
+                          ? 'var(--surface-subtle)'
+                          : wasApprovedBeforeReject || isRejectedByHigher
+                            ? 'var(--status-error-bg)'
+                            : isApproved
+                              ? 'var(--status-success-bg)'
+                              : isDetailApplicantHrOrAdmin
+                                ? 'var(--role-director-bg)'
+                                : 'var(--status-info-bg)',
+                        color: isFinalStepNotApplicable
+                          ? 'var(--text-muted)'
+                          : (wasApprovedBeforeReject || isRejectedByHigher)
+                            ? 'var(--status-error)'
+                            : isApproved
+                              ? 'var(--status-success)'
+                              : isDetailApplicantHrOrAdmin
+                                ? 'var(--role-director-text)'
+                                : 'var(--status-info)',
+                        border: `1px solid ${
+                          isFinalStepNotApplicable
+                            ? 'var(--border-default)'
+                            : (wasApprovedBeforeReject || isRejectedByHigher)
+                              ? 'var(--status-error-border)'
+                              : isApproved
+                                ? 'var(--status-success-border)'
+                                : isDetailApplicantHrOrAdmin
+                                  ? 'var(--role-director-border)'
+                                  : 'var(--status-info-border)'
+                        }`,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         fontSize: '0.75rem',
                         fontWeight: 700
                       }}>
-                        {isHrStepNotApplicable ? '—' : (wasHrApprovedBeforeReject || isHrRejected) ? '✕' : isHrApproved ? '✓' : '3'}
+                        {isFinalStepNotApplicable ? '—' : (wasApprovedBeforeReject || isRejectedByHigher) ? '✕' : isApproved ? '✓' : isDetailApplicantHrOrAdmin ? '2' : '3'}
                       </div>
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 600, fontSize: '0.9rem', color: isHrStepNotApplicable ? '#6b7280' : undefined }}>
-                          {wasHrApprovedBeforeReject ? (
-                            <span style={{ color: '#dc2626' }}>Phòng Nhân sự: Đã Hủy Phê Duyệt & Từ Chối</span>
-                          ) : isHrRejected ? (
-                            <span style={{ color: '#dc2626' }}>Phòng Nhân sự: Đã từ chối (Cấp 2)</span>
+                        <div style={{ fontWeight: 600, fontSize: '0.9rem', color: isFinalStepNotApplicable ? 'var(--text-muted)' : undefined }}>
+                          {wasApprovedBeforeReject ? (
+                            <span style={{ color: 'var(--status-error)' }}>
+                              {isDetailApplicantHrOrAdmin ? 'Giám đốc: Đã Hủy Phê Duyệt & Từ Chối' : 'Phòng Nhân sự: Đã Hủy Phê Duyệt & Từ Chối'}
+                            </span>
+                          ) : isRejectedByHigher ? (
+                            <span style={{ color: 'var(--status-error)' }}>
+                              {isDetailApplicantHrOrAdmin ? 'Giám đốc: Đã từ chối' : 'Phòng Nhân sự: Đã từ chối (Cấp 2)'}
+                            </span>
+                          ) : isDetailApplicantHrOrAdmin ? (
+                            <span style={{ color: isApproved ? 'var(--status-success)' : 'var(--role-director-text)' }}>
+                              Giám đốc phê duyệt chính thức
+                            </span>
                           ) : isResignation ? (
                             'Phòng Nhân sự phê duyệt quyết định thôi việc'
                           ) : (
                             'Phòng Nhân sự phê duyệt chính thức (Cấp 2)'
                           )}
                         </div>
-                        {isHrStepNotApplicable ? (
+                        {isFinalStepNotApplicable ? (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px' }}>
                             <span style={{
                               fontSize: '0.75rem',
                               fontWeight: 600,
-                              backgroundColor: '#f3f4f6',
-                              color: '#6b7280',
+                              backgroundColor: 'var(--surface-subtle)',
+                              color: 'var(--text-secondary)',
                               padding: '1px 8px',
-                              borderRadius: '4px',
-                              border: '1px solid #d1d5db'
+                              borderRadius: 'var(--radius-xs)',
+                              border: '1px solid var(--border-default)'
                             }}>
                               Không áp dụng
                             </span>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary, #6b7280)' }}>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
                               (Đơn đã dừng do Cửa hàng trưởng từ chối ở Cấp 1)
                             </span>
                           </div>
-                        ) : wasHrApprovedBeforeReject ? (
-                          <div style={{ fontSize: '0.8rem', color: '#dc2626' }}>
-                            <div>Người hủy & từ chối: {detailModalRequest.rejected_by_name || 'Phòng Nhân sự'} ({formatDate(detailModalRequest.rejected_at)})</div>
-                            <div style={{ color: 'var(--text-secondary, #6b7280)', fontSize: '0.75rem', textDecoration: 'line-through' }}>
-                              Từng được duyệt bởi: {detailModalRequest.hr_approver_name || 'Phòng Nhân sự'} ({formatDate(detailModalRequest.hr_approved_at)})
+                        ) : wasApprovedBeforeReject ? (
+                          <div style={{ fontSize: '0.8rem', color: 'var(--status-error)' }}>
+                            <div>Người hủy & từ chối: {detailModalRequest.rejected_by_name || (isDetailApplicantHrOrAdmin ? 'Ban Giám đốc' : 'Phòng Nhân sự')} ({formatDate(detailModalRequest.rejected_at)})</div>
+                            <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', textDecoration: 'line-through' }}>
+                              Từng được duyệt bởi: {detailModalRequest.director_approver_name || detailModalRequest.hr_approver_name || (isDetailApplicantHrOrAdmin ? 'Ban Giám đốc' : 'Phòng Nhân sự')} ({formatDate(detailModalRequest.director_approved_at || detailModalRequest.hr_approved_at)})
                             </div>
                           </div>
-                        ) : isHrRejected ? (
-                          <div style={{ fontSize: '0.8rem', color: '#dc2626' }}>
-                            Người từ chối: {detailModalRequest.rejected_by_name || 'Phòng Nhân sự'} ({formatDate(detailModalRequest.rejected_at)})
+                        ) : isRejectedByHigher ? (
+                          <div style={{ fontSize: '0.8rem', color: 'var(--status-error)' }}>
+                            Người từ chối: {detailModalRequest.rejected_by_name || (isDetailApplicantHrOrAdmin ? 'Ban Giám đốc' : 'Phòng Nhân sự')} ({formatDate(detailModalRequest.rejected_at)})
                           </div>
-                        ) : isHrApproved ? (
-                          <div style={{ fontSize: '0.8rem', color: '#059669' }}>
-                            Người duyệt: {detailModalRequest.hr_approver_name || 'Trưởng phòng Nhân sự'}
-                            {detailModalRequest.hr_approved_at ? ` (${formatDate(detailModalRequest.hr_approved_at)})` : ''}
+                        ) : isApproved ? (
+                          <div style={{ fontSize: '0.8rem', color: 'var(--status-success)' }}>
+                            Người duyệt: {detailModalRequest.director_approver_name || detailModalRequest.hr_approver_name || (isDetailApplicantHrOrAdmin ? 'Giám đốc' : 'Trưởng phòng Nhân sự')}
+                            {(detailModalRequest.director_approved_at || detailModalRequest.hr_approved_at) ? ` (${formatDate(detailModalRequest.director_approved_at || detailModalRequest.hr_approved_at)})` : ''}
+                          </div>
+                        ) : isDetailApplicantHrOrAdmin ? (
+                          <div style={{ fontSize: '0.75rem', color: 'var(--role-director-text)', fontWeight: 500 }}>
+                            Đang chờ Giám đốc xem xét phê duyệt (theo nguyên tắc No Self-Approval)...
                           </div>
                         ) : (
-                          <div style={{ fontSize: '0.75rem', color: '#2563eb' }}>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--status-info)' }}>
                             {detailModalRequest.status === 'STORE_APPROVED'
                               ? 'Đang chờ Phòng Nhân sự phê duyệt chính thức...'
                               : 'Chờ CHT duyệt Cấp 1 (hoặc HR có thể duyệt thẳng bất cứ lúc nào)...'}
@@ -3177,26 +3390,147 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                 })()}
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px' }}>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={() => setPrintModalRequest(detailModalRequest)}
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}
-                  >
-                    {Icons.printer}
-                    <span>In đơn nghỉ phép (A4)</span>
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setDetailModalRequest(null)}
-                >
-                  Đóng
-                </button>
-              </div>
+              {/* Modal Footer with quick approval and reject buttons */}
+              {(() => {
+                const isModalOwner = detailModalRequest.employee_id === user?.employee_id
+                const isModalApplicantHrOrAdmin = Boolean(
+                  detailModalRequest.is_hr_or_admin_request ?? (
+                    detailModalRequest.position_name === 'Trưởng phòng Nhân sự' ||
+                    detailModalRequest.position_name === 'Quản trị viên' ||
+                    detailModalRequest.position_name === 'Giám đốc'
+                  )
+                )
+                const isModalApplicantStoreManager = Boolean(detailModalRequest.is_store_manager_request || detailModalRequest.position_name === 'Cửa hàng trưởng')
+                const canModalDirectorApprove = isDirector && !isModalOwner && detailModalRequest.status === 'PENDING' && isModalApplicantHrOrAdmin
+                const canModalHrApprove = (isHrManager || isAdmin) && !isModalApplicantHrOrAdmin && !isModalOwner && (
+                  detailModalRequest.status === 'STORE_APPROVED' || detailModalRequest.status === 'PENDING'
+                )
+                const canModalStoreApprove = (isStoreManager || isAdmin) && detailModalRequest.status === 'PENDING' && !isModalOwner && !isModalApplicantStoreManager && !isModalApplicantHrOrAdmin
+
+                const now = new Date()
+                const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+                const leaveEndDate = detailModalRequest.end_date || detailModalRequest.resignation_date || detailModalRequest.start_date || ''
+                const isModalLeavePassed = Boolean(leaveEndDate && leaveEndDate < todayStr)
+
+                const canModalReject = !isModalLeavePassed && !isModalOwner && (
+                  isModalApplicantHrOrAdmin
+                    ? (isDirector && detailModalRequest.status === 'PENDING')
+                    : (
+                        (isStoreManager && !isModalApplicantStoreManager && detailModalRequest.status === 'PENDING') ||
+                        ((isHrManager || isAdmin) && (detailModalRequest.status === 'PENDING' || detailModalRequest.status === 'STORE_APPROVED'))
+                      )
+                )
+
+                return (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px', flexWrap: 'wrap', gap: '10px' }}>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => setPrintModalRequest(detailModalRequest)}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+                      >
+                        {Icons.printer}
+                        <span>In đơn nghỉ phép (A4)</span>
+                      </button>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                      {canModalDirectorApprove && (
+                        <button
+                          type="button"
+                          className="btn btn-director"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            fontWeight: 600,
+                            padding: '8px 16px',
+                          }}
+                          onClick={() => {
+                            const req = detailModalRequest
+                            setDetailModalRequest(null)
+                            setHrApproveModalRequest(req)
+                          }}
+                        >
+                          {Icons.check} Phê duyệt (Giám đốc)
+                        </button>
+                      )}
+
+                      {canModalHrApprove && (
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            fontWeight: 600,
+                            padding: '8px 16px',
+                          }}
+                          onClick={() => {
+                            const req = detailModalRequest
+                            setDetailModalRequest(null)
+                            setHrApproveModalRequest(req)
+                          }}
+                        >
+                          {Icons.check} Phê duyệt (HR)
+                        </button>
+                      )}
+
+                      {canModalStoreApprove && (
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            fontWeight: 600,
+                            padding: '8px 16px',
+                          }}
+                          onClick={() => {
+                            const req = detailModalRequest
+                            setDetailModalRequest(null)
+                            setStoreApproveModalRequest(req)
+                          }}
+                        >
+                          {Icons.check} Duyệt Cấp 1 (CHT)
+                        </button>
+                      )}
+
+                      {canModalReject && (
+                        <button
+                          type="button"
+                          className="btn btn-danger"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            fontWeight: 600,
+                            padding: '8px 16px',
+                          }}
+                          onClick={() => {
+                            const req = detailModalRequest
+                            setDetailModalRequest(null)
+                            setRejectModalRequest(req)
+                          }}
+                        >
+                          ✕ Từ chối đơn
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => setDetailModalRequest(null)}
+                      >
+                        Đóng
+                      </button>
+                    </div>
+                  </div>
+                )
+              })()}
             </div>
           </div>
         </div>

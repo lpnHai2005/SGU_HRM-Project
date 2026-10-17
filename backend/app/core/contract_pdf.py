@@ -586,7 +586,7 @@ def generate_contract_pdf(
         "• Thưởng hiệu quả kinh doanh, hoa hồng doanh số (Commission) theo kết quả KPI cửa hàng và hiệu suất cá nhân.<br/>"
         "• Thưởng lương tháng thứ 13 và thưởng Lễ, Tết dựa trên kết quả đánh giá thi đua và hiệu quả kinh doanh hàng năm của TechZone.<br/>"
         "• Được tham gia khám sức khỏe định kỳ hàng năm, bảo hiểm tai nạn 24/7 và các chương trình Teambuilding, hiếu hỉ, sinh nhật do Công ty tổ chức.",
-        "<b>3.7. Chế độ bảo hiểm bắt buộc:</b> Bên A và Bên B cùng trích nộp Bảo hiểm xã hội, Bảo hiểm y tế, Bảo hiểm thất nghiệp theo đúng tỷ lệ và quy định của Luật Bảo hiểm xã hội Việt Nam."
+        "<b>3.7. Chế độ bảo hiểm bắt buộc:</b> Bên A và Bên B cùng trích nộp Bảo hiểm xã hội, Bảo hiểm y tế, Bảo hiểm thất nghiệp theo đúng tỷ lệ và quy định của Luật Bảo hiểm xã hội Việt Nam. Trong đó, Người lao động trích nộp Bảo hiểm Bắt buộc (10.5% lương đóng BH): BHXH: 8.0% | BHYT: 1.5% | BHTN: 1.0%."
     ]
     for item in d3_items:
         story.append(Paragraph(item, body_style))

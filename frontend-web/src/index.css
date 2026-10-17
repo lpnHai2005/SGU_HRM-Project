@@ -18,6 +18,8 @@
   --surface-overlay: rgba(9, 9, 11, 0.45);
 
   /* Compatibility aliases */
+  --bg-primary: var(--surface-ground);
+  --bg-secondary: var(--surface-subtle);
   --bg-card: var(--surface-card);
   --bg-subtle: var(--surface-subtle);
   --border-color: var(--border-default);
@@ -169,6 +171,8 @@
   --surface-overlay: rgba(0, 0, 0, 0.8);
 
   /* Compatibility aliases */
+  --bg-primary: var(--surface-ground);
+  --bg-secondary: var(--surface-subtle);
   --bg-card: var(--surface-card);
   --bg-subtle: var(--surface-subtle);
   --border-color: var(--border-default);
@@ -181,14 +185,14 @@
   --sidebar-border: #18181b;
   --sidebar-hover: rgba(255, 255, 255, 0.05);
   --sidebar-active-bg: rgba(255, 255, 255, 0.08);
-  --sidebar-text: #8e8e93;
+  --sidebar-text: #9ca3af;
   --sidebar-text-active: #ffffff;
 
   /* Typography Colors */
   --text-primary: #f4f4f5;
   --text-secondary: #a1a1aa;
-  --text-tertiary: #71717a;
-  --text-muted: #52525b;
+  --text-tertiary: #9ca3af;
+  --text-muted: #71717a;
   --text-inverse: #09090b;
 
   /* Borders & Dividers (Crisp 1px hairlines) */
@@ -272,6 +276,14 @@
     --surface-elevated: #1e1e22;
     --surface-overlay: rgba(0, 0, 0, 0.8);
 
+    /* Compatibility aliases */
+    --bg-primary: var(--surface-ground);
+    --bg-secondary: var(--surface-subtle);
+    --bg-card: var(--surface-card);
+    --bg-subtle: var(--surface-subtle);
+    --border-color: var(--border-default);
+    --primary-color: #3b82f6;
+
     /* Headers & Sidebar */
     --topbar-bg: #0d0d0e;
     --topbar-border: #1e1e22;
@@ -279,14 +291,14 @@
     --sidebar-border: #18181b;
     --sidebar-hover: rgba(255, 255, 255, 0.05);
     --sidebar-active-bg: rgba(255, 255, 255, 0.08);
-    --sidebar-text: #8e8e93;
+    --sidebar-text: #9ca3af;
     --sidebar-text-active: #ffffff;
 
     /* Typography Colors */
     --text-primary: #f4f4f5;
     --text-secondary: #a1a1aa;
-    --text-tertiary: #71717a;
-    --text-muted: #52525b;
+    --text-tertiary: #9ca3af;
+    --text-muted: #71717a;
     --text-inverse: #09090b;
 
     /* Borders & Dividers */
@@ -330,6 +342,10 @@
     --role-admin-bg: #27272a;
     --role-admin-text: #f4f4f5;
     --role-admin-border: #3f3f46;
+
+    --role-director-bg: rgba(167, 139, 250, 0.15);
+    --role-director-text: #c4b5fd;
+    --role-director-border: rgba(167, 139, 250, 0.3);
 
     --role-hr-bg: rgba(14, 165, 233, 0.15);
     --role-hr-text: #38bdf8;
@@ -688,6 +704,42 @@ svg:not([width]) {
 
 .btn-ai:hover:not(:disabled) {
   background-color: var(--ai-btn-hover-bg);
+}
+
+/* Director role-tinted button (Dark & Light contrast safe) */
+.btn-director {
+  background-color: var(--role-director-bg);
+  color: var(--role-director-text);
+  border-color: var(--role-director-border);
+}
+
+.btn-director:hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--role-director-text) 18%, transparent);
+  border-color: var(--role-director-text);
+}
+
+/* Semantic Danger / Rejection button */
+.btn-danger {
+  background-color: var(--status-error-bg);
+  color: var(--status-error);
+  border-color: var(--status-error-border);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--status-error) 18%, transparent);
+  border-color: var(--status-error);
+}
+
+/* Semantic Success button */
+.btn-success {
+  background-color: var(--status-success-bg);
+  color: var(--status-success);
+  border-color: var(--status-success-border);
+}
+
+.btn-success:hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--status-success) 18%, transparent);
+  border-color: var(--status-success);
 }
 
 .btn-sm {

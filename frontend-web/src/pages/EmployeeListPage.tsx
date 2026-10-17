@@ -225,7 +225,7 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
 
 
   const role = getRoleFromUser(user)
-  const canManage = role === 'ADMIN' || role === 'HR_MANAGER'
+  const canManage = role === 'ADMIN' || role === 'HR_MANAGER' || role === 'DIRECTOR'
 
   // Modal handlers
   const openModal = (mode: ModalMode, employee?: Employee) => {
@@ -1509,7 +1509,6 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
                   className={confirmAction === 'resign' ? 'btn btn-danger' : 'btn btn-primary'}
                   onClick={handleConfirm}
                   disabled={formLoading}
-                  style={confirmAction === 'resign' ? { background: '#dc2626', color: 'white' } : {}}
                 >
                   {formLoading ? 'Đang xử lý...' : 'Xác nhận'}
                 </button>

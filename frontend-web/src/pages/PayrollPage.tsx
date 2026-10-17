@@ -104,10 +104,11 @@ export function PayrollPage({ user }: PayrollPageProps) {
   // Roles determination
   const userRoles = useMemo(() => user?.roles || [], [user])
   const isAdmin = userRoles.includes('ADMIN')
+  const isDirector = userRoles.includes('DIRECTOR')
   const isHrManager = userRoles.includes('HR_MANAGER')
   const isStoreManager = userRoles.includes('STORE_MANAGER')
-  const canManage = isAdmin || isHrManager || isStoreManager
-  const canRunPayroll = isAdmin || isHrManager
+  const canManage = isAdmin || isDirector || isHrManager || isStoreManager
+  const canRunPayroll = isAdmin || isDirector || isHrManager
 
   // Load payrolls
   const fetchPayrolls = useCallback(async () => {
@@ -911,7 +912,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                       <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>GIẢM TRỪ & BẢO HIỂM</div>
                       <div style={{ fontSize: '20px', fontWeight: 800, color: 'var(--status-error)', fontFamily: 'var(--font-mono)' }}>-{formatCurrency(myPayroll.total_deduction)}</div>
                     </div>
-                    <div style={{ background: 'rgba(34, 197, 94, 0.1)', padding: '8px 12px', borderRadius: '6px' }}>
+                    <div style={{ background: 'var(--status-success-bg)', border: '1px solid var(--status-success-border)', padding: '8px 12px', borderRadius: 'var(--radius-sm)' }}>
                       <div style={{ fontSize: '12px', color: 'var(--status-success)', fontWeight: 700, textTransform: 'uppercase' }}>THỰC LĨNH (NET)</div>
                       <div style={{ fontSize: '22px', fontWeight: 900, color: 'var(--status-success)', fontFamily: 'var(--font-mono)' }}>{formatCurrency(myPayroll.net_salary)}</div>
                     </div>

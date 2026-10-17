@@ -63,8 +63,8 @@ export function WorkSchedulesPage({ user }: { user: any }) {
   const urlEmployeeId = searchParams.get('employee_id')
 
   const roles: string[] = user?.roles || []
-  const isStoreManager = roles.includes('STORE_MANAGER') && !roles.includes('ADMIN') && !roles.includes('HR_MANAGER')
-  const canManage = roles.includes('ADMIN') || roles.includes('HR_MANAGER') || roles.includes('STORE_MANAGER')
+  const isStoreManager = roles.includes('STORE_MANAGER') && !roles.includes('ADMIN') && !roles.includes('HR_MANAGER') && !roles.includes('DIRECTOR')
+  const canManage = roles.includes('ADMIN') || roles.includes('DIRECTOR') || roles.includes('HR_MANAGER') || roles.includes('STORE_MANAGER')
 
   const [selectedDate, setSelectedDate] = useState(today)
   const [view, setView] = useState<ViewMode>('week')
