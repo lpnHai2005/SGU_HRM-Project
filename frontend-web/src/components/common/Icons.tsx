@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { LayoutDashboard, Users, Clock, CalendarDays, Wallet, ChartColumn, Shield,
+import { LayoutDashboard, Users, Clock, CalendarDays, Wallet, ChartColumn, Shield, ClipboardList,
   ChevronLeft, ChevronRight, ChevronDown, Check, X, LogOut, Zap, DollarSign, Plus,
   TrendingUp, TrendingDown, FileText, Monitor, Printer, User, Building2, Search,
   ListFilter, EllipsisVertical, CircleCheck, CircleAlert, CircleX, Sun, Moon, Menu,
@@ -14,7 +14,7 @@ const glyphs = { download: Download, briefcase: BriefcaseBusiness, dashboard: La
   user: User, building: Building2, search: Search, filter: ListFilter, moreVertical: EllipsisVertical,
   checkCircle: CircleCheck, alertCircle: CircleAlert, xCircle: CircleX, clockOutline: Clock,
   sun: Sun, moon: Moon, menu: Menu, info: Info, refresh: RefreshCw, loader: LoaderCircle,
-  eye: Eye, edit: Pencil, alertTriangle: TriangleAlert, bell: Bell, leave: Palmtree,
+  eye: Eye, edit: Pencil, alertTriangle: TriangleAlert, bell: Bell, leave: Palmtree, clipboardList: ClipboardList,
   minusCircle: CircleMinus, lock: LockKeyhole, store: Store, sparkles: Sparkles, undo: RotateCcw,
   paperclip: Paperclip, upload: Upload, mapPin: MapPin }
 export const Icons: Record<string, ReactNode> = Object.fromEntries(
