@@ -207,7 +207,11 @@ export function ContractFormDialog({
         }
         const result = await contractApi.create(createData)
         createdOrUpdatedId = result.contract_id
-        toast.success('Tạo hợp đồng thành công!')
+        if (!file) {
+          toast.success('Tạo hợp đồng và tự động sinh file PDF chuẩn thành công!')
+        } else {
+          toast.success('Tạo hợp đồng thành công!')
+        }
       }
 
       // Upload file nếu có
@@ -452,6 +456,12 @@ export function ContractFormDialog({
                   accept="application/pdf"
                   onChange={(e) => setFile(e.target.files?.[0] || null)}
                 />
+                {!file && !contract?.contract_file_url ? (
+                  <div style={{ fontSize: '12px', marginTop: '6px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ color: 'var(--primary-color)' }}>{Icons.fileText}</span>
+                    <span>Để trống để hệ thống <strong>tự động tạo file PDF Hợp đồng lao động chuẩn Bộ luật Lao động</strong>.</span>
+                  </div>
+                ) : null}
                 {contract?.contract_file_url && (
                   <div style={{ fontSize: '12px', marginTop: '6px', color: 'var(--text-secondary)' }}>
                     Bản hiện tại:{' '}
@@ -461,7 +471,7 @@ export function ContractFormDialog({
                       rel="noopener noreferrer"
                       style={{ color: 'var(--primary-color)', textDecoration: 'underline' }}
                     >
-                      Xem file PDF đã tải lên
+                      Xem file PDF đã đính kèm
                     </a>
                   </div>
                 )}
