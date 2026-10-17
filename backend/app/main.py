@@ -31,12 +31,20 @@ async def lifespan(app: FastAPI):
     
     from app.core.fixed_schedule import worker
     fixed_schedule_task = asyncio.create_task(worker())
+
+    # Khởi động contract expiration cron job
+    from app.core.contract_cron import start_contract_cron
+    contract_cron_task = asyncio.create_task(start_contract_cron())
+
     try:
         yield
     finally:
         fixed_schedule_task.cancel()
+        contract_cron_task.cancel()
         with suppress(asyncio.CancelledError):
             await fixed_schedule_task
+        with suppress(asyncio.CancelledError):
+            await contract_cron_task
     
     # Dọn dẹp tài nguyên khi tắt server
     logger.info("Đang đóng các kết nối CSDL...")
@@ -84,6 +92,13 @@ app.add_middleware(
 app.include_router(api_router, prefix=settings.API_V1_STR)
 # Mount thêm alias /api để tương thích ngược
 app.include_router(api_router, prefix="/api")
+
+# Mount thư mục tĩnh uploads (phục vụ file chứng từ, hợp đồng, đơn thôi việc khi lưu cục bộ)
+import os
+from fastapi.staticfiles import StaticFiles
+uploads_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "uploads")
+os.makedirs(uploads_dir, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
 
 @app.get("/", tags=["Hệ thống (System)"])
 async def root():

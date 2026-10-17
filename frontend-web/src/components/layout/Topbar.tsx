@@ -22,6 +22,7 @@ const PAGE_TITLES: Record<string, string> = {
   activity: 'Nhật ký làm việc & Hoạt động',
   dashboard: 'Tổng quan',
   employees: 'Nhân sự',
+  contracts: 'Hợp đồng lao động',
   attendance: 'Quản lý công',
   leave: 'Nghỉ phép',
   payroll: 'Lương & Thưởng',

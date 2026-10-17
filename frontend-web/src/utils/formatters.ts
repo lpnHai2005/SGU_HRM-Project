@@ -30,6 +30,11 @@ export function formatTime(dateStr: string | null | undefined): string {
   })
 }
 
+export function formatDateTime(dateStr: string | null | undefined): string {
+  if (!dateStr) return '--'
+  return `${formatDate(dateStr)} ${formatTime(dateStr)}`
+}
+
 export function getInitials(name: string | null | undefined): string {
   if (!name) return '??'
   return name

@@ -6,7 +6,7 @@ from app.core.database import get_db
 from app.api.deps import get_current_user, require_roles
 from app.schemas.schemas import (
     EmployeeCreate, EmployeeUpdate, EmployeeOut,
-    PromotionCreate, ContractCreate, ContractUpdate, ContractOut
+    PromotionCreate
 )
 
 router = APIRouter()
@@ -82,17 +82,22 @@ async def get_lookups(db: AsyncSession = Depends(get_db)):
     }
 
 # ===================================================================================
-# PHÂN HỆ HỢP ĐỒNG LAO ĐỘNG (Định nghĩa trước route /{employee_id} để tránh 422 routing collision)
+# ===================================================================================
+# Xem hợp đồng của nhân viên (read-only)
+# Đã chuyển sang module /contracts riêng. Endpoint này chỉ để backward compat.
 # ===================================================================================
 
-@router.get("/contracts", summary="Danh sách hợp đồng lao động")
-async def list_contracts(
+@router.get("/contracts", summary="[DEPRECATED] Danh sách hợp đồng - chuyển sang /contracts")
+async def list_contracts_deprecated(
     employee_id: Optional[int] = Query(None, description="Lọc theo nhân viên"),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
+    """DEPRECATED: Sử dụng GET /contracts thay thế"""
     q = """
-        SELECT c.*, e.full_name as employee_name, e.employee_code
+        SELECT c.contract_id, c.contract_number, c.employee_id, c.contract_type,
+               c.start_date, c.end_date, c.status, c.basic_salary,
+               e.full_name as employee_name, e.employee_code
         FROM contracts c
         JOIN employees e ON c.employee_id = e.employee_id
         WHERE 1=1
@@ -117,73 +122,21 @@ async def list_contracts(
     res = await db.execute(text(q), params)
     return res.mappings().all()
 
-@router.post("/contracts", summary="Tạo hợp đồng lao động mới")
-async def create_contract(
-    c: ContractCreate,
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
+
+@router.get("/{employee_id}/contracts", summary="Xem danh sách hợp đồng của nhân sự")
+async def get_employee_contracts(
+    employee_id: int,
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    c_num = c.contract_number or f"HDLD-TZ{c.employee_id}-{c.start_date.year}"
-    signed = c.signed_date or c.start_date
-    await db.execute(text("""
-        INSERT INTO contracts (
-            contract_number, employee_id, contract_type, start_date, end_date,
-            basic_salary, insurance_salary, salary_percentage, working_hours_per_week,
-            signed_date, status
-        ) VALUES (
-            :c_num, :emp_id, :c_type, :start_date, :end_date,
-            :basic_salary, :ins_salary, :pct, :hours, :signed, 'ACTIVE'
-        )
-    """), {
-        "c_num": c_num, "emp_id": c.employee_id, "c_type": c.contract_type,
-        "start_date": c.start_date, "end_date": c.end_date,
-        "basic_salary": c.basic_salary, "ins_salary": c.insurance_salary,
-        "pct": c.salary_percentage, "hours": c.working_hours_per_week,
-        "signed": signed
-    })
-    await db.commit()
-    return {"message": "Tạo hợp đồng thành công!", "contract_number": c_num}
-
-@router.put("/contracts/{contract_id}", summary="Cập nhật hợp đồng lao động")
-async def update_contract(
-    contract_id: int,
-    c: ContractUpdate,
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
-    db: AsyncSession = Depends(get_db)
-):
-    check_query = text("SELECT contract_id, employee_id FROM contracts WHERE contract_id = :id")
-    res = await db.execute(check_query, {"id": contract_id})
-    contract = res.mappings().first()
-    if not contract:
-        raise HTTPException(status_code=404, detail="Không tìm thấy hợp đồng")
-
-    update_fields = []
-    params = {"id": contract_id}
-    for k, v in c.model_dump(exclude_unset=True).items():
-        if v is not None:
-            update_fields.append(f"{k} = :{k}")
-            params[k] = v
-
-    if update_fields:
-        q = f"UPDATE contracts SET {', '.join(update_fields)} WHERE contract_id = :id"
-        await db.execute(text(q), params)
-        await db.commit()
-
-    return {"message": "Cập nhật hợp đồng thành công!", "contract_id": contract_id}
-
-@router.delete("/contracts/{contract_id}", summary="Xóa hợp đồng lao động")
-async def delete_contract(
-    contract_id: int,
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
-    db: AsyncSession = Depends(get_db)
-):
-    check_query = text("SELECT contract_id FROM contracts WHERE contract_id = :id")
-    res = await db.execute(check_query, {"id": contract_id})
-    if not res.first():
-        raise HTTPException(status_code=404, detail="Không tìm thấy hợp đồng")
-    await db.execute(text("DELETE FROM contracts WHERE contract_id = :id"), {"id": contract_id})
-    await db.commit()
-    return {"message": "Xóa hợp đồng thành công!"}
+    """
+    Xem lịch sử / danh sách hợp đồng của nhân viên (read-only) với phân quyền RBAC:
+    - ADMIN/HR_MANAGER: Xem đầy đủ
+    - STORE_MANAGER: Chỉ xem nhân viên thuộc store mình
+    - EMPLOYEE: Chỉ xem của chính mình
+    """
+    from app.api.v1.endpoints.contracts import get_employee_contract_history
+    return await get_employee_contract_history(employee_id, current_user, db)
 
 @router.get("/{employee_id}", response_model=EmployeeOut, summary="Xem chi tiết 1 nhân sự")
 async def get_employee(
@@ -261,15 +214,15 @@ async def create_employee(
     emp_res = await db.execute(insert_query, emp_data)
     new_id = emp_res.scalar()
 
-    # Tự động tạo hợp đồng lao động ban đầu
+    # Tự động tạo hợp đồng lao động ban đầu (status = DRAFT để HR review)
     contract_num = f"HDLD-{emp.employee_code}-2026"
     await db.execute(text("""
         INSERT INTO contracts (
             contract_number, employee_id, contract_type, start_date,
             basic_salary, insurance_salary, signed_date, status
         ) VALUES (
-            :c_num, :emp_id, 'FIXED_1_YEAR', :start_date,
-            :b_sal, 5000000, :start_date, 'ACTIVE'
+            :c_num, :emp_id, 'FIXED_TERM', :start_date,
+            :b_sal, 5000000, :start_date, 'DRAFT'
         )
     """), {
         "c_num": contract_num, "emp_id": new_id,
@@ -300,15 +253,11 @@ async def update_employee(
         if not store_active:
             raise HTTPException(status_code=409, detail='Không thể chuyển nhân viên vào cửa hàng đã ngừng hoạt động')
 
-    # Đồng bộ lương cơ bản vào hợp đồng đang hiệu lực nếu có truyền
-    if "basic_salary" in data:
-        basic_sal = data.pop("basic_salary")
-        if basic_sal is not None:
-            await db.execute(text("""
-                UPDATE contracts 
-                SET basic_salary = :basic_sal 
-                WHERE employee_id = :id AND status = 'ACTIVE'
-            """), {"basic_sal": basic_sal, "id": employee_id})
+    # Note: Thay đổi lương cơ bản của nhân viên nên được thực hiện qua:
+    # 1. Tạo hợp đồng mới (renew) - Giữ nguyên lịch sử
+    # 2. Tạo phụ lục hợp đồng - Sắp triển khai
+    # Không tự động cập nhật basic_salary của hợp đồng ACTIVE trực tiếp
+    # để đảm bảo tính lịch sử của hợp đồng lao động.
 
     for k, v in data.items():
         if k in ["employee_id", "full_name"]:
@@ -333,11 +282,21 @@ async def delete_employee(
     db: AsyncSession = Depends(get_db)
 ):
     await db.execute(text("""
-        UPDATE employees 
+        UPDATE employees
         SET employment_status = 'RESIGNED', resignation_date = CURRENT_DATE, updated_at = CURRENT_TIMESTAMP
         WHERE employee_id = :id
     """), {"id": employee_id})
-    await db.execute(text("UPDATE contracts SET status = 'TERMINATED' WHERE employee_id = :id"), {"id": employee_id})
+    # Terminate all ACTIVE contracts with proper audit fields
+    user_id = current_user.get("user_id")
+    await db.execute(text("""
+        UPDATE contracts
+        SET status = 'TERMINATED',
+            termination_date = CURRENT_DATE,
+            termination_reason = 'Nhân viên thôi việc (RESIGNED)',
+            terminated_by = :user_id,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE employee_id = :id AND status = 'ACTIVE'
+    """), {"id": employee_id, "user_id": user_id})
     await db.commit()
     return {"message": "Nhân viên đã được cập nhật trạng thái thôi việc (RESIGNED)."}
 

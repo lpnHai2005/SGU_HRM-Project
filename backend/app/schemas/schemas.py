@@ -1,6 +1,7 @@
 from datetime import datetime, date
 from typing import Optional, List, Dict, Any, Union
 from pydantic import BaseModel, Field, ConfigDict, field_validator
+from enum import Enum
 try:
     from pydantic import EmailStr
 except ImportError:
@@ -238,17 +239,43 @@ class PromotionCreate(BaseModel):
     reason: str = "Thăng cấp chức vụ theo năng lực"
 
 
+# ===================================================================================
+# 5. CONTRACT SCHEMAS (Contract Management Module)
+# ===================================================================================
+
+class ContractTypeEnum(str, Enum):
+    PROBATION = "PROBATION"
+    FIXED_TERM = "FIXED_TERM"
+    FIXED_1_YEAR = "FIXED_1_YEAR"
+    FIXED_2_YEAR = "FIXED_2_YEAR"
+    FIXED_3_YEAR = "FIXED_3_YEAR"
+    INDEFINITE = "INDEFINITE"
+
+
+class ContractStatusEnum(str, Enum):
+    DRAFT = "DRAFT"
+    ACTIVE = "ACTIVE"
+    EXPIRED = "EXPIRED"
+    TERMINATED = "TERMINATED"
+    CANCELLED = "CANCELLED"
+
+
 class ContractCreate(BaseModel):
-    employee_id: int
-    contract_number: Optional[str] = None
-    contract_type: str = "FIXED_1_YEAR"
-    start_date: date
-    end_date: Optional[date] = None
-    basic_salary: Optional[float] = 8000000.0
-    insurance_salary: Optional[float] = 5000000.0
-    salary_percentage: Optional[float] = 100.0
-    working_hours_per_week: Optional[int] = 48
-    signed_date: Optional[date] = None
+    """Schema để tạo hợp đồng mới"""
+    employee_id: int = Field(..., description="ID nhân viên")
+    contract_type: ContractTypeEnum = Field(
+        default=ContractTypeEnum.FIXED_TERM,
+        description="Loại hợp đồng"
+    )
+    start_date: date = Field(..., description="Ngày bắt đầu")
+    end_date: Optional[date] = Field(None, description="Ngày kết thúc (NULL cho INDEFINITE)")
+    basic_salary: float = Field(..., ge=0, description="Lương cơ bản (>= 0)")
+    insurance_salary: Optional[float] = Field(None, ge=0, description="Lương đóng bảo hiểm")
+    signed_date: date = Field(..., description="Ngày ký hợp đồng")
+    position_id: Optional[int] = Field(None, description="ID chức vụ (snapshot)")
+    department_id: Optional[int] = Field(None, description="ID phòng ban (snapshot)")
+    notes: Optional[str] = Field(None, description="Ghi chú")
+    file_url: Optional[str] = Field(None, description="URL file hợp đồng đã upload")
 
     @field_validator("start_date", "end_date", "signed_date", mode="before")
     @classmethod
@@ -259,15 +286,17 @@ class ContractCreate(BaseModel):
 
 
 class ContractUpdate(BaseModel):
-    contract_type: Optional[str] = None
+    """Schema để cập nhật hợp đồng (chỉ DRAFT)"""
+    contract_type: Optional[ContractTypeEnum] = None
     start_date: Optional[date] = None
     end_date: Optional[date] = None
-    basic_salary: Optional[float] = None
-    insurance_salary: Optional[float] = None
-    salary_percentage: Optional[float] = None
-    working_hours_per_week: Optional[int] = None
+    basic_salary: Optional[float] = Field(None, ge=0)
+    insurance_salary: Optional[float] = Field(None, ge=0)
     signed_date: Optional[date] = None
-    status: Optional[str] = None
+    position_id: Optional[int] = None
+    department_id: Optional[int] = None
+    notes: Optional[str] = None
+    file_url: Optional[str] = None
 
     @field_validator("start_date", "end_date", "signed_date", mode="before")
     @classmethod
@@ -277,14 +306,135 @@ class ContractUpdate(BaseModel):
         return v
 
 
-class ContractOut(ContractCreate):
+class ContractTerminate(BaseModel):
+    """Schema để chấm dứt hợp đồng"""
+    termination_date: date = Field(..., description="Ngày chấm dứt")
+    termination_reason: str = Field(
+        ...,
+        min_length=3,
+        description="Lý do chấm dứt (ví dụ: EMPLOYEE_RESIGNATION, MUTUAL_AGREEMENT, EMPLOYER_TERMINATION, OTHER hoặc văn bản lý do)"
+    )
+    termination_type: Optional[str] = Field(None, description="Loại chấm dứt: EMPLOYEE_RESIGNATION, MUTUAL_AGREEMENT, EMPLOYER_TERMINATION, OTHER")
+    resignation_id: Optional[int] = Field(None, description="ID đơn thôi việc nếu có")
+    notes: Optional[str] = Field(None, description="Ghi chú chi tiết")
+    document_url: Optional[str] = Field(None, description="URL tệp quyết định/biên bản/chứng từ thôi việc")
+    decision_number: Optional[str] = Field(None, description="Số hiệu quyết định hoặc biên bản thôi việc")
+
+
+class ContractRenew(BaseModel):
+    """Schema để gia hạn hợp đồng"""
+    new_start_date: date = Field(..., description="Ngày bắt đầu mới")
+    new_end_date: Optional[date] = Field(None, description="Ngày kết thúc mới")
+    new_basic_salary: Optional[float] = Field(None, ge=0, description="Lương mới")
+    new_position_id: Optional[int] = Field(None, description="Chức vụ mới")
+    notes: Optional[str] = Field(None, description="Ghi chú")
+
+
+class ContractOut(BaseModel):
+    """Schema output chi tiết hợp đồng"""
     contract_id: int
     contract_number: str
-    status: str = "ACTIVE"
+    employee_id: int
+    employee_code: Optional[str] = None
     employee_name: Optional[str] = None
+    contract_type: str
+    start_date: date
+    end_date: Optional[date] = None
+    basic_salary: Optional[float] = None
+    insurance_salary: Optional[float] = None
+    signed_date: date
+    status: str
+    notes: Optional[str] = None
+    contract_file_url: Optional[str] = None
+    termination_document_url: Optional[str] = None
+    previous_contract_id: Optional[int] = None
+    previous_contract_number: Optional[str] = None
+    position_id: Optional[int] = None
+    position_name: Optional[str] = None
+    department_id: Optional[int] = None
+    department_name: Optional[str] = None
+    store_id: Optional[int] = None
+    store_name: Optional[str] = None
+    termination_date: Optional[date] = None
+    termination_reason: Optional[str] = None
     created_at: Optional[datetime] = None
+    activated_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# ===================================================================================
+# 5b. RESIGNATION SCHEMAS (Resignation Management Module)
+# ===================================================================================
+
+class ResignationStatusEnum(str, Enum):
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    CANCELLED = "CANCELLED"
+
+
+class ResignationCreate(BaseModel):
+    employee_id: int = Field(..., description="ID nhân viên")
+    contract_id: int = Field(..., description="ID hợp đồng đang ACTIVE")
+    submitted_date: date = Field(..., description="Ngày nộp đơn")
+    requested_last_working_date: date = Field(..., description="Ngày dự kiến nghỉ việc")
+    reason: str = Field(..., min_length=5, description="Lý do thôi việc")
+    attachment_url: Optional[str] = Field(None, description="URL file đính kèm đơn thôi việc")
+    notes: Optional[str] = Field(None, description="Ghi chú thêm của HR")
+
+    @field_validator("submitted_date", "requested_last_working_date", mode="before")
+    @classmethod
+    def empty_str_to_none_resignation_date(cls, v):
+        if v == "" or v is None:
+            return None
+        return v
+
+
+class ResignationApprove(BaseModel):
+    approved_last_working_date: date = Field(..., description="Ngày làm việc cuối cùng được duyệt")
+    notes: Optional[str] = Field(None, description="Ghi chú duyệt")
+
+
+class ResignationReject(BaseModel):
+    rejection_reason: str = Field(..., min_length=5, description="Lý do từ chối đơn thôi việc")
+
+
+class ResignationOut(BaseModel):
+    resignation_id: int
+    employee_id: int
+    employee_code: Optional[str] = None
+    employee_name: Optional[str] = None
+    department_id: Optional[int] = None
+    department_name: Optional[str] = None
+    position_id: Optional[int] = None
+    position_name: Optional[str] = None
+    store_id: Optional[int] = None
+    store_name: Optional[str] = None
+    contract_id: int
+    contract_number: Optional[str] = None
+    contract_type: Optional[str] = None
+    contract_start_date: Optional[date] = None
+    contract_end_date: Optional[date] = None
+    submitted_date: date
+    requested_last_working_date: date
+    reason: str
+    attachment_url: Optional[str] = None
+    notes: Optional[str] = None
+    status: str
+    rejection_reason: Optional[str] = None
+    approved_last_working_date: Optional[date] = None
+    created_by: int
+    created_by_name: Optional[str] = None
+    approved_by: Optional[int] = None
+    approved_by_name: Optional[str] = None
+    approved_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
 
 
 # ===================================================================================

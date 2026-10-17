@@ -32,6 +32,7 @@ export const NAVIGATION: NavItemConfig[] = [
   { id: 'audit', path: '/audit', label: 'Nhật ký kiểm toán', icon: 'fileText', section: 'Quản trị hệ thống', roles: ['ADMIN', 'HR_MANAGER'] },
   { id: 'employees', path: '/employees', label: 'Quản lý nhân viên', icon: 'users', section: 'Nhân sự', roles: managers },
   { id: 'contracts', path: '/contracts', label: 'Hợp đồng & Biến động nhân sự', icon: 'fileText', section: 'Nhân sự', roles: ['ADMIN', 'HR_MANAGER'] },
+  { id: 'resignations', path: '/resignations', label: 'Quản lý thôi việc', icon: 'clipboardList', section: 'Nhân sự', roles: ['ADMIN', 'HR_MANAGER'] },
   { id: 'work-schedules', path: '/work-schedules', label: 'Quản lý lịch làm việc', icon: 'calendar', section: 'Vận hành', roles: managers },
   { id: 'attendance', path: '/attendance', label: 'Quản lý công & OT', icon: 'clock', section: 'Vận hành', roles: managers },
   { id: 'leave', path: '/leave', label: 'Quản lý đơn từ', icon: 'clipboardList', section: 'Vận hành', roles: managers },
