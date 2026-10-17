@@ -29,7 +29,7 @@ router = APIRouter()
 
 @router.get("/stats", summary="Thống kê đơn thôi việc theo trạng thái")
 async def get_resignation_stats(
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -45,7 +45,7 @@ async def get_resignation_stats(
 @router.get("/employee-active-contracts/{employee_id}", summary="Lấy hợp đồng đang hiệu lực của nhân viên")
 async def get_employee_active_contracts(
     employee_id: int,
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -67,7 +67,7 @@ async def list_resignations(
     search: Optional[str] = Query(None, description="Tìm theo tên/mã NV hoặc số HĐ"),
     page: int = Query(1, ge=1, description="Trang hiện tại"),
     page_size: int = Query(20, ge=1, le=100, description="Số dòng mỗi trang"),
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -168,7 +168,7 @@ async def list_resignations(
 @router.get("/{resignation_id}", summary="Chi tiết đơn thôi việc")
 async def get_resignation_detail(
     resignation_id: int,
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -265,14 +265,15 @@ async def create_resignation(
 async def approve_resignation(
     resignation_id: int,
     approve_data: ResignationApprove,
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Duyệt đơn thôi việc:
-    - Chuyển trạng thái sang APPROVED
-    - Cập nhật approved_last_working_date, approved_by, approved_at
-    - LƯU Ý: Hợp đồng của nhân viên CHƯA bị chấm dứt ngay mà vẫn giữ ACTIVE cho đến khi HR thực hiện chấm dứt hợp đồng.
+    Duyệt đơn thôi việc (No Self-Approval):
+    - HR_MANAGER duyệt đơn của Employee/Store Manager.
+    - DIRECTOR duyệt đơn của HR_MANAGER/ADMIN.
+    - ADMIN duyệt mọi đơn.
+    - LƯU Ý: Hợp đồng CHƯA bị chấm dứt ngay.
     """
     resignation = await ResignationService.get_resignation_or_404(db, resignation_id)
 
@@ -288,7 +289,38 @@ async def approve_resignation(
             detail="Ngày làm việc cuối cùng được duyệt không được trước ngày nộp đơn"
         )
 
+    user_roles = current_user.get("roles", [])
     user_id = current_user.get("user_id")
+
+    # ===== NO SELF-APPROVAL CHECK =====
+    # Lấy roles của người thôi việc
+    applicant_roles_res = await db.execute(text("""
+        SELECT DISTINCT r.role_code
+        FROM user_roles ur
+        JOIN roles r ON ur.role_id = r.role_id
+        JOIN users u ON ur.user_id = u.user_id
+        WHERE u.employee_id = :eid
+    """), {"eid": resignation["employee_id"]})
+    applicant_roles = [r["role_code"] for r in applicant_roles_res.mappings().all()]
+
+    is_hr_or_admin_resigner = any(r in applicant_roles for r in ("HR_MANAGER", "ADMIN"))
+    is_director = "DIRECTOR" in user_roles
+    is_admin = "ADMIN" in user_roles
+    is_hr = "HR_MANAGER" in user_roles
+
+    # Đơn của HR/Admin phải do DIRECTOR (hoặc ADMIN) duyệt
+    if is_hr_or_admin_resigner and not is_director and not is_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Đơn thôi việc của Trưởng phòng Nhân sự / Quản trị viên chỉ được Giám đốc hoặc Admin phê duyệt (nguyên tắc No Self-Approval)."
+        )
+
+    # DIRECTOR chỉ duyệt đơn của HR/Admin
+    if is_director and not is_hr_or_admin_resigner and not is_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Giám đốc chỉ duyệt đơn thôi việc của Trưởng phòng Nhân sự / Quản trị viên."
+        )
 
     update_query = text("""
         UPDATE resignation_requests
@@ -341,7 +373,7 @@ async def approve_resignation(
 async def reject_resignation(
     resignation_id: int,
     reject_data: ResignationReject,
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -407,7 +439,7 @@ async def reject_resignation(
 @router.post("/{resignation_id}/cancel", summary="Hủy đơn thôi việc")
 async def cancel_resignation(
     resignation_id: int,
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -461,7 +493,7 @@ async def cancel_resignation(
 @router.post("/upload-attachment", summary="Upload file đính kèm đơn thôi việc (PDF / Ảnh)")
 async def upload_resignation_attachment(
     file: UploadFile = File(...),
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """

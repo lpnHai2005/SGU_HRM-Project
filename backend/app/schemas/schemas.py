@@ -657,6 +657,9 @@ class LeaveRequestOut(BaseModel):
     hr_approver_id: Optional[int] = None
     hr_approver_name: Optional[str] = None
     hr_approved_at: Optional[datetime] = None
+    director_approver_id: Optional[int] = None
+    director_approver_name: Optional[str] = None
+    director_approved_at: Optional[datetime] = None
     rejection_reason: Optional[str] = None
     rejected_by_id: Optional[int] = None
     rejected_by_name: Optional[str] = None

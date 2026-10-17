@@ -2,7 +2,7 @@
 // TypeScript Type Definitions for HRM System
 // ============================================
 
-export type UserRole = 'ADMIN' | 'HR_MANAGER' | 'STORE_MANAGER' | 'EMPLOYEE';
+export type UserRole = 'ADMIN' | 'DIRECTOR' | 'HR_MANAGER' | 'STORE_MANAGER' | 'EMPLOYEE';
 
 export interface UserProfile {
   user_id: number;
@@ -447,6 +447,9 @@ export interface LeaveRequest {
   hr_approver_id?: number | null;
   hr_approver_name?: string | null;
   hr_approved_at?: string | null;
+  director_approver_id?: number | null;
+  director_approver_name?: string | null;
+  director_approved_at?: string | null;
   rejection_reason?: string | null;
   rejected_by_id?: number | null;
   rejected_by_name?: string | null;

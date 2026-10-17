@@ -34,15 +34,17 @@ function getStatusBadgeClass(status: string): string {
 
 function getStatusDisplayLabel(status: string, req?: LeaveRequest | null): string {
   const isChtReq = req?.is_store_manager_request || req?.position_name === 'Cửa hàng trưởng' || (req && !req.store_id)
+  const isHrOrAdminReq = req?.position_name === 'Trưởng phòng Nhân sự' || req?.position_name === 'Quản trị viên' || req?.position_name === 'Giám đốc'
   switch (status) {
     case 'PENDING':
+      if (isHrOrAdminReq) return 'Chờ Giám đốc duyệt'
       return isChtReq ? 'Chờ HR duyệt' : 'Chờ CHT duyệt'
     case 'STORE_APPROVED':
       return 'Chờ HR duyệt'
     case 'HR_APPROVED':
       return 'Đã duyệt'
     case 'REJECTED':
-      return req?.hr_approved_at ? 'Đã hủy duyệt' : 'Đã từ chối'
+      return req?.hr_approved_at || req?.director_approved_at ? 'Đã hủy duyệt' : 'Đã từ chối'
     case 'CANCELLED':
       return 'Đã hủy'
     default:
@@ -177,6 +179,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
   const isAdmin = !isPersonalView && userRoles.includes('ADMIN')
   const isHrManager = !isPersonalView && userRoles.includes('HR_MANAGER')
   const isStoreManager = !isPersonalView && userRoles.includes('STORE_MANAGER')
+  const isDirector = !isPersonalView && userRoles.includes('DIRECTOR')
 
   // Leave balances and limits
   const annualTotal = leaveBalance?.annual_leave_total ?? 12
@@ -1090,6 +1093,12 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                     const isRejected = req.status === 'REJECTED'
                     const wasHrApprovedBeforeReject = isRejected && !!req.hr_approved_at
                     const isApplicantStoreManager = Boolean(req.is_store_manager_request || req.position_name === 'Cửa hàng trưởng')
+                    // Đơn của HR/Admin cần Giám đốc duyệt (No Self-Approval)
+                    const isApplicantHrOrAdmin = Boolean(
+                      req.position_name === 'Trưởng phòng Nhân sự' ||
+                      req.position_name === 'Quản trị viên' ||
+                      req.position_name === 'Giám đốc'
+                    )
 
                     // Kiểm tra thời gian nghỉ phép đã qua hay chưa (theo ngày hiện tại cục bộ)
                     const now = new Date()
@@ -1103,15 +1112,19 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                     // Cửa hàng trưởng không thể tự duyệt đơn của mình và không duyệt đơn của CHT khác
                     const canStoreApprove = (isStoreManager || isAdmin) && req.status === 'PENDING' && !isOwner && !isApplicantStoreManager
 
-                    // HR có thể duyệt thẳng (Cấp 2) kể cả trước khi Cửa hàng trưởng duyệt Cấp 1
+                    // HR có thể duyệt thẳng (Cấp 2) cho Employee/Store Manager (trừ đơn của HR/Admin)
                     const canHrApprove = (isHrManager || isAdmin) && (
-                      req.status === 'STORE_APPROVED' || req.status === 'PENDING'
+                      req.status === 'STORE_APPROVED' || (req.status === 'PENDING' && !isApplicantHrOrAdmin)
                     ) && (!isOwner || isAdmin)
+
+                    // DIRECTOR duyệt đơn của HR/Admin (No Self-Approval)
+                    const canDirectorApprove = isDirector && req.status === 'PENDING' && isApplicantHrOrAdmin && !isOwner
 
                     // Nếu đã qua thời gian mà nhân viên xin nghỉ trước đó thì không được hiện chức năng hủy duyệt/ từ chối (do cấp trên thực hiện) nữa
                     const canRejectPending = !isLeavePassed && (
                       (isStoreManager && !isApplicantStoreManager && !isOwner && req.status === 'PENDING') ||
-                      ((isHrManager || isAdmin) && (req.status === 'PENDING' || req.status === 'STORE_APPROVED'))
+                      ((isHrManager || isAdmin) && (req.status === 'PENDING' || req.status === 'STORE_APPROVED')) ||
+                      (isDirector && req.status === 'PENDING' && isApplicantHrOrAdmin)
                     )
                     const canRevokeHrApproved = !isLeavePassed && (isHrManager || isAdmin) && req.status === 'HR_APPROVED'
 
@@ -1247,6 +1260,11 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                             </div>
                           ) : isRejected ? (
                             <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary, #9ca3af)' }}>Không áp dụng</span>
+                          ) : req.director_approved_at ? (
+                            <div style={{ fontSize: '0.8rem', color: '#7c3aed' }}>
+                              <div>{Icons.check} {req.director_approver_name || 'Giám đốc'}</div>
+                              <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary, #6b7280)' }}>{formatDate(req.director_approved_at)}</div>
+                            </div>
                           ) : req.hr_approved_at ? (
                             <div style={{ fontSize: '0.8rem', color: '#10b981' }}>
                               <div>{Icons.check} {req.hr_approver_name || 'HR Manager'}</div>
@@ -1254,6 +1272,8 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                             </div>
                           ) : req.status === 'STORE_APPROVED' || (req.status === 'PENDING' && isApplicantStoreManager) ? (
                             <span style={{ fontSize: '0.8rem', color: '#2563eb', fontWeight: 500 }}>Chờ HR duyệt</span>
+                          ) : req.status === 'PENDING' && isApplicantHrOrAdmin ? (
+                            <span style={{ fontSize: '0.8rem', color: '#7c3aed', fontWeight: 500 }}>Chờ Giám đốc duyệt</span>
                           ) : (
                             <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary, #9ca3af)' }}>Chờ duyệt</span>
                           )}
@@ -1348,6 +1368,19 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                                   >
                                     <span className="action-icon icon-edit">{Icons.check}</span>
                                     <span>Duyệt cấp 2 (HR)</span>
+                                  </button>
+                                )}
+
+                                {canDirectorApprove && (
+                                  <button
+                                    className="action-dropdown-item"
+                                    onClick={() => {
+                                      setOpenMenuId(null)
+                                      setHrApproveModalRequest(req)
+                                    }}
+                                  >
+                                    <span className="action-icon icon-edit" style={{ color: '#7c3aed' }}>{Icons.check}</span>
+                                    <span>Phê duyệt (Giám đốc)</span>
                                   </button>
                                 )}
 
@@ -2375,7 +2408,9 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
             onClick={(e) => e.stopPropagation()}
           >
             <div className="card-header">
-              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600 }}>Phê Duyệt Đơn Nghỉ Phép (HR)</h3>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600 }}>
+                {isDirector ? 'Phê Duyệt Đơn Nghỉ Phép (Giám đốc)' : 'Phê Duyệt Đơn Nghỉ Phép (HR)'}
+              </h3>
             </div>
             <div style={{ padding: '20px' }}>
               <div style={{ backgroundColor: 'var(--surface-subtle)', border: '1px solid var(--border-default)', padding: '14px', borderRadius: 'var(--radius-sm)', marginBottom: '16px', color: 'var(--text-primary)' }}>

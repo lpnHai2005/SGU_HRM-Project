@@ -77,7 +77,7 @@ export function ResignationManagementPage({ user }: ResignationManagementPagePro
   // RBAC
   const userRoles = useMemo(() => user?.roles || [], [user])
   const canManage = useMemo(() => {
-    return userRoles.includes('ADMIN') || userRoles.includes('HR_MANAGER')
+    return userRoles.includes('ADMIN') || userRoles.includes('HR_MANAGER') || userRoles.includes('DIRECTOR')
   }, [userRoles])
 
   // Close floating action menu on outside click or scroll

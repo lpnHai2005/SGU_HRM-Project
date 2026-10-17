@@ -51,7 +51,8 @@ export function getRoleFromUser(user: any): UserRole {
   const roles = [user.role, ...(Array.isArray(user.roles) ? user.roles : [])]
     .filter((value): value is string => typeof value === 'string')
     .map(value => value.toUpperCase())
-  for (const role of ['ADMIN', 'HR_MANAGER', 'STORE_MANAGER'] as const) {
+  // Ưu tiên theo thứ tự: ADMIN > DIRECTOR > HR_MANAGER > STORE_MANAGER
+  for (const role of ['ADMIN', 'DIRECTOR', 'HR_MANAGER', 'STORE_MANAGER'] as const) {
     if (roles.includes(role)) return role
   }
   return 'EMPLOYEE'
@@ -61,6 +62,8 @@ export function getRoleBadgeClass(role: UserRole): string {
   switch (role) {
     case 'ADMIN':
       return 'admin'
+    case 'DIRECTOR':
+      return 'director'
     case 'HR_MANAGER':
       return 'hr'
     case 'STORE_MANAGER':

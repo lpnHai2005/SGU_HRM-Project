@@ -2,8 +2,8 @@ import type { UserRole } from '../types'
 export type NavigationUser = { roles: string[]; permissions?: string[]; employee_id?: number | null; store_id?: number | null }
 
 export const ROLE_LABELS: Record<UserRole, string> = {
-  ADMIN: 'Quản trị viên', HR_MANAGER: 'Trưởng phòng NS',
-  STORE_MANAGER: 'Cửa hàng trưởng', EMPLOYEE: 'Nhân viên',
+  ADMIN: 'Quản trị viên', DIRECTOR: 'Giám đốc',
+  HR_MANAGER: 'Trưởng phòng NS', STORE_MANAGER: 'Cửa hàng trưởng', EMPLOYEE: 'Nhân viên',
 }
 export const LEAVE_STATUS_LABELS: Record<string, string> = {
   PENDING: 'Chờ duyệt', STORE_APPROVED: 'Cửa hàng đã duyệt',
@@ -21,15 +21,15 @@ export interface NavItemConfig {
   requiresStore?: boolean
   permission?: string
 }
-const managers: UserRole[] = ['ADMIN', 'HR_MANAGER', 'STORE_MANAGER']
+const managers: UserRole[] = ['ADMIN', 'DIRECTOR', 'HR_MANAGER', 'STORE_MANAGER']
 const all: UserRole[] = [...managers, 'EMPLOYEE']
 // Every item has a route; pages with unfinished workflows display their limits.
 // The backend still enforces record-level scope.
 export const NAVIGATION: NavItemConfig[] = [
   { id: 'dashboard', path: '/', label: 'Trang chủ', icon: 'dashboard', section: 'Trang chủ', roles: all },
-  { id: 'stores', path: '/stores', label: 'Quản lý cửa hàng & GPS', icon: 'store', section: 'Quản trị hệ thống', roles: ['ADMIN'] },
+  { id: 'stores', path: '/stores', label: 'Quản lý cửa hàng & GPS', icon: 'store', section: 'Quản trị hệ thống', roles: ['ADMIN', 'DIRECTOR'] },
   { id: 'users', path: '/users', label: 'Tài khoản & Phân quyền', icon: 'shield', section: 'Quản trị hệ thống', roles: ['ADMIN'] },
-  { id: 'audit', path: '/audit', label: 'Nhật ký kiểm toán', icon: 'fileText', section: 'Quản trị hệ thống', roles: ['ADMIN', 'HR_MANAGER'] },
+  { id: 'audit', path: '/audit', label: 'Nhật ký kiểm toán', icon: 'fileText', section: 'Quản trị hệ thống', roles: ['ADMIN', 'DIRECTOR', 'HR_MANAGER'] },
   { id: 'employees', path: '/employees', label: 'Quản lý nhân viên', icon: 'users', section: 'Nhân sự', roles: managers },
   { id: 'contracts', path: '/contracts', label: 'Hợp đồng & Biến động nhân sự', icon: 'fileText', section: 'Nhân sự', roles: ['ADMIN', 'HR_MANAGER'] },
   { id: 'resignations', path: '/resignations', label: 'Quản lý thôi việc', icon: 'clipboardList', section: 'Nhân sự', roles: ['ADMIN', 'HR_MANAGER'] },
@@ -38,10 +38,10 @@ export const NAVIGATION: NavItemConfig[] = [
   { id: 'leave', path: '/leave', label: 'Quản lý đơn từ', icon: 'clipboardList', section: 'Vận hành', roles: managers },
   { id: 'activity', path: '/activity', label: 'Nhật ký đội ngũ', icon: 'chart', section: 'Vận hành', roles: managers },
   { id: 'projects', path: '/projects', label: 'Quản lý dự án', icon: 'briefcase', section: 'Vận hành', roles: managers },
-  { id: 'sales', path: '/sales', label: 'Doanh số & Hoa hồng', icon: 'trendingUp', section: 'Kinh doanh & Tài chính', roles: managers, hiddenFor: ['ADMIN', 'HR_MANAGER'] },
+  { id: 'sales', path: '/sales', label: 'Doanh số & Hoa hồng', icon: 'trendingUp', section: 'Kinh doanh & Tài chính', roles: ['DIRECTOR', 'STORE_MANAGER'], hiddenFor: ['ADMIN', 'HR_MANAGER'] },
   { id: 'payroll-fund', path: '/payroll-fund', label: 'Quỹ lương', icon: 'dollar', section: 'Kinh doanh & Tài chính', roles: managers },
   { id: 'payroll', path: '/payroll', label: 'Quản lý bảng lương', icon: 'wallet', section: 'Kinh doanh & Tài chính', roles: managers },
-  { id: 'settlements', path: '/settlements', label: 'Thanh toán & Đối soát', icon: 'checkCircle', section: 'Kinh doanh & Tài chính', roles: ['ADMIN', 'HR_MANAGER'] },
+  { id: 'settlements', path: '/settlements', label: 'Thanh toán & Đối soát', icon: 'checkCircle', section: 'Kinh doanh & Tài chính', roles: ['ADMIN', 'DIRECTOR', 'HR_MANAGER'] },
   { id: 'reports', path: '/reports', label: 'Trung tâm báo cáo & KPI', icon: 'chart', section: 'Báo cáo', roles: managers },
   { id: 'my-schedules', path: '/my-schedules', label: 'Lịch ca của tôi', icon: 'calendar', section: 'Cá nhân', roles: managers, requiresEmployee: true },
   { id: 'my-attendance', path: '/my-attendance', label: 'Bảng công của tôi', icon: 'clock', section: 'Cá nhân', roles: managers, requiresEmployee: true },
@@ -62,6 +62,7 @@ export function canAccessNavigation(item: NavItemConfig, user: NavigationUser | 
   if (!item.roles.includes(effectiveRole)) return false
   if (effectiveRole === 'STORE_MANAGER' && !user.store_id &&
       ['/employees', '/work-schedules', '/attendance', '/leave', '/activity', '/projects', '/sales', '/payroll-fund', '/payroll', '/reports'].includes(item.path)) return false
+  if (effectiveRole === 'DIRECTOR') return true // Giám đốc xem được tất cả các trang quản lý
   if (item.requiresEmployee && !user.employee_id) return false
   if (item.requiresStore && !user.store_id) return false
   if (item.permission && !user.roles.includes('ADMIN') && !user.permissions?.includes(item.permission)) return false
