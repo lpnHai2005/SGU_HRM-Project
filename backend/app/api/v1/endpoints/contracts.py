@@ -8,9 +8,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
+import os
 import json
 import io
 import aiohttp
+import httpx
+import logging
 
 from app.core.database import get_db
 from app.api.deps import get_current_user, require_roles, record_audit_log
@@ -19,6 +22,8 @@ from app.core.contract_service import (
     VALID_TRANSITIONS
 )
 from app.core.resignation_service import ResignationService
+from app.core.contract_pdf import generate_contract_pdf
+from app.core.storage import upload_file_to_storage
 from app.schemas.schemas import (
     ContractCreate,
     ContractUpdate,
@@ -26,6 +31,8 @@ from app.schemas.schemas import (
     ContractTerminate,
     ContractRenew,
 )
+
+logger = logging.getLogger("techzone_hrm.contracts")
 
 router = APIRouter()
 
@@ -280,8 +287,81 @@ async def get_contract(
 
 
 # ===============================================================================
-# 3. TẠO HỢP ĐỒNG MỚI
+# 3. TẠO HỢP ĐỒNG MỚI & TỰ ĐỘNG TẠO FILE PDF
 # ===============================================================================
+
+async def _generate_and_save_contract_pdf(
+    db: AsyncSession,
+    contract_id: int,
+    contract_number: str,
+    employee_id: int,
+    contract_type: str,
+    start_date: date,
+    end_date: Optional[date],
+    basic_salary: float,
+    insurance_salary: Optional[float],
+    signed_date: date,
+    position_id: Optional[int] = None,
+    department_id: Optional[int] = None
+) -> Optional[str]:
+    """
+    Tự động truy vấn thông tin nhân viên, tạo file PDF hợp đồng lao động chuẩn Việt Nam
+    và lưu trữ URL vào bảng contracts.
+    """
+    try:
+        emp_query = text("""
+            SELECT e.employee_id, e.employee_code, e.full_name, e.gender, e.dob,
+                   e.identity_card, e.identity_issued_date, e.identity_issued_place,
+                   e.phone, e.personal_email, e.company_email, e.permanent_address, e.current_address,
+                   e.bank_account_number, e.bank_name, e.tax_code, e.insurance_code,
+                   s.store_name, s.address as store_address,
+                   d.department_name,
+                   pos.position_name
+            FROM employees e
+            LEFT JOIN stores s ON e.store_id = s.store_id
+            LEFT JOIN departments d ON COALESCE(:dept_id, e.department_id) = d.department_id
+            LEFT JOIN positions pos ON COALESCE(:pos_id, e.position_id) = pos.position_id
+            WHERE e.employee_id = :employee_id
+        """)
+        emp_res = await db.execute(emp_query, {
+            "employee_id": employee_id,
+            "pos_id": position_id,
+            "dept_id": department_id
+        })
+        emp_data = emp_res.mappings().first()
+        if not emp_data:
+            return None
+
+        contract_dict = {
+            "contract_number": contract_number,
+            "contract_type": contract_type,
+            "start_date": start_date,
+            "end_date": end_date,
+            "basic_salary": basic_salary,
+            "insurance_salary": insurance_salary or basic_salary,
+            "signed_date": signed_date,
+            "position_name": emp_data.get("position_name"),
+            "store_name": emp_data.get("store_name"),
+            "department_name": emp_data.get("department_name")
+        }
+
+        pdf_bytes = generate_contract_pdf(contract_dict, dict(emp_data))
+        file_url = await upload_file_to_storage(
+            content=pdf_bytes,
+            filename=f"{contract_number}.pdf",
+            folder="contracts",
+            content_type="application/pdf"
+        )
+
+        await db.execute(
+            text("UPDATE contracts SET contract_file_url = :file_url, updated_at = CURRENT_TIMESTAMP WHERE contract_id = :cid"),
+            {"file_url": file_url, "cid": contract_id}
+        )
+        return file_url
+    except Exception as exc:
+        logger.warning(f"Lỗi khi tự động tạo PDF hợp đồng {contract_number}: {exc}")
+        return None
+
 
 @router.post("", summary="Tạo hợp đồng lao động mới")
 async def create_contract(
@@ -291,6 +371,8 @@ async def create_contract(
 ):
     """
     Tạo hợp đồng mới (trạng thái mặc định: DRAFT).
+    Nếu người dùng chưa upload file riêng, hệ thống tự động tạo file PDF Hợp đồng lao động
+    chuẩn nghiệp vụ Bộ luật Lao động Việt Nam và đính kèm vào hợp đồng.
 
     Validation:
     - Employee tồn tại
@@ -324,6 +406,8 @@ async def create_contract(
     # Get current user ID
     user_id = current_user.get("user_id")
 
+    contract_file_url = contract.file_url
+
     # Insert contract
     query = text("""
         INSERT INTO contracts (
@@ -352,11 +436,30 @@ async def create_contract(
         "position_id": contract.position_id,
         "department_id": contract.department_id,
         "notes": contract.notes,
-        "contract_file_url": contract.file_url,
+        "contract_file_url": contract_file_url,
         "created_by": user_id
     })
 
     new_contract_id = result.mappings().first()["contract_id"]
+
+    # Nếu người dùng chưa cung cấp file scan tùy chỉnh, tự động tạo file PDF hợp đồng chuẩn
+    if not contract_file_url:
+        auto_url = await _generate_and_save_contract_pdf(
+            db=db,
+            contract_id=new_contract_id,
+            contract_number=contract_number,
+            employee_id=contract.employee_id,
+            contract_type=contract.contract_type,
+            start_date=contract.start_date,
+            end_date=contract.end_date,
+            basic_salary=contract.basic_salary,
+            insurance_salary=contract.insurance_salary,
+            signed_date=contract.signed_date,
+            position_id=contract.position_id,
+            department_id=contract.department_id
+        )
+        if auto_url:
+            contract_file_url = auto_url
 
     # Audit log
     await record_audit_log(
@@ -371,7 +474,8 @@ async def create_contract(
             "contract_type": contract.contract_type,
             "start_date": str(contract.start_date),
             "end_date": str(contract.end_date) if contract.end_date else None,
-            "basic_salary": contract.basic_salary
+            "basic_salary": contract.basic_salary,
+            "contract_file_url": contract_file_url
         }
     )
 
@@ -381,6 +485,7 @@ async def create_contract(
         "message": "Tạo hợp đồng thành công!",
         "contract_id": new_contract_id,
         "contract_number": contract_number,
+        "contract_file_url": contract_file_url,
         "status": "DRAFT"
     }
 
@@ -726,6 +831,22 @@ async def renew_contract(
 
     new_contract_id = result.mappings().first()["contract_id"]
 
+    # Tự động tạo file PDF hợp đồng chuẩn cho hợp đồng gia hạn
+    new_file_url = await _generate_and_save_contract_pdf(
+        db=db,
+        contract_id=new_contract_id,
+        contract_number=new_contract_number,
+        employee_id=current_contract["employee_id"],
+        contract_type=current_contract["contract_type"],
+        start_date=new_start,
+        end_date=new_end,
+        basic_salary=new_salary,
+        insurance_salary=renew_data.new_basic_salary or current_contract.get("insurance_salary"),
+        signed_date=date.today(),
+        position_id=renew_data.new_position_id or current_contract.get("position_id"),
+        department_id=current_contract.get("department_id")
+    )
+
     # Audit log
     await record_audit_log(
         db=db,
@@ -741,7 +862,8 @@ async def renew_contract(
             "new_contract_id": new_contract_id,
             "new_contract_number": new_contract_number,
             "new_start_date": str(new_start),
-            "new_end_date": str(new_end) if new_end else None
+            "new_end_date": str(new_end) if new_end else None,
+            "contract_file_url": new_file_url
         }
     )
 
@@ -752,6 +874,7 @@ async def renew_contract(
         "old_contract_id": contract_id,
         "new_contract_id": new_contract_id,
         "new_contract_number": new_contract_number,
+        "contract_file_url": new_file_url,
         "status": "DRAFT"
     }
 
@@ -1296,6 +1419,50 @@ async def upload_contract_file(
     }
 
 
+@router.post("/{contract_id}/generate-pdf", summary="Tự động sinh file PDF hợp đồng chuẩn")
+async def generate_contract_pdf_action(
+    contract_id: int,
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Sinh/tạo lại file PDF Hợp đồng lao động chuẩn Việt Nam cho hợp đồng
+    và lưu trữ URL vào hệ thống.
+    """
+    contract = await ContractService.check_contract_exists(db, contract_id)
+    file_url = await _generate_and_save_contract_pdf(
+        db=db,
+        contract_id=contract_id,
+        contract_number=contract["contract_number"],
+        employee_id=contract["employee_id"],
+        contract_type=contract["contract_type"],
+        start_date=contract["start_date"],
+        end_date=contract["end_date"],
+        basic_salary=contract["basic_salary"],
+        insurance_salary=contract.get("insurance_salary"),
+        signed_date=contract.get("signed_date") or date.today(),
+        position_id=contract.get("position_id"),
+        department_id=contract.get("department_id")
+    )
+    if not file_url:
+        raise HTTPException(status_code=500, detail="Không thể tạo file PDF hợp đồng")
+
+    await record_audit_log(
+        db=db,
+        user_id=current_user.get("user_id"),
+        action="CONTRACT_PDF_GENERATED",
+        entity_name="contract",
+        entity_id=str(contract_id),
+        new_values={"file_url": file_url}
+    )
+    await db.commit()
+
+    return {
+        "message": "Đã tự động tạo file PDF hợp đồng chuẩn thành công!",
+        "file_url": file_url
+    }
+
+
 @router.get("/{contract_id}/file", summary="Download/Tải file hợp đồng")
 async def download_contract_file(
     contract_id: int,
@@ -1304,6 +1471,7 @@ async def download_contract_file(
 ):
     """
     Lấy URL file hợp đồng để tải về hoặc xem trực tiếp.
+    Nếu hợp đồng chưa có file đính kèm, hệ thống sẽ tự động tạo file PDF chuẩn ngay lập tức.
     """
     # Check access
     await ContractService.can_user_access_contract(db, current_user, contract_id)
@@ -1311,12 +1479,132 @@ async def download_contract_file(
     # Get contract
     contract = await ContractService.check_contract_exists(db, contract_id)
 
-    if not contract.get("contract_file_url"):
-        raise HTTPException(status_code=404, detail="Hợp đồng chưa có file đính kèm")
+    file_url = contract.get("contract_file_url")
+    if not file_url:
+        # Tự động tạo file nếu chưa có
+        file_url = await _generate_and_save_contract_pdf(
+            db=db,
+            contract_id=contract_id,
+            contract_number=contract["contract_number"],
+            employee_id=contract["employee_id"],
+            contract_type=contract["contract_type"],
+            start_date=contract["start_date"],
+            end_date=contract["end_date"],
+            basic_salary=contract["basic_salary"],
+            insurance_salary=contract.get("insurance_salary"),
+            signed_date=contract.get("signed_date") or date.today(),
+            position_id=contract.get("position_id"),
+            department_id=contract.get("department_id")
+        )
+        if file_url:
+            await db.commit()
+
+    if not file_url:
+        raise HTTPException(status_code=404, detail="Hợp đồng chưa có file đính kèm và không thể tự sinh file")
 
     return {
-        "file_url": contract["contract_file_url"]
+        "file_url": file_url
     }
+
+
+@router.get("/{contract_id}/download-pdf", summary="Tải xuống trực tiếp luồng PDF hợp đồng")
+async def stream_contract_pdf(
+    contract_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Xem trực tiếp hoặc tải xuống file PDF hợp đồng dưới dạng binary stream.
+    Đảm bảo luôn mở được file ngay cả khi Cloudinary gặp sự cố mạng hoặc dùng lưu trữ cục bộ.
+    """
+    await ContractService.can_user_access_contract(db, current_user, contract_id)
+    contract = await ContractService.check_contract_exists(db, contract_id)
+
+    file_url = contract.get("contract_file_url")
+    if not file_url:
+        file_url = await _generate_and_save_contract_pdf(
+            db=db,
+            contract_id=contract_id,
+            contract_number=contract["contract_number"],
+            employee_id=contract["employee_id"],
+            contract_type=contract["contract_type"],
+            start_date=contract["start_date"],
+            end_date=contract["end_date"],
+            basic_salary=contract["basic_salary"],
+            insurance_salary=contract.get("insurance_salary"),
+            signed_date=contract.get("signed_date") or date.today(),
+            position_id=contract.get("position_id"),
+            department_id=contract.get("department_id")
+        )
+        if file_url:
+            await db.commit()
+
+    c_num = contract.get("contract_number", f"contract_{contract_id}")
+
+    if file_url and file_url.startswith("/uploads/"):
+        backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+        local_path = os.path.join(backend_dir, file_url.lstrip("/"))
+        if os.path.exists(local_path):
+            with open(local_path, "rb") as f:
+                content = f.read()
+            return StreamingResponse(
+                io.BytesIO(content),
+                media_type="application/pdf",
+                headers={"Content-Disposition": f'inline; filename="{c_num}.pdf"'}
+            )
+
+    if file_url and file_url.startswith("http"):
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                res = await client.get(file_url)
+                if res.status_code == 200:
+                    return StreamingResponse(
+                        io.BytesIO(res.content),
+                        media_type="application/pdf",
+                        headers={"Content-Disposition": f'inline; filename="{c_num}.pdf"'}
+                    )
+        except Exception:
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse(file_url)
+
+    # Nếu vẫn chưa có file trên disk/cloud, tự tạo và stream trực tiếp
+    emp_query = text("""
+        SELECT e.employee_id, e.employee_code, e.full_name, e.gender, e.dob,
+               e.identity_card, e.identity_issued_date, e.identity_issued_place,
+               e.phone, e.personal_email, e.company_email, e.permanent_address, e.current_address,
+               e.bank_account_number, e.bank_name, e.tax_code, e.insurance_code,
+               s.store_name, s.address as store_address,
+               d.department_name,
+               pos.position_name
+        FROM employees e
+        LEFT JOIN stores s ON e.store_id = s.store_id
+        LEFT JOIN departments d ON e.department_id = d.department_id
+        LEFT JOIN positions pos ON e.position_id = pos.position_id
+        WHERE e.employee_id = :employee_id
+    """)
+    emp_res = await db.execute(emp_query, {"employee_id": contract["employee_id"]})
+    emp_data = emp_res.mappings().first()
+    if emp_data:
+        contract_dict = {
+            "contract_number": contract["contract_number"],
+            "contract_type": contract["contract_type"],
+            "start_date": contract["start_date"],
+            "end_date": contract["end_date"],
+            "basic_salary": contract["basic_salary"],
+            "insurance_salary": contract.get("insurance_salary") or contract["basic_salary"],
+            "signed_date": contract.get("signed_date") or date.today(),
+            "position_name": emp_data.get("position_name"),
+            "store_name": emp_data.get("store_name"),
+            "department_name": emp_data.get("department_name")
+        }
+        pdf_bytes = generate_contract_pdf(contract_dict, dict(emp_data))
+        return StreamingResponse(
+            io.BytesIO(pdf_bytes),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'inline; filename="{c_num}.pdf"'}
+        )
+
+    raise HTTPException(status_code=404, detail="Không thể tạo hoặc tải file hợp đồng")
 
 
 # ===============================================================================

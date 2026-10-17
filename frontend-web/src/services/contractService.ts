@@ -167,10 +167,20 @@ export const contractApi = {
   },
 
   /**
-   * Lấy URL file hợp đồng
+   * Lấy URL file hợp đồng (tự tạo nếu chưa có)
    */
   getFileUrl: async (contractId: number): Promise<{ file_url: string }> => {
     return api.get(`/contracts/${contractId}/file`);
+  },
+
+  /**
+   * Tự động sinh/tạo lại file PDF hợp đồng chuẩn
+   */
+  generatePdf: async (contractId: number): Promise<{
+    message: string;
+    file_url: string;
+  }> => {
+    return api.post(`/contracts/${contractId}/generate-pdf`, {});
   },
 
   /**

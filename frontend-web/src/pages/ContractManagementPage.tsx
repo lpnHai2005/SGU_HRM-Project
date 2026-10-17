@@ -79,6 +79,23 @@ export function ContractManagementPage({ user }: ContractManagementPageProps) {
   const [confirmTarget, setConfirmTarget] = useState<Contract | null>(null)
   const [confirmLoading, setConfirmLoading] = useState(false)
   const [syncingStatuses, setSyncingStatuses] = useState(false)
+  const [generatingPdf, setGeneratingPdf] = useState(false)
+
+  const handleGeneratePdf = async (contractId: number) => {
+    setGeneratingPdf(true)
+    try {
+      const res = await contractApi.generatePdf(contractId)
+      toast.success('Đã tự động tạo file PDF hợp đồng chuẩn thành công!')
+      if (selectedContract && selectedContract.contract_id === contractId) {
+        setSelectedContract({ ...selectedContract, contract_file_url: res.file_url })
+      }
+      fetchContracts()
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Lỗi khi tạo file PDF hợp đồng')
+    } finally {
+      setGeneratingPdf(false)
+    }
+  }
 
   // RBAC
   const userRoles = useMemo(() => user?.roles || [], [user])
@@ -399,25 +416,21 @@ export function ContractManagementPage({ user }: ContractManagementPageProps) {
           </>
         )}
 
-        {contract.contract_file_url && (
-          <>
-            <div className="action-dropdown-divider"></div>
-            <a
-              href={contract.contract_file_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="action-dropdown-item"
-              style={{ textDecoration: 'none' }}
-              onClick={() => {
-                setOpenMenuId(null)
-                setMenuPos(null)
-              }}
-            >
-              <span className="action-icon">{Icons.fileText}</span>
-              <span>Xem file PDF</span>
-            </a>
-          </>
-        )}
+        <div className="action-dropdown-divider"></div>
+        <a
+          href={contract.contract_file_url || `/api/v1/contracts/${contract.contract_id}/download-pdf`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="action-dropdown-item"
+          style={{ textDecoration: 'none' }}
+          onClick={() => {
+            setOpenMenuId(null)
+            setMenuPos(null)
+          }}
+        >
+          <span className="action-icon">{Icons.fileText}</span>
+          <span>{contract.contract_file_url ? 'Xem / Tải file PDF' : 'Tạo & Xem PDF chuẩn'}</span>
+        </a>
       </div>,
       document.body
     )
@@ -1035,20 +1048,46 @@ export function ContractManagementPage({ user }: ContractManagementPageProps) {
                   <span style={{ color: 'var(--text-secondary)' }}>Ghi chú: </span>
                   <span style={{ color: 'var(--text-primary)' }}>{selectedContract.notes || 'Không có ghi chú'}</span>
                 </div>
-                <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                   <span style={{ color: 'var(--text-secondary)' }}>File hợp đồng: </span>
                   {selectedContract.contract_file_url ? (
-                    <a
-                      href={selectedContract.contract_file_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="btn btn-secondary btn-sm"
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginLeft: '8px', textDecoration: 'none' }}
-                    >
-                      {Icons.fileText} Tải / Xem bản PDF
-                    </a>
+                    <>
+                      <a
+                        href={selectedContract.contract_file_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn btn-secondary btn-sm"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', textDecoration: 'none' }}
+                      >
+                        {Icons.fileText} Tải / Xem bản PDF
+                      </a>
+                      {canManage && (
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          disabled={generatingPdf}
+                          onClick={() => handleGeneratePdf(selectedContract.contract_id)}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                        >
+                          {Icons.refresh} {generatingPdf ? 'Đang tạo...' : 'Tạo lại PDF chuẩn'}
+                        </button>
+                      )}
+                    </>
                   ) : (
-                    <span style={{ color: 'var(--text-tertiary)', marginLeft: '8px' }}>Chưa có bản scan PDF</span>
+                    <>
+                      <span style={{ color: 'var(--text-tertiary)' }}>Chưa có file</span>
+                      {canManage && (
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-sm"
+                          disabled={generatingPdf}
+                          onClick={() => handleGeneratePdf(selectedContract.contract_id)}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                        >
+                          {Icons.fileText} {generatingPdf ? 'Đang tạo...' : 'Tạo tự động PDF chuẩn'}
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
 
