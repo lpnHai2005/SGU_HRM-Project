@@ -124,11 +124,15 @@ async def upload_photo(file: UploadFile=File(...), user=Depends(get_current_user
         raise HTTPException(422, 'Ảnh phải là JPEG, tối đa 5 MB.')
     timestamp, nonce = int(time.time()), str(uuid4())
     public_id = f'techzone-attendance/{user["employee_id"]}/{nonce}'
-    signature = hashlib.sha1(f'public_id={public_id}&timestamp={timestamp}{settings.CLOUDINARY_API_SECRET}'.encode()).hexdigest()
+    upload_params={'eager':'c_limit,w_320,h_320,q_auto:good','public_id':public_id,
+                   'timestamp':str(timestamp),'type':'authenticated'}
+    signed_params='&'.join(f'{key}={upload_params[key]}' for key in sorted(upload_params))
+    signature = hashlib.sha1(f'{signed_params}{settings.CLOUDINARY_API_SECRET}'.encode()).hexdigest()
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(f'https://api.cloudinary.com/v1_1/{settings.CLOUDINARY_CLOUD_NAME}/image/upload',
-                data={'api_key':settings.CLOUDINARY_API_KEY, 'timestamp':str(timestamp), 'public_id':public_id, 'signature':signature},
+                data={'api_key':settings.CLOUDINARY_API_KEY, 'timestamp':str(timestamp), 'public_id':public_id,
+                      'type':'authenticated', 'eager':upload_params['eager'], 'signature':signature},
                 files={'file':('selfie.jpg', data, 'image/jpeg')})
         response.raise_for_status()
         url = response.json()['secure_url']

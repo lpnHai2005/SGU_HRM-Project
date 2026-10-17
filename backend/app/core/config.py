@@ -35,6 +35,8 @@ class Settings(BaseSettings):
         "http://127.0.0.1:3000",
         "http://localhost:8000"
     ]
+    # Exact LAN development origin used by frontend-web; keep this narrow.
+    CORS_ORIGIN_REGEX: str = r"^http://192\.168\.1\.224:3000$"
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
