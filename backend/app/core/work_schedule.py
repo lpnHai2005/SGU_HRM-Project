@@ -5,7 +5,7 @@ from fastapi import HTTPException
 from sqlalchemy import text
 from app.core.attendance import VIETNAM_TZ
 
-MANAGERS = {'ADMIN', 'HR_MANAGER', 'STORE_MANAGER'}
+MANAGERS = {'ADMIN', 'HR_MANAGER', 'STORE_MANAGER', 'DIRECTOR'}
 
 def interval(day, start, end):
     begin = datetime.combine(day, start, VIETNAM_TZ)
@@ -16,7 +16,7 @@ def interval(day, start, end):
 
 def scope(user, params, alias='ws'):
     roles = set(user.get('roles', []))
-    if roles & {'ADMIN', 'HR_MANAGER'}:
+    if roles & {'ADMIN', 'HR_MANAGER', 'DIRECTOR'}:
         return ''
     if 'STORE_MANAGER' in roles and user.get('store_id'):
         params['scope_store'] = user['store_id']
@@ -35,12 +35,12 @@ async def lock_employee(db, user, employee_id, store_id):
             raise HTTPException(403, 'Không được tự phân, sửa hoặc hủy lịch của bản thân.')
         is_hr=(await db.execute(text('''SELECT 1 FROM users u JOIN user_roles ur USING(user_id)
             JOIN roles r USING(role_id) WHERE u.employee_id=:id AND r.role_code='HR_MANAGER' LIMIT 1'''),{'id':employee_id})).first()
-        if is_hr and 'ADMIN' not in roles:
-            raise HTTPException(403, 'Chỉ Admin được quản lý lịch phân ca của HR.')
+        if is_hr and not roles.intersection({'ADMIN', 'DIRECTOR'}):
+            raise HTTPException(403, 'Chỉ Admin hoặc Giám đốc được quản lý lịch phân ca của HR.')
     employee = (await db.execute(text('SELECT employee_id,store_id FROM employees WHERE employee_id=:id FOR UPDATE'), {'id':employee_id})).mappings().first()
     if not employee:
         raise HTTPException(404, 'Employee not found')
-    if not roles & {'ADMIN', 'HR_MANAGER'} and (not user.get('store_id') or employee['store_id'] != user['store_id'] or store_id != user['store_id']):
+    if not roles & {'ADMIN', 'HR_MANAGER', 'DIRECTOR'} and (not user.get('store_id') or employee['store_id'] != user['store_id'] or store_id != user['store_id']):
         raise HTTPException(403, 'Store is outside manager scope')
     store = (await db.execute(text('SELECT store_id,is_active FROM stores WHERE store_id=:id FOR SHARE'), {'id':store_id})).mappings().first()
     if not store:

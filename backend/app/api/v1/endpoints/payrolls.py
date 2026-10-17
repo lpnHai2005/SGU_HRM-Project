@@ -68,22 +68,44 @@ class PayrollUnconfirmRequest(BaseModel):
 
 @router.get('/overtime-approvals')
 async def list_overtime_approvals(period:str=Query(...,pattern=r'^\d{4}-(0[1-9]|1[0-2])$'),
-    current_user:dict=Depends(require_roles(['HR_MANAGER','ADMIN'])),db:AsyncSession=Depends(get_db)):
-    return [dict(r) for r in (await db.execute(text('''SELECT a.attendance_id,a.employee_id,e.employee_code,e.full_name,
+    current_user:dict=Depends(require_roles(['STORE_MANAGER', 'HR_MANAGER', 'ADMIN', 'DIRECTOR'])),db:AsyncSession=Depends(get_db)):
+    roles = current_user.get("roles", [])
+    query = '''SELECT a.attendance_id,a.employee_id,e.employee_code,e.full_name,e.store_id,
         a.work_date,a.overtime_hours AS actual_overtime_hours,ota.approved_hours,ota.decision,ota.reason,
         ota.reviewer_user_id,ota.updated_at FROM attendances a JOIN employees e USING(employee_id)
         LEFT JOIN attendance_overtime_approvals ota USING(attendance_id)
-        WHERE to_char(a.work_date,'YYYY-MM')=:period AND a.overtime_hours>0 AND a.check_out_time IS NOT NULL
-        ORDER BY a.work_date,e.full_name,a.attendance_id'''),{'period':period})).mappings().all()]
+        WHERE to_char(a.work_date,'YYYY-MM')=:period AND a.overtime_hours>0 AND a.check_out_time IS NOT NULL'''
+    params = {'period': period}
+    if 'STORE_MANAGER' in roles and not any(r in roles for r in ('ADMIN', 'HR_MANAGER', 'DIRECTOR')):
+        user_store_id = current_user.get('store_id')
+        if not user_store_id:
+            raise HTTPException(403, 'Tài khoản chưa được gán cửa hàng.')
+        query += ' AND e.store_id = :store_id'
+        params['store_id'] = user_store_id
+    query += ' ORDER BY a.work_date,e.full_name,a.attendance_id'
+    return [dict(r) for r in (await db.execute(text(query), params)).mappings().all()]
 
 @router.put('/overtime-approvals/{attendance_id}')
 async def decide_overtime(attendance_id:int,req:OvertimeDecision,
-    current_user:dict=Depends(require_roles(['HR_MANAGER','ADMIN'])),db:AsyncSession=Depends(get_db)):
-    row=(await db.execute(text('''SELECT a.attendance_id,a.work_date,a.overtime_hours,a.check_out_time,
+    current_user:dict=Depends(require_roles(['STORE_MANAGER', 'HR_MANAGER', 'ADMIN', 'DIRECTOR'])),db:AsyncSession=Depends(get_db)):
+    row=(await db.execute(text('''SELECT a.attendance_id,a.employee_id,e.store_id,a.work_date,a.overtime_hours,a.check_out_time,
         ota.approved_hours AS old_hours,ota.decision AS old_decision
-        FROM attendances a LEFT JOIN attendance_overtime_approvals ota USING(attendance_id)
+        FROM attendances a
+        JOIN employees e USING(employee_id)
+        LEFT JOIN attendance_overtime_approvals ota USING(attendance_id)
         WHERE a.attendance_id=:id FOR UPDATE OF a'''),{'id':attendance_id})).mappings().first()
     if not row: raise HTTPException(404,'Không tìm thấy phiên chấm công')
+
+    # No self-approval: không được tự duyệt OT của chính mình
+    if current_user.get('employee_id') and row['employee_id'] == current_user['employee_id']:
+        raise HTTPException(403, 'Không được tự phê duyệt hoặc từ chối tăng ca của chính mình.')
+
+    roles = current_user.get('roles', [])
+    if 'STORE_MANAGER' in roles and not any(r in roles for r in ('ADMIN', 'HR_MANAGER', 'DIRECTOR')):
+        user_store_id = current_user.get('store_id')
+        if not user_store_id or row['store_id'] != user_store_id:
+            raise HTTPException(403, 'Chỉ được duyệt OT cho nhân viên thuộc cửa hàng được phân công.')
+
     if not row['check_out_time'] or not row['overtime_hours'] or row['overtime_hours']<=0:
         raise HTTPException(409,'Chỉ duyệt OT cho phiên đã check-out và có giờ OT thực tế')
     if len(req.reason.strip())<3 or round(req.approved_hours,2)!=req.approved_hours:
@@ -165,7 +187,7 @@ async def list_payrolls(
     params = {"period": period}
     roles = current_user.get("roles", [])
 
-    if "ADMIN" in roles or "HR_MANAGER" in roles:
+    if "ADMIN" in roles or "HR_MANAGER" in roles or "DIRECTOR" in roles:
         if store_id:
             query += " AND e.store_id = :store_id"
             params["store_id"] = store_id
@@ -217,7 +239,7 @@ async def list_payrolls(
 @router.post("/calculate", summary="Chốt công và tự động tính bảng lương toàn chuỗi (Rubric III.3.1.7)")
 async def calculate_payroll(
     req: CalculatePayrollRequest,
-    current_user: dict = Depends(require_roles(["HR_MANAGER", "ADMIN"])),
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "ADMIN", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -271,7 +293,7 @@ async def calculate_payroll(
 @router.post("/generate/{month}", summary="Chốt và tự động tính bảng lương tháng (Week 3.2)")
 async def generate_payroll_month(
     month: str,
-    current_user: dict = Depends(require_roles(["HR_MANAGER", "ADMIN"])),
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "ADMIN", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """Alias nhanh cho quy trình tính bảng lương tháng và trả về danh sách kết quả"""
@@ -282,7 +304,7 @@ async def generate_payroll_month(
 @router.post("/confirm-all", summary="Duyệt chốt toàn bộ bảng lương trong kỳ (DRAFT -> CONFIRMED)")
 async def confirm_all_payrolls(
     req: BatchPayrollStatusRequest,
-    current_user: dict = Depends(require_roles(["HR_MANAGER", "ADMIN"])),
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "ADMIN", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     await lock_payroll_period(db, req.salary_period)
@@ -305,7 +327,7 @@ async def confirm_all_payrolls(
 @router.post("/pay-all", summary="Xác nhận chi trả toàn bộ bảng lương trong kỳ (CONFIRMED -> PAID)")
 async def pay_all_payrolls(
     req: BatchPayrollStatusRequest,
-    current_user: dict = Depends(require_roles(["HR_MANAGER", "ADMIN"])),
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "ADMIN", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     pay_date = req.payment_date or date.today()
@@ -328,7 +350,7 @@ async def pay_all_payrolls(
 @router.post("/reopen-period", summary="Mở lại kỳ lương để rà soát Attendance và tính lại toàn kỳ")
 async def reopen_payroll_period(
     req: PayrollPeriodReopenRequest,
-    current_user: dict = Depends(require_roles(["HR_MANAGER", "ADMIN"])),
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "ADMIN", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db),
 ):
     """Mark every finalized payslip in a period as requiring recalculation; audit the batch."""
@@ -360,7 +382,7 @@ async def reopen_payroll_period(
 async def unconfirm_payroll(
     payroll_id: int,
     req: PayrollUnconfirmRequest,
-    current_user: dict = Depends(require_roles(["HR_MANAGER", "ADMIN"])),
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "ADMIN", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db),
 ):
     """Undo a mistaken approval for one unpaid payslip, with a required audit reason."""
@@ -406,7 +428,7 @@ async def get_annual_salary(
     Hỗ trợ cả URL chuẩn workflow /api/payrolls/employee/{id}/annual và /api/payrolls/annual-summary/{id}.
     """
     roles = current_user.get("roles", [])
-    if "ADMIN" not in roles and "HR_MANAGER" not in roles:
+    if "ADMIN" not in roles and "HR_MANAGER" not in roles and "DIRECTOR" not in roles:
         if employee_id != current_user.get("employee_id"):
             if "STORE_MANAGER" not in roles or not current_user.get('store_id'):
                 raise HTTPException(status_code=403, detail="Bạn chỉ có thể xem báo cáo thu nhập năm của chính mình")
@@ -453,7 +475,7 @@ async def get_annual_salary(
         WHERE employee_id = :eid AND salary_year = :year
     """), {"eid": employee_id, "year": year})
     row = res.mappings().first()
-    if not set(roles) & {'ADMIN','HR_MANAGER'}:
+    if not set(roles) & {'ADMIN', 'HR_MANAGER', 'DIRECTOR'}:
         row = None  # The legacy view includes drafts; self-service uses released rows only.
 
     if not row and not monthly_list:
@@ -557,7 +579,7 @@ async def list_sales_records(
     params = {"period": period}
     roles = current_user.get("roles", [])
 
-    if "ADMIN" in roles or "HR_MANAGER" in roles:
+    if "ADMIN" in roles or "HR_MANAGER" in roles or "DIRECTOR" in roles:
         if store_id:
             query += " AND es.store_id = :store_id"
             params["store_id"] = store_id
@@ -585,7 +607,7 @@ async def list_sales_records(
 @router.post("/sales-records", response_model=SalesRecordOut, summary="Ghi nhận doanh số bán lẻ thiết bị công nghệ (Week 3.1)")
 async def record_sales(
     req: SalesRecordCreate,
-    current_user: dict = Depends(require_roles(["STORE_MANAGER", "HR_MANAGER", "ADMIN"])),
+    current_user: dict = Depends(require_roles(["STORE_MANAGER", "HR_MANAGER", "ADMIN", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -593,7 +615,7 @@ async def record_sales(
     Hệ thống tự động kích hoạt Stored Procedure tính hoa hồng.
     """
     roles = current_user.get("roles", [])
-    if "STORE_MANAGER" in roles and not any(role in roles for role in ("ADMIN", "HR_MANAGER")):
+    if "STORE_MANAGER" in roles and not any(role in roles for role in ("ADMIN", "HR_MANAGER", "DIRECTOR")):
         if not current_user.get("store_id") or req.store_id != current_user["store_id"]:
             raise HTTPException(status_code=403, detail="Chỉ được ghi doanh số cửa hàng được giao")
     employee_store = (await db.execute(
@@ -665,7 +687,7 @@ async def get_my_commission(
 @router.get("/commissions/calculate/{month}", response_model=List[CommissionOut], summary="Chạy tính hoa hồng và trả về kết quả theo tháng (Week 3.1)")
 async def calculate_commissions_endpoint(
     month: str,
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     await db.execute(text("CALL sp_calculate_monthly_commission(:period)"), {"period": month})
@@ -692,7 +714,7 @@ async def list_commissions(
     params = {"period": period}
     roles = current_user.get("roles", [])
 
-    if "ADMIN" in roles or "HR_MANAGER" in roles:
+    if "ADMIN" in roles or "HR_MANAGER" in roles or "DIRECTOR" in roles:
         if store_id:
             query += " AND es.store_id = :store_id"
             params["store_id"] = store_id
@@ -730,7 +752,7 @@ async def list_projects_with_allowances(
     params = {}
     project_filter = ""
     member_filter = ""
-    if not any(role in roles for role in ("ADMIN", "HR_MANAGER")):
+    if not any(role in roles for role in ("ADMIN", "HR_MANAGER", "DIRECTOR")):
         if "STORE_MANAGER" in roles:
             store_id = current_user.get("store_id")
             if not store_id:
@@ -750,7 +772,7 @@ async def list_projects_with_allowances(
     result = []
     for p in projects:
         p_dict = dict(p)
-        if not any(role in roles for role in ("ADMIN", "HR_MANAGER")):
+        if not any(role in roles for role in ("ADMIN", "HR_MANAGER", "DIRECTOR")):
             p_dict["budget"] = None
         res_mem = await db.execute(text("""
             SELECT pm.project_member_id, pm.project_id, pm.employee_id, pm.project_role,
@@ -768,10 +790,10 @@ async def list_projects_with_allowances(
     return result
 
 
-@router.post("/projects", summary="Tạo dự án mới (Admin / HR)")
+@router.post("/projects", summary="Tạo dự án mới (Admin / HR / Director)")
 async def create_project(
     req: ProjectCreate,
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     try:
@@ -796,7 +818,7 @@ async def create_project(
 async def update_project_member(
     member_id: int,
     req: ProjectMemberUpdate,
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     updates = []
@@ -829,7 +851,7 @@ async def update_project_member(
 @router.delete("/projects/members/{member_id}", summary="Xóa thành viên khỏi dự án")
 async def remove_project_member(
     member_id: int,
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     res = await db.execute(text("DELETE FROM project_members WHERE project_member_id = :mid RETURNING project_member_id"), {"mid": member_id})
@@ -840,11 +862,11 @@ async def remove_project_member(
     return {"message": f"Đã xóa thành viên #{member_id} khỏi dự án!"}
 
 
-@router.put("/projects/{project_id}", summary="Cập nhật thông tin dự án (Admin / HR)")
+@router.put("/projects/{project_id}", summary="Cập nhật thông tin dự án (Admin / HR / Director)")
 async def update_project(
     project_id: int,
     req: ProjectUpdate,
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     updates = []
@@ -880,10 +902,10 @@ async def update_project(
     return {"message": "Cập nhật dự án thành công!", "project": dict(row)}
 
 
-@router.delete("/projects/{project_id}", summary="Xóa dự án (Admin)")
+@router.delete("/projects/{project_id}", summary="Xóa dự án (Admin / Director)")
 async def delete_project(
     project_id: int,
-    current_user: dict = Depends(require_roles(["ADMIN"])),
+    current_user: dict = Depends(require_roles(["ADMIN", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     res = await db.execute(text("DELETE FROM projects WHERE project_id = :pid RETURNING project_id"), {"pid": project_id})
@@ -898,7 +920,7 @@ async def delete_project(
 async def add_project_member(
     project_id: int,
     req: ProjectMemberCreate,
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -936,7 +958,7 @@ async def add_project_member(
 async def export_payroll_excel(
     period: Optional[str] = Query("2026-09", description="Kỳ lương (YYYY-MM)"),
     store_id: Optional[int] = Query(None, description="Lọc theo cửa hàng"),
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "STORE_MANAGER", "EMPLOYEE"])),
+    current_user: dict = Depends(require_roles(["ADMIN", "DIRECTOR", "HR_MANAGER", "STORE_MANAGER", "EMPLOYEE"])),
     db: AsyncSession = Depends(get_db)
 ):
     payrolls = await list_payrolls(period=period, employee_id=None, store_id=store_id, payment_status=None, current_user=current_user, db=db)
@@ -996,7 +1018,7 @@ async def export_payroll_excel(
 async def export_payroll_csv(
     period: Optional[str] = Query("2026-09", description="Kỳ lương (YYYY-MM)"),
     store_id: Optional[int] = Query(None, description="Lọc theo cửa hàng"),
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "STORE_MANAGER", "EMPLOYEE"])),
+    current_user: dict = Depends(require_roles(["ADMIN", "DIRECTOR", "HR_MANAGER", "STORE_MANAGER", "EMPLOYEE"])),
     db: AsyncSession = Depends(get_db)
 ):
     payrolls = await list_payrolls(period=period, employee_id=None, store_id=store_id, payment_status=None, current_user=current_user, db=db)
@@ -1066,7 +1088,7 @@ async def get_printable_payslip(
         raise HTTPException(status_code=404, detail="Không tìm thấy bảng lương")
 
     roles = current_user.get("roles", [])
-    if "ADMIN" not in roles and "HR_MANAGER" not in roles:
+    if "ADMIN" not in roles and "HR_MANAGER" not in roles and "DIRECTOR" not in roles:
         own_store = "STORE_MANAGER" in roles and current_user.get("store_id") is not None and row["store_id"] == current_user.get("store_id")
         if not own_store and row["employee_id"] != current_user.get("employee_id"):
             raise HTTPException(status_code=403, detail="Bạn chỉ có thể in phiếu lương của chính mình")
@@ -1284,7 +1306,7 @@ async def get_payroll_detail(
         raise HTTPException(status_code=404, detail="Không tìm thấy bảng lương")
 
     roles = current_user.get("roles", [])
-    if "ADMIN" not in roles and "HR_MANAGER" not in roles:
+    if "ADMIN" not in roles and "HR_MANAGER" not in roles and "DIRECTOR" not in roles:
         if "STORE_MANAGER" in roles:
             emp_res = await db.execute(text("SELECT store_id FROM employees WHERE employee_id = :eid"), {"eid": pr["employee_id"]})
             emp_store = emp_res.scalar()
@@ -1323,7 +1345,7 @@ async def get_payroll_detail(
 async def update_payroll_adjustments(
     payroll_id: int,
     req: PayrollAdjustmentRequest,
-    current_user: dict = Depends(require_roles(["HR_MANAGER", "ADMIN"])),
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "ADMIN", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db),
 ):
     if len(req.reason.strip()) < 5:
@@ -1370,7 +1392,7 @@ async def update_payroll_adjustments(
 async def update_payroll_status(
     payroll_id: int,
     req: PayrollStatusUpdate,
-    current_user: dict = Depends(require_roles(["HR_MANAGER", "ADMIN"])),
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "ADMIN", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     valid_statuses = ("DRAFT", "CONFIRMED", "PAID")

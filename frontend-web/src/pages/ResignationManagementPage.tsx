@@ -80,6 +80,63 @@ export function ResignationManagementPage({ user }: ResignationManagementPagePro
     return userRoles.includes('ADMIN') || userRoles.includes('HR_MANAGER') || userRoles.includes('DIRECTOR')
   }, [userRoles])
 
+  // Helper kiểm tra đơn thôi việc của HR/Admin (cần Giám đốc duyệt)
+  const isApplicantHrOrAdmin = useCallback((item: Resignation) => {
+    return Boolean(
+      item.is_hr_or_admin_request ?? (
+        item.department_name === 'Phòng Nhân sự' ||
+        item.position_name === 'Trưởng phòng Nhân sự' ||
+        item.position_name === 'Quản trị viên' ||
+        item.position_name === 'Giám đốc'
+      )
+    )
+  }, [])
+
+  // Phê duyệt đơn thôi việc (Tuân thủ nguyên tắc No Self-Approval)
+  const canApproveResignation = useCallback((item: Resignation | null) => {
+    if (!item || item.status !== 'PENDING') return false
+    const isOwner = Boolean(user?.employee_id && item.employee_id === user.employee_id)
+    if (isOwner) return false // No self-approval: tuyệt đối không tự duyệt đơn của chính mình
+
+    const isHrOrAdmin = isApplicantHrOrAdmin(item)
+    const isDirector = userRoles.includes('DIRECTOR')
+    const isHrManager = userRoles.includes('HR_MANAGER')
+    const isAdmin = userRoles.includes('ADMIN')
+
+    if (isHrOrAdmin) {
+      // Đơn của HR/Admin BẮT BUỘC do Giám đốc duyệt
+      return isDirector
+    }
+    // Đơn của nhân viên/CHT do HR hoặc Admin duyệt
+    return isHrManager || isAdmin
+  }, [user?.employee_id, userRoles, isApplicantHrOrAdmin])
+
+  // Từ chối đơn thôi việc (Tuân thủ nguyên tắc No Self-Approval)
+  const canRejectResignation = useCallback((item: Resignation | null) => {
+    if (!item || item.status !== 'PENDING') return false
+    const isOwner = Boolean(user?.employee_id && item.employee_id === user.employee_id)
+    if (isOwner) return false // No self-rejection (nhân viên dùng tính năng hủy đơn)
+
+    const isHrOrAdmin = isApplicantHrOrAdmin(item)
+    const isDirector = userRoles.includes('DIRECTOR')
+    const isHrManager = userRoles.includes('HR_MANAGER')
+    const isAdmin = userRoles.includes('ADMIN')
+
+    if (isHrOrAdmin) {
+      return isDirector
+    }
+    return isHrManager || isAdmin
+  }, [user?.employee_id, userRoles, isApplicantHrOrAdmin])
+
+  // Hủy đơn (người nộp hoặc người tạo trước khi được duyệt)
+  const canCancelResignation = useCallback((item: Resignation | null) => {
+    if (!item || item.status !== 'PENDING') return false
+    const isOwner = Boolean(user?.employee_id && item.employee_id === user.employee_id)
+    const isCreator = Boolean(user?.user_id && item.created_by === user.user_id)
+    const isAdmin = userRoles.includes('ADMIN')
+    return isOwner || isCreator || isAdmin
+  }, [user?.employee_id, user?.user_id, userRoles])
+
   // Close floating action menu on outside click or scroll
   useEffect(() => {
     const handleCloseMenu = () => {
@@ -240,25 +297,26 @@ export function ResignationManagementPage({ user }: ResignationManagementPagePro
           <span>Xem chi tiết đơn</span>
         </button>
 
-        {canManage && item.status === 'PENDING' && (
-          <>
-            <button
-              className="action-dropdown-item"
-              onClick={() => handleOpenApprove(item)}
-            >
-              <span className="action-icon icon-promote" style={{ color: 'var(--status-success)' }}>
-                {Icons.check}
-              </span>
-              <span>Phê duyệt đơn</span>
-            </button>
-            <button
-              className="action-dropdown-item danger"
-              onClick={() => handleOpenReject(item)}
-            >
-              <span className="action-icon icon-danger">{Icons.xCircle}</span>
-              <span>Từ chối đơn</span>
-            </button>
-          </>
+        {canApproveResignation(item) && (
+          <button
+            className="action-dropdown-item"
+            onClick={() => handleOpenApprove(item)}
+          >
+            <span className="action-icon icon-promote" style={{ color: 'var(--status-success)' }}>
+              {Icons.check}
+            </span>
+            <span>{isApplicantHrOrAdmin(item) ? 'Phê duyệt (Giám đốc)' : 'Phê duyệt đơn'}</span>
+          </button>
+        )}
+
+        {canRejectResignation(item) && (
+          <button
+            className="action-dropdown-item danger"
+            onClick={() => handleOpenReject(item)}
+          >
+            <span className="action-icon icon-danger">{Icons.xCircle}</span>
+            <span>Từ chối đơn</span>
+          </button>
         )}
 
         {canManage && item.status === 'APPROVED' && (
@@ -274,7 +332,7 @@ export function ResignationManagementPage({ user }: ResignationManagementPagePro
           </>
         )}
 
-        {canManage && (item.status === 'PENDING' || item.status === 'APPROVED') && (
+        {canCancelResignation(item) && (
           <>
             <div className="action-dropdown-divider"></div>
             <button
@@ -611,6 +669,11 @@ export function ResignationManagementPage({ user }: ResignationManagementPagePro
                           <span className={RESIGNATION_STATUS_BADGE[item.status] || 'badge-status'}>
                             {RESIGNATION_STATUS_LABELS[item.status] || item.status}
                           </span>
+                          {item.status === 'PENDING' && isApplicantHrOrAdmin(item) && (
+                            <div style={{ fontSize: '11px', color: 'var(--role-director-text)', fontWeight: 600, marginTop: '3px' }}>
+                              Chờ Giám đốc duyệt
+                            </div>
+                          )}
                         </td>
 
                         {/* ĐÍNH KÈM */}
@@ -707,18 +770,18 @@ export function ResignationManagementPage({ user }: ResignationManagementPagePro
         open={showDetailModal}
         resignation={selectedResignation}
         onClose={() => setShowDetailModal(false)}
-        onApprove={(item) => {
+        onApprove={selectedResignation && canApproveResignation(selectedResignation) ? (item) => {
           setSelectedResignation(item)
           setShowApproveModal(true)
-        }}
-        onReject={(item) => {
+        } : undefined}
+        onReject={selectedResignation && canRejectResignation(selectedResignation) ? (item) => {
           setSelectedResignation(item)
           setShowRejectModal(true)
-        }}
-        onCancel={(item) => {
+        } : undefined}
+        onCancel={selectedResignation && canCancelResignation(selectedResignation) ? (item) => {
           setSelectedResignation(item)
           setShowCancelModal(true)
-        }}
+        } : undefined}
         onTerminateContract={handleNavigateToTerminate}
       />
 

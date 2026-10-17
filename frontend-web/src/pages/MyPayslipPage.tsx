@@ -932,7 +932,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
               iconColor="amber"
               label="LƯƠNG ĐÓNG BẢO HIỂM"
               value={formatCurrency(activeContract?.insurance_salary ?? activeContract?.basic_salary ?? 0)}
-              footerNote="Căn cứ trích nộp BHXH, BHYT, BHTN"
+              footerNote="Trích nộp BH Bắt buộc: 10.5% (BHXH 8%, BHYT 1.5%, BHTN 1%)"
             />
           </div>
 
@@ -1572,12 +1572,12 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px', marginTop: '6px' }}>
                       <div>• Mức lương cơ bản thỏa thuận: <strong style={{ fontFamily: 'var(--font-mono)' }}>{formatCurrency(selectedContract.basic_salary)}</strong></div>
-                      <div>• Mức lương đóng bảo hiểm: <strong style={{ fontFamily: 'var(--font-mono)' }}>{formatCurrency(selectedContract.insurance_salary || selectedContract.basic_salary)}</strong></div>
+                      <div>• Mức lương đóng bảo hiểm: <strong style={{ fontFamily: 'var(--font-mono)' }}>{formatCurrency(selectedContract.basic_salary || selectedContract.insurance_salary)}</strong></div>
                       <div>• Tỷ lệ hưởng lương: <strong style={{ fontFamily: 'var(--font-mono)' }}>{selectedContract.salary_percentage ? `${selectedContract.salary_percentage}%` : '100%'}</strong></div>
                       <div>• Kỳ hạn trả lương: <strong>Hàng tháng (Từ ngày 05 - 10)</strong></div>
                     </div>
                     <div style={{ marginTop: '6px', color: '#475569', fontSize: '12px' }}>
-                      • <em>Chế độ bảo hiểm:</em> Người lao động được trích nộp Bảo hiểm Xã hội (8%), Bảo hiểm Y tế (1.5%), Bảo hiểm Thất nghiệp (1%) theo đúng quy định hiện hành của Nhà nước.
+                      • <strong>Trích nộp Bảo hiểm Bắt buộc (10.5% lương đóng BH):</strong> - BHXH: 8.0% | BHYT: 1.5% | BHTN: 1.0%.
                     </div>
                     <div style={{ marginTop: '3px', color: '#475569', fontSize: '12px' }}>
                       • <em>Phụ cấp & Thưởng:</em> Hưởng đầy đủ các khoản phụ cấp chức vụ, phụ cấp ăn trưa/đi lại, thưởng năng suất và hoa hồng doanh số theo chính sách kinh doanh chuỗi TechZone Retail.

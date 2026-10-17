@@ -7,7 +7,7 @@ import { useState, useEffect } from 'react'
 import { contractApi, type ContractRenewData } from '../services/contractService'
 import { employeeApi } from '../services/api'
 import { type Contract, getContractTypeLabel } from '../types/contract'
-import { formatDate, getInitials } from '../utils/formatters'
+import { formatDate, formatCurrency, getInitials } from '../utils/formatters'
 import { Icons } from './common/Icons'
 import { toast } from 'sonner'
 
@@ -321,8 +321,96 @@ export function ContractRenewDialog({
                 />
               </div>
 
+              {/* Insurance Deduction - Auto-calculated */}
+              {(() => {
+                const effectiveSalary = newBasicSalary ? (parseFloat(newBasicSalary) || 0) : (contract.basic_salary || 0)
+                const totalInsuranceDeduction = effectiveSalary * 0.105
+                const bhxhAmount = effectiveSalary * 0.08
+                const bhytAmount = effectiveSalary * 0.015
+                const bhtnAmount = effectiveSalary * 0.01
+
+                return (
+                  <div className="form-group">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                      <label className="form-label" style={{ fontWeight: 500, fontSize: '13px', margin: 0 }}>
+                        Trích nộp Bảo hiểm Bắt buộc (10.5%)
+                      </label>
+                      <span style={{
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                        backgroundColor: 'var(--surface-subtle)',
+                        color: 'var(--text-secondary)',
+                        border: '1px solid var(--border-default)'
+                      }}>
+                        Tự động tính 10.5%
+                      </span>
+                    </div>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={effectiveSalary ? `- ${formatCurrency(totalInsuranceDeduction)}` : '0 VNĐ'}
+                      readOnly
+                      disabled
+                      style={{
+                        backgroundColor: 'var(--surface-subtle)',
+                        cursor: 'not-allowed',
+                        fontWeight: 600,
+                        color: effectiveSalary ? 'var(--status-error)' : 'var(--text-secondary)',
+                        fontFamily: 'var(--font-mono)'
+                      }}
+                    />
+                  </div>
+                )
+              })()}
+
+              {/* Insurance Breakdown Box */}
+              {(() => {
+                const effectiveSalary = newBasicSalary ? (parseFloat(newBasicSalary) || 0) : (contract.basic_salary || 0)
+                const bhxhAmount = effectiveSalary * 0.08
+                const bhytAmount = effectiveSalary * 0.015
+                const bhtnAmount = effectiveSalary * 0.01
+
+                return (
+                  <div style={{
+                    gridColumn: 'span 2',
+                    padding: '10px 14px',
+                    fontSize: '12px',
+                    lineHeight: '1.6',
+                    color: 'var(--text-secondary)',
+                    backgroundColor: 'var(--surface-subtle)',
+                    border: '1px solid var(--border-default)',
+                    borderRadius: 'var(--radius-sm)'
+                  }}>
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: '6px',
+                      borderBottom: '1px dashed var(--border-default)',
+                      paddingBottom: '6px'
+                    }}>
+                      <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                        Mức lương làm căn cứ đóng BH (100% lương CB sau gia hạn):
+                      </span>
+                      <strong style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>
+                        {formatCurrency(effectiveSalary)}
+                      </strong>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 12px' }}>
+                      <span>• BHXH (8.0%): <strong>{formatCurrency(bhxhAmount)}</strong></span>
+                      <span>|</span>
+                      <span>• BHYT (1.5%): <strong>{formatCurrency(bhytAmount)}</strong></span>
+                      <span>|</span>
+                      <span>• BHTN (1.0%): <strong>{formatCurrency(bhtnAmount)}</strong></span>
+                    </div>
+                  </div>
+                )
+              })()}
+
               {/* Position */}
-              <div className="form-group">
+              <div className="form-group" style={{ gridColumn: 'span 2' }}>
                 <label className="form-label" style={{ fontWeight: 500, fontSize: '13px', display: 'block', marginBottom: '6px' }}>
                   Chức vụ sau gia hạn
                 </label>

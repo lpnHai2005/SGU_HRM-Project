@@ -20,16 +20,16 @@ async def list_employees(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    # Kiểm tra quyền: chỉ ADMIN, HR_MANAGER, STORE_MANAGER được phép xem danh sách nhân sự
+    # Kiểm tra quyền: ADMIN, DIRECTOR, HR_MANAGER, STORE_MANAGER được phép xem danh sách nhân sự
     user_roles = current_user.get("roles", [])
-    if not any(role in user_roles for role in ["ADMIN", "HR_MANAGER", "STORE_MANAGER"]):
+    if not any(role in user_roles for role in ["ADMIN", "DIRECTOR", "HR_MANAGER", "STORE_MANAGER"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Bạn không có quyền truy cập trang quản lý nhân sự."
         )
 
     # Store Manager chỉ xem nhân viên chi nhánh mình phụ trách
-    if "STORE_MANAGER" in user_roles and "ADMIN" not in user_roles and "HR_MANAGER" not in user_roles:
+    if "STORE_MANAGER" in user_roles and "ADMIN" not in user_roles and "HR_MANAGER" not in user_roles and "DIRECTOR" not in user_roles:
         store_id = current_user.get("store_id")
 
     base_query = """
@@ -104,7 +104,7 @@ async def list_contracts_deprecated(
     """
     params = {}
     roles = current_user.get("roles", [])
-    if not any(role in roles for role in ("ADMIN", "HR_MANAGER")):
+    if not any(role in roles for role in ("ADMIN", "HR_MANAGER", "DIRECTOR")):
         if "STORE_MANAGER" in roles:
             if not current_user.get("store_id"):
                 raise HTTPException(status_code=403, detail="Tài khoản chưa được gán cửa hàng")
@@ -131,7 +131,7 @@ async def get_employee_contracts(
 ):
     """
     Xem lịch sử / danh sách hợp đồng của nhân viên (read-only) với phân quyền RBAC:
-    - ADMIN/HR_MANAGER: Xem đầy đủ
+    - ADMIN/HR_MANAGER/DIRECTOR: Xem đầy đủ
     - STORE_MANAGER: Chỉ xem nhân viên thuộc store mình
     - EMPLOYEE: Chỉ xem của chính mình
     """
@@ -163,7 +163,7 @@ async def get_employee(
     if not emp:
         raise HTTPException(status_code=404, detail="Không tìm thấy nhân viên")
     roles = set(current_user.get('roles', []))
-    if not roles & {'ADMIN', 'HR_MANAGER'} and employee_id != current_user.get('employee_id'):
+    if not roles & {'ADMIN', 'HR_MANAGER', 'DIRECTOR'} and employee_id != current_user.get('employee_id'):
         if 'STORE_MANAGER' not in roles or not current_user.get('store_id') or emp['store_id'] != current_user['store_id']:
             raise HTTPException(403, 'Không được xem hồ sơ ngoài phạm vi quản lý')
     return emp
@@ -171,7 +171,7 @@ async def get_employee(
 @router.post("", response_model=EmployeeOut, summary="Thêm nhân sự mới (Rubric III.3.1.1)")
 async def create_employee(
     emp: EmployeeCreate,
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     if emp.store_id is not None:
@@ -237,7 +237,7 @@ async def create_employee(
 async def update_employee(
     employee_id: int,
     emp: EmployeeUpdate,
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     await get_employee(employee_id, current_user, db)
@@ -278,7 +278,7 @@ async def update_employee(
 @router.delete("/{employee_id}", summary="Thôi việc nhân viên (Week 2.1)")
 async def delete_employee(
     employee_id: int,
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     await db.execute(text("""
@@ -303,7 +303,7 @@ async def delete_employee(
 @router.post("/promotions", summary="Thăng cấp chức vụ theo body JSON (Workflow spec)")
 async def promotions_endpoint(
     promo: PromotionCreate,
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     return await promote_employee(
@@ -323,7 +323,7 @@ async def promote_employee(
     new_store_id: Optional[int] = None,
     decision_number: str = "QĐ-BN-2026",
     reason: str = "Thăng cấp chức vụ theo năng lực",
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     # Lấy chức vụ và store hiện tại

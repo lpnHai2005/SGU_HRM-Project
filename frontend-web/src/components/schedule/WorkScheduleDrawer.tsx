@@ -84,7 +84,7 @@ export function WorkScheduleDrawer({
   onSuccess,
 }: WorkScheduleDrawerProps) {
   const roles: string[] = user?.roles || []
-  const isStoreManager = roles.includes('STORE_MANAGER') && !roles.includes('ADMIN') && !roles.includes('HR_MANAGER')
+  const isStoreManager = roles.includes('STORE_MANAGER') && !roles.includes('ADMIN') && !roles.includes('HR_MANAGER') && !roles.includes('DIRECTOR')
 
   const [mode, setMode] = useState<'daily' | 'recurring'>(initialMode)
   const [storeId, setStoreId] = useState<number>(() => {

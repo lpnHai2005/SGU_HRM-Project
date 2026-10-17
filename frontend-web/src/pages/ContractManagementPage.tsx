@@ -100,7 +100,7 @@ export function ContractManagementPage({ user }: ContractManagementPageProps) {
   // RBAC
   const userRoles = useMemo(() => user?.roles || [], [user])
   const canManage = useMemo(() => {
-    return userRoles.includes('ADMIN') || userRoles.includes('HR_MANAGER')
+    return userRoles.includes('ADMIN') || userRoles.includes('HR_MANAGER') || userRoles.includes('DIRECTOR')
   }, [userRoles])
 
   // Load lookups and employees
@@ -1009,14 +1009,36 @@ export function ContractManagementPage({ user }: ContractManagementPageProps) {
                     </strong>
                   </div>
                 )}
-                {canManage && selectedContract.insurance_salary !== null && selectedContract.insurance_salary !== undefined && (
-                  <div>
-                    <span style={{ color: 'var(--text-secondary)' }}>Lương đóng BH: </span>
-                    <strong style={{ color: 'var(--text-primary)' }}>
-                      {formatCurrency(selectedContract.insurance_salary)}
-                    </strong>
-                  </div>
-                )}
+                {canManage && (selectedContract.insurance_salary !== null && selectedContract.insurance_salary !== undefined || selectedContract.basic_salary !== null && selectedContract.basic_salary !== undefined) && (() => {
+                  const insSalary = selectedContract.basic_salary ?? selectedContract.insurance_salary ?? 0
+                  return (
+                    <div style={{ gridColumn: 'span 2', marginTop: '6px', padding: '10px 14px', background: 'var(--surface-subtle)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-default)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <span style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Căn cứ đóng Bảo hiểm Bắt buộc (100% lương cơ bản):</span>
+                        <strong style={{ color: 'var(--text-primary)', fontSize: '14px', fontFamily: 'var(--font-mono)' }}>
+                          {formatCurrency(insSalary)}
+                        </strong>
+                      </div>
+                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.6, borderTop: '1px dashed var(--border-default)', paddingTop: '6px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                          <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                            Trích nộp Bảo hiểm Bắt buộc (10.5% lương đóng BH):
+                          </span>
+                          <strong style={{ color: 'var(--status-error)', fontFamily: 'var(--font-mono)' }}>
+                            - {formatCurrency(insSalary * 0.105)}
+                          </strong>
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 12px' }}>
+                          <span>• BHXH (8.0%): <strong>{formatCurrency(insSalary * 0.08)}</strong></span>
+                          <span>|</span>
+                          <span>• BHYT (1.5%): <strong>{formatCurrency(insSalary * 0.015)}</strong></span>
+                          <span>|</span>
+                          <span>• BHTN (1.0%): <strong>{formatCurrency(insSalary * 0.01)}</strong></span>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })()}
               </div>
 
               {/* Thông tin chấm dứt (nếu có) */}

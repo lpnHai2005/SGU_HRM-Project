@@ -148,6 +148,15 @@ async def get_leave_calendar(
                    ) THEN TRUE
                    ELSE FALSE 
                END as is_store_manager_request,
+               CASE 
+                   WHEN EXISTS (
+                       SELECT 1 FROM user_roles ur2 
+                       JOIN roles r2 ON ur2.role_id = r2.role_id 
+                       JOIN users u2 ON ur2.user_id = u2.user_id 
+                       WHERE u2.employee_id = lr.employee_id AND r2.role_code IN ('HR_MANAGER', 'ADMIN')
+                   ) THEN TRUE
+                   ELSE FALSE 
+               END as is_hr_or_admin_request,
                lr.created_at, lr.updated_at,
                e.employment_status, e.resignation_date
         FROM leave_requests lr
@@ -290,6 +299,15 @@ async def list_leaves(
                    ) THEN TRUE
                    ELSE FALSE 
                END as is_store_manager_request,
+               CASE 
+                   WHEN EXISTS (
+                       SELECT 1 FROM user_roles ur2 
+                       JOIN roles r2 ON ur2.role_id = r2.role_id 
+                       JOIN users u2 ON ur2.user_id = u2.user_id 
+                       WHERE u2.employee_id = lr.employee_id AND r2.role_code IN ('HR_MANAGER', 'ADMIN')
+                   ) THEN TRUE
+                   ELSE FALSE 
+               END as is_hr_or_admin_request,
                lr.created_at, lr.updated_at
         FROM leave_requests lr
         JOIN employees e ON lr.employee_id = e.employee_id
@@ -393,6 +411,15 @@ async def get_leave_detail(
                    ) THEN TRUE
                    ELSE FALSE 
                END as is_store_manager_request,
+               CASE 
+                   WHEN EXISTS (
+                       SELECT 1 FROM user_roles ur2 
+                       JOIN roles r2 ON ur2.role_id = r2.role_id 
+                       JOIN users u2 ON ur2.user_id = u2.user_id 
+                       WHERE u2.employee_id = lr.employee_id AND r2.role_code IN ('HR_MANAGER', 'ADMIN')
+                   ) THEN TRUE
+                   ELSE FALSE 
+               END as is_hr_or_admin_request,
                lr.created_at, lr.updated_at
         FROM leave_requests lr
         JOIN employees e ON lr.employee_id = e.employee_id
@@ -756,14 +783,15 @@ async def store_approve_leave(
     elif leave_req["status"] != "PENDING":
         raise HTTPException(status_code=400, detail=f"Trạng thái đơn không hợp lệ để duyệt: {leave_req['status']}")
 
+    # ===== NO SELF-APPROVAL CHECK =====
+    if emp_id and leave_req["employee_id"] == emp_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Cửa hàng trưởng không thể tự phê duyệt đơn của chính mình (nguyên tắc No Self-Approval). Đơn của bạn sẽ được chuyển thẳng đến Trưởng phòng Nhân sự duyệt."
+        )
+
     # Kiểm tra phân quyền Cửa hàng trưởng
     if "ADMIN" not in roles:
-        # Không tự duyệt đơn của mình
-        if leave_req["employee_id"] == emp_id:
-            raise HTTPException(
-                status_code=400,
-                detail="Cửa hàng trưởng không thể tự phê duyệt đơn của chính mình. Đơn của bạn sẽ được chuyển thẳng đến Trưởng phòng Nhân sự duyệt."
-            )
         # Chỉ duyệt đơn thuộc chi nhánh mình
         if leave_req["store_id"] != current_user.get("store_id"):
             raise HTTPException(
@@ -858,6 +886,12 @@ async def hr_approve_leave(
         raise HTTPException(status_code=400, detail=f"Trạng thái đơn không hợp lệ để duyệt: {leave_req['status']}")
 
     # ===== NO SELF-APPROVAL CHECK =====
+    if emp_id and leave_req["employee_id"] == emp_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Không thể tự phê duyệt đơn nghỉ phép của chính mình (nguyên tắc No Self-Approval)."
+        )
+
     # Lấy roles của người nộp đơn
     applicant_roles_res = await db.execute(text("""
         SELECT DISTINCT r.role_code
@@ -1073,6 +1107,32 @@ async def reject_leave(
         raise HTTPException(
             status_code=400,
             detail="Thời gian xin nghỉ phép đã qua, cấp trên không thể hủy duyệt hoặc từ chối đơn này nữa."
+        )
+
+    # ===== NO SELF-APPROVAL CHECK =====
+    if emp_id and leave_req["employee_id"] == emp_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Không thể tự từ chối đơn nghỉ phép của chính mình. Vui lòng sử dụng tính năng Hủy đơn (nguyên tắc No Self-Approval)."
+        )
+
+    # Lấy roles của người nộp đơn
+    applicant_roles_res = await db.execute(text("""
+        SELECT DISTINCT r.role_code
+        FROM user_roles ur
+        JOIN roles r ON ur.role_id = r.role_id
+        JOIN users u ON ur.user_id = u.user_id
+        WHERE u.employee_id = :eid
+    """), {"eid": leave_req["employee_id"]})
+    applicant_roles = [r["role_code"] for r in applicant_roles_res.mappings().all()]
+    is_hr_or_admin = any(r in applicant_roles for r in ("HR_MANAGER", "ADMIN"))
+    is_director = "DIRECTOR" in roles
+
+    # Đơn của HR/Admin chỉ do Giám đốc từ chối / thu hồi
+    if is_hr_or_admin and not is_director:
+        raise HTTPException(
+            status_code=403,
+            detail="Đơn nghỉ phép của Trưởng phòng Nhân sự / Quản trị viên chỉ được Giám đốc xem xét từ chối (nguyên tắc No Self-Approval)."
         )
 
     # Kiểm tra quyền từ chối:

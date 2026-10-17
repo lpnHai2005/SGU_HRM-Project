@@ -17,7 +17,7 @@ router = APIRouter()
 )
 async def get_all_users(
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"]))
+    current_user: dict = Depends(require_roles(["ADMIN", "DIRECTOR", "HR_MANAGER"]))
 ):
     query = text("""
         SELECT u.user_id, u.username, u.email, u.phone, u.is_active, u.last_login, u.created_at,
@@ -53,12 +53,12 @@ async def get_all_users(
     "/{user_id}",
     response_model=UserResponse,
     summary="Chi tiết tài khoản người dùng theo ID",
-    description="Yêu cầu vai trò ADMIN hoặc HR_MANAGER."
+    description="Yêu cầu vai trò ADMIN, DIRECTOR hoặc HR_MANAGER."
 )
 async def get_user_by_id(
     user_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"]))
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"]))
 ):
     query = text("""
         SELECT u.user_id, u.username, u.email, u.phone, u.is_active, u.last_login, u.created_at,

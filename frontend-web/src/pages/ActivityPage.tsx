@@ -102,8 +102,8 @@ export function ActivityPage({ user, personal = false }: { user: any; personal?:
   const [error, setError] = useState('')
   const [viewer, setViewer] = useState<ProofViewerData | null>(null)
   const [zoom, setZoom] = useState(1)
-  const manager = user?.roles?.some((role: string) => ['ADMIN', 'HR_MANAGER', 'STORE_MANAGER'].includes(role)) && !personal
-  const storeOnly = user?.roles?.includes('STORE_MANAGER') && !user.roles.some((role: string) => ['ADMIN', 'HR_MANAGER'].includes(role))
+  const manager = user?.roles?.some((role: string) => ['ADMIN', 'DIRECTOR', 'HR_MANAGER', 'STORE_MANAGER'].includes(role)) && !personal
+  const storeOnly = user?.roles?.includes('STORE_MANAGER') && !user.roles.some((role: string) => ['ADMIN', 'HR_MANAGER', 'DIRECTOR'].includes(role))
 
   useEffect(() => {
     let active = true

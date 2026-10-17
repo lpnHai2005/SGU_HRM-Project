@@ -2,8 +2,12 @@ import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { roleApi, userApi } from '../services/api'
 import type { Role, User } from '../types'
+import { useAuth } from '../contexts/AuthContext'
 
 export function UserAccessPage({ currentUserId }: { currentUserId: number }) {
+  const { user: currentUser } = useAuth()
+  const isAdmin = Boolean(currentUser?.roles?.includes('ADMIN'))
+
   const [users, setUsers] = useState<User[]>([])
   const [roles, setRoles] = useState<Role[]>([])
   const [selected, setSelected] = useState<Record<number, number[]>>({})
@@ -23,6 +27,10 @@ export function UserAccessPage({ currentUserId }: { currentUserId: number }) {
   useEffect(() => { void load() }, [])
 
   const saveRoles = async (account: User) => {
+    if (!isAdmin) {
+      toast.error('Chỉ Quản trị viên (ADMIN) mới có quyền cập nhật vai trò')
+      return
+    }
     const ids = selected[account.user_id] || []
     if (!ids.length) { toast.warning('Cần chọn ít nhất một vai trò'); return }
     if (account.user_id === currentUserId && !ids.some(id => roles.find(role => role.role_id === id)?.role_code === 'ADMIN')) {
@@ -34,6 +42,10 @@ export function UserAccessPage({ currentUserId }: { currentUserId: number }) {
     finally { setBusy(null) }
   }
   const toggleStatus = async (account: User) => {
+    if (!isAdmin) {
+      toast.error('Chỉ Quản trị viên (ADMIN) mới có quyền khóa hoặc mở khóa tài khoản')
+      return
+    }
     if (account.user_id === currentUserId && account.is_active) return
     setBusy(account.user_id)
     try { await userApi.updateStatus(account.user_id, !account.is_active); toast.success('Đã cập nhật trạng thái tài khoản'); await load() }
@@ -44,16 +56,23 @@ export function UserAccessPage({ currentUserId }: { currentUserId: number }) {
   return <div className="page-container">
     <h1>Tài khoản & Phân quyền</h1>
     <p>Quản lý trạng thái và vai trò tài khoản. Các quyền chi tiết được cấp qua vai trò trong hệ thống.</p>
+    {!isAdmin && (
+      <div style={{ padding: '10px 14px', background: 'var(--status-info-bg)', border: '1px solid var(--status-info-border)', borderRadius: 'var(--radius-sm)', marginBottom: 16, color: 'var(--text-primary)', fontSize: 13 }}>
+        ℹ️ <strong>Chế độ chỉ xem:</strong> Chỉ Quản trị viên hệ thống (ADMIN) mới có thẩm quyền phân quyền và khóa/mở khóa tài khoản.
+      </div>
+    )}
     {error && <p role="alert">{error}</p>}
     <section className="card" style={{ padding: 20, marginBottom: 20 }}>
       <label>Tìm tài khoản <input className="form-input" value={search} onChange={event => setSearch(event.target.value)} placeholder="Tên, tài khoản hoặc email" /></label>
-      <div className="table-container"><table className="data-table"><thead><tr><th>Tài khoản</th><th>Nhân viên</th><th>Trạng thái</th><th>Vai trò</th><th>Thao tác</th></tr></thead><tbody>
+      <div className="table-container"><table className="data-table"><thead><tr><th>Tài khoản</th><th>Nhân viên</th><th>Trạng thái</th><th>Vai trò</th>{isAdmin && <th>Thao tác</th>}</tr></thead><tbody>
         {filtered.map(account => <tr key={account.user_id}>
           <td><strong>{account.username}</strong><br /><small>{account.email}</small></td>
           <td>{account.full_name || 'Chưa liên kết'}</td>
           <td>{account.is_active ? 'Đang hoạt động' : 'Đã khóa'}</td>
-          <td><div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>{roles.map(role => <label key={role.role_id} style={{ whiteSpace: 'nowrap' }}><input type="checkbox" checked={(selected[account.user_id] || []).includes(role.role_id)} disabled={busy === account.user_id} onChange={event => setSelected(current => ({ ...current, [account.user_id]: event.target.checked ? [...(current[account.user_id] || []), role.role_id] : (current[account.user_id] || []).filter(id => id !== role.role_id) }))} /> {role.role_name}</label>)}</div></td>
-          <td><div style={{ display: 'flex', gap: 8 }}><button className="btn btn-primary btn-sm" disabled={busy === account.user_id} onClick={() => saveRoles(account)}>Lưu quyền</button><button className="btn btn-secondary btn-sm" disabled={busy === account.user_id || account.user_id === currentUserId && account.is_active} onClick={() => toggleStatus(account)}>{account.is_active ? 'Khóa' : 'Mở khóa'}</button></div></td>
+          <td><div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>{roles.map(role => <label key={role.role_id} style={{ whiteSpace: 'nowrap' }}><input type="checkbox" checked={(selected[account.user_id] || []).includes(role.role_id)} disabled={!isAdmin || busy === account.user_id} onChange={event => setSelected(current => ({ ...current, [account.user_id]: event.target.checked ? [...(current[account.user_id] || []), role.role_id] : (current[account.user_id] || []).filter(id => id !== role.role_id) }))} /> {role.role_name}</label>)}</div></td>
+          {isAdmin && (
+            <td><div style={{ display: 'flex', gap: 8 }}><button className="btn btn-primary btn-sm" disabled={busy === account.user_id} onClick={() => saveRoles(account)}>Lưu quyền</button><button className="btn btn-secondary btn-sm" disabled={busy === account.user_id || account.user_id === currentUserId && account.is_active} onClick={() => toggleStatus(account)}>{account.is_active ? 'Khóa' : 'Mở khóa'}</button></div></td>
+          )}
         </tr>)}
       </tbody></table></div>
     </section>

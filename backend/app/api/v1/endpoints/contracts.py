@@ -64,7 +64,7 @@ async def list_contracts(
     - EMPLOYEE: Chỉ xem hợp đồng của mình (không thấy lương)
     """
     roles = current_user.get("roles", [])
-    is_hr = "ADMIN" in roles or "HR_MANAGER" in roles
+    is_hr = "ADMIN" in roles or "HR_MANAGER" in roles or "DIRECTOR" in roles
 
     # Base query
     q = """
@@ -139,7 +139,7 @@ async def list_contracts(
         q += """
             AND c.status = 'ACTIVE'
             AND c.end_date IS NOT NULL
-            AND c.end_date <= CURRENT_DATE + :expiring_days
+            AND c.end_date <= CURRENT_DATE + CAST(:expiring_days AS integer)
             AND c.end_date >= CURRENT_DATE
         """
         params["expiring_days"] = expiring_days
@@ -189,7 +189,7 @@ async def get_contract_stats(
     Thống kê số lượng hợp đồng theo trạng thái.
     """
     roles = current_user.get("roles", [])
-    is_hr = "ADMIN" in roles or "HR_MANAGER" in roles
+    is_hr = "ADMIN" in roles or "HR_MANAGER" in roles or "DIRECTOR" in roles
 
     base_where = "WHERE 1=1"
     params = {}
@@ -365,7 +365,7 @@ async def _generate_and_save_contract_pdf(
 @router.post("", summary="Tạo hợp đồng lao động mới")
 async def create_contract(
     contract: ContractCreate,
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -497,7 +497,7 @@ async def create_contract(
 async def update_contract(
     contract_id: int,
     contract_update: ContractUpdate,
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -572,7 +572,7 @@ async def update_contract(
 async def patch_contract(
     contract_id: int,
     contract_update: ContractUpdate,
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -588,7 +588,7 @@ async def patch_contract(
 @router.post("/{contract_id}/activate", summary="Kích hoạt hợp đồng")
 async def activate_contract(
     contract_id: int,
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -736,7 +736,7 @@ async def activate_contract(
 async def renew_contract(
     contract_id: int,
     renew_data: ContractRenew,
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -819,7 +819,7 @@ async def renew_contract(
         "start_date": new_start,
         "end_date": new_end,
         "basic_salary": new_salary,
-        "insurance_salary": renew_data.new_basic_salary or current_contract.get("insurance_salary"),
+        "insurance_salary": new_salary,
         "signed_date": date.today(),
         "position_id": renew_data.new_position_id or current_contract.get("position_id"),
         "department_id": current_contract.get("department_id"),
@@ -840,7 +840,7 @@ async def renew_contract(
         start_date=new_start,
         end_date=new_end,
         basic_salary=new_salary,
-        insurance_salary=renew_data.new_basic_salary or current_contract.get("insurance_salary"),
+        insurance_salary=new_salary,
         signed_date=date.today(),
         position_id=renew_data.new_position_id or current_contract.get("position_id"),
         department_id=current_contract.get("department_id")
@@ -886,7 +886,7 @@ async def renew_contract(
 async def terminate_contract(
     contract_id: int,
     terminate_data: ContractTerminate,
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -1098,7 +1098,7 @@ async def terminate_contract(
 @router.post("/upload-termination-document", summary="Upload giấy tờ/quyết định chấm dứt hợp đồng")
 async def upload_termination_document(
     file: UploadFile = File(...),
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -1129,7 +1129,7 @@ async def upload_termination_document(
 
 @router.post("/sync-employee-statuses", summary="Đồng bộ trạng thái nhân viên và tài khoản theo hiệu lực hợp đồng")
 async def sync_employee_statuses(
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -1242,7 +1242,7 @@ async def sync_employee_statuses(
 @router.post("/{contract_id}/cancel", summary="Hủy hợp đồng")
 async def cancel_contract(
     contract_id: int,
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -1304,7 +1304,7 @@ async def get_employee_contract_history(
     Bao gồm cả hợp đồng cũ và hiện tại.
     """
     roles = current_user.get("roles", [])
-    is_hr = "ADMIN" in roles or "HR_MANAGER" in roles
+    is_hr = "ADMIN" in roles or "HR_MANAGER" in roles or "DIRECTOR" in roles
 
     # Check access
     if not is_hr:
@@ -1356,7 +1356,7 @@ async def get_employee_contract_history(
 async def upload_contract_file(
     contract_id: int,
     file: UploadFile = File(...),
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -1421,7 +1421,7 @@ async def upload_contract_file(
 @router.post("/{contract_id}/generate-pdf", summary="Tự động sinh file PDF hợp đồng chuẩn")
 async def generate_contract_pdf_action(
     contract_id: int,
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -1612,7 +1612,7 @@ async def stream_contract_pdf(
 
 @router.post("/cron/expire", summary="Cập nhật hợp đồng hết hạn (Cron Job)")
 async def expire_contracts(
-    current_user: dict = Depends(require_roles(["ADMIN"])),  # Only admin can trigger
+    current_user: dict = Depends(require_roles(["ADMIN", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """

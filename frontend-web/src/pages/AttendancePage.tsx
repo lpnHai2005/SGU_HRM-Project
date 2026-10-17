@@ -22,7 +22,7 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
   })
 
   // Tab: 'my_timesheet' (Bảng công cá nhân) | 'team_timesheet' (Bảng công toàn chi nhánh)
-  const activeTab = !personal && user?.roles?.some((r: string) => ['ADMIN','HR_MANAGER','STORE_MANAGER'].includes(r)) ? 'team_timesheet' : 'my_timesheet'
+  const activeTab = !personal && user?.roles?.some((r: string) => ['ADMIN','DIRECTOR','HR_MANAGER','STORE_MANAGER'].includes(r)) ? 'team_timesheet' : 'my_timesheet'
 
   // States
   const [summaryData, setSummaryData] = useState<AttendanceSummary | null>(null)
@@ -38,7 +38,7 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
   // Roles
   const roles: string[] = user?.roles || []
   const periodDisplay = selectedPeriod.split('-').reverse().join('/')
-  const isManager = !personal && (roles.includes('STORE_MANAGER') || roles.includes('HR_MANAGER') || roles.includes('ADMIN'))
+  const isManager = !personal && (roles.includes('STORE_MANAGER') || roles.includes('DIRECTOR') || roles.includes('HR_MANAGER') || roles.includes('ADMIN'))
 
   // Fetch Bảng công data
   const fetchTimesheetData = async () => {

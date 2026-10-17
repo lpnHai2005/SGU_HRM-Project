@@ -135,7 +135,13 @@ async def list_resignations(
             c.contract_number, c.contract_type,
             c.start_date as contract_start_date, c.end_date as contract_end_date,
             u_creator.username as created_by_name,
-            u_approver.username as approved_by_name
+            u_approver.username as approved_by_name,
+            EXISTS (
+                SELECT 1 FROM user_roles ur2
+                JOIN roles r2 ON ur2.role_id = r2.role_id
+                JOIN users u2 ON ur2.user_id = u2.user_id
+                WHERE u2.employee_id = r.employee_id AND r2.role_code IN ('HR_MANAGER', 'ADMIN')
+            ) as is_hr_or_admin_request
         FROM resignation_requests r
         JOIN employees e ON r.employee_id = e.employee_id
         JOIN contracts c ON r.contract_id = c.contract_id
@@ -184,7 +190,7 @@ async def get_resignation_detail(
 @router.post("", summary="Tạo đơn thôi việc cho nhân viên")
 async def create_resignation(
     resignation_in: ResignationCreate,
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -291,8 +297,15 @@ async def approve_resignation(
 
     user_roles = current_user.get("roles", [])
     user_id = current_user.get("user_id")
+    emp_id = current_user.get("employee_id")
 
     # ===== NO SELF-APPROVAL CHECK =====
+    if emp_id and resignation["employee_id"] == emp_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Không thể tự phê duyệt đơn thôi việc của chính mình (nguyên tắc No Self-Approval)."
+        )
+
     # Lấy roles của người thôi việc
     applicant_roles_res = await db.execute(text("""
         SELECT DISTINCT r.role_code
@@ -308,11 +321,11 @@ async def approve_resignation(
     is_admin = "ADMIN" in user_roles
     is_hr = "HR_MANAGER" in user_roles
 
-    # Đơn của HR/Admin phải do DIRECTOR (hoặc ADMIN) duyệt
-    if is_hr_or_admin_resigner and not is_director and not is_admin:
+    # Đơn của HR/Admin BẮT BUỘC do DIRECTOR duyệt, không được HR hoặc Admin tự duyệt
+    if is_hr_or_admin_resigner and not is_director:
         raise HTTPException(
             status_code=403,
-            detail="Đơn thôi việc của Trưởng phòng Nhân sự / Quản trị viên chỉ được Giám đốc hoặc Admin phê duyệt (nguyên tắc No Self-Approval)."
+            detail="Đơn thôi việc của Trưởng phòng Nhân sự / Quản trị viên chỉ được Giám đốc phê duyệt (nguyên tắc No Self-Approval)."
         )
 
     # DIRECTOR chỉ duyệt đơn của HR/Admin
@@ -391,6 +404,43 @@ async def reject_resignation(
         )
 
     user_id = current_user.get("user_id")
+    emp_id = current_user.get("employee_id")
+    user_roles = current_user.get("roles", [])
+
+    # ===== NO SELF-APPROVAL CHECK =====
+    if emp_id and resignation["employee_id"] == emp_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Không thể tự từ chối đơn thôi việc của chính mình (nguyên tắc No Self-Approval)."
+        )
+
+    # Lấy roles của người thôi việc
+    applicant_roles_res = await db.execute(text("""
+        SELECT DISTINCT r.role_code
+        FROM user_roles ur
+        JOIN roles r ON ur.role_id = r.role_id
+        JOIN users u ON ur.user_id = u.user_id
+        WHERE u.employee_id = :eid
+    """), {"eid": resignation["employee_id"]})
+    applicant_roles = [r["role_code"] for r in applicant_roles_res.mappings().all()]
+
+    is_hr_or_admin_resigner = any(r in applicant_roles for r in ("HR_MANAGER", "ADMIN"))
+    is_director = "DIRECTOR" in user_roles
+    is_admin = "ADMIN" in user_roles
+
+    # Đơn của HR/Admin BẮT BUỘC do DIRECTOR từ chối
+    if is_hr_or_admin_resigner and not is_director:
+        raise HTTPException(
+            status_code=403,
+            detail="Đơn thôi việc của Trưởng phòng Nhân sự / Quản trị viên chỉ được Giám đốc từ chối (nguyên tắc No Self-Approval)."
+        )
+
+    # DIRECTOR chỉ xử lý đơn của HR/Admin
+    if is_director and not is_hr_or_admin_resigner and not is_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Giám đốc chỉ từ chối đơn thôi việc của Trưởng phòng Nhân sự / Quản trị viên."
+        )
 
     update_query = text("""
         UPDATE resignation_requests

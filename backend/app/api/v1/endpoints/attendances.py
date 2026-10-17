@@ -52,7 +52,7 @@ async def authorize_employee(db, user, employee_id, lock=False):
     if not employee:
         raise HTTPException(404, "Không tìm thấy nhân viên.")
     roles = set(user.get("roles", []))
-    if employee_id != user.get("employee_id") and not roles.intersection({"ADMIN", "HR_MANAGER"}):
+    if employee_id != user.get("employee_id") and not roles.intersection({"ADMIN", "HR_MANAGER", "DIRECTOR"}):
         if "STORE_MANAGER" not in roles or not user.get("store_id") or employee["store_id"] != user["store_id"]:
             raise HTTPException(403, "Không có quyền truy cập chấm công nhân viên này.")
     return employee
@@ -403,9 +403,9 @@ async def list_attendances(
 
     # Store manager chỉ xem chi nhánh của mình
     user_roles = current_user.get("roles", [])
-    if not set(user_roles).intersection({"ADMIN", "HR_MANAGER", "STORE_MANAGER"}):
+    if not set(user_roles).intersection({"ADMIN", "HR_MANAGER", "STORE_MANAGER", "DIRECTOR"}):
         raise HTTPException(403, "Chỉ quản lý được truy cập danh sách chấm công.")
-    if "STORE_MANAGER" in user_roles and "ADMIN" not in user_roles and "HR_MANAGER" not in user_roles:
+    if "STORE_MANAGER" in user_roles and "ADMIN" not in user_roles and "HR_MANAGER" not in user_roles and "DIRECTOR" not in user_roles:
         query += " AND a.store_id = :mgr_store_id"
         params["mgr_store_id"] = current_user.get("store_id")
     elif store_id:
@@ -576,7 +576,7 @@ async def list_shift_schedules(
 @router.post("/shift-schedules", summary="Phân ca làm việc cho nhân viên (Week 2.3)")
 async def assign_shift_schedule(
     req: ShiftScheduleCreate,
-    current_user: dict = Depends(require_roles(["STORE_MANAGER", "HR_MANAGER", "ADMIN"])),
+    current_user: dict = Depends(require_roles(["STORE_MANAGER", "HR_MANAGER", "ADMIN", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     from app.api.v1.endpoints.work_schedules import Assignment, create_schedule

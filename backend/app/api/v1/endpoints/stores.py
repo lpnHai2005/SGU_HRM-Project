@@ -16,7 +16,7 @@ from app.core.database import get_db
 from app.core.config import settings
 
 router = APIRouter()
-admin = require_roles(['ADMIN'])
+admin = require_roles(['ADMIN', 'DIRECTOR'])
 logger = logging.getLogger(__name__)
 
 @router.get('/poi-search')

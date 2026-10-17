@@ -430,6 +430,7 @@ class ResignationOut(BaseModel):
     approved_by: Optional[int] = None
     approved_by_name: Optional[str] = None
     approved_at: Optional[datetime] = None
+    is_hr_or_admin_request: Optional[bool] = False
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -666,6 +667,7 @@ class LeaveRequestOut(BaseModel):
     rejected_by_role: Optional[str] = None
     rejected_at: Optional[datetime] = None
     is_store_manager_request: Optional[bool] = False
+    is_hr_or_admin_request: Optional[bool] = False
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

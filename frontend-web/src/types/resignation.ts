@@ -33,6 +33,7 @@ export interface Resignation {
   approved_by?: number | null;
   approved_by_name?: string | null;
   approved_at?: string | null;
+  is_hr_or_admin_request?: boolean | null;
   created_at?: string | null;
   updated_at?: string | null;
 }

@@ -132,7 +132,13 @@ class ResignationService:
                 c.contract_number, c.contract_type,
                 c.start_date as contract_start_date, c.end_date as contract_end_date,
                 u_creator.username as created_by_name,
-                u_approver.username as approved_by_name
+                u_approver.username as approved_by_name,
+                EXISTS (
+                    SELECT 1 FROM user_roles ur2
+                    JOIN roles r2 ON ur2.role_id = r2.role_id
+                    JOIN users u2 ON ur2.user_id = u2.user_id
+                    WHERE u2.employee_id = r.employee_id AND r2.role_code IN ('HR_MANAGER', 'ADMIN')
+                ) as is_hr_or_admin_request
             FROM resignation_requests r
             JOIN employees e ON r.employee_id = e.employee_id
             JOIN contracts c ON r.contract_id = c.contract_id

@@ -456,6 +456,7 @@ export interface LeaveRequest {
   rejected_by_role?: string | null;
   rejected_at?: string | null;
   is_store_manager_request?: boolean | null;
+  is_hr_or_admin_request?: boolean | null;
   employment_status?: string | null;
   resignation_date?: string | null;
   created_at?: string | null;
