@@ -23,6 +23,8 @@ AsyncSessionLocal = async_sessionmaker(
     autoflush=False
 )
 
+async_session_maker = AsyncSessionLocal
+
 # 2. Sync Engine cho các tác vụ đồng bộ / tiện ích nếu cần
 sync_engine = None
 if settings.SYNC_DATABASE_URL:

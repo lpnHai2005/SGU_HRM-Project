@@ -223,3 +223,24 @@ class Contract(Base):
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
     employee = relationship("Employee", back_populates="contracts")
+
+
+class ResignationRequest(Base):
+    __tablename__ = "resignation_requests"
+
+    resignation_id = Column(Integer, primary_key=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.employee_id", ondelete="CASCADE"), nullable=False)
+    contract_id = Column(Integer, ForeignKey("contracts.contract_id", ondelete="CASCADE"), nullable=False)
+    submitted_date = Column(Date, nullable=False)
+    requested_last_working_date = Column(Date, nullable=False)
+    reason = Column(Text, nullable=False)
+    attachment_url = Column(String(500), nullable=True)
+    notes = Column(Text, nullable=True)
+    status = Column(String(20), nullable=False, default="PENDING")
+    rejection_reason = Column(Text, nullable=True)
+    approved_last_working_date = Column(Date, nullable=True)
+    created_by = Column(Integer, ForeignKey("users.user_id"), nullable=False)
+    approved_by = Column(Integer, ForeignKey("users.user_id"), nullable=True)
+    approved_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)

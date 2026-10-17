@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom'
 import { Icons } from '../components/common/Icons'
 import { EmptyState } from '../components/common/EmptyState'
 import { DatePicker } from '../components/common/DatePicker'
+import { ContractHistory } from '../components/ContractHistory'
 import { getInitials, getRoleFromUser, formatDate, formatCurrency } from '../utils/formatters'
 import type { Employee, EmployeeCreate, Lookups, Contract, PromotionCreate } from '../types'
 
@@ -689,35 +690,12 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
           </div>
         </div>
 
-        {/* Recent contracts in view mode */}
+        {/* Contract History in view mode */}
         <div style={{ marginTop: '20px' }}>
-          <h4 style={{ margin: '0 0 12px', fontSize: '14px', color: 'var(--text-secondary)' }}>
-            HỢP ĐỒNG ({employeeContracts.length})
-          </h4>
-          {contractsLoading ? (
-            <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-              Đang tải...
-            </div>
-          ) : employeeContracts.length === 0 ? (
-            <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
-              Chưa có hợp đồng
-            </div>
-          ) : (
-            <div style={{ display: 'grid', gap: '8px' }}>
-              {employeeContracts.slice(0, 3).map(contract => (
-                <div key={contract.contract_id} style={{
-                  padding: '8px 12px', background: 'var(--surface-ground)',
-                  borderRadius: '6px', fontSize: '12px',
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-                }}>
-                  <span><strong>{contract.contract_number}</strong> • {formatDate(contract.start_date)}</span>
-                  <span className={`badge-status ${getContractStatusClass(contract.status)}`} style={{ fontSize: '11px' }}>
-                    {contract.status === 'ACTIVE' ? 'Hiệu lực' : contract.status === 'EXPIRED' ? 'Hết hạn' : contract.status}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
+          <ContractHistory
+            employeeId={emp.employee_id}
+            canSeeSalary={canManage}
+          />
         </div>
 
         <div className="modal-footer" style={{ marginTop: '24px', padding: '12px 0 0', borderTop: '1px solid var(--border-default)', display: 'flex', justifyContent: 'flex-end' }}>
@@ -1073,201 +1051,32 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
 
     return (
       <div className="modal-body">
-        <div className="alert alert-info">
-          <strong>Nhân viên:</strong> {selectedEmployee.full_name} ({selectedEmployee.employee_code})
-        </div>
-
-        {formError && (
-          <div className="alert alert-error">
-            {formError}
+        <div className="alert alert-info" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <div>
+            <strong>Nhân viên:</strong> {selectedEmployee.full_name} ({selectedEmployee.employee_code})
           </div>
-        )}
-
-        <h4 style={{ margin: '0 0 8px', fontSize: '14px' }}>
-          Danh sách hợp đồng ({employeeContracts.length})
-        </h4>
-
-        {contractsLoading ? (
-          <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-            {Icons.loader} Đang tải hợp đồng...
-          </div>
-        ) : (
-          <div
-            style={{
-              maxHeight: '250px', overflowY: 'auto', marginBottom: '16px',
-              border: '1px solid var(--border-base)', borderRadius: '8px'
-            }}
-          >
-            <table className="data-table" style={{ margin: 0 }}>
-              <thead>
-                <tr>
-                  <th>Số HĐ</th>
-                  <th>Loại</th>
-                  <th>Ngày ký</th>
-                  <th>Lương CB</th>
-                  <th>Trạng thái</th>
-                  <th style={{ width: '80px', textAlign: 'center' }}>Thao tác</th>
-                </tr>
-              </thead>
-              <tbody>
-                {employeeContracts.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} style={{ textAlign: 'center', padding: '20px', color: 'var(--text-secondary)' }}>
-                      Chưa có hợp đồng nào
-                    </td>
-                  </tr>
-                ) : (
-                  employeeContracts.map(contract => (
-                    <tr key={contract.contract_id} style={editingContractId === contract.contract_id ? { background: 'var(--surface-subtle)' } : undefined}>
-                      <td style={{ fontSize: '12px' }}><strong>{contract.contract_number}</strong></td>
-                      <td style={{ fontSize: '12px' }}>
-                        {contract.contract_type === 'FIXED_1_YEAR' ? '1 năm' :
-                          contract.contract_type === 'FIXED_2_YEAR' ? '2 năm' :
-                          contract.contract_type === 'INDEFINITE' ? 'Không thời hạn' :
-                            contract.contract_type}
-                      </td>
-                      <td style={{ fontSize: '12px' }}>{formatDate(contract.signed_date)}</td>
-                      <td style={{ fontSize: '12px' }}>{formatCurrency(contract.basic_salary)}</td>
-                      <td>
-                        <span className={`badge-status ${getContractStatusClass(contract.status)}`} style={{ fontSize: '11px' }}>
-                          {contract.status === 'ACTIVE' ? 'Hiệu lực' : contract.status === 'EXPIRED' ? 'Hết hạn' : 'Đã chấm dứt'}
-                        </span>
-                      </td>
-                      <td style={{ textAlign: 'center' }}>
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          style={{ padding: '3px 8px', fontSize: '11px' }}
-                          onClick={() => handleEditContract(contract)}
-                          title="Sửa hợp đồng này"
-                        >
-                          {Icons.edit} Sửa
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '16px 0 12px' }}>
-          <h4 style={{ margin: 0, fontSize: '14px' }}>
-            {editingContractId ? 'Chỉnh sửa hợp đồng' : 'Tạo hợp đồng mới'}
-          </h4>
-          {editingContractId && (
+          {canManage && (
             <button
               type="button"
-              className="btn btn-secondary btn-sm"
-              style={{ fontSize: '12px', padding: '3px 10px' }}
-              onClick={handleCancelEditContract}
+              className="btn btn-primary btn-sm"
+              onClick={() => {
+                closeModal()
+                navigate(`/contracts?search=${selectedEmployee.employee_code}`)
+              }}
             >
-              Hủy sửa (Tạo mới)
+              Đi tới Quản lý hợp đồng ›
             </button>
           )}
         </div>
 
-        {editingContractId && (
-          <div style={{ marginBottom: '12px', padding: '8px 12px', background: 'var(--surface-ground)', borderRadius: '6px', fontSize: '12px' }}>
-            Đang chỉnh sửa hợp đồng số: <strong>{employeeContracts.find(c => c.contract_id === editingContractId)?.contract_number}</strong>
-          </div>
-        )}
+        <ContractHistory
+          employeeId={selectedEmployee.employee_id}
+          canSeeSalary={canManage}
+        />
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-          <div className="form-group">
-            <label className="form-label">Loại hợp đồng</label>
-            <select
-              className="form-select"
-              value={contractForm.contract_type}
-              onChange={(e) => handleContractChange('contract_type', e.target.value)}
-            >
-              <option value="FIXED_1_YEAR">Hợp đồng 1 năm</option>
-              <option value="FIXED_2_YEAR">Hợp đồng 2 năm</option>
-              <option value="INDEFINITE">Không thời hạn</option>
-            </select>
-          </div>
-          <div className="form-group">
-            <label className="form-label">Ngày ký</label>
-            <input
-              type="date"
-              className="form-input"
-              value={contractForm.signed_date}
-              onChange={(e) => handleContractChange('signed_date', e.target.value)}
-            />
-          </div>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-          <div className="form-group">
-            <label className="form-label">Ngày bắt đầu</label>
-            <input
-              type="date"
-              className="form-input"
-              value={contractForm.start_date}
-              onChange={(e) => handleContractChange('start_date', e.target.value)}
-            />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Ngày kết thúc</label>
-            <input
-              type="date"
-              className="form-input"
-              value={contractForm.end_date}
-              onChange={(e) => handleContractChange('end_date', e.target.value)}
-            />
-          </div>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: editingContractId ? '1fr 1fr 1fr' : '1fr 1fr', gap: '12px' }}>
-          <div className="form-group">
-            <label className="form-label">Lương cơ bản</label>
-            <input
-              type="number"
-              className="form-input"
-              value={contractForm.basic_salary}
-              onChange={(e) => handleContractChange('basic_salary', Number(e.target.value))}
-              min="0"
-              step="100000"
-            />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Lương đóng BH</label>
-            <input
-              type="number"
-              className="form-input"
-              value={contractForm.insurance_salary}
-              onChange={(e) => handleContractChange('insurance_salary', Number(e.target.value))}
-              min="0"
-              step="100000"
-            />
-          </div>
-          {editingContractId && (
-            <div className="form-group">
-              <label className="form-label">Trạng thái</label>
-              <select
-                className="form-select"
-                value={contractForm.status}
-                onChange={(e) => handleContractChange('status', e.target.value)}
-              >
-                <option value="ACTIVE">Hiệu lực</option>
-                <option value="EXPIRED">Hết hạn</option>
-                <option value="TERMINATED">Chấm dứt</option>
-              </select>
-            </div>
-          )}
-        </div>
-
-        <div className="modal-footer">
+        <div className="modal-footer" style={{ marginTop: '24px', padding: '12px 0 0', borderTop: '1px solid var(--border-default)', display: 'flex', justifyContent: 'flex-end' }}>
           <button className="btn btn-secondary" onClick={closeModal}>
             Đóng
-          </button>
-          <button
-            className="btn btn-primary"
-            onClick={handleSubmitContract}
-            disabled={formLoading}
-          >
-            {formLoading ? 'Đang xử lý...' : editingContractId ? 'Lưu thay đổi' : 'Tạo hợp đồng'}
           </button>
         </div>
       </div>
@@ -1299,7 +1108,7 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
       case 'contract':
         return {
           icon: <span className="modal-title-icon icon-contract">{Icons.fileText}</span>,
-          title: `Quản lý hợp đồng: ${selectedEmployee?.full_name || ''}`
+          title: `Hợp đồng lao động: ${selectedEmployee?.full_name || ''}`
         }
       default:
         return { icon: null, title: '' }
@@ -1380,7 +1189,7 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
               }}
             >
               <span className="action-icon icon-contract">{Icons.fileText}</span>
-              <span>Quản lý hợp đồng</span>
+              <span>Xem hợp đồng</span>
             </button>
             <button
               className="action-dropdown-item"
@@ -1671,7 +1480,9 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
               <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
                 <div style={{
                   width: '48px', height: '48px', borderRadius: '50%',
-                  background: confirmAction === 'resign' ? '#fee2e2' : '#dbeafe',
+                  background: confirmAction === 'resign' ? 'var(--status-error-bg)' : 'var(--status-info-bg)',
+                  color: confirmAction === 'resign' ? 'var(--status-error)' : 'var(--status-info)',
+                  border: `1px solid ${confirmAction === 'resign' ? 'var(--status-error-border)' : 'var(--status-info-border)'}`,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   flexShrink: 0
                 }}>

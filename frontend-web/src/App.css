@@ -1910,7 +1910,17 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   animation: slideUp 0.2s ease-out;
 }
 
+.modal > form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  max-height: 90vh;
+  overflow: hidden;
+}
+
 .modal-header {
+  flex-shrink: 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -2013,15 +2023,25 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   padding: 20px;
   overflow-y: auto;
   flex: 1;
+  min-height: 0;
 }
 
 .modal-footer {
+  flex-shrink: 0;
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
-  padding-top: 16px;
-  margin-top: 16px;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 20px;
   border-top: 1px solid var(--border-subtle);
+  box-sizing: border-box;
+}
+
+.modal-body .modal-footer {
+  padding-left: 0;
+  padding-right: 0;
+  padding-bottom: 0;
+  margin-top: 20px;
 }
 
 /* ==========================================================================

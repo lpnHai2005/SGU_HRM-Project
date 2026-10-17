@@ -40,3 +40,5 @@ tmp/mobile-*.png
 .gemini
 .impeccable
 .opencode
+uploads/
+backend/uploads/

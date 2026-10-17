@@ -866,16 +866,33 @@ async def hr_approve_leave(
     if leave_req["type_code"] == "THOI_VIEC" or leave_req["leave_type_id"] == 6:
         # Cập nhật hồ sơ nhân viên thành RESIGNED
         await db.execute(text("""
-            UPDATE employees 
+            UPDATE employees
             SET employment_status = 'RESIGNED', resignation_date = CURRENT_DATE, updated_at = CURRENT_TIMESTAMP
             WHERE employee_id = :eid
         """), {"eid": leave_req["employee_id"]})
         # Vô hiệu hóa tài khoản đăng nhập để bảo mật hệ thống
         await db.execute(text("""
-            UPDATE users 
+            UPDATE users
             SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP
             WHERE employee_id = :eid
         """), {"eid": leave_req["employee_id"]})
+        # Tự động chấm dứt hợp đồng lao động ACTIVE/DRAFT
+        hr_user_id = current_user.get("user_id")
+        await db.execute(text("""
+            UPDATE contracts
+            SET status = 'TERMINATED',
+                termination_date = :term_date,
+                termination_reason = :term_reason,
+                terminated_by = :user_id,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE employee_id = :eid
+            AND status IN ('ACTIVE', 'DRAFT')
+        """), {
+            "eid": leave_req["employee_id"],
+            "term_date": leave_req["end_date"] or date.today(),
+            "term_reason": f"Nghỉ việc theo đơn xin thôi việc (Leave Request #{request_id})",
+            "user_id": hr_user_id
+        })
 
     # 2. Đơn nghỉ thai sản (type_code = 'THAI_SAN' hoặc leave_type_id = 3)
     elif leave_req["type_code"] == "THAI_SAN" or leave_req["leave_type_id"] == 3:

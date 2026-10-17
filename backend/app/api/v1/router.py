@@ -5,7 +5,7 @@ from sqlalchemy import text
 from app.core.database import get_db
 from app.api.v1.endpoints import (
     auth, users, roles, audit_logs,
-    employees, attendances, leaves, payrolls, reports, ai_copilot, mobile_attendance, work_schedules, fixed_schedules, operations
+    employees, attendances, leaves, payrolls, reports, ai_copilot, mobile_attendance, work_schedules, fixed_schedules, operations, contracts, resignations
 )
 
 api_router = APIRouter()
@@ -20,6 +20,8 @@ api_router.include_router(auth.router, prefix="/auth", tags=["Xác thực & Tài
 api_router.include_router(users.router, prefix="/users", tags=["Quản lý Người dùng (Users)"])
 api_router.include_router(roles.router, prefix="/roles", tags=["Vai trò & Phân quyền (Roles & RBAC)"])
 api_router.include_router(employees.router, prefix="/employees", tags=["Quản lý Nhân sự (Employees)"])
+api_router.include_router(contracts.router, prefix="/contracts", tags=["Quản lý Hợp đồng (Contracts)"])
+api_router.include_router(resignations.router, prefix="/resignations", tags=["Quản lý Thôi việc (Resignations)"])
 api_router.include_router(attendances.router, prefix="/attendances", tags=["Chấm công & Ca kíp (Attendances)"])
 api_router.include_router(leaves.router, prefix="/leaves", tags=["Nghỉ phép (Leaves)"])
 api_router.include_router(leaves.router, prefix="/leave-requests", tags=["Nghỉ phép (Leave Requests Workflow)"])

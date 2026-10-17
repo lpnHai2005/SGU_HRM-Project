@@ -21,6 +21,8 @@ import { SalesCommissionPage } from './pages/SalesCommissionPage'
 import { MyPayslipPage } from './pages/MyPayslipPage'
 import { ProjectsPage } from './pages/ProjectsPage'
 import { ContractsMovementPage } from './pages/ContractsMovementPage'
+import { ContractManagementPage } from './pages/ContractManagementPage'
+import { ResignationManagementPage } from './pages/ResignationManagementPage'
 import { PayrollFundPage } from './pages/PayrollFundPage'
 import { PayrollSettlementsPage } from './pages/PayrollSettlementsPage'
 
@@ -175,7 +177,8 @@ export function App() {
           <Route path="/stores" element={<ProtectedRoute path="/stores"><StoresPage/></ProtectedRoute>} />
           <Route path="/users" element={<ProtectedRoute path="/users"><UserAccessPage currentUserId={user!.user_id} /></ProtectedRoute>} />
           <Route path="/employees" element={<ProtectedRoute path="/employees"><EmployeeListPage user={user} /></ProtectedRoute>} />
-          <Route path="/contracts" element={<ProtectedRoute path="/contracts"><ContractsMovementPage /></ProtectedRoute>} />
+          <Route path="/contracts" element={<ProtectedRoute path="/contracts"><ContractManagementPage user={user} /></ProtectedRoute>} />
+          <Route path="/resignations" element={<ProtectedRoute path="/resignations"><ResignationManagementPage user={user} /></ProtectedRoute>} />
           <Route path="/activity" element={<ProtectedRoute path="/activity"><ActivityPage user={user} /></ProtectedRoute>} />
           <Route path="/my-activity" element={<ProtectedRoute path="/my-activity"><ActivityPage user={user} personal /></ProtectedRoute>} />
           <Route path="/my-schedules" element={<ProtectedRoute path="/my-schedules"><PersonalSchedulesPage /></ProtectedRoute>} />
