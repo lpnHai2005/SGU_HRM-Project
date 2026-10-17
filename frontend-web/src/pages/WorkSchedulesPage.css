@@ -1087,6 +1087,19 @@
   border-color: var(--action-primary);
 }
 
+.weekday-pill.locked,
+.weekday-pill:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+  filter: grayscale(0.45);
+}
+
+.weekday-pill.locked:hover,
+.weekday-pill:disabled:hover {
+  border-color: var(--border-default);
+  color: var(--text-secondary);
+}
+
 .radio-options-row {
   display: flex;
   gap: 16px;
@@ -1260,6 +1273,13 @@
   gap: 6px;
 }
 
+.employee-schedule-notice {
+  margin-top: 5px;
+  color: var(--text-warning, #a16207);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
 .self-notice {
   color: var(--status-error);
 }
@@ -1408,4 +1428,16 @@
   .shift-cards-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* Preserve the existing hover colors while removing the background fade on
+   pointer leave. Other button transitions (for example shadow/transform)
+   remain intact. */
+.work-schedules-page button,
+.work-schedules-page .btn,
+.work-schedules-page [role="button"],
+.work-schedules-page .week-col-header,
+.work-schedules-page .month-day-cell,
+.work-schedules-page .employee-select-item {
+  transition-property: color, border-color, box-shadow, transform;
 }

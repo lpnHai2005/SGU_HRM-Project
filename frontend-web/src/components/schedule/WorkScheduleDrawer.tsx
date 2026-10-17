@@ -26,6 +26,40 @@ const todayVietnam = () =>
     day: '2-digit',
   }).format(new Date())
 
+const nextSunday = (value: string) => {
+  const date = new Date(`${value}T12:00:00`)
+  date.setDate(date.getDate() + ((7 - date.getDay()) % 7))
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+const weekdayOf = (value: string) => {
+  const day = new Date(`${value}T12:00:00`).getDay()
+  return day === 0 ? 7 : day
+}
+
+const alignToWeekday = (value: string, allowed: number[]) => {
+  for (let offset = 0; offset < 7; offset += 1) {
+    const candidate = new Date(`${value}T12:00:00`)
+    candidate.setDate(candidate.getDate() + offset)
+    const day = candidate.getDay() === 0 ? 7 : candidate.getDay()
+    if (allowed.includes(day)) return `${candidate.getFullYear()}-${String(candidate.getMonth() + 1).padStart(2, '0')}-${String(candidate.getDate()).padStart(2, '0')}`
+  }
+  return value
+}
+
+const toMinutes = (value: string) => {
+  const [hours, minutes] = value.split(':').map(Number)
+  return hours * 60 + minutes
+}
+
+const overlapsShift = (aStart: string, aEnd: string, bStart: string, bEnd: string) => {
+  const a0 = toMinutes(aStart)
+  const b0 = toMinutes(bStart)
+  const a1 = toMinutes(aEnd) <= a0 ? toMinutes(aEnd) + 1440 : toMinutes(aEnd)
+  const b1 = toMinutes(bEnd) <= b0 ? toMinutes(bEnd) + 1440 : toMinutes(bEnd)
+  return a0 < b1 && b0 < a1
+}
+
 const WEEKDAY_OPTIONS = [
   { label: 'T2', value: 1, name: 'Thứ Hai' },
   { label: 'T3', value: 2, name: 'Thứ Ba' },
@@ -80,10 +114,12 @@ export function WorkScheduleDrawer({
   useEffect(() => {
     if (isOpen) {
       setMode(initialMode)
-      if (initialDate) {
-        setWorkDate(initialDate)
-        setStartDate(initialDate >= todayVietnam() ? initialDate : todayVietnam())
-      }
+      const anchor = initialDate && initialDate >= todayVietnam() ? initialDate : todayVietnam()
+      const initialShiftName = lookups?.work_shifts?.find(shift => shift.shift_id === initialShiftId)?.shift_name || (initialShiftId === 3 ? 'Ca Full cuối tuần' : '')
+      const initialWeekend = initialShiftName.toLowerCase().includes('cuối tuần')
+      setWorkDate(initialWeekend ? nextSunday(anchor) : anchor)
+      setWeekdays(initialWeekend ? [7] : [1, 2, 3, 4, 5, 6])
+      setStartDate(initialWeekend ? nextSunday(anchor) : alignToWeekday(anchor, [1, 2, 3, 4, 5, 6]))
       if (initialShiftId) setShiftId(initialShiftId)
       if (isStoreManager && user?.store_id) {
         setStoreId(Number(user.store_id))
@@ -91,9 +127,15 @@ export function WorkScheduleDrawer({
         setStoreId(Number(initialStoreId))
       }
       setError('')
-      setReason(initialMode === 'recurring' ? 'Phân ca cố định theo kế hoạch' : 'Phân ca theo kế hoạch tuần')
+      setReason(initialMode === 'recurring' ? 'Phân ca cho nhân viên chính thức' : 'Phân ca theo kế hoạch tuần')
+      setWeekdays([1, 2, 3, 4, 5, 6])
+      setEndDate('')
+      setHasEndDate(false)
+      setSelectedEmployeeIds([])
+      setEmployeeSearch('')
+      setNotes('')
     }
-  }, [isOpen, initialMode, initialDate, initialShiftId, initialStoreId, isStoreManager, user])
+  }, [isOpen, initialMode, initialDate, initialShiftId, initialStoreId, isStoreManager, user, lookups])
 
   // Shift list (4 standard shifts)
   const standardShifts = useMemo(() => {
@@ -112,6 +154,24 @@ export function WorkScheduleDrawer({
     () => standardShifts.find(s => s.shift_id === shiftId) || standardShifts[0],
     [standardShifts, shiftId]
   )
+  const isWeekendFullShift = selectedShift?.shift_name.toLowerCase().includes('cuối tuần') || false
+
+  useEffect(() => {
+    if (!isOpen) return
+    const anchor = startDate >= todayVietnam() ? startDate : todayVietnam()
+    if (isWeekendFullShift) {
+      setWeekdays([7])
+      setStartDate(nextSunday(anchor))
+      setWorkDate(nextSunday(workDate >= todayVietnam() ? workDate : todayVietnam()))
+      if (hasEndDate) setEndDate(nextSunday(anchor))
+    } else if (weekdays.length === 1 && weekdays[0] === 7) {
+      setWeekdays([1, 2, 3, 4, 5, 6])
+      setStartDate(todayVietnam())
+      setWorkDate(todayVietnam())
+    }
+  // Apply only when drawer visibility or shift category changes; weekday edits remain user-controlled.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, isWeekendFullShift])
 
   // Filter assignable employees in store
   const assignableEmployees = useMemo(() => {
@@ -156,13 +216,17 @@ export function WorkScheduleDrawer({
 
   // Toggle weekday for recurring mode
   const toggleWeekday = (val: number) => {
-    setWeekdays(prev => {
-      if (prev.includes(val)) {
-        if (prev.length === 1) return prev
-        return prev.filter(v => v !== val)
-      }
-      return [...prev, val].sort((a, b) => a - b)
-    })
+    if (isWeekendFullShift && val !== 7) return
+    const next = weekdays.includes(val)
+      ? weekdays.length === 1 ? weekdays : weekdays.filter(v => v !== val)
+      : [...weekdays, val].sort((a, b) => a - b)
+    setWeekdays(next)
+    const anchor = startDate >= todayVietnam() ? startDate : todayVietnam()
+    const aligned = isWeekendFullShift || (next.length === 1 && next[0] === 7)
+      ? nextSunday(anchor)
+      : alignToWeekday(anchor, next)
+    setStartDate(aligned)
+    if (hasEndDate && ((val === 7 && next.includes(7)) || (endDate && endDate < aligned))) setEndDate(aligned)
   }
 
   // Preview conflict detection
@@ -174,16 +238,22 @@ export function WorkScheduleDrawer({
       for (const empId of selectedEmployeeIds) {
         const emp = employees.find(e => e.employee_id === empId)
         const name = emp?.full_name || `NV #${empId}`
-        const match = existingSchedules.find(
-          s => s.employee_id === empId && s.work_date === workDate && !s.cancelled_at
-        )
-        if (match) {
-          conflicts.push(`${name} đã được phân ${match.shift_name} vào ngày ${workDate}`)
-        }
+        const matches = existingSchedules.filter(s => s.employee_id === empId && s.work_date === workDate && !s.cancelled_at
+          && overlapsShift(selectedShift.start_time, selectedShift.end_time, s.start_time, s.end_time))
+        for (const match of matches) conflicts.push(`${name}: ${match.shift_name} (${match.start_time.slice(0, 5)}–${match.end_time.slice(0, 5)}) tại ${match.store_name} ngày ${workDate}.`)
+      }
+    } else {
+      for (const empId of selectedEmployeeIds) {
+        const emp = employees.find(e => e.employee_id === empId)
+        const name = emp?.full_name || `NV #${empId}`
+        const matches = existingSchedules.filter(s => s.employee_id === empId && !s.cancelled_at && s.work_date >= startDate
+          && (!hasEndDate || !endDate || s.work_date <= endDate) && weekdays.includes(weekdayOf(s.work_date))
+          && overlapsShift(selectedShift.start_time, selectedShift.end_time, s.start_time, s.end_time))
+        for (const match of matches) conflicts.push(`${name}: ${match.shift_name} (${match.start_time.slice(0, 5)}–${match.end_time.slice(0, 5)}) tại ${match.store_name} ngày ${match.work_date}.`)
       }
     }
     return conflicts
-  }, [selectedEmployeeIds, mode, workDate, existingSchedules, employees])
+  }, [selectedEmployeeIds, mode, workDate, startDate, endDate, hasEndDate, weekdays, selectedShift, existingSchedules, employees])
 
   if (!isOpen) return null
 
@@ -242,8 +312,9 @@ export function WorkScheduleDrawer({
           store_id: storeId,
           shift_id: shiftId,
           work_date: startDate,
-          notes: notes.trim() || 'Phân ca nhân viên chính thức',
+          notes: notes.trim() || 'Phân ca cho nhân viên chính thức',
           weekdays: weekdayStr,
+          reason: reason.trim(),
           end_date: hasEndDate && endDate ? endDate : undefined,
         }))
 
@@ -300,7 +371,7 @@ export function WorkScheduleDrawer({
             role="tab"
             aria-selected={mode === 'daily'}
             className={`schedule-mode-btn ${mode === 'daily' ? 'active' : ''}`}
-            onClick={() => setMode('daily')}
+            onClick={() => { setMode('daily'); setReason('Phân ca theo kế hoạch tuần') }}
             disabled={saving}
           >
             {Icons.calendar}
@@ -311,7 +382,7 @@ export function WorkScheduleDrawer({
             role="tab"
             aria-selected={mode === 'recurring'}
             className={`schedule-mode-btn ${mode === 'recurring' ? 'active' : ''}`}
-            onClick={() => setMode('recurring')}
+            onClick={() => { setMode('recurring'); setReason('Phân ca cho nhân viên chính thức') }}
             disabled={saving}
           >
             {Icons.refresh}
@@ -356,7 +427,26 @@ export function WorkScheduleDrawer({
                     key={s.shift_id}
                     type="button"
                     className={`shift-card-option ${isSelected ? 'selected' : ''}`}
-                    onClick={() => setShiftId(s.shift_id)}
+                    onClick={() => {
+                      setShiftId(s.shift_id)
+                      if (s.shift_name.toLowerCase().includes('cuối tuần')) {
+                        if (mode === 'daily') setWorkDate(nextSunday(workDate >= todayVietnam() ? workDate : todayVietnam()))
+                        else {
+                          const sunday = nextSunday(startDate >= todayVietnam() ? startDate : todayVietnam())
+                          setWeekdays([7])
+                          setStartDate(sunday)
+                          if (hasEndDate) setEndDate(sunday)
+                        }
+                      } else if (selectedShift.shift_name.toLowerCase().includes('cuối tuần')) {
+                        const today = todayVietnam()
+                        if (mode === 'daily') setWorkDate(today)
+                        else {
+                          setWeekdays([1, 2, 3, 4, 5, 6])
+                          setStartDate(today)
+                          if (hasEndDate && endDate < today) setEndDate(today)
+                        }
+                      }
+                    }}
                     disabled={saving}
                   >
                     <div className="shift-card-header">
@@ -380,7 +470,7 @@ export function WorkScheduleDrawer({
                 value={workDate}
                 label="Ngày làm việc"
                 disabled={saving}
-                onChange={date => setWorkDate(date)}
+                onChange={date => setWorkDate(selectedShift.shift_name.toLowerCase().includes('cuối tuần') ? nextSunday(date) : date)}
               />
               <small className="form-hint">Ca chỉ áp dụng cho ngày này, không phát sinh chuỗi lặp.</small>
             </div>
@@ -391,13 +481,14 @@ export function WorkScheduleDrawer({
                 <div className="weekday-pill-group">
                   {WEEKDAY_OPTIONS.map(day => {
                     const isChecked = weekdays.includes(day.value)
+                    const isLocked = isWeekendFullShift && day.value !== 7
                     return (
                       <button
                         key={day.value}
                         type="button"
-                        className={`weekday-pill ${isChecked ? 'active' : ''}`}
+                        className={`weekday-pill ${isChecked ? 'active' : ''} ${isLocked ? 'locked' : ''}`}
                         onClick={() => toggleWeekday(day.value)}
-                        disabled={saving}
+                        disabled={saving || isLocked}
                         title={day.name}
                       >
                         {day.label}
@@ -405,7 +496,7 @@ export function WorkScheduleDrawer({
                     )
                   })}
                 </div>
-                <small className="form-hint">Mặc định Thứ Hai đến Thứ Bảy; có thể chọn thêm Chủ Nhật.</small>
+                <small className="form-hint">{isWeekendFullShift ? 'Ca Full cuối tuần chỉ được lặp vào Chủ Nhật.' : weekdays.length > 1 ? `Ngày bắt đầu sớm nhất là ${WEEKDAY_OPTIONS.find(day => day.value === weekdayOf(startDate))?.name}; lịch sẽ tiếp tục lặp vào ${WEEKDAY_OPTIONS.filter(day => weekdays.includes(day.value) && day.value !== weekdayOf(startDate)).map(day => day.name).join(', ')}.` : 'Ngày bắt đầu được căn đến thứ đã chọn gần nhất từ ngày tham chiếu.'}</small>
               </div>
 
               <div className="form-group">
@@ -414,7 +505,7 @@ export function WorkScheduleDrawer({
                   value={startDate}
                   label="Ngày bắt đầu áp dụng"
                   disabled={saving}
-                  onChange={date => setStartDate(date)}
+                  onChange={date => setStartDate(isWeekendFullShift || (weekdays.length === 1 && weekdays[0] === 7) ? nextSunday(date) : alignToWeekday(date, weekdays))}
                 />
               </div>
 
@@ -521,6 +612,9 @@ export function WorkScheduleDrawer({
                 filteredEmployees.map(emp => {
                   const isSelected = selectedEmployeeIds.includes(emp.employee_id)
                   const isSelf = isStoreManager && emp.employee_id === user?.employee_id
+                  const employeeSchedules = existingSchedules.filter(schedule => schedule.employee_id === emp.employee_id && !schedule.cancelled_at
+                    && (mode === 'daily' ? schedule.work_date === workDate : schedule.work_date >= startDate
+                      && (!hasEndDate || !endDate || schedule.work_date <= endDate) && weekdays.includes(weekdayOf(schedule.work_date))))
                   return (
                     <label
                       key={emp.employee_id}
@@ -541,6 +635,12 @@ export function WorkScheduleDrawer({
                           <span>{emp.position_name || 'Nhân viên'}</span>
                           {isSelf && <span className="self-notice">• Không được tự phân ca</span>}
                         </div>
+                        {employeeSchedules.length > 0 && (
+                          <div className="employee-schedule-notice" title="Nhân viên đã có lịch trong khoảng đang chọn">
+                            Đã có lịch: {employeeSchedules.slice(0, 2).map(schedule => `${schedule.shift_name} ${schedule.start_time.slice(0, 5)}–${schedule.end_time.slice(0, 5)} (${schedule.work_date})`).join(' · ')}
+                            {employeeSchedules.length > 2 ? ` · +${employeeSchedules.length - 2} ca` : ''}
+                          </div>
+                        )}
                       </div>
                     </label>
                   )

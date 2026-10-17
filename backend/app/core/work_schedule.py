@@ -42,8 +42,11 @@ async def lock_employee(db, user, employee_id, store_id):
         raise HTTPException(404, 'Employee not found')
     if not roles & {'ADMIN', 'HR_MANAGER'} and (not user.get('store_id') or employee['store_id'] != user['store_id'] or store_id != user['store_id']):
         raise HTTPException(403, 'Store is outside manager scope')
-    if not (await db.execute(text('SELECT store_id FROM stores WHERE store_id=:id'), {'id':store_id})).first():
+    store = (await db.execute(text('SELECT store_id,is_active FROM stores WHERE store_id=:id FOR SHARE'), {'id':store_id})).mappings().first()
+    if not store:
         raise HTTPException(404, 'Store not found')
+    if not store['is_active']:
+        raise HTTPException(409, 'STORE_INACTIVE: không thể tạo hoặc cập nhật lịch mới tại cửa hàng đã ngừng hoạt động.')
 
 async def ensure_assignable_employee(db, employee_id):
     status = (await db.execute(

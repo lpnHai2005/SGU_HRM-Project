@@ -221,6 +221,12 @@ async def create_employee(
     current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER"])),
     db: AsyncSession = Depends(get_db)
 ):
+    if emp.store_id is not None:
+        store_active = (await db.execute(text('SELECT is_active FROM stores WHERE store_id=:id'), {'id': emp.store_id})).scalar_one_or_none()
+        if store_active is None:
+            raise HTTPException(status_code=404, detail='Không tìm thấy cửa hàng được chọn')
+        if not store_active:
+            raise HTTPException(status_code=409, detail='Không thể gán nhân viên mới vào cửa hàng đã ngừng hoạt động')
     # Tự sinh mã nhân viên TZ-xxx nếu chưa nhập
     if not emp.employee_code:
         max_id = (await db.execute(text("SELECT COALESCE(MAX(employee_id), 0) FROM employees"))).scalar() or 0
@@ -287,6 +293,12 @@ async def update_employee(
     update_fields = []
     params = {"id": employee_id}
     data = emp.model_dump(exclude_unset=True)
+    if data.get('store_id') is not None:
+        store_active = (await db.execute(text('SELECT is_active FROM stores WHERE store_id=:id'), {'id': data['store_id']})).scalar_one_or_none()
+        if store_active is None:
+            raise HTTPException(status_code=404, detail='Không tìm thấy cửa hàng được chọn')
+        if not store_active:
+            raise HTTPException(status_code=409, detail='Không thể chuyển nhân viên vào cửa hàng đã ngừng hoạt động')
 
     # Đồng bộ lương cơ bản vào hợp đồng đang hiệu lực nếu có truyền
     if "basic_salary" in data:

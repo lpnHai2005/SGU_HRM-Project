@@ -1,6 +1,6 @@
 """Real SQL/API tests in temporary tables. Business data is never modified."""
 import asyncio
-from datetime import datetime
+from datetime import date, datetime
 from unittest.mock import patch
 from fastapi import FastAPI
 from httpx import AsyncClient,ASGITransport
@@ -22,17 +22,18 @@ async def main():
     "CREATE TEMP TABLE roles(role_id int,role_code text) ON COMMIT DROP",
     "CREATE TEMP TABLE employees(employee_id int PRIMARY KEY,store_id int,department_id int,full_name text,employment_status text NOT NULL DEFAULT 'ACTIVE',position_id int DEFAULT 1) ON COMMIT DROP",
     "CREATE TEMP TABLE positions(position_id int,position_name text) ON COMMIT DROP",
-    'CREATE TEMP TABLE stores(store_id int PRIMARY KEY,store_name text) ON COMMIT DROP',
+    'CREATE TEMP TABLE stores(store_id int PRIMARY KEY,store_name text,is_active bool DEFAULT true) ON COMMIT DROP',
+    'CREATE TEMP TABLE store_web_attendance_networks(store_id int,network cidr) ON COMMIT DROP',
     'CREATE TEMP TABLE work_shifts(shift_id int PRIMARY KEY,shift_name text,start_time time,end_time time,work_hours numeric,is_active bool) ON COMMIT DROP',
     'CREATE TEMP TABLE work_schedules(schedule_id bigserial PRIMARY KEY,employee_id int,store_id int,shift_id int,work_date date,notes text,starts_at timestamptz,ends_at timestamptz,cancelled_at timestamptz) ON COMMIT DROP',
     'CREATE TEMP TABLE work_schedule_audits(audit_id bigserial,schedule_id bigint,actor_id int,action text,reason text,old_values jsonb,new_values jsonb,created_at timestamptz DEFAULT now()) ON COMMIT DROP',
-    'CREATE TEMP TABLE fixed_schedule_rules(rule_id bigserial PRIMARY KEY,employee_id int,store_id int,shift_id int,start_date date,notes text,created_by int,created_at timestamptz DEFAULT now(),stopped_at timestamptz,last_error text) ON COMMIT DROP',
+    "CREATE TEMP TABLE fixed_schedule_rules(rule_id bigserial PRIMARY KEY,employee_id int,store_id int,shift_id int,start_date date,notes text,created_by int,created_at timestamptz DEFAULT now(),stopped_at timestamptz,last_error text,weekdays varchar(50) DEFAULT '1,2,3,4,5,6',end_date date) ON COMMIT DROP",
     'CREATE TEMP TABLE fixed_schedule_audits(audit_id bigserial,rule_id bigint,actor_id int,action text,reason text,created_at timestamptz DEFAULT now()) ON COMMIT DROP',
     'ALTER TABLE work_schedules ADD COLUMN fixed_rule_id bigint',
     'CREATE TEMP TABLE attendances(LIKE public.attendances INCLUDING ALL) ON COMMIT DROP',
     'CREATE TEMP SEQUENCE schedule_test_attendance_ids',
     "ALTER TABLE pg_temp.attendances ALTER COLUMN attendance_id SET DEFAULT nextval('pg_temp.schedule_test_attendance_ids')",
-    "INSERT INTO employees(employee_id,store_id,department_id,full_name) VALUES(1,1,10,'Staff A'),(2,2,20,'Staff B')",
+    "INSERT INTO employees(employee_id,store_id,department_id,full_name) VALUES(1,1,10,'Staff A'),(2,2,20,'Staff B'),(4,1,10,'Staff Sunday')",
     "INSERT INTO positions VALUES(1,'Sales')",
     "INSERT INTO stores VALUES(1,'Store A'),(2,'Store B')",
     "INSERT INTO work_shifts VALUES(1,'Morning','08:00','12:00',4,true),(2,'Afternoon','13:00','17:00',4,true),(3,'Overlap','11:00','15:00',4,true),(4,'Night','22:00','06:00',8,true),(5,'Early','05:00','09:00',4,true),(6,'Adjacent','12:00','13:00',1,true),(7,'Inactive','18:00','20:00',2,false)"
@@ -83,7 +84,8 @@ async def main():
     user.update(employee_id=99,roles=['HR_MANAGER'])
     assert len((await client.get('/work-schedules?day=2026-10-10&department_id=20')).json())==1
     assert len((await client.get('/work-schedules?day=2026-10-10&view=month&store_id=1')).json())==4
-    assert len((await client.get('/work-schedules?day=2026-10-10&view=week&store_id=1')).json())==3
+    week_rows=(await client.get('/work-schedules?day=2026-10-10&view=week&store_id=1')).json()
+    assert len(week_rows)==4,week_rows  # API week includes Sunday; UI may hide it by default.
     for employment_status in ['ON_LEAVE','RESIGNED']:
      await conn.execute(text('UPDATE employees SET employment_status=:status WHERE employee_id=1'),{'status':employment_status})
      assert (await client.post('/work-schedules',json=item(1,'2026-10-30'))).status_code==409
@@ -179,6 +181,29 @@ async def main():
      assert conflict.status_code==409,conflict.text
      assert (await conn.execute(text('SELECT count(*) FROM pg_temp.fixed_schedule_rules WHERE stopped_at IS NULL'))).scalar_one()==0
      assert (await conn.execute(text('SELECT count(*) FROM pg_temp.fixed_schedule_audits'))).scalar_one()==2
+    with patch.object(fixed_schedule,'local_now',return_value=datetime(2026,10,10,tzinfo=VIETNAM_TZ)), patch.object(fixed_schedules,'local_now',return_value=datetime(2026,10,10,tzinfo=VIETNAM_TZ)):
+     sunday=await client.post('/fixed-schedules',json=dict(employee_id=4,store_id=1,shift_id=1,work_date='2026-10-18',weekdays='7',notes='Sunday shift'))
+     assert sunday.status_code==201,sunday.text
+     sid=sunday.json()['rule_id']
+     dates=(await conn.execute(text('SELECT work_date FROM pg_temp.work_schedules WHERE fixed_rule_id=:id ORDER BY work_date'),{'id':sid})).scalars().all()
+     assert dates and all(day.weekday()==6 for day in dates)
+     first=(await conn.execute(text('SELECT schedule_id FROM pg_temp.work_schedules WHERE fixed_rule_id=:id AND work_date=:day'),{'id':sid,'day':date(2026,10,18)})).scalar_one()
+     assert (await client.post(f'/work-schedules/{first}/cancel',json={'reason':'Sunday exception'})).status_code==200
+     edited=await client.put(f'/fixed-schedules/{sid}',json=dict(effective_date='2026-10-18',shift_id=2,weekdays='7',notes='New Sunday shift',reason='Future shift change'))
+     assert edited.status_code==200,edited.text
+     exception=(await conn.execute(text('SELECT cancelled_at FROM pg_temp.work_schedules WHERE schedule_id=:id'),{'id':first})).scalar_one()
+     assert exception is not None
+     changed=(await conn.execute(text('SELECT shift_id FROM pg_temp.work_schedules WHERE fixed_rule_id=:id AND work_date=:day'),{'id':sid,'day':date(2026,10,25)})).scalar_one()
+     assert changed==2
+     stopped=await client.post(f'/fixed-schedules/{sid}/stop',json={'reason':'Stop from November','effective_date':'2026-11-01'})
+     assert stopped.status_code==200,stopped.text
+     assert (await conn.execute(text('SELECT end_date FROM pg_temp.fixed_schedule_rules WHERE rule_id=:id'),{'id':sid})).scalar_one().isoformat()=='2026-10-31'
+     assert (await conn.execute(text('SELECT stopped_at FROM pg_temp.fixed_schedule_rules WHERE rule_id=:id'),{'id':sid})).scalar_one() is not None
+     future=(await conn.execute(text('SELECT count(*) FROM pg_temp.work_schedules WHERE fixed_rule_id=:id AND work_date>=:day AND cancelled_at IS NULL'),{'id':sid,'day':date(2026,11,1)})).scalar_one()
+     assert future==0
+     replacement=await client.post('/fixed-schedules',json=dict(employee_id=4,store_id=1,shift_id=1,work_date='2026-11-01',weekdays='7',notes='Replacement Sunday shift'))
+     assert replacement.status_code==201,replacement.text
+    print('PASS: Sunday recurrence, future rule edit, cancelled-day exception and effective stop.')
     print('PASS: fixed Monday-Saturday recurrence, Sunday exclusion, RBAC, duplicate rejection, idempotent refresh, stop preserving attendance, atomic conflict rollback.')
    print('PASS: multiple shifts, duplicate/overlap/overnight/adjacency, inactive shift, atomic batch, RBAC, filters, edit/cancel/audit, attendance snapshot and reconciliation.')
   finally: await tx.rollback()
