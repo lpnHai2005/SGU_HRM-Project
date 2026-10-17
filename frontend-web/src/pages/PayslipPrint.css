@@ -1,50 +1,349 @@
-.payslip-a4-modal { font-family: var(--font-sans); overflow-wrap: anywhere; }
-.payslip-a4-header { gap: 16px; }
-.payslip-a4-header > div { min-width: 0; }
-.payslip-columns { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 12px; }
-.payslip-a4-attendance-summary svg { width: 14px; height: 14px; vertical-align: -2px; margin-right: 3px; }
-.payslip-attendance-values { display: flex; gap: 8px 14px; flex-wrap: wrap; }
-.payslip-a4-table { table-layout: fixed; }
-.payslip-a4-table td { overflow-wrap: anywhere; }
-.payslip-a4-table td:last-child { font-variant-numeric: tabular-nums; font-family: var(--font-mono); }
-.print-modal .modal-header { flex-wrap: wrap; gap: 10px; }
-.payslip-a4-highlight-box { gap: 12px; flex-wrap: wrap; }
-@media screen and (max-width: 650px) {
-  .payslip-a4-modal { padding: 16px 12px; }
-  .payslip-a4-header { flex-direction: column; }
-  .payslip-a4-info-grid, .payslip-columns { grid-template-columns: 1fr; }
-  .payslip-a4-signatures { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+/* ===============================================================================
+ * PAYSLIP A4 PRINT & PREVIEW STYLES (VIETNAMESE OFFICIAL ADMINISTRATIVE FORMAT)
+ * Chuẩn thể thức văn bản hành chính Việt Nam (Nghị định 30/2020/NĐ-CP)
+ * Tối ưu vừa vặn trong DUY NHẤT 1 TRANG A4 khi in (Ctrl+P / In PDF)
+ * =============================================================================== */
+
+.payslip-a4-modal {
+  font-family: 'Times New Roman', Times, 'Liberation Serif', Georgia, serif;
+  color: #0f172a;
+  background: #ffffff;
+  padding: 20px 28px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  border-radius: 4px;
+  line-height: 1.36;
+  font-size: 11.5px;
+  max-width: 860px;
+  margin: 0 auto;
 }
-.leave-a4-signatures {
+
+/* Header 2 cột Quốc hiệu - Tên cơ quan chuẩn Nghị định 30/2020 */
+.payslip-a4-national-header {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  text-align: center;
-  margin-top: 20px;
-  gap: 16px;
-  font-size: 11px;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 8px;
+  align-items: start;
 }
+
+.payslip-hdr-org {
+  text-align: center;
+}
+
+.payslip-org-name {
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  color: #0f172a;
+  line-height: 1.3;
+}
+
+.payslip-org-sub {
+  font-size: 10px;
+  font-weight: 600;
+  color: #334155;
+  margin-top: 1px;
+  text-transform: uppercase;
+}
+
+.payslip-doc-number {
+  font-size: 11px;
+  color: #1e3a8a;
+  margin-top: 2px;
+  font-weight: 600;
+  font-family: 'Times New Roman', Times, serif;
+}
+
+.payslip-hdr-motto {
+  text-align: center;
+}
+
+.payslip-motto-country {
+  font-weight: 700;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  color: #0f172a;
+  letter-spacing: 0.2px;
+}
+
+.payslip-motto-subtitle {
+  font-weight: 700;
+  font-size: 11.5px;
+  color: #0f172a;
+  margin-top: 1px;
+}
+
+.payslip-motto-line {
+  width: 120px;
+  height: 1px;
+  background-color: #0f172a;
+  margin: 3px auto 4px;
+}
+
+.payslip-doc-date {
+  font-style: italic;
+  font-size: 10.5px;
+  color: #374151;
+}
+
+/* Tiêu đề chính */
+.payslip-a4-title-section {
+  text-align: center;
+  margin: 6px 0 8px;
+}
+
+.payslip-doc-main-title {
+  font-size: 16.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: #0f172a;
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
+}
+
+.payslip-doc-legal-basis {
+  font-style: italic;
+  font-size: 11px;
+  color: #4b5563;
+}
+
+.payslip-a4-modal,
+.payslip-a4-modal * {
+  font-family: 'Times New Roman', Times, 'Liberation Serif', Georgia, serif !important;
+}
+
+/* Tiêu đề các mục */
+.payslip-sec-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #1e3a8a;
+  margin: 7px 0 4px;
+  letter-spacing: 0.2px;
+}
+
+/* Thông tin nhân viên 2 cột chuẩn văn bản hành chính */
+.payslip-a4-info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 18px;
+  font-size: 11.5px;
+  line-height: 1.42;
+  margin-bottom: 6px;
+}
+
+/* Thống kê công và nghỉ 2 cột chuẩn văn bản hành chính */
+.payslip-a4-attendance-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 18px;
+  font-size: 11.5px;
+  line-height: 1.42;
+  margin-bottom: 6px;
+}
+
+/* 2 cột thu nhập - khấu trừ */
+.payslip-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+/* Bảng biểu */
+.payslip-a4-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 4px;
+  font-size: 11px;
+  table-layout: fixed;
+}
+
+.payslip-a4-table th,
+.payslip-a4-table td {
+  border: 1px solid #cbd5e1;
+  padding: 3px 6px;
+  vertical-align: middle;
+}
+
+.payslip-a4-table th {
+  background-color: #f1f5f9;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.payslip-a4-table td:last-child {
+  font-variant-numeric: tabular-nums;
+}
+
+.payslip-a4-total-row {
+  background-color: #f8fafc;
+  font-weight: 700;
+}
+
+/* Khối thực lĩnh nổi bật */
+.payslip-a4-highlight-box {
+  background: #f0fdf4;
+  border: 1.5px solid #86efac;
+  border-radius: 4px;
+  padding: 6px 12px;
+  margin: 6px 0 4px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.payslip-a4-net-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #166534;
+}
+
+.payslip-a4-net-amount {
+  font-size: 15.5px;
+  font-weight: 800;
+  color: #15803d;
+}
+
+.payslip-a4-words {
+  font-style: italic;
+  font-size: 11px;
+  margin-bottom: 8px;
+  color: #1e293b;
+}
+
+/* Khối chữ ký 4 bên (người nhận, kế toán lập, kế toán trưởng, giám đốc) */
+.payslip-a4-signatures {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  text-align: center;
+  margin-top: 10px;
+  font-size: 10.5px;
+  gap: 8px;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.payslip-a4-sign-title {
+  font-weight: 700;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  color: #0f172a;
+  margin-bottom: 1px;
+}
+
+.payslip-a4-sign-note {
+  font-style: italic;
+  color: #64748b;
+  font-size: 9.5px;
+}
+
+.payslip-a4-sign-space {
+  height: 52px;
+}
+
+.payslip-a4-sign-name {
+  font-weight: 700;
+  font-size: 11px;
+  color: #0f172a;
+  margin-top: 2px;
+}
+
+/* ===============================================================================
+ * QUY CHUẨN KHI IN TRÌNH DUYỆT (Ctrl+P / window.print) ĐẢM BẢO DUY NHẤT 1 TRANG A4
+ * =============================================================================== */
 @media print {
+  @page {
+    size: A4 portrait;
+    margin: 8mm 12mm 8mm 12mm;
+  }
+
   *, *::before, *::after {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
-  .modal-overlay.print-active-overlay { backdrop-filter: none !important; animation: none !important; }
+
+  html, body {
+    height: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  .print-active-overlay,
+  .print-active-overlay * {
+    visibility: visible;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .modal-overlay.print-active-overlay {
+    position: static !important;
+    background: #ffffff !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+
+  .print-modal {
+    position: static !important;
+    max-width: 100% !important;
+    max-height: none !important;
+    overflow: visible !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .payslip-modal-body {
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #ffffff !important;
+  }
+
   .payslip-a4-modal {
-    width: 190mm !important;
-    max-width: 190mm !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    font-family: 'Times New Roman', Times, 'Liberation Serif', Georgia, serif !important;
+    line-height: 1.34 !important;
+    font-size: 11px !important;
+    page-break-after: avoid !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .payslip-columns {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 10px !important;
+    break-inside: avoid !important;
+  }
+
+  .payslip-a4-table th,
+  .payslip-a4-table td {
+    padding: 3px 5px !important;
+  }
+
+  .payslip-a4-signatures {
     break-inside: avoid !important;
     page-break-inside: avoid !important;
-    font-family: 'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif !important;
-    line-height: 1.35 !important;
+    margin-top: 8px !important;
   }
-  .payslip-columns { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 12px !important; }
-  .payslip-a4-table thead { display: table-header-group; }
-  .payslip-a4-table tr, .payslip-a4-info-grid, .payslip-a4-highlight-box { break-inside: avoid; }
-  .payslip-a4-table th, .payslip-a4-table td { padding: 4px 7px !important; }
-  .payslip-a4-table { font-size: 11px !important; font-family: 'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif !important; margin-bottom: 8px !important; }
-  .payslip-a4-table td:last-child { font-family: 'JetBrains Mono', 'SF Mono', Consolas, Menlo, monospace !important; font-variant-numeric: tabular-nums !important; }
-  .payslip-a4-signatures { display: grid !important; grid-template-columns: repeat(4, 1fr) !important; gap: 8px !important; margin-top: 10px !important; break-inside: avoid !important; }
-  .leave-a4-signatures { display: grid !important; grid-template-columns: repeat(3, 1fr) !important; gap: 14px !important; margin-top: 20px !important; break-inside: avoid !important; }
-  .payslip-a4-sign-space { height: 38px !important; }
-}
 
+  .payslip-a4-sign-space {
+    height: 48px !important;
+  }
+}
