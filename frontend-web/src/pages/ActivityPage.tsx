@@ -8,7 +8,7 @@ import './ActivityPage.css'
 export const operationToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' })
 export const attendanceLabels: Record<string, string> = {
   NORMAL: 'Đúng giờ', LATE: 'Đi muộn', EARLY: 'Về sớm', LATE_AND_EARLY: 'Đi muộn & về sớm',
-  OVERTIME: 'Làm thêm', ANNUAL_LEAVE: 'Nghỉ phép', UNPAID_LEAVE: 'Nghỉ không lương',
+  OVERTIME: 'Giờ ngoài ca ghi nhận', ANNUAL_LEAVE: 'Nghỉ phép', UNPAID_LEAVE: 'Nghỉ không lương',
   SICK_LEAVE: 'Nghỉ ốm', MATERNITY_LEAVE: 'Nghỉ thai sản',
 }
 export const scheduleLabels: Record<string, string> = {
@@ -143,7 +143,7 @@ export function ActivityPage({ user, personal = false }: { user: any; personal?:
 
   const summaryLabels: Record<string, string> = {
     total: 'Tổng nhân viên', checked_in: 'Đã chấm công', working: 'Đang làm việc',
-    finished: 'Đã kết thúc', not_checked_in: 'Chưa chấm công', late: 'Đi muộn', early: 'Về sớm', overtime: 'OT',
+    finished: 'Đã kết thúc', not_checked_in: 'Chưa chấm công', late: 'Đi muộn', early: 'Về sớm', overtime: 'Giờ ngoài ca ghi nhận',
   }
   const time = (value?: string | null) => value
     ? new Date(value).toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit' })
@@ -197,7 +197,7 @@ export function ActivityPage({ user, personal = false }: { user: any; personal?:
       {people.map(person => <details key={person.employee_id} open={!!applied.employee_id}>
         <summary><span className="activity-expand-indicator" aria-hidden="true">{Icons.chevronRight}</span><strong>{person.employee_name}</strong> · {person.department_name} · {person.sessions.length} phiên {person.sessions.length ? '' : '— Chưa chấm công'}</summary>
         <div className="table-container"><table className="data-table">
-          <thead><tr>{['Ca / Cửa hàng', 'Vào', 'Ra', 'Giờ làm', 'Trễ (phút)', 'Sớm (phút)', 'OT (giờ)', 'Trạng thái', 'Đối chiếu lịch', 'Minh chứng'].map(label => <th key={label}>{label}</th>)}</tr></thead>
+          <thead><tr>{['Ca / Cửa hàng', 'Vào', 'Ra', 'Giờ làm', 'Trễ (phút)', 'Sớm (phút)', 'Giờ ngoài ca ghi nhận', 'Trạng thái', 'Đối chiếu lịch', 'Minh chứng'].map(label => <th key={label}>{label}</th>)}</tr></thead>
           <tbody>{person.sessions.map(session => <tr key={session.attendance_id}>
             <td>{session.shift_name}<br />{session.attendance_store_name}</td>
             <td>{time(session.check_in_time)}</td><td>{time(session.check_out_time)}</td>

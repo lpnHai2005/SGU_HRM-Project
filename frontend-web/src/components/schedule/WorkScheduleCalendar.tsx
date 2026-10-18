@@ -1,12 +1,15 @@
 import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Icons } from '../common/Icons'
-import { EmptyState } from '../common/EmptyState'
 import type { WorkSchedule, Lookups } from '../../types'
+import type { OvertimeRequest } from '../../types'
+import { overtimeCompactStatusLabel, overtimeStatusClass, overtimeStatusLabel } from './overtimeDisplay'
 
 export interface WorkScheduleCalendarProps {
   view: 'month' | 'week' | 'day'
   selectedDate: string // YYYY-MM-DD
   schedules: WorkSchedule[]
+  overtimeRequests: OvertimeRequest[]
   lookups: Lookups | null
   showSunday: boolean
   user: any
@@ -15,6 +18,8 @@ export interface WorkScheduleCalendarProps {
   onOpenDrawer: (date?: string, shiftId?: number) => void
   onEditSchedule: (schedule: WorkSchedule) => void
   onCancelSchedule: (schedule: WorkSchedule) => void
+  canCreateOvertime: boolean
+  onOpenOvertimeDrawer: (date: string, employeeId?: number, storeId?: number) => void
 }
 
 const displayTime = (v: string) => v ? v.slice(0, 5) : ''
@@ -30,6 +35,7 @@ export function WorkScheduleCalendar({
   view,
   selectedDate,
   schedules,
+  overtimeRequests,
   lookups,
   showSunday,
   user,
@@ -38,7 +44,10 @@ export function WorkScheduleCalendar({
   onOpenDrawer,
   onEditSchedule,
   onCancelSchedule,
+  canCreateOvertime,
+  onOpenOvertimeDrawer,
 }: WorkScheduleCalendarProps) {
+  const navigate = useNavigate()
   const [hoveredCell, setHoveredCell] = useState<{ date: string; shiftId: number } | null>(null)
 
   // Standard shifts (4 shifts)
@@ -82,6 +91,29 @@ export function WorkScheduleCalendar({
     }
     return map
   }, [schedules])
+
+  const overtimeByDate = useMemo(() => {
+    const map = new Map<string, OvertimeRequest[]>()
+    for (const request of overtimeRequests) {
+      if (['REVOKED', 'REPLACED', 'REJECTED', 'EMPLOYEE_DECLINED', 'CANCELLED'].includes(request.status)) continue
+      const list = map.get(request.work_date) || []
+      list.push(request)
+      map.set(request.work_date, list)
+    }
+    return map
+  }, [overtimeRequests])
+
+  const overtimeChip = (request: OvertimeRequest, compact = false) => (
+    <button key={request.request_id} type="button" className={`calendar-overtime-chip ${overtimeStatusClass(request.status)} ${compact ? 'is-compact' : ''}`}
+      aria-label={`Mở đơn OT ${request.request_id}: ${request.employee_name}, ${overtimeStatusLabel(request.status)}`}
+      title={`OT #${request.request_id} · ${request.employee_name} · ${request.starts_at.slice(11, 16)}–${request.ends_at.slice(11, 16)} · ${overtimeStatusLabel(request.status)}`}
+      data-overtime-request-id={request.request_id}
+      onClick={event => { event.stopPropagation(); navigate(`/leave?tab=overtime&request_id=${request.request_id}`) }}>
+      <strong>{compact ? 'OT' : request.employee_name}</strong>
+      <span>{request.starts_at.slice(11, 16)}–{request.ends_at.slice(11, 16)}</span>
+      <small>{compact ? overtimeCompactStatusLabel(request.status) : overtimeStatusLabel(request.status)} · #{request.request_id}</small>
+    </button>
+  )
 
   // --- Week Days calculation ---
   const weekDays = useMemo(() => {
@@ -209,6 +241,7 @@ export function WorkScheduleCalendar({
                     const cellKey = `${d.date}__${shift.shift_id}`
                     const cellSchedules = schedulesByDateAndShift.get(cellKey) || []
                     const activeCount = cellSchedules.filter(s => !s.cancelled_at).length
+                    const cellOvertime = overtimeByDate.get(d.date) || []
                     const isHovered = hoveredCell?.date === d.date && hoveredCell?.shiftId === shift.shift_id
 
                     return (
@@ -252,6 +285,8 @@ export function WorkScheduleCalendar({
                                         {isFixed ? '↻' : '+'}
                                       </span>
                                       <span className="emp-name-text">{s.employee_name}</span>
+                                      {canCreateOvertime && <button type="button" className="week-emp-ot-btn" aria-label={`Đăng ký OT cho ${s.employee_name} ngày ${d.date}`}
+                                        title={`Đăng ký OT cho ${s.employee_name}`} onClick={event => { event.stopPropagation(); onOpenOvertimeDrawer(d.date, s.employee_id, s.store_id) }}>{Icons.plus}</button>}
                                     </div>
                                   )
                                 })}
@@ -279,6 +314,8 @@ export function WorkScheduleCalendar({
                               <span className="empty-label">Phân ca</span>
                             </button>
                           )}
+                          {shift.shift_id === standardShifts[0]?.shift_id && cellOvertime.length > 0 && <div className="calendar-overtime-list">{cellOvertime.slice(0, 2).map(request => overtimeChip(request, true))}{cellOvertime.length > 2 && <small>+{cellOvertime.length - 2} đơn OT</small>}</div>}
+                          {shift.shift_id === standardShifts[0]?.shift_id && canCreateOvertime && <button type="button" className="calendar-overtime-add" onClick={event => { event.stopPropagation(); onOpenOvertimeDrawer(d.date) }}>+ Đăng ký OT</button>}
                         </div>
 
                         {/* Tooltip on Desktop hover */}
@@ -343,6 +380,7 @@ export function WorkScheduleCalendar({
               const activeSchedules = daySchedules.filter(s => !s.cancelled_at)
               const distinctShifts = Array.from(new Set(activeSchedules.map(s => s.shift_id)))
               const totalEmployees = activeSchedules.length
+              const dayOvertime = overtimeByDate.get(cell.date) || []
               const isSelected = cell.date === selectedDate
 
               return (
@@ -364,6 +402,8 @@ export function WorkScheduleCalendar({
                         {totalEmployees} NV
                       </span>
                     )}
+                    {canCreateOvertime && <button type="button" className="month-overtime-add" aria-label={`Đăng ký OT ngày ${cell.date}`} title="Đăng ký OT"
+                      onClick={event => { event.stopPropagation(); onOpenOvertimeDrawer(cell.date) }}>{Icons.plus}</button>}
                   </div>
 
                   <div className="month-day-content">
@@ -388,6 +428,7 @@ export function WorkScheduleCalendar({
                         </div>
                       )
                     )}
+                    {dayOvertime.length > 0 && <div className="calendar-overtime-list">{dayOvertime.slice(0, 2).map(request => overtimeChip(request, true))}{dayOvertime.length > 2 && <small>+{dayOvertime.length - 2} đơn OT</small>}</div>}
                   </div>
                 </div>
               )
@@ -402,6 +443,7 @@ export function WorkScheduleCalendar({
   // RENDER: DAY VIEW
   // =========================================================================
   const daySchedules = schedulesByDate.get(selectedDate) || []
+  const dayOvertime = overtimeByDate.get(selectedDate) || []
 
   return (
     <div className="calendar-day-container">
@@ -474,6 +516,8 @@ export function WorkScheduleCalendar({
 
                           {!isCancelled && (
                             <div className="day-emp-card-actions">
+                              {canCreateOvertime && <button type="button" className="btn btn-secondary btn-sm day-overtime-add" title={`Đăng ký OT cho ${schedule.employee_name}`}
+                                onClick={() => onOpenOvertimeDrawer(selectedDate, schedule.employee_id, schedule.store_id)}>{Icons.plus} OT</button>}
                               <button
                                 type="button"
                                 className="btn btn-secondary btn-sm"
@@ -504,6 +548,10 @@ export function WorkScheduleCalendar({
           )
         })}
       </div>
+      {(dayOvertime.length > 0 || canCreateOvertime) && <section className="day-overtime-section" aria-label="Đăng ký OT trong ngày">
+        <header><div><h3>Đăng ký tăng ca</h3><p>Đề xuất OT độc lập với ca làm việc chính thức.</p></div>{canCreateOvertime && <button type="button" className="btn btn-secondary btn-sm" onClick={() => onOpenOvertimeDrawer(selectedDate)}>{Icons.plus} Đăng ký OT</button>}</header>
+        {dayOvertime.length > 0 ? <div className="day-overtime-list">{dayOvertime.map(request => overtimeChip(request))}</div> : <p className="day-overtime-empty">Chưa có đăng ký OT trong ngày này.</p>}
+      </section>}
     </div>
   )
 }

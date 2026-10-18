@@ -607,9 +607,9 @@ export default function DashboardScreen() {
           {/* Secondary Stats */}
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <MetricBox
-              label="Làm thêm (OT)"
+              label="Giờ ngoài ca ghi nhận"
               value={`+${otHours}h`}
-              subtext={`${otShifts} ca tăng ca`}
+              subtext={`${otShifts} phiên có giờ ngoài ca`}
               icon="flash-outline"
               variant="brand"
             />
@@ -686,7 +686,7 @@ export default function DashboardScreen() {
               • Đi muộn: Ghi nhận khi check-in sau mốc bắt đầu ca quá 15 phút.
             </Text>
             <Text style={{ fontFamily: 'BeVietnam', fontSize: 11, color: p.muted, lineHeight: 17 }}>
-              • Giờ tăng ca OT được hệ thống chốt tự động căn cứ giờ check-out thực tế đối chiếu ca phân công.
+              • Giờ ngoài ca được ghi nhận từ check-in/check-out và bản chụp ca. Đây chưa phải OT được HR duyệt và không tự được tính lương.
             </Text>
           </Card>
         </>

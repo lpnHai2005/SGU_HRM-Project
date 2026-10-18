@@ -13,7 +13,7 @@ from app.api.deps import get_current_user
 from app.api.v1.endpoints import stores
 from app.api.v1.endpoints.attendances import require_store_web_network
 from app.api.v1.endpoints.stores import StoreWrite, create_store, update_store, list_stores
-from app.api.v1.endpoints.payrolls import calculate_payroll, confirm_all_payrolls, pay_all_payrolls, update_payroll_status, decide_overtime, OvertimeDecision, update_payroll_adjustments, PayrollAdjustmentRequest, reapply_payroll_adjustments, reopen_payroll_period
+from app.api.v1.endpoints.payrolls import calculate_payroll, confirm_all_payrolls, pay_all_payrolls, update_payroll_status, decide_overtime, OvertimeDecision, update_payroll_adjustments, PayrollAdjustmentRequest, reapply_payroll_adjustments, reopen_payroll_period, ensure_payroll_ot_procedure_is_approval_gated
 from app.schemas.schemas import CalculatePayrollRequest, BatchPayrollStatusRequest, PayrollStatusUpdate, PayrollPeriodReopenRequest
 
 async def main():
@@ -24,7 +24,7 @@ async def main():
                 'CREATE TEMP TABLE stores(store_id int GENERATED ALWAYS AS IDENTITY,store_code text UNIQUE,store_name text,address text,district text,city text,open_date date,manager_employee_id int,is_active bool) ON COMMIT DROP',
                 'CREATE TEMP TABLE mobile_store_geofences(store_id int PRIMARY KEY,latitude float,longitude float,radius_meters int,is_active bool) ON COMMIT DROP',
                 'CREATE TEMP TABLE store_web_attendance_networks(store_id int,network cidr,PRIMARY KEY(store_id,network)) ON COMMIT DROP',
-                'CREATE TEMP TABLE employees(employee_id int,full_name text) ON COMMIT DROP',
+                'CREATE TEMP TABLE employees(employee_id int,employee_code text,full_name text) ON COMMIT DROP',
                 'CREATE TEMP TABLE audit_logs(user_id int,action text,entity_name text,entity_id text,old_values jsonb,new_values jsonb) ON COMMIT DROP',
                 'CREATE TEMP TABLE payrolls(payroll_id int PRIMARY KEY,employee_id int,salary_period text,payment_status text,payment_date date,updated_at timestamptz,gross_income numeric,total_deduction numeric,net_salary numeric)',
                 'CREATE TEMP TABLE payroll_manual_adjustments(payroll_id int PRIMARY KEY,addition_amount numeric,deduction_amount numeric,reason text,edited_by int,updated_at timestamptz DEFAULT now()) ON COMMIT DROP',
@@ -36,7 +36,7 @@ async def main():
             ]: await conn.execute(text(sql))
             async with AsyncSession(bind=conn,join_transaction_mode='create_savepoint') as db:
                 admin={'user_id':1,'employee_id':99,'roles':['ADMIN']}
-                payload=dict(store_code='T1',store_name='TECHZONE Store',address='Test',district='Quận 1',open_date=date(2026,10,12),latitude=10.776,longitude=106.703,radius_meters=100)
+                payload=dict(store_code='TZ-T1',store_name='TECHZONE Store',address='Test',district='Quận 1',open_date=date(2026,10,12),latitude=10.776,longitude=106.703,radius_meters=100)
                 for bad in [dict(payload,latitude=99),dict(payload,longitude=199),dict(payload,radius_meters=0),dict(payload,wifi_networks=['bad-ip']),dict(payload,wifi_networks=['192.168.1.1','192.168.1.1/32'])]:
                     try: StoreWrite(**bad)
                     except ValidationError: pass
@@ -119,6 +119,7 @@ async def main():
                 else: raise AssertionError('Payroll period without finalized slips was reopened')
                 installed=(await db.execute(text("SELECT pg_get_functiondef(p.oid) FROM pg_proc p WHERE p.proname='sp_generate_monthly_payroll'"))).scalar_one()
                 assert 'attendance_overtime_approvals' in installed
+                await ensure_payroll_ot_procedure_is_approval_gated(db)
                 print('PASS: store GPS/IP validation, web network enforcement, draft payroll adjustments/audit, forward-only status, audited period reopen for recalculation.')
         finally: await tx.rollback()
     await engine.dispose()

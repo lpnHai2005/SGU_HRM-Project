@@ -16,6 +16,7 @@
 
 .main-content {
   flex: 1;
+  min-width: 0;
   margin-left: var(--sidebar-width);
   margin-top: var(--topbar-height);
   min-height: calc(100vh - var(--topbar-height));
@@ -2324,6 +2325,30 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
    SMALL MOBILE ADAPTATION (480px and down)
    -------------------------------------------------------------------------- */
 @media (max-width: 480px) {
+  .topbar-right .btn-ai,
+  .topbar-right > .btn-primary,
+  .topbar-right .topbar-divider {
+    display: none;
+  }
+
+  .topbar-left {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .breadcrumb-nav,
+  .topbar-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .topbar-right {
+    flex: 0 0 auto;
+    margin-left: 8px;
+  }
+
   .stat-grid-4 {
     grid-template-columns: 1fr;
     gap: 8px;
@@ -3017,6 +3042,23 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   background-color: var(--surface-card);
   color: var(--text-primary);
   border-color: var(--border-default);
+}
+
+.leave-tab-btn.overtime-tab-btn {
+  position: relative;
+  padding-right: 26px;
+}
+
+.leave-tab-btn.overtime-tab-btn .leave-tab-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  font-size: 10px;
+  line-height: 1;
+  z-index: 1;
 }
 
 /* Resigned Staff Notice Panel */

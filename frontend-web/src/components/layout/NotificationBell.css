@@ -24,6 +24,12 @@
 .notification-item[class*="tone-"] .notification-unread-dot { background: var(--notice-color); }
 .notification-item[class*="tone-"] .notification-item-body small { color: var(--notice-color); font-weight: 700; }
 .notification-item-body { display: grid; gap: 4px; flex: 1; min-width: 0; }
+.notification-overtime-status { justify-self: start; display: inline-flex; max-width: 100%; padding: 3px 8px; border: 1px solid var(--border-default); border-radius: 999px; font-size: 10px; line-height: 1.25; font-weight: 700; white-space: normal; }
+.notification-overtime-status.is-approved { color: var(--status-success); background: var(--status-success-bg); border-color: var(--status-success-border); }
+.notification-overtime-status.is-pending { color: var(--status-warning); background: var(--status-warning-bg); border-color: var(--status-warning-border); }
+.notification-overtime-status.is-rejected { color: var(--status-error); background: var(--status-error-bg); border-color: var(--status-error-border); }
+.notification-overtime-status.is-cancelled { color: var(--status-neutral); background: var(--status-neutral-bg); border-color: var(--status-neutral-border); }
+.notification-overtime-status.is-draft { color: var(--text-secondary); background: var(--surface-subtle); border-style: dashed; }
 .notification-item-body strong { font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; font-weight: 600; }
 .notification-unread-dot { flex: 0 0 7px; height: 7px; margin-top: 12px; border-radius: 50%; background: var(--action-primary); }
 .notification-empty { padding: 22px; margin: 0; color: var(--text-secondary); font-size: 13px; text-align: center; }

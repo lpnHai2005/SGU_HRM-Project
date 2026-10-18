@@ -129,6 +129,9 @@
   gap: 2px;
 }
 
+.btn-overtime-register { gap: 8px; }
+.btn-overtime-register svg { width: 17px; height: 17px; }
+
 .view-tab-btn {
   padding: 6px 14px;
   font-size: 0.8125rem;
@@ -664,6 +667,70 @@
   gap: 3px;
 }
 
+.month-overtime-add,
+.week-emp-ot-btn {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--action-primary) 28%, var(--border-default));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--action-primary) 8%, var(--surface-card));
+  color: var(--action-primary);
+  cursor: pointer;
+}
+.month-overtime-add { margin-left: auto; }
+.month-overtime-add svg,.week-emp-ot-btn svg { width: 14px; height: 14px; }
+.month-overtime-add:hover,.week-emp-ot-btn:hover { background: color-mix(in srgb, var(--action-primary) 16%, var(--surface-card)); }
+.week-emp-ot-btn { visibility: hidden; opacity: 0; transition: opacity .15s ease; }
+.week-emp-tag:hover .week-emp-ot-btn,.week-emp-ot-btn:focus-visible { visibility: visible; opacity: 1; }
+.calendar-overtime-add {
+  align-self: flex-start;
+  margin-top: 5px;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--action-primary);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.calendar-overtime-add:hover { background: color-mix(in srgb, var(--action-primary) 9%, transparent); }
+.calendar-overtime-list { display: flex; flex-direction: column; align-items: stretch; gap: 3px; margin-top: 4px; min-width: 0; }
+.calendar-overtime-list > small { color: var(--text-secondary); font-size: 10px; }
+.calendar-overtime-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+  transition: filter .15s ease, box-shadow .15s ease;
+}
+.calendar-overtime-chip:hover { filter: brightness(.96); box-shadow: 0 0 0 1px currentColor; }
+.calendar-overtime-chip:focus-visible { outline: 2px solid var(--action-primary); outline-offset: 2px; }
+.calendar-overtime-chip > strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.calendar-overtime-chip > small { margin-left: auto; color: var(--text-secondary); font-size: 10px; white-space: nowrap; }
+.calendar-overtime-chip.is-compact { justify-content: flex-start; width: 100%; padding: 3px 5px; font-size: 10px; }
+.calendar-overtime-chip.is-compact > strong { flex: 0 0 auto; }
+.calendar-overtime-chip.is-approved { color: var(--status-success); background: var(--status-success-bg); border-color: var(--status-success-border); }
+.calendar-overtime-chip.is-pending { color: var(--status-warning); background: var(--status-warning-bg); border-color: var(--status-warning-border); }
+.calendar-overtime-chip.is-rejected { color: var(--status-error); background: var(--status-error-bg); border-color: var(--status-error-border); }
+.calendar-overtime-chip.is-cancelled { color: var(--status-neutral); background: var(--status-neutral-bg); border-color: var(--status-neutral-border); }
+.calendar-overtime-chip.is-draft { color: var(--text-secondary); border-style: dashed; }
+
 .month-shift-dots {
   display: flex;
   flex-direction: column;
@@ -713,6 +780,18 @@
 .calendar-day-container {
   width: 100%;
 }
+.day-overtime-section,.schedule-overtime-table {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px dashed color-mix(in srgb, var(--action-primary) 40%, var(--border-default));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--action-primary) 3%, var(--surface-card));
+}
+.day-overtime-section > header,.schedule-overtime-table > header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; }
+.day-overtime-section h3,.schedule-overtime-table h3 { margin:0; color:var(--text-primary); font-size:.95rem; }
+.day-overtime-section header p,.schedule-overtime-table header p { margin:3px 0 0; color:var(--text-secondary); font-size:.75rem; }
+.day-overtime-list { display:grid; gap:6px; }
+.day-overtime-empty,.overtime-empty-employees { margin:0; padding:12px; color:var(--text-secondary); font-size:.82rem; }
 
 .day-view-shifts-grid {
   display: grid;
@@ -874,6 +953,53 @@
   overflow: hidden;
   animation: slideLeft 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
+.overtime-drawer { max-width: 560px; }
+.overtime-drawer-form { gap: 14px; }
+.overtime-drawer-form .form-group { min-width: 0; }
+.overtime-drawer-form .form-label { display:block; margin-bottom:6px; }
+.overtime-drawer-form .form-input,.overtime-drawer-form .form-select { width:100%; }
+.overtime-textarea { min-height: 76px; resize: vertical; padding: 10px 12px; }
+.overtime-employee-search { max-width: 230px; height: 36px; }
+.overtime-employee-list { display:grid; max-height: 185px; overflow:auto; gap:5px; padding:5px; border:1px solid var(--border-subtle); border-radius:var(--radius-md); }
+.overtime-employee-list .employee-select-item { padding:8px 10px; }
+.overtime-employee-list .employee-info-sub { font-size:11px; }
+.overtime-time-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.overtime-estimate { display:grid; grid-template-columns:1fr auto; gap:4px 10px; padding:11px 13px; border:1px solid color-mix(in srgb,var(--action-primary) 24%,var(--border-default)); border-radius:var(--radius-md); background:color-mix(in srgb,var(--action-primary) 6%,var(--surface-card)); color:var(--text-primary); }
+.overtime-estimate > span { display:flex; align-items:center; gap:7px; color:var(--text-secondary); font-size:.82rem; }
+.overtime-estimate svg { width:16px; height:16px; }
+.overtime-estimate > strong { color:var(--action-primary); }
+.overtime-estimate > small { grid-column:1/-1; color:var(--text-secondary); font-size:.72rem; }
+.overtime-self-summary { display:flex; align-items:center; gap:11px; padding:12px; border:1px solid var(--border-subtle); border-radius:var(--radius-md); background:var(--surface-subtle); }
+.overtime-self-icon { display:grid; place-items:center; width:34px; height:34px; border-radius:10px; background:color-mix(in srgb,var(--action-primary) 12%,transparent); color:var(--action-primary); }
+.overtime-self-icon svg { width:18px; height:18px; }
+.overtime-self-summary > span:last-child { display:grid; gap:3px; }
+.overtime-self-summary small { color:var(--text-secondary); font-size:.72rem; }
+.overtime-self-summary strong { color:var(--text-primary); font-size:.9rem; }
+.overtime-batch-hint { margin:0; padding:9px 11px; border:1px solid var(--status-info-border); border-radius:8px; background:var(--status-info-bg); color:var(--text-secondary); font-size:.78rem; }
+.overtime-batch-results { display:grid; gap:8px; padding:12px; border:1px solid var(--border-default); border-radius:var(--radius-md); background:var(--surface-subtle); }
+.overtime-batch-results h3 { margin:0; color:var(--text-primary); font-size:.85rem; }
+.overtime-batch-results ul { display:grid; gap:6px; margin:0; padding:0; list-style:none; }
+.overtime-batch-results li { display:grid; grid-template-columns:minmax(130px,1fr) minmax(140px,1.5fr) auto; align-items:center; gap:8px; padding:9px 10px; border:1px solid var(--border-subtle); border-radius:8px; background:var(--surface-card); }
+.overtime-batch-results li > span:first-child { display:grid; gap:2px; min-width:0; }
+.overtime-batch-results li > span:first-child strong { overflow-wrap:anywhere; color:var(--text-primary); font-size:.78rem; }
+.overtime-batch-results li > span:first-child small,.overtime-batch-result-message { color:var(--text-secondary); font-size:.7rem; overflow-wrap:anywhere; }
+.overtime-batch-results li > b { font-size:.68rem; white-space:nowrap; }
+.overtime-batch-results li.is-success > b { color:var(--status-success); }
+.overtime-batch-results li.is-error > b { color:var(--status-error); }
+.overtime-batch-complete { margin-right:auto; color:var(--status-success); font-size:.8rem; font-weight:700; }
+.field-error { display:block; margin-top:5px; color:var(--status-error); font-size:.75rem; }
+.schedule-overtime-table .table-container { border:1px solid var(--border-subtle); border-radius:var(--radius-md); }
+.personal-schedules-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:14px; }
+.personal-schedules-heading h1 { margin:0; color:var(--text-primary); }
+.personal-schedules-heading p { margin:5px 0 0; color:var(--text-secondary); font-size:.85rem; }
+.personal-overtime-section { margin-top:22px; padding-top:18px; border-top:1px solid var(--border-subtle); }
+.personal-overtime-section > header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; }
+.personal-overtime-section h2 { margin:0; color:var(--text-primary); font-size:1rem; }
+.personal-overtime-section header p { margin:4px 0 0; color:var(--text-secondary); font-size:.78rem; }
+.personal-overtime-actions { display:flex; align-items:center; gap:6px; white-space:nowrap; }
+.personal-overtime-decline { display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:10px; border:1px solid color-mix(in srgb,var(--status-error) 28%,var(--border-default)); border-radius:var(--radius-md); background:color-mix(in srgb,var(--status-error) 5%,var(--surface-card)); }
+.personal-overtime-decline label { color:var(--text-secondary); font-size:.78rem; }
+.personal-overtime-decline .form-input { flex:1 1 220px; min-width:180px; }
 
 .schedule-drawer-header {
   padding: 18px 20px;
@@ -1424,6 +1550,15 @@
   .schedule-drawer {
     max-width: 100%;
   }
+  .overtime-employee-search { max-width: 100%; }
+  .overtime-drawer .schedule-drawer-footer { flex-wrap: wrap; }
+  .overtime-drawer .schedule-drawer-footer .btn { flex: 1 1 auto; }
+  .overtime-batch-results li { grid-template-columns:minmax(0,1fr) auto; }
+  .overtime-batch-results li .overtime-batch-result-message { grid-column:1/-1; grid-row:2; }
+  .day-overtime-section > header,.schedule-overtime-table > header { align-items:flex-start; flex-direction:column; }
+  .day-overtime-section > header .btn,.schedule-overtime-table > header .btn { align-self:stretch; justify-content:center; }
+  .personal-schedules-heading,.personal-overtime-section > header { align-items:stretch; flex-direction:column; }
+  .personal-schedules-heading > .btn,.personal-overtime-section header .btn { justify-content:center; }
 
   .shift-cards-grid {
     grid-template-columns: 1fr;

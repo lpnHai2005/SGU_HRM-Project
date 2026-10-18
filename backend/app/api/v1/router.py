@@ -5,7 +5,8 @@ from sqlalchemy import text
 from app.core.database import get_db
 from app.api.v1.endpoints import (
     auth, users, roles, audit_logs,
-    employees, attendances, leaves, payrolls, reports, ai_copilot, mobile_attendance, work_schedules, fixed_schedules, operations, contracts, resignations
+    employees, attendances, leaves, payrolls, reports, ai_copilot, mobile_attendance,
+    work_schedules, fixed_schedules, operations, overtime_requests, overtime_reconciliations, contracts, resignations
 )
 
 api_router = APIRouter()
@@ -13,6 +14,8 @@ api_router.include_router(stores.router, prefix='/stores', tags=['Stores'])
 api_router.include_router(operations.router, prefix="/operations", tags=["Operations"])
 api_router.include_router(fixed_schedules.router, prefix="/fixed-schedules", tags=["Work Schedule"])
 api_router.include_router(work_schedules.router, prefix="/work-schedules", tags=["Work Schedule"])
+api_router.include_router(overtime_requests.router, prefix="/overtime-requests", tags=["Overtime Requests"])
+api_router.include_router(overtime_reconciliations.router, prefix="/overtime-reconciliations", tags=["Overtime Reconciliation"])
 api_router.include_router(mobile_attendance.router, prefix="/mobile-attendance", tags=["Mobile Attendance"])
 
 # 1. Mount các phân hệ API

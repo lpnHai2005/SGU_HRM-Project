@@ -14,6 +14,9 @@ type OvertimeRow = {
   approved_hours: number | null
   decision: string | null
   reason: string | null
+  legacy_decision_locked: boolean
+  legacy_decision_message: string | null
+  actual_overtime_label: string
 }
 
 export function PayrollOvertimePanel({ period }: { period: string }) {
@@ -46,6 +49,7 @@ export function PayrollOvertimePanel({ period }: { period: string }) {
   }, [load])
 
   const decide = async (row: OvertimeRow, decision: 'APPROVED' | 'REJECTED') => {
+    if (row.legacy_decision_locked) return
     if (user?.employee_id && row.employee_id === user.employee_id) {
       toast.warning('Bạn không thể tự phê duyệt tăng ca của chính mình')
       return
@@ -109,7 +113,7 @@ export function PayrollOvertimePanel({ period }: { period: string }) {
                         max={row.actual_overtime_hours}
                         step="0.01"
                         style={{ width: 90 }}
-                        disabled={isSelf}
+                        disabled={isSelf || row.legacy_decision_locked}
                         value={drafts[row.attendance_id]?.hours ?? ''}
                         onChange={e =>
                           setDrafts({
@@ -123,7 +127,7 @@ export function PayrollOvertimePanel({ period }: { period: string }) {
                       <input
                         className="form-input"
                         aria-label={`Lý do OT ${row.attendance_id}`}
-                        disabled={isSelf}
+                        disabled={isSelf || row.legacy_decision_locked}
                         value={drafts[row.attendance_id]?.reason ?? ''}
                         onChange={e =>
                           setDrafts({
@@ -142,14 +146,14 @@ export function PayrollOvertimePanel({ period }: { period: string }) {
                         <div style={{ display: 'flex', gap: 6 }}>
                           <button
                             className="btn btn-primary btn-sm"
-                            disabled={busy !== null}
+                            disabled={busy !== null || row.legacy_decision_locked}
                             onClick={() => void decide(row, 'APPROVED')}
                           >
                             {Icons.check} Duyệt
                           </button>
                           <button
                             className="btn btn-secondary btn-sm"
-                            disabled={busy !== null}
+                            disabled={busy !== null || row.legacy_decision_locked}
                             onClick={() => void decide(row, 'REJECTED')}
                           >
                             {Icons.x} Từ chối
@@ -161,8 +165,10 @@ export function PayrollOvertimePanel({ period }: { period: string }) {
                           ? `Đã duyệt ${row.approved_hours} giờ`
                           : row.decision === 'REJECTED'
                           ? 'Đã từ chối'
-                          : 'Chờ duyệt'}
+                          : 'Chưa xác nhận OT được phép'}
                       </small>
+                      <small style={{ display: 'block' }}>{row.actual_overtime_label}</small>
+                      {row.legacy_decision_locked && <small role="status" style={{ display: 'block', color: 'var(--color-warning, #a15c00)' }}>{row.legacy_decision_message}</small>}
                     </td>
                   </tr>
                 )
