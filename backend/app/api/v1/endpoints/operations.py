@@ -85,6 +85,53 @@ async def notifications(user=Depends(get_current_user),db:AsyncSession=Depends(g
     result=[{'id':f"leave-{r['request_id']}-{r['status']}",'title':f"{r['full_name']} · Đơn #{r['request_id']}: {labels[r['status']]}",'href':'/leave',
              'category':'Đơn từ & nghỉ phép','tone':'success' if r['status']=='HR_APPROVED' else 'error' if r['status']=='REJECTED' else 'warning',
              'created_at':r['updated_at'].isoformat() if r['updated_at'] else None} for r in rows]
+    # OT notices are projected from the append-only event row committed in the same
+    # transaction as each state change. Stable event IDs make retries/read marking safe.
+    roles=set(user.get('roles',[]))
+    overtime_params={'ot_viewer':user['user_id']}
+    recipient_clauses=['o.created_by=:ot_viewer']
+    if user.get('employee_id'):
+        overtime_params['ot_employee']=user['employee_id']
+        recipient_clauses.append('o.employee_id=:ot_employee')
+    if 'ADMIN' in roles:
+        recipient_clauses.append('TRUE')
+    if 'HR_MANAGER' in roles:
+        recipient_clauses.append("(ev.to_status='PENDING_HR' OR ev.action IN ('EMPLOYEE_DECLINE','APPROVE','REJECT','REVOKE_REQUEST','REVOKE_APPROVE','REVOKE_REJECT','AMEND_APPROVE'))")
+    if 'STORE_MANAGER' in roles and user.get('store_id'):
+        overtime_params['ot_store']=user['store_id']
+        recipient_clauses.append("(o.store_id=:ot_store AND ev.action IN ('SUBMIT','EMPLOYEE_CONFIRM','EMPLOYEE_DECLINE','APPROVE','REJECT','CANCEL','REVOKE_REQUEST','REVOKE_APPROVE','REVOKE_REJECT','AMEND_REQUEST','AMEND_APPROVE'))")
+    overtime_rows=[]
+    if (await db.execute(text("SELECT to_regclass('overtime_request_events') IS NOT NULL"))).scalar_one():
+        overtime_rows=(await db.execute(text('''SELECT ev.event_id,ev.action,ev.to_status,ev.created_at,
+                o.request_id,o.created_by,o.employee_id,e.full_name
+            FROM overtime_request_events ev
+            JOIN overtime_requests o ON o.request_id=ev.request_id
+            JOIN employees e ON e.employee_id=o.employee_id
+            WHERE ev.action IN ('SUBMIT','EMPLOYEE_CONFIRM','EMPLOYEE_DECLINE','APPROVE','REJECT','CANCEL','REVOKE_REQUEST','REVOKE_APPROVE','REVOKE_REJECT','AMEND_REQUEST','AMEND_APPROVE')
+              AND ev.actor_id<>:ot_viewer AND ('''+ ' OR '.join(recipient_clauses) + ''')
+            ORDER BY ev.created_at DESC,ev.event_id DESC LIMIT 50'''),overtime_params)).mappings().all()
+    overtime_event_labels={
+        'PENDING_EMPLOYEE_CONFIRMATION':'chờ nhân viên xác nhận',
+        'PENDING_HR':'chờ HR duyệt',
+        'APPROVED':'đã được HR duyệt',
+        'REJECTED':'bị HR từ chối',
+        'EMPLOYEE_DECLINED':'bị nhân viên từ chối',
+        'CANCELLED':'đã được hủy',
+    }
+    overtime_event_labels.update({
+        'REVOKE_PENDING': 'yêu cầu thu hồi đang chờ HR quyết định',
+        'REVOKED': 'đã thu hồi; giữ nguyên lịch sử',
+        'REVOKE_REJECTED': 'yêu cầu thu hồi bị từ chối; đơn gốc vẫn hiệu lực',
+        'REPLACED': 'đơn gốc đã được thay thế',
+    })
+    for row in overtime_rows:
+        label=overtime_event_labels.get(row['to_status'],'đã cập nhật')
+        result.append({'id':f"overtime-event-{row['event_id']}",
+            'title':f"{row['full_name']} · OT #{row['request_id']}: {label}",
+            'href':f"/leave?tab=overtime&request_id={row['request_id']}",'category':'Đăng ký OT',
+            'overtime_status':row['to_status'],
+            'tone':'success' if row['to_status'] in {'APPROVED','REVOKED','REPLACED'} else 'error' if row['to_status'] in {'REJECTED','EMPLOYEE_DECLINED','REVOKE_REJECTED'} else 'warning' if row['to_status'] in {'PENDING_EMPLOYEE_CONFIRMATION','PENDING_HR','REVOKE_PENDING'} else 'info',
+            'created_at':row['created_at'].isoformat() if row['created_at'] else None})
     attendance_params={}
     attendance_scope=scope(user,attendance_params,'e')
     attendance_rows=(await db.execute(text('''SELECT a.attendance_id,a.check_in_time,a.check_out_time,a.late_minutes,e.full_name

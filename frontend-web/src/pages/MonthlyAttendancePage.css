@@ -1,0 +1,63 @@
+.activity-filters {
+  display: grid;
+  grid-template-columns: minmax(175px, 1.1fr) repeat(4, minmax(130px, 1fr)) max-content;
+  align-items: end;
+  gap: 12px;
+  margin: 20px 0;
+  padding: 16px 18px;
+}
+
+.activity-filters > * {
+  min-width: 0;
+  margin: 0;
+}
+
+.activity-filters > label {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.activity-filters .form-label {
+  margin: 0;
+}
+
+.activity-filters .form-select,
+.activity-filters .month-picker .form-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+}
+
+.activity-filters .btn {
+  min-height: 40px;
+  white-space: nowrap;
+}
+
+@media (max-width: 1200px) {
+  .activity-filters {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .activity-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    padding: 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  .activity-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .activity-filters .btn {
+    width: 100%;
+  }
+}

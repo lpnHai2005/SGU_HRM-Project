@@ -3,10 +3,12 @@ import { useSearchParams } from 'react-router-dom'
 import { EmptyState } from '../components/common/EmptyState'
 import { Icons } from '../components/common/Icons'
 import { DatePicker } from '../components/common/DatePicker'
-import { employeeApi, workScheduleApi } from '../services/api'
+import { employeeApi, overtimeRequestApi, workScheduleApi } from '../services/api'
 import { WorkScheduleDrawer } from '../components/schedule/WorkScheduleDrawer'
+import { OvertimeRequestDrawer } from '../components/schedule/OvertimeRequestDrawer'
+import { overtimeStatusClass, overtimeStatusLabel } from '../components/schedule/overtimeDisplay'
 import { WorkScheduleCalendar } from '../components/schedule/WorkScheduleCalendar'
-import type { Employee, Lookups, WorkSchedule, WorkScheduleQuery, WorkScheduleWrite } from '../types'
+import type { Employee, Lookups, OvertimeRequest, WorkSchedule, WorkScheduleQuery, WorkScheduleWrite } from '../types'
 import './WorkSchedulesPage.css'
 
 type ViewMode = 'month' | 'week' | 'day' | 'table'
@@ -58,6 +60,19 @@ function periodLabel(value: string, view: ViewMode) {
   return `${monday.toLocaleDateString('vi-VN')} – ${saturday.toLocaleDateString('vi-VN')}`
 }
 
+function overtimePeriod(value: string, view: ViewMode, includeSunday: boolean) {
+  const [year, month, day] = value.split('-').map(Number)
+  const date = new Date(year, month - 1, day)
+  if (view === 'day') return { date_from: value, date_to: value }
+  if (view === 'month') {
+    return { date_from: localDate(new Date(year, month - 1, 1)), date_to: localDate(new Date(year, month, 0)) }
+  }
+  date.setDate(date.getDate() - ((date.getDay() + 6) % 7))
+  const monday = localDate(date)
+  date.setDate(date.getDate() + (includeSunday ? 6 : 5))
+  return { date_from: monday, date_to: localDate(date) }
+}
+
 export function WorkSchedulesPage({ user }: { user: any }) {
   const [searchParams] = useSearchParams()
   const urlEmployeeId = searchParams.get('employee_id')
@@ -65,6 +80,7 @@ export function WorkSchedulesPage({ user }: { user: any }) {
   const roles: string[] = user?.roles || []
   const isStoreManager = roles.includes('STORE_MANAGER') && !roles.includes('ADMIN') && !roles.includes('HR_MANAGER') && !roles.includes('DIRECTOR')
   const canManage = roles.includes('ADMIN') || roles.includes('DIRECTOR') || roles.includes('HR_MANAGER') || roles.includes('STORE_MANAGER')
+  const canCreateOvertime = roles.includes('ADMIN') || (roles.includes('STORE_MANAGER') && !roles.includes('HR_MANAGER'))
 
   const [selectedDate, setSelectedDate] = useState(today)
   const [view, setView] = useState<ViewMode>('week')
@@ -77,6 +93,7 @@ export function WorkSchedulesPage({ user }: { user: any }) {
   const [showSunday, setShowSunday] = useState(false)
 
   const [schedules, setSchedules] = useState<WorkSchedule[]>([])
+  const [overtimeRequests, setOvertimeRequests] = useState<OvertimeRequest[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
   const [lookups, setLookups] = useState<Lookups | null>(null)
   const [dialog, setDialog] = useState<DialogState>(null)
@@ -91,6 +108,7 @@ export function WorkSchedulesPage({ user }: { user: any }) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [overtimeError, setOvertimeError] = useState('')
   const [notice, setNotice] = useState('')
   const [refresh, setRefresh] = useState(0)
 
@@ -104,6 +122,12 @@ export function WorkSchedulesPage({ user }: { user: any }) {
     isOpen: false,
     mode: 'daily',
   })
+  const [overtimeDrawerState, setOvertimeDrawerState] = useState<{
+    isOpen: boolean
+    date: string
+    storeId?: number
+    employeeId?: number
+  }>({ isOpen: false, date: today() })
 
   // Load lookups and employees once
   useEffect(() => {
@@ -160,6 +184,18 @@ export function WorkSchedulesPage({ user }: { user: any }) {
     return () => { active = false }
   }, [fetchSchedules, refresh])
 
+  useEffect(() => {
+    let active = true
+    const range = overtimePeriod(selectedDate, view, showSunday)
+    const params: { date_from: string; date_to: string; store_id?: number; employee_id?: number; limit: number } = { ...range, limit: 200 }
+    if (storeFilter) params.store_id = Number(storeFilter)
+    if (employeeFilter) params.employee_id = Number(employeeFilter)
+    overtimeRequestApi.list(params)
+      .then(rows => { if (active) { setOvertimeRequests(rows); setOvertimeError('') } })
+      .catch((err: unknown) => { if (active) setOvertimeError(err instanceof Error ? err.message : 'Không tải được đăng ký OT.') })
+    return () => { active = false }
+  }, [selectedDate, view, showSunday, storeFilter, employeeFilter, refresh])
+
   const sortedSchedules = useMemo(
     () => [...schedules].sort((a, b) =>
       a.work_date.localeCompare(b.work_date) ||
@@ -169,12 +205,28 @@ export function WorkSchedulesPage({ user }: { user: any }) {
     [schedules],
   )
 
+  const visibleOvertimeRequests = useMemo(() => overtimeRequests.filter(request => {
+    const employee = employees.find(row => row.employee_id === request.employee_id)
+    if (departmentFilter && employee?.department_id !== Number(departmentFilter)) return false
+    if (positionFilter && employee?.position_id !== Number(positionFilter)) return false
+    return true
+  }), [overtimeRequests, employees, departmentFilter, positionFilter])
+
   const openDrawer = (mode: 'daily' | 'recurring', date?: string, shiftId?: number) => {
     setDrawerState({
       isOpen: true,
       mode,
       date: date || selectedDate,
       shiftId: shiftId || 1,
+    })
+  }
+
+  const openOvertimeDrawer = (date = selectedDate, employeeId?: number, storeId?: number) => {
+    setOvertimeDrawerState({
+      isOpen: true,
+      date,
+      storeId: storeId || (storeFilter ? Number(storeFilter) : isStoreManager ? Number(user?.store_id) : undefined),
+      employeeId,
     })
   }
 
@@ -186,6 +238,11 @@ export function WorkSchedulesPage({ user }: { user: any }) {
     setNotice(msg)
     // Reload schedules without resetting filter or view state
     setRefresh(v => v + 1)
+  }
+
+  const handleOvertimeSuccess = (msg: string) => {
+    setNotice(msg)
+    setRefresh(value => value + 1)
   }
 
   const beginEdit = (schedule: WorkSchedule) => {
@@ -293,6 +350,9 @@ export function WorkSchedulesPage({ user }: { user: any }) {
         </div>
         {canManage && (
           <div className="work-schedule-header-actions">
+            {canCreateOvertime && <button type="button" className="btn btn-secondary btn-overtime-register" onClick={() => openOvertimeDrawer(selectedDate)}>
+              {Icons.clockOutline}<span>+ Đăng ký OT</span>
+            </button>}
             <button
               type="button"
               className="btn btn-secondary btn-fixed-shift"
@@ -523,6 +583,7 @@ export function WorkSchedulesPage({ user }: { user: any }) {
         {/* Notices and Alerts */}
         {notice && <div className="work-schedule-notice" role="status">{notice}</div>}
         {error && <div className="work-schedule-error" role="alert">{error}</div>}
+        {overtimeError && <div className="work-schedule-error" role="alert">Không tải được lớp đề xuất OT: {overtimeError}</div>}
 
         {/* Calendar or Table View */}
         {loading ? (
@@ -532,6 +593,7 @@ export function WorkSchedulesPage({ user }: { user: any }) {
             view={view}
             selectedDate={selectedDate}
             schedules={schedules}
+            overtimeRequests={visibleOvertimeRequests}
             lookups={lookups}
             showSunday={showSunday}
             user={user}
@@ -540,6 +602,8 @@ export function WorkSchedulesPage({ user }: { user: any }) {
             onOpenDrawer={(date, shiftId) => openDrawer('daily', date, shiftId)}
             onEditSchedule={s => beginEdit(s)}
             onCancelSchedule={s => beginCancel(s)}
+            canCreateOvertime={canCreateOvertime}
+            onOpenOvertimeDrawer={openOvertimeDrawer}
           />
         ) : sortedSchedules.length === 0 ? (
           <EmptyState
@@ -634,6 +698,14 @@ export function WorkSchedulesPage({ user }: { user: any }) {
             </table>
           </div>
         )}
+
+        {!loading && view === 'table' && <section className="schedule-overtime-table" aria-label="Đăng ký OT trong kỳ">
+          <header><div><h3>Đăng ký OT · lớp đề xuất</h3><p>Các trạng thái ở đây không ghi vào danh sách ca làm việc chính thức.</p></div>{canCreateOvertime && <button type="button" className="btn btn-secondary btn-sm" onClick={() => openOvertimeDrawer(selectedDate)}>{Icons.plus} Đăng ký OT</button>}</header>
+          {visibleOvertimeRequests.length ? <div className="table-container"><table className="data-table"><thead><tr><th>Mã đơn</th><th>Nhân viên</th><th>Ngày OT</th><th>Thời gian</th><th>Cửa hàng</th><th>Trạng thái</th></tr></thead><tbody>{visibleOvertimeRequests.map(request => <tr key={request.request_id}>
+            <td>OT #{request.request_id}</td><td>{request.employee_name}</td><td>{displayDate(request.work_date)}</td><td>{request.starts_at.slice(11, 16)}–{request.ends_at.slice(11, 16)}</td><td>{request.store_name}</td>
+            <td><span className={`calendar-overtime-chip ${overtimeStatusClass(request.status)}`}>{overtimeStatusLabel(request.status)}</span></td>
+          </tr>)}</tbody></table></div> : <p className="day-overtime-empty">Chưa có đăng ký OT trong kỳ này.</p>}
+        </section>}
 
         {!loading && (
           <div className="work-schedule-count">
@@ -884,6 +956,17 @@ export function WorkSchedulesPage({ user }: { user: any }) {
         employees={employees}
         existingSchedules={schedules}
         onSuccess={handleDrawerSuccess}
+      />
+      <OvertimeRequestDrawer
+        isOpen={overtimeDrawerState.isOpen}
+        onClose={() => setOvertimeDrawerState(state => ({ ...state, isOpen: false }))}
+        user={user}
+        employees={employees}
+        lookups={lookups}
+        initialDate={overtimeDrawerState.date}
+        initialStoreId={overtimeDrawerState.storeId}
+        initialEmployeeId={overtimeDrawerState.employeeId}
+        onSuccess={handleOvertimeSuccess}
       />
     </div>
   )

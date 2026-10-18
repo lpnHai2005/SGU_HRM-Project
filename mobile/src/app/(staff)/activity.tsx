@@ -157,7 +157,7 @@ function HistoryScreen() {
                   </Text>
                 </View>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.muted }}>Giờ OT thực tế:</Text>
+                  <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.muted }}>Giờ ngoài ca ghi nhận:</Text>
                   <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 13, color: p.brandText }}>
                     +{selected.overtime_hours || 0} giờ
                   </Text>

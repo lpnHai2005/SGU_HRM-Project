@@ -7,7 +7,7 @@ import { formatDate, formatTime } from '../utils/formatters'
 import type { Attendance, AttendanceSummary } from '../types'
 import { attendanceApi } from '../services/api'
 import './AttendancePage.css'
-const sessionLabels: Record<string,string> = { NORMAL:'Đúng giờ', LATE:'Đi muộn', EARLY:'Về sớm', LATE_AND_EARLY:'Đi muộn & về sớm', OVERTIME:'Tăng ca', ANNUAL_LEAVE:'Nghỉ phép' }
+const sessionLabels: Record<string,string> = { NORMAL:'Đúng giờ', LATE:'Đi muộn', EARLY:'Về sớm', LATE_AND_EARLY:'Đi muộn & về sớm', OVERTIME:'Giờ ngoài ca ghi nhận', ANNUAL_LEAVE:'Nghỉ phép' }
 
 export interface AttendancePageProps {
   user: any
@@ -141,7 +141,7 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
   // Xuất file CSV báo cáo công
   const handleExportCSV = () => {
     const records = activeTab === 'my_timesheet' ? filteredPersonalRecords : filteredTeamRecords
-    const headers = ['Ngày làm việc', 'Nhân viên', 'Ca làm việc', 'Check-in', 'Check-out', 'Đi muộn (phút)', 'Về sớm (phút)', 'Giờ công thực tế (h)', 'Tăng ca (h)', 'Trạng thái', 'Ghi chú']
+    const headers = ['Ngày làm việc', 'Nhân viên', 'Ca làm việc', 'Check-in', 'Check-out', 'Đi muộn (phút)', 'Về sớm (phút)', 'Giờ công thực tế (h)', 'Giờ ngoài ca ghi nhận (h)', 'Trạng thái', 'Ghi chú']
     
     const rows = records.map(att => [
       att.work_date,
@@ -255,10 +255,10 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
         {/* Card 7: Tăng ca */}
         <StatCard
           icon={Icons.trendingUp}
-          iconColor="green"
-          label="TĂNG CA (OVERTIME)"
+          iconColor="amber"
+          label="GIỜ NGOÀI CA THỰC TẾ"
           value={`${otHours} giờ`}
-          footerNote={`${otShifts} công OT | Hệ số lương 1.5x`}
+          footerNote={`${otShifts} phiên phát sinh · cần HR duyệt riêng trước khi tính lương`}
         />
 
         {/* Card 8: Quỹ nghỉ bù */}
@@ -288,7 +288,7 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
               <option value="LATE">Có đi muộn</option>
               <option value="EARLY">Có về sớm</option>
               <option value="LATE_AND_EARLY">Đi muộn & về sớm</option>
-              <option value="OVERTIME">Có tăng ca (OT)</option>
+              <option value="OVERTIME">Giờ ngoài ca ghi nhận</option>
             </select>
 
             {activeTab === 'team_timesheet' && (
@@ -330,7 +330,7 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
                 <th>Đi muộn</th>
                 <th>Về sớm</th>
                 <th>Giờ thực tế</th>
-                <th>Tăng ca (OT)</th>
+                <th>Giờ ngoài ca ghi nhận</th>
                 <th>Trạng thái</th>
                 <th>Ghi chú / Vị trí</th>
               </tr>
@@ -403,7 +403,7 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
                     <td>
                       <span
                         className={`status-pill ${
-                          att.status === 'ANNUAL_LEAVE' ? 'active' : isLate ? 'rejected' : isEarly ? 'pending' : isOT ? 'active' : 'active'
+                          att.status === 'ANNUAL_LEAVE' ? 'active' : isLate ? 'rejected' : isEarly ? 'pending' : isOT ? 'pending' : 'active'
                         }`}
                       >
                         {sessionLabels[att.status] || att.status}

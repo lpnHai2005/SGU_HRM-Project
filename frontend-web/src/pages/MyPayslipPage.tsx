@@ -7,6 +7,7 @@ import { formatCurrency, formatDate } from '../utils/formatters'
 import type { Payroll, Contract } from '../types'
 import { payrollApi, employeeApi } from '../services/api'
 import { toast } from 'sonner'
+import { MonthPicker } from '../components/common/MonthPicker'
 import './PayslipPrint.css'
 import { PayrollRegulationDialog } from './PayrollRegulationDialog'
 
@@ -301,26 +302,14 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
           {/* Sub Toolbar: Month Selector & Sync Note */}
           <div className="card" style={{ padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-              <span className="text-secondary" style={{ fontSize: '13px', fontWeight: 600 }}>
-                Kỳ tính lương:
-              </span>
-              <select
-                className="form-select"
+              <MonthPicker
                 value={selectedPeriod}
-                onChange={(e) => setSelectedPeriod(e.target.value)}
-                style={{ width: 'auto', minWidth: '170px' }}
-              >
-                {Array.from({ length: 18 }, (_, i) => {
-                  const d = new Date()
-                  d.setMonth(d.getMonth() - i)
-                  const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-                  return (
-                    <option key={val} value={val}>
-                      Tháng {d.getMonth() + 1}/{d.getFullYear()}
-                    </option>
-                  )
-                })}
-              </select>
+                label="Kỳ tính lương"
+                onChange={(value) => {
+                  setSelectedPeriod(value)
+                  setSelectedYear(value.slice(0, 4))
+                }}
+              />
 
               <span style={{ fontSize: '12.5px', color: 'var(--text-tertiary)', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                 <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: 'var(--status-success)' }}></span>
@@ -1147,7 +1136,10 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
                     <div>Phép năm có lương: <strong>{monthlyPrintData.attendance?.paid_leave_days ?? currentPayroll?.paid_leave_days ?? 0} ngày</strong></div>
                     <div>Nghỉ không lương: <strong>{monthlyPrintData.attendance?.unpaid_leave_days ?? currentPayroll?.unpaid_leave_days ?? 0} ngày</strong></div>
                     <div>Giờ công thực: <strong>{monthlyPrintData.attendance?.actual_work_hours ?? 0} giờ</strong></div>
-                    <div>OT làm thêm: <strong>{monthlyPrintData.attendance?.approved_overtime_hours ?? monthlyPrintData.attendance?.actual_overtime_hours ?? 0} giờ</strong></div>
+                    <div>Đi trễ: <strong>{monthlyPrintData.attendance?.late_minutes ?? 0}</strong> phút</div>
+                    <div>Về sớm: <strong>{monthlyPrintData.attendance?.early_minutes ?? 0}</strong> phút</div>
+                    <div>OT thực tế: <strong>{monthlyPrintData.attendance?.actual_overtime_hours ?? 0} giờ</strong></div>
+                    <div>OT được duyệt: <strong>{monthlyPrintData.attendance?.approved_overtime_hours ?? 0} giờ</strong></div>
                     {(monthlyPrintData.attendance?.unworked_hours ?? currentPayroll?.unworked_hours ?? 0) > 0 && (
                       <div style={{ gridColumn: 'span 2' }}>
                         Giờ trễ / thiếu: <strong>{monthlyPrintData.attendance?.unworked_hours ?? currentPayroll?.unworked_hours} giờ</strong>
@@ -1285,6 +1277,203 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
                 </button>
               </div>
             </div>
+            {false && (<>
+
+            {/* A4 Sheet Body */}
+            <div className="payslip-modal-body" style={{ overflowY: 'auto', padding: '16px', background: 'var(--surface-ground)' }}>
+              <div className="payslip-a4-modal">
+                {/* Header */}
+                <div className="payslip-a4-header">
+                  <div>
+                    <div className="payslip-a4-company-name">{monthlyPrintData.company?.name || 'TECHZONE RETAIL'}</div>
+                    {monthlyPrintData.company?.address && (
+                      <div className="payslip-a4-company-sub">Địa chỉ: {monthlyPrintData.company.address}</div>
+                    )}
+                    {monthlyPrintData.company?.tax_id && (
+                      <div className="payslip-a4-company-sub">Mã số thuế: {monthlyPrintData.company.tax_id}</div>
+                    )}
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: '#1e3a8a' }}>
+                      MÃ PHIẾU: <span style={{ fontFamily: 'var(--font-mono)' }}>#{monthlyPrintData.payroll_code}</span>
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#475569', marginTop: '3px' }}>
+                      NGÀY TẠO: <strong>{monthlyPrintData.generated_date}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Title */}
+                <div className="payslip-a4-title-box">
+                  <div className="payslip-a4-main-title">{monthlyPrintData.payslip_title}</div>
+                  <div className="payslip-a4-period-subtitle">
+                    Kỳ tính lương: {monthlyPrintData.salary_period} • Đơn vị tiền tệ: Việt Nam Đồng (VNĐ)
+                  </div>
+                </div>
+
+                {/* Employee Info Grid */}
+                <div className="payslip-a4-info-grid">
+                  <div>Họ và tên: <strong>{monthlyPrintData.employee?.full_name}</strong></div>
+                  <div>Mã nhân viên: <strong>{monthlyPrintData.employee?.employee_code}</strong></div>
+                  <div>Vị trí công việc: <strong>{monthlyPrintData.employee?.position_name}</strong></div>
+                  <div>Chi nhánh làm việc: <strong>{monthlyPrintData.employee?.store_name}</strong></div>
+                  <div>Số tài khoản: <strong>{monthlyPrintData.employee?.bank_account_no || monthlyPrintData.employee?.bank_account || 'Chưa cập nhật'}</strong></div>
+                  <div>Ngân hàng: <strong>{monthlyPrintData.employee?.bank_name || 'Chưa cập nhật'}</strong></div>
+                </div>
+
+                {/* Attendance Summary Bar */}
+                <div className="payslip-a4-attendance-summary" style={{ marginBottom: '10px', fontSize: '11px', background: '#f8fafc', padding: '6px 10px', border: '1px solid #cbd5e1', borderRadius: '6px', lineHeight: 1.4 }}>
+                  <div style={{ fontWeight: 700, color: '#1e3a8a', marginBottom: '3px', textTransform: 'uppercase', fontSize: '11px', letterSpacing: '0.5px' }}>
+                    THỐNG KÊ NGÀY CÔNG & NGHỈ PHÉP (LIÊN KẾT CHẤM CÔNG & ĐƠN NGHỈ PHÉP)
+                  </div>
+                  <div className="payslip-attendance-values">
+                    <div>Công chuẩn: <strong>{monthlyPrintData.attendance?.standard_working_days ?? currentPayroll?.standard_working_days ?? '—'}</strong> ngày</div>
+                    <div>Công thực tế: <strong>{monthlyPrintData.attendance?.actual_working_days ?? currentPayroll?.actual_working_days ?? '—'}</strong> ngày</div>
+                    <div>Phép năm có lương: <strong style={{ color: '#2563eb' }}>{monthlyPrintData.attendance?.paid_leave_days ?? currentPayroll?.paid_leave_days ?? 0}</strong> ngày</div>
+                    <div>
+                      Nghỉ không lương: <strong style={{ color: (monthlyPrintData.attendance?.unpaid_leave_days ?? currentPayroll?.unpaid_leave_days ?? 0) > 0 ? '#dc2626' : 'inherit' }}>
+                        {monthlyPrintData.attendance?.unpaid_leave_days ?? currentPayroll?.unpaid_leave_days ?? 0} ngày
+                      </strong>
+                    </div>
+                    {(monthlyPrintData.attendance?.unworked_hours ?? currentPayroll?.unworked_hours ?? 0) > 0 && (
+                      <div>Giờ trễ/thiếu: <strong style={{ color: '#dc2626' }}>{monthlyPrintData.attendance?.unworked_hours ?? currentPayroll?.unworked_hours} giờ</strong></div>
+                    )}
+                    {monthlyPrintData.attendance?.actual_work_hours !== undefined && <div>Giờ công thực tế: <strong>{monthlyPrintData.attendance.actual_work_hours}</strong></div>}
+                    {monthlyPrintData.attendance?.late_minutes !== undefined && <div>Đi trễ: <strong>{monthlyPrintData.attendance.late_minutes}</strong> phút</div>}
+                    {monthlyPrintData.attendance?.early_minutes !== undefined && <div>Về sớm: <strong>{monthlyPrintData.attendance.early_minutes}</strong> phút</div>}
+                    {monthlyPrintData.attendance?.actual_overtime_hours !== undefined && <div>Giờ ngoài ca ghi nhận: <strong>{monthlyPrintData.attendance.actual_overtime_hours}</strong> giờ</div>}
+                    {monthlyPrintData.attendance?.approved_overtime_hours !== undefined && <div>OT được duyệt: <strong>{monthlyPrintData.attendance.approved_overtime_hours}</strong> giờ</div>}
+                  </div>
+                </div>
+
+                {/* Tables: Earnings & Deductions */}
+                <div className="payslip-columns">
+                  {/* Earnings */}
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '13px', marginBottom: '8px', color: '#1e3a8a' }}>
+                      I. CÁC KHOẢN THU NHẬP (GROSS)
+                    </div>
+                    <table className="payslip-a4-table">
+                      <thead>
+                        <tr>
+                          <th style={{ width: '55%' }}>Khoản mục thu nhập</th>
+                          <th style={{ textAlign: 'right', width: '45%' }}>Số tiền (VNĐ)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {monthlyPrintData.earnings?.map((e: any, idx: number) => (
+                          <tr key={idx}>
+                            <td>
+                              <div style={{ fontWeight: 600 }}>{e.item_name || e.name}</div>
+                              {e.calculation_formula && (
+                                <div style={{ fontSize: '10.5px', color: '#64748b', fontStyle: 'italic' }}>
+                                  {e.calculation_formula}
+                                </div>
+                              )}
+                            </td>
+                            <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
+                              {formatCurrency(e.amount)}
+                            </td>
+                          </tr>
+                        ))}
+                        <tr className="payslip-a4-total-row">
+                          <td>TỔNG THU NHẬP (GROSS)</td>
+                          <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: '#1e3a8a', fontSize: '13.5px' }}>
+                            {formatCurrency(monthlyPrintData.summary?.gross_income ?? currentPayroll?.gross_income)}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Deductions */}
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '13px', marginBottom: '8px', color: '#b91c1c' }}>
+                      II. CÁC KHOẢN GIẢM TRỪ (DEDUCTIONS)
+                    </div>
+                    <table className="payslip-a4-table">
+                      <thead>
+                        <tr>
+                          <th style={{ width: '55%' }}>Khoản mục khấu trừ</th>
+                          <th style={{ textAlign: 'right', width: '45%' }}>Số tiền (VNĐ)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {monthlyPrintData.deductions?.map((d: any, idx: number) => (
+                          <tr key={idx}>
+                            <td>
+                              <div style={{ fontWeight: 600, color: '#991b1b' }}>{d.item_name || d.name}</div>
+                              {d.calculation_formula && (
+                                <div style={{ fontSize: '10.5px', color: '#64748b', fontStyle: 'italic' }}>
+                                  {d.calculation_formula}
+                                </div>
+                              )}
+                            </td>
+                            <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: '#dc2626', fontWeight: 600 }}>
+                              -{formatCurrency(d.amount)}
+                            </td>
+                          </tr>
+                        ))}
+                        <tr className="payslip-a4-total-row">
+                          <td>TỔNG GIẢM TRỪ</td>
+                          <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: '#dc2626', fontSize: '13.5px' }}>
+                            -{formatCurrency(monthlyPrintData.summary?.total_deduction ?? currentPayroll?.total_deduction)}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Net Highlight */}
+                <div className="payslip-a4-highlight-box">
+                  <div className="payslip-a4-net-label">THỰC LĨNH CHUYỂN KHOẢN (NET):</div>
+                  <div className="payslip-a4-net-amount">{formatCurrency(monthlyPrintData.summary?.net_salary)}</div>
+                </div>
+
+                {monthlyPrintData.summary?.net_salary_in_words && (
+                  <div className="payslip-a4-words">
+                    Số tiền bằng chữ: <strong>{monthlyPrintData.summary.net_salary_in_words}</strong>
+                  </div>
+                )}
+
+                {/* Signatures */}
+                <div className="payslip-a4-signatures">
+                  <div>
+                    <div className="payslip-a4-sign-title">NGƯỜI LẬP PHIẾU</div>
+                    <div className="payslip-a4-sign-note">(Ký, họ tên)</div>
+                    <div className="payslip-a4-sign-space"></div>
+                  </div>
+                  <div>
+                    <div className="payslip-a4-sign-title">KẾ TOÁN TRƯỞNG</div>
+                    <div className="payslip-a4-sign-note">(Ký, họ tên)</div>
+                    <div className="payslip-a4-sign-space"></div>
+                  </div>
+                  <div>
+                    <div className="payslip-a4-sign-title">GIÁM ĐỐC</div>
+                    <div className="payslip-a4-sign-note">(Ký, đóng dấu)</div>
+                    <div className="payslip-a4-sign-space"></div>
+                  </div>
+                  <div>
+                    <div className="payslip-a4-sign-title">NGƯỜI NHẬN LƯƠNG</div>
+                    <div className="payslip-a4-sign-note">(Ký xác nhận)</div>
+                    <div className="payslip-a4-sign-space"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="modal-footer no-print" style={{ padding: '14px 20px', background: 'var(--surface-card)' }}>
+              <button className="btn btn-secondary" onClick={() => setIsMonthlyPrintModalOpen(false)}>
+                Đóng
+              </button>
+              <button className="btn btn-primary" onClick={() => window.print()}>
+                {Icons.printer}
+                In phiếu lương (PDF)
+              </button>
+            </div>
+            </>)}
           </div>
         )
       })()}

@@ -12,6 +12,10 @@ const TOKEN_KEY = 'hrm_token';
 const USER_KEY = 'hrm_user';
 
 const friendlyApiMessages: Record<string, string> = {
+  OT_RECONCILIATION_SCHEMA_NOT_INSTALLED: 'Máy chủ chưa cài schema đối soát OT. Liên hệ quản trị viên; không thử xác nhận lại.',
+  OT_RECONCILIATION_STALE: 'Dữ liệu đơn OT hoặc chấm công đã thay đổi. Hãy tải lại kết quả đối soát.',
+  OT_RECONCILIATION_NEEDS_REVIEW: 'Dữ liệu chấm công cần rà soát trước khi xác nhận giờ OT.',
+  OT_VERIFIED_INTERVAL_CONFLICT: 'Nhân viên đã có giờ OT xác nhận trong khung giờ giao nhau. Hãy kiểm tra đơn liên quan.',
   SCHEDULE_CONFLICT: 'Nhân viên đã có ca làm việc trùng thời gian. Hãy chọn ca khác hoặc điều chỉnh lịch đang xung đột.',
   SCHEDULE_AMBIGUOUS: 'Có nhiều lịch phù hợp với thao tác này. Hãy chọn đúng ca được phân công rồi thử lại.',
   SCHEDULE_REFERENCED: 'Lịch này đã được dùng để chấm công nên không thể sửa trực tiếp. Hãy dùng quy trình điều chỉnh lịch có ghi nhận.',
@@ -27,6 +31,14 @@ const friendlyApiMessages: Record<string, string> = {
   STORE_HAS_LINKED_RECORDS: 'Cửa hàng còn dữ liệu liên quan nên không thể xóa. Hãy giữ cửa hàng ở trạng thái ngừng hoạt động.',
   STORE_DELETE_CONSTRAINT: 'Cửa hàng còn dữ liệu nghiệp vụ liên kết nên chưa thể xóa an toàn.',
   STORE_HANDOFF_CONFIRMATION_REQUIRED: 'Cần xác nhận phương án bàn giao nhân sự và lịch còn hiệu lực trước khi ngừng cửa hàng.',
+  OVERTIME_REQUEST_CONFLICT: 'Nhân viên đã có đăng ký OT trùng khung giờ. Hãy kiểm tra lịch OT hiện có.',
+  OT_SCHEMA_NOT_INSTALLED: 'Chức năng đăng ký OT chưa được kích hoạt trên máy chủ. Quản trị viên cần áp dụng migration OT đã được phê duyệt; không cần gửi lại liên tục.',
+  OT_LEGACY_APPROVAL_CLOSED: 'Phiên thuộc giai đoạn đăng ký OT mới. Không thể duyệt giờ ngoài ca qua luồng cũ; hãy liên hệ HR để đối chiếu theo quy chế mới.',
+  OT_PAYROLL_REVIEW_REQUIRED: 'Kỳ lương có giờ ngoài ca cần đối chiếu theo quy chế OT mới. Hãy rà soát trước khi tính hoặc chốt lương.',
+  OT_PAYROLL_PERIOD_ON_HOLD: 'Kỳ lương đang được giữ để rà soát OT theo quy chế mới. Chưa thể tính hoặc chốt kỳ này.',
+  WORK_SCHEDULE_CONFLICT: 'Khung giờ OT trùng ca làm việc đã phân. Hãy chọn giờ khác ngoài ca.',
+  LEAVE_CONFLICT: 'Nhân viên đang có đơn nghỉ trong ngày này nên không thể đăng ký OT.',
+  EMPLOYEE_STORE_CHANGED: 'Nhân viên đã được chuyển cửa hàng. Hãy tải lại danh sách và tạo lại đăng ký.',
   PROOF_IMAGE_PROVIDER_ERROR: 'Nhà cung cấp ảnh chưa xử lý được minh chứng. Kiểm tra lại ảnh hoặc báo quản trị viên kèm mã HTTP hiển thị.',
 };
 
@@ -90,6 +102,16 @@ export const clearAuth = () => {
 
 interface RequestOptions extends RequestInit {
   params?: Record<string, any>
+}
+
+export class ApiHttpError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ApiHttpError';
+    this.status = status;
+  }
 }
 
 class ApiClient {
@@ -159,13 +181,13 @@ class ApiClient {
         }
         // No token in storage → treat as a regular API error (e.g. bad API key).
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(formatApiError(errorData.detail, response.status));
+        throw new ApiHttpError(formatApiError(errorData.detail, response.status), response.status);
       }
 
       // Handle other errors
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(formatApiError(errorData.detail, response.status));
+        throw new ApiHttpError(formatApiError(errorData.detail, response.status), response.status);
       }
 
       // Handle empty responses
@@ -384,6 +406,80 @@ export const workScheduleApi = {
 
   stopFixed: (ruleId: number, reason: string, effective_date?: string): Promise<{ message: string }> =>
     api.post(`/fixed-schedules/${ruleId}/stop`, { reason, effective_date }),
+};
+
+import type { OvertimeReconciliation, OvertimeRequest } from '../types';
+
+export const overtimeReconciliationApi = {
+  detail: (requestId: number): Promise<OvertimeReconciliation> =>
+    api.get(`/overtime-reconciliations/${requestId}`),
+  preview: (requestId: number): Promise<OvertimeReconciliation> =>
+    api.post(`/overtime-reconciliations/${requestId}/preview`, {}),
+  verify: (requestId: number, expected_version: number, reason?: string): Promise<OvertimeReconciliation> =>
+    api.post(`/overtime-reconciliations/${requestId}/verify`, { expected_version, reason }),
+  reject: (requestId: number, expected_version: number, reason: string): Promise<OvertimeReconciliation> =>
+    api.post(`/overtime-reconciliations/${requestId}/reject`, { expected_version, reason }),
+};
+
+export const overtimeRequestApi = {
+  count: (): Promise<{ count: number }> =>
+    api.get<{ count: number }>('/overtime-requests/count'),
+
+  list: (params: { date_from: string; date_to: string; store_id?: number; employee_id?: number; status?: string; q?: string; limit?: number; offset?: number }): Promise<OvertimeRequest[]> =>
+    api.get<OvertimeRequest[]>('/overtime-requests', params),
+
+  detail: (requestId: number): Promise<OvertimeRequest> =>
+    api.get<OvertimeRequest>(`/overtime-requests/${requestId}`),
+
+  create: (data: Pick<OvertimeRequest, 'employee_id' | 'work_date' | 'reason'> & {
+    store_id?: number
+    start_time: string
+    end_time: string
+    notes?: string
+  }, idempotencyKey: string): Promise<OvertimeRequest> => api.request<OvertimeRequest>('/overtime-requests', {
+    method: 'POST',
+    headers: { 'Idempotency-Key': idempotencyKey },
+    body: JSON.stringify(data),
+  }),
+
+  submit: (requestId: number): Promise<OvertimeRequest> =>
+    api.post<OvertimeRequest>(`/overtime-requests/${requestId}/submit`, {}),
+
+  employeeConfirm: (requestId: number): Promise<OvertimeRequest> =>
+    api.post<OvertimeRequest>(`/overtime-requests/${requestId}/employee-confirm`, {}),
+
+  employeeDecline: (requestId: number, reason?: string): Promise<OvertimeRequest> =>
+    api.post<OvertimeRequest>(`/overtime-requests/${requestId}/employee-decline`, reason?.trim() ? { reason: reason.trim() } : {}),
+
+  approve: (requestId: number): Promise<OvertimeRequest> =>
+    api.post<OvertimeRequest>(`/overtime-requests/${requestId}/approve`, {}),
+
+  reject: (requestId: number, reason: string): Promise<OvertimeRequest> =>
+    api.post<OvertimeRequest>(`/overtime-requests/${requestId}/reject`, { reason }),
+
+  cancel: (requestId: number, reason?: string): Promise<OvertimeRequest> =>
+    api.post<OvertimeRequest>(`/overtime-requests/${requestId}/cancel`, reason?.trim() ? { reason: reason.trim() } : {}),
+
+  requestRevocation: (requestId: number, reason: string): Promise<OvertimeRequest> =>
+    api.post<OvertimeRequest>(`/overtime-requests/${requestId}/revoke-request`, { reason }),
+
+  approveRevocation: (requestId: number): Promise<OvertimeRequest> =>
+    api.post<OvertimeRequest>(`/overtime-requests/${requestId}/revoke-approve`, {}),
+
+  rejectRevocation: (requestId: number, reason: string): Promise<OvertimeRequest> =>
+    api.post<OvertimeRequest>(`/overtime-requests/${requestId}/revoke-reject`, { reason }),
+
+  proposeAmendment: (requestId: number, data: {
+    work_date: string
+    start_time: string
+    end_time: string
+    reason: string
+    notes?: string
+  }): Promise<OvertimeRequest> =>
+    api.post<OvertimeRequest>(`/overtime-requests/${requestId}/amend`, data),
+
+  approveAmendment: (requestId: number): Promise<OvertimeRequest> =>
+    api.post<OvertimeRequest>(`/overtime-requests/${requestId}/amend-approve`, {}),
 };
 
 // ============================================

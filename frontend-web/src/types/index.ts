@@ -400,6 +400,146 @@ export interface WorkScheduleWrite {
   reason: string;
 }
 
+export type OvertimeRequestStatus =
+  | 'DRAFT'
+  | 'PENDING_EMPLOYEE_CONFIRMATION'
+  | 'PENDING_HR'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'EMPLOYEE_DECLINED'
+  | 'CANCELLED'
+  | 'REVOKED'
+  | 'REPLACED'
+
+export type OvertimeReconciliationStatus =
+  | 'PENDING_RECONCILIATION' | 'NEEDS_REVIEW' | 'VERIFIED' | 'REJECTED'
+
+export interface OvertimeReconciliation {
+  request_id: number
+  request_status: OvertimeRequestStatus
+  status: OvertimeReconciliationStatus
+  effective_status: OvertimeReconciliationStatus
+  version: number
+  proposed_microseconds: number
+  verified_microseconds: number | null
+  payable_microseconds: number
+  actual_microseconds: number
+  source_current: boolean
+  attendance_ids: number[]
+  attendance_sources: Array<{
+    attendance_id: number
+    store_id: number | null
+    check_in_time: string
+    check_out_time: string | null
+    overlap_starts_at: string | null
+    overlap_ends_at: string | null
+    schedule_status: string | null
+    planned_starts_at: string | null
+    planned_ends_at: string | null
+  }>
+  eligible_intervals: Array<{ starts_at: string; ends_at: string }>
+  review_issues: string[]
+  decision_reason?: string | null
+  reviewed_by?: number | null
+  reviewed_at?: string | null
+  events: Array<{
+    event_id: number
+    actor_id: number
+    action: string
+    from_status: OvertimeReconciliationStatus | null
+    to_status: OvertimeReconciliationStatus
+    version: number
+    reason: string | null
+    old_values: Record<string, unknown> | null
+    new_values: Record<string, unknown>
+    created_at: string
+  }>
+}
+
+export interface OvertimeRequest {
+  request_id: number
+  employee_id: number
+  employee_name: string
+  employee_code?: string | null
+  store_id: number
+  store_name: string
+  work_date: string
+  starts_at: string
+  ends_at: string
+  reason: string
+  notes?: string | null
+  status: OvertimeRequestStatus
+  request_type?: 'STANDARD' | 'AMENDMENT'
+  parent_request_id?: number | null
+  replaced_by_request_id?: number | null
+  created_by: number
+  creator_username?: string | null
+  reviewer_username?: string | null
+  reviewed_by?: number | null
+  reviewed_at?: string | null
+  employee_confirmed_at?: string | null
+  rejection_reason?: string | null
+  revoke_requested_by?: number | null
+  revoke_requested_at?: string | null
+  revoke_reason?: string | null
+  revoke_decided_by?: number | null
+  revoke_decided_at?: string | null
+  revoke_decision?: 'APPROVED' | 'REJECTED' | null
+  revoke_decision_reason?: string | null
+  revoked_by?: number | null
+  revoked_at?: string | null
+  revocation_reason?: string | null
+  is_overdue?: boolean
+  overdue_state?: string | null
+  lifecycle?: {
+    eligible: boolean
+    attendance_linked: boolean
+    blocking_attendance_id?: number | null
+    revocation_pending: boolean
+  }
+  related_requests?: Array<{
+    request_id: number
+    request_type: 'STANDARD' | 'AMENDMENT'
+    parent_request_id?: number | null
+    replaced_by_request_id?: number | null
+    status: OvertimeRequestStatus
+    work_date: string
+    starts_at: string
+    ends_at: string
+    reason: string
+    created_by: number
+    created_at: string
+  }>
+  updated_at?: string | null
+  events?: Array<{
+    event_id: number
+    actor_id: number
+    actor_username?: string | null
+    action: string
+    from_status?: string | null
+    to_status: string
+    reason?: string | null
+    created_at: string
+  }>
+  approval_context?: {
+    related_schedules: Array<{
+      schedule_id: number
+      work_date: string
+      shift_name: string
+      starts_at: string
+      ends_at: string
+      overlaps_overtime: boolean
+    }>
+    conflicts: Array<{
+      code: string
+      message: string
+      schedule_id?: number
+      request_id?: number
+      leave_request_id?: number
+    }>
+  }
+}
+
 export interface LeaveType {
   leave_type_id: number;
   type_code: string;

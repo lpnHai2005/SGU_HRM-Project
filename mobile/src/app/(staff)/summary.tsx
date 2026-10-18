@@ -138,9 +138,9 @@ export default function SummaryScreen() {
 
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <MetricBox
-              label="Tăng ca (OT)"
+              label="Giờ ngoài ca ghi nhận"
               value={`+${data.overtime.hours}h`}
-              subtext={`${data.overtime.shifts_count} ca làm thêm`}
+              subtext={`${data.overtime.shifts_count} phiên · chưa phải OT đã duyệt`}
               icon="flash-outline"
               variant="brand"
             />
@@ -190,7 +190,7 @@ export default function SummaryScreen() {
           • Ca chưa phân công trước vẫn được máy chủ ghi nhận đối soát đầy đủ.
         </Text>
         <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.muted, lineHeight: 18 }}>
-          • Giờ công và giờ tăng ca OT được tính theo bản chụp ca lúc check-in thực tế.
+          • Giờ ngoài ca được ghi nhận theo phiên chấm công và bản chụp ca. Đây chưa phải OT được HR duyệt và không tự được tính lương.
         </Text>
       </Card>
     </ScrollView>

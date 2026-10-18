@@ -1,7 +1,9 @@
 import os
 import json
+from datetime import date
+from typing import Literal, Optional
 from typing import List, Union
-from pydantic import field_validator
+from pydantic import ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Đường dẫn linh hoạt tới file .env
@@ -11,19 +13,37 @@ BACKEND_DIR = os.path.dirname(APP_DIR)
 ENV_PATH = os.path.join(BACKEND_DIR, ".env")
 
 class Settings(BaseSettings):
+    # Leave disabled until the project owner approves a Vietnam business-date cutoff.
+    OT_REGISTRATION_POLICY_MODE: Literal["DISABLED", "LEGACY_ONLY_BEFORE_CUTOFF", "NEW_PERIOD_HOLD"] = "DISABLED"
+    OT_REGISTRATION_POLICY_EFFECTIVE_FROM: Optional[date] = None
+
+    @model_validator(mode="after")
+    def validate_ot_registration_policy(self):
+        if self.OT_REGISTRATION_POLICY_MODE != "DISABLED" and self.OT_REGISTRATION_POLICY_EFFECTIVE_FROM is None:
+            raise ValueError("OT_REGISTRATION_POLICY_EFFECTIVE_FROM is required when OT policy is enabled")
+        return self
     CLOUDINARY_CLOUD_NAME: str = ""
     CLOUDINARY_API_KEY: str = ""
     CLOUDINARY_API_SECRET: str = ""
     TRACKASIA_API_KEY: str = ""
     PROJECT_NAME: str = "TechZone HRM API"
     API_V1_STR: str = "/api/v1"
+
+    @field_validator("DATABASE_URL", "SYNC_DATABASE_URL", "JWT_SECRET_KEY", mode="before")
+    @classmethod
+    def require_security_configuration(cls, value):
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("Required backend setting must not be empty")
+        return value.strip()
+
+    # Database credentials and JWT signing key must come from environment/secrets.
     
     # Cấu hình CSDL Supabase PostgreSQL
-    DATABASE_URL: str = "postgresql+asyncpg://postgres.ywfarvcehlsbfovovujp:VIENTHONGDEPTRAINHATNHOMAICUNGBIET@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres"
-    SYNC_DATABASE_URL: str = "postgresql://postgres.ywfarvcehlsbfovovujp:VIENTHONGDEPTRAINHATNHOMAICUNGBIET@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres"
+    DATABASE_URL: str
+    SYNC_DATABASE_URL: str
     
     # Cấu hình bảo mật JWT Token
-    JWT_SECRET_KEY: str = "techzone_hrm_super_secret_jwt_key_2026_sgu_cnpm_htttdn"
+    JWT_SECRET_KEY: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 480 # 8 giờ làm việc
     
@@ -54,4 +74,16 @@ class Settings(BaseSettings):
         extra="ignore"
     )
 
-settings = Settings()
+def _load_settings(env_file=ENV_PATH) -> Settings:
+    try:
+        return Settings(_env_file=env_file)
+    except ValidationError as exc:
+        invalid_fields = sorted({str(error["loc"][0]) for error in exc.errors() if error.get("loc")})
+        names = ", ".join(invalid_fields) if invalid_fields else "backend settings"
+        raise RuntimeError(
+            f"Missing or invalid required backend configuration: {names}. "
+            "Set values in backend/.env for local development or in the deployment secret manager."
+        ) from None
+
+
+settings = _load_settings()

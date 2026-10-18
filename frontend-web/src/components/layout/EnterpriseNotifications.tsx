@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Icons } from '../common/Icons'
+import { overtimeStatusClass, overtimeStatusLabel } from '../schedule/overtimeDisplay'
 import { api } from '../../services/api'
 import './NotificationBell.css'
 
-type Notice = { id: string; title: string; href: string; is_read: boolean; category?: string; tone?: 'success' | 'warning' | 'error' | 'info'; created_at?: string | null }
+type Notice = { id: string; title: string; href: string; is_read: boolean; category?: string; tone?: 'success' | 'warning' | 'error' | 'info'; overtime_status?: string; created_at?: string | null }
 
 const noticeTone = (item: Notice) => item.tone || 'info'
 const noticeIcon = (item: Notice) => item.category === 'Chấm công' ? Icons.clock : noticeTone(item) === 'error' ? Icons.xCircle : noticeTone(item) === 'success' ? Icons.checkCircle : Icons.calendar
@@ -54,14 +55,16 @@ export function NotificationBell({ user }: { user: { user_id: number } }) {
   const unread = items.filter(item => !item.is_read).length
   const visible = filter === 'unread' ? items.filter(item => !item.is_read) : items
   const select = async (item: Notice) => {
-    setOpen(false); navigate(item.href)
-    if (item.is_read) return
-    setItems(rows => rows.map(row => row.id === item.id ? { ...row, is_read: true } : row))
-    try { await api.post(`/operations/notifications/${encodeURIComponent(item.id)}/read`, {}) }
-    catch (cause) {
-      setItems(rows => rows.map(row => row.id === item.id ? { ...row, is_read: false } : row))
-      toast.error(cause instanceof Error ? cause.message : 'Không lưu được trạng thái thông báo')
+    setOpen(false)
+    if (!item.is_read) {
+      try {
+        await api.post(`/operations/notifications/${encodeURIComponent(item.id)}/read`, {})
+        setItems(rows => rows.map(row => row.id === item.id ? { ...row, is_read: true } : row))
+      } catch (cause) {
+        toast.error(cause instanceof Error ? cause.message : 'Không lưu được trạng thái thông báo')
+      }
     }
+    navigate(item.href)
   }
   return <div className="notification-root" ref={root}>
     <button className="topbar-icon-btn notification-trigger" aria-label={`Thông báo: ${unread} chưa đọc`} aria-expanded={open} aria-controls="notification-panel" onClick={() => setOpen(value => !value)}>
@@ -74,7 +77,7 @@ export function NotificationBell({ user }: { user: { user_id: number } }) {
         {loading && <p className="notification-empty">Đang tải thông báo…</p>}
         {error && <p className="notification-empty" role="alert">{error}<button type="button" onClick={() => window.location.reload()}>Tải lại</button></p>}
         {!loading && !error && visible.length === 0 && <p className="notification-empty">{filter === 'unread' ? 'Không có thông báo chưa đọc.' : 'Chưa có thông báo nào.'}</p>}
-        {visible.map(item => <button type="button" key={item.id} className={`notification-item tone-${noticeTone(item)} ${item.is_read ? 'is-read' : ''}`} onClick={() => void select(item)}><span className="notification-item-icon">{noticeIcon(item)}</span><span className="notification-item-body"><small>{item.category || 'Hoạt động'}</small><strong>{item.title}</strong>{item.created_at && <time dateTime={item.created_at}>{new Date(item.created_at).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</time>}</span>{!item.is_read && <span className="notification-unread-dot" aria-label="Chưa đọc" />}</button>)}
+        {visible.map(item => <button type="button" key={item.id} className={`notification-item tone-${noticeTone(item)} ${item.is_read ? 'is-read' : ''}`} onClick={() => void select(item)}><span className="notification-item-icon">{noticeIcon(item)}</span><span className="notification-item-body"><small>{item.category || 'Hoạt động'}</small><strong>{item.title}</strong>{item.category === 'Đăng ký OT' && item.overtime_status && <span className={`notification-overtime-status ${overtimeStatusClass(item.overtime_status)}`}>{overtimeStatusLabel(item.overtime_status)}</span>}{item.created_at && <time dateTime={item.created_at}>{new Date(item.created_at).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</time>}</span>{!item.is_read && <span className="notification-unread-dot" aria-label="Chưa đọc" />}</button>)}
       </div>
     </section>}
   </div>

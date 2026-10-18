@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { reportApi } from '../services/api'
 import { formatCurrency } from '../utils/formatters'
+import { MonthPicker } from '../components/common/MonthPicker'
 
 type Unit = { unit_name: string; employee_count: number; total_base_salary: number; total_overtime: number; total_allowances: number; total_commissions: number; total_bonuses: number; total_gross: number; total_insurance: number; total_penalties: number; total_net: number }
 type Fund = { salary_period: string; company_totals: { total_headcount: number; total_gross_fund: number; total_net_fund: number; total_insurance_fund: number; total_commission_fund: number }; by_unit: Unit[] }
@@ -18,7 +19,7 @@ export function PayrollFundPage({ branch }: { branch: boolean }) {
   const totals = data?.company_totals
   return <div className="page-container"><h1>{branch ? 'Quỹ lương chi nhánh' : 'Quỹ lương'}</h1>
     <p>{branch ? 'Chỉ hiển thị nhân sự thuộc cửa hàng được giao.' : 'Tổng hợp quỹ lương theo đơn vị.'} Số liệu gồm phiếu nháp và phiếu đã duyệt trong kỳ, chưa đồng nghĩa đã chi trả.</p>
-    <section className="card" style={{ padding: 20, marginBottom: 20 }}><label>Kỳ lương <input className="form-input" type="month" value={period} onChange={event => { setData(null); setPeriod(event.target.value) }} /></label></section>
+    <section className="card" style={{ padding: 20, marginBottom: 20 }}><MonthPicker value={period} onChange={value => { setData(null); setPeriod(value) }} label="Kỳ lương" /></section>
     {error && <p role="alert">{error}</p>}
     {data ? <><div className="stat-grid-4">
       {[['Nhân sự', totals?.total_headcount], ['Quỹ lương gộp', formatCurrency(totals?.total_gross_fund)], ['Quỹ thực nhận dự kiến', formatCurrency(totals?.total_net_fund)], ['Bảo hiểm', formatCurrency(totals?.total_insurance_fund)]].map(([label, value]) => <div className="card" key={String(label)} style={{ padding: 20 }}><span>{label}</span><h2>{value}</h2></div>)}

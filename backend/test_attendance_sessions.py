@@ -64,9 +64,12 @@ class Endpoints(unittest.IsolatedAsyncioTestCase):
         self.client = AsyncClient(transport=ASGITransport(app=self.app), base_url='http://test')
         self.clock = patch.object(api, 'local_now', return_value=NOW)
         self.clock.start()
+        self.network_check = patch.object(api, 'require_store_web_network', new=AsyncMock())
+        self.network_check.start()
 
     async def asyncTearDown(self):
         self.clock.stop()
+        self.network_check.stop()
         await self.client.aclose()
 
     async def test_new_session_insert_not_overwrite(self):
@@ -105,13 +108,13 @@ class Endpoints(unittest.IsolatedAsyncioTestCase):
 
     async def test_double_checkout_rejected(self):
         self.db.execute.side_effect = [result(dict(employee_id=3)),
-            result(dict(employee_id=3, store_id=1)), result(dict(check_in_time=NOW, check_out_time=NOW))]
+            result(dict(employee_id=3, store_id=1)), result(dict(employee_id=3, store_id=1, check_in_time=NOW, check_out_time=NOW))]
         response = await self.client.post('/attendances/check-out', json={'attendance_id':1})
         self.assertEqual(response.status_code, 409)
         self.db.commit.assert_not_awaited()
 
     async def test_checkout_persists_calculated_status(self):
-        att = dict(attendance_id=1, check_in_time=NOW-timedelta(hours=1), check_out_time=None,
+        att = dict(attendance_id=1, employee_id=3, store_id=1, check_in_time=NOW-timedelta(hours=1), check_out_time=None,
                    work_date=NOW.date(), start_time=time(8), end_time=time(16), work_hours=8, late_minutes=60)
         self.db.execute.side_effect = [result(dict(employee_id=3, store_id=1)), result(att), result()]
         response = await self.client.post('/attendances/check-out', json={})
@@ -125,7 +128,7 @@ class Endpoints(unittest.IsolatedAsyncioTestCase):
         for elapsed in [0, 59, 59.9, 60, 61]:
             with self.subTest(elapsed=elapsed):
                 self.db.reset_mock()
-                att = dict(attendance_id=1, check_in_time=NOW-timedelta(seconds=elapsed), check_out_time=None,
+                att = dict(attendance_id=1, employee_id=3, store_id=1, check_in_time=NOW-timedelta(seconds=elapsed), check_out_time=None,
                            work_date=NOW.date(), start_time=time(8), end_time=time(16), work_hours=8, late_minutes=0)
                 self.db.execute.side_effect = [result(dict(employee_id=3,store_id=1)), result(att), result()]
                 response = await self.client.post('/attendances/check-out',json={})
@@ -181,7 +184,7 @@ class Endpoints(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(response.json()['schedule_status'], 'MATCHED')
 
     async def test_late_and_overtime_preserve_numbers(self):
-        att = dict(attendance_id=1, check_in_time=NOW.replace(hour=9), check_out_time=None,
+        att = dict(attendance_id=1, employee_id=3, store_id=1, check_in_time=NOW.replace(hour=9), check_out_time=None,
                    work_date=NOW.date(), start_time=time(8), end_time=time(16), work_hours=8, late_minutes=60)
         self.db.execute.side_effect = [result(dict(employee_id=3, store_id=1)), result(att), result()]
         with patch.object(api, 'local_now', return_value=NOW.replace(hour=18)):
@@ -190,12 +193,16 @@ class Endpoints(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.json()['status'], 'LATE')
         self.assertEqual(response.json()['overtime_hours'], 1)
         self.assertEqual(self.db.execute.call_args.args[1]['overtime_hours'], 1)
-        self.assertNotIn('late_minutes =', str(self.db.execute.call_args.args[0]))
+        checkout_update = str(self.db.execute.call_args.args[0]).lower()
+        self.assertNotIn('late_minutes =', checkout_update)
+        self.assertIn('update attendances', checkout_update)
+        self.assertNotIn('overtime_requests', checkout_update)
+        self.assertNotIn('attendance_overtime_approvals', checkout_update)
 
     async def test_schedule_edited_after_checkin_uses_snapshot(self):
         body = await self.check_in_for_schedule(dict(schedule_id=10, shift_id=1, store_id=1))
         # Simulate current shift now being 13:00-21:00/7h; original was 08:00-16:00/8h.
-        att = dict(attendance_id=99, check_in_time=NOW.replace(hour=8), check_out_time=None,
+        att = dict(attendance_id=99, employee_id=3, store_id=1, check_in_time=NOW.replace(hour=8), check_out_time=None,
                    work_date=NOW.date(), start_time=time(13), end_time=time(21), work_hours=7,
                    late_minutes=0, attendance_context=body['attendance_context'])
         self.db.execute.side_effect = [result(dict(employee_id=3, store_id=1)), result(att), result()]

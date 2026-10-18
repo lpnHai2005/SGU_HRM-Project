@@ -208,7 +208,7 @@ async def get_my_attendance_summary(
     4. Về sớm: số lần, tổng số phút về sớm
     5. Làm thêm: số giờ làm thêm
     6. Công tác: số ngày đi công tác
-    7. Tăng ca: số công ca tăng, số giờ OT
+    7. Giờ ngoài ca thực tế: số phiên có overtime_hours > 0 và tổng số giờ ghi nhận. Đây không phải số giờ OT đã được duyệt.
     8. Quỹ nghỉ bù: tổng số ngày nghỉ bù tích lũy
     """
     target_emp_id = employee_id or current_user.get("employee_id")

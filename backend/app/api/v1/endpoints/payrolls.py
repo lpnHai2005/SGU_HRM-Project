@@ -1,5 +1,6 @@
 import io
 import csv
+import re
 from datetime import date, datetime
 from typing import Optional, List
 from pydantic import BaseModel, Field
@@ -9,6 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
 from app.core.database import get_db
+from app.core.config import settings
+from app.core.ot_registration_policy import (
+    LEGACY_OT_LOCK_MESSAGE, legacy_decision_locked, period_overlaps_policy,
+)
 from app.api.deps import get_current_user, require_roles
 from app.core.vietnamese_number import currency_to_vietnamese_words
 from app.core.excel_exporter import create_styled_excel
@@ -26,7 +31,34 @@ async def lock_payroll_period(db, period):
     # Serialize calculation and approval, including periods with no rows yet.
     await db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:key))"), {"key": f"payroll:{period}"})
 
+
+async def ensure_payroll_ot_procedure_is_approval_gated(db):
+    """Fail closed before payroll writes if the installed procedure pays raw attendance OT."""
+    body = (await db.execute(text("""SELECT pg_get_functiondef(p.oid)
+        FROM pg_proc p
+        WHERE p.proname='sp_generate_monthly_payroll' AND p.prokind='p' AND p.pronargs=2
+          AND pg_function_is_visible(p.oid)
+        LIMIT 1"""))).scalar_one_or_none()
+    normalized = re.sub(r"\s+", " ", (body or "").lower())
+    approved_ot_expression = re.search(
+        r"sum\s*\(\s*case\s+when\s+ota\.decision\s*=\s*'approved'\s+"
+        r"then\s+ota\.approved_hours\s+else\s+0\s+end\s*\)\s+as\s+total_ot_hours",
+        normalized,
+    )
+    if ("attendance_overtime_approvals" not in normalized
+            or "overtime_requests" in normalized
+            or not approved_ot_expression):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Chưa thể tính kỳ lương: cấu hình Payroll chưa xác nhận chỉ tính giờ OT đã được HR duyệt. "
+                "Hãy cài procedure Payroll đã rà soát và xác nhận quy chế OT trước khi mở tính kỳ mới. "
+                "Không có dữ liệu lương nào được thay đổi."
+            ),
+        )
+
 async def ensure_fresh_payroll(db,period):
+    await ensure_ot_period_policy(db, period)
     run=(await db.execute(text('SELECT calculated_at FROM payroll_calculation_runs WHERE salary_period=:period'),{'period':period})).scalar_one_or_none()
     if not run:
         raise HTTPException(409,'Kỳ lương nháp cần được tính lại theo giờ OT đã duyệt trước khi chốt')
@@ -34,6 +66,24 @@ async def ensure_fresh_payroll(db,period):
         JOIN attendances a USING(attendance_id) WHERE to_char(a.work_date,'YYYY-MM')=:period
         AND ota.updated_at>:calculated LIMIT 1'''),{'period':period,'calculated':run})).first()
     if changed: raise HTTPException(409,'Quyết định OT thay đổi sau lần tính lương; vui lòng tính lại trước khi duyệt')
+
+
+async def ensure_ot_period_policy(db, period):
+    """Hold unsafe new-period payroll before any calculation or DRAFT confirmation."""
+    if not period_overlaps_policy(period):
+        return
+    if settings.OT_REGISTRATION_POLICY_MODE == "NEW_PERIOD_HOLD":
+        raise HTTPException(409, {"code": "OT_PAYROLL_PERIOD_ON_HOLD",
+            "message": "Kỳ lương chồng ngày áp dụng quy chế OT mới đang được giữ để đối chiếu. Không tính lại hoặc chốt kỳ này cho đến khi quy trình OT mới được phê duyệt."})
+    unresolved = (await db.execute(text("""SELECT 1 FROM attendances a
+        LEFT JOIN attendance_overtime_approvals ota USING(attendance_id)
+        WHERE to_char(a.work_date,'YYYY-MM')=:period AND a.work_date>=:cutoff
+          AND ((a.check_out_time IS NOT NULL AND a.overtime_hours>0)
+               OR (ota.decision='APPROVED' AND ota.approved_hours>0)) LIMIT 1"""),
+        {"period": period, "cutoff": settings.OT_REGISTRATION_POLICY_EFFECTIVE_FROM})).first()
+    if unresolved:
+        raise HTTPException(409, {"code": "OT_PAYROLL_REVIEW_REQUIRED",
+            "message": "Kỳ lương có giờ ngoài ca từ ngày áp dụng quy chế OT mới. Chưa có đường đối chiếu OT được phép với giờ thực tế; vui lòng rà soát trước khi tính lại hoặc chốt lương."})
 
 async def reapply_payroll_adjustments(db, period, adjustments):
     """Carry audited draft adjustments across recalculation, keyed by employee."""
@@ -83,7 +133,19 @@ async def list_overtime_approvals(period:str=Query(...,pattern=r'^\d{4}-(0[1-9]|
         query += ' AND e.store_id = :store_id'
         params['store_id'] = user_store_id
     query += ' ORDER BY a.work_date,e.full_name,a.attendance_id'
-    return [dict(r) for r in (await db.execute(text(query), params)).mappings().all()]
+    rows = [dict(r) for r in (await db.execute(text('''SELECT a.attendance_id,a.employee_id,e.employee_code,e.full_name,
+        e.store_id,a.work_date,a.overtime_hours AS actual_overtime_hours,ota.approved_hours,ota.decision,ota.reason,
+        ota.reviewer_user_id,ota.updated_at FROM attendances a JOIN employees e USING(employee_id)
+        LEFT JOIN attendance_overtime_approvals ota USING(attendance_id)
+        WHERE to_char(a.work_date,'YYYY-MM')=:period AND a.overtime_hours>0 AND a.check_out_time IS NOT NULL
+        ORDER BY a.work_date,e.full_name,a.attendance_id'''),params)).mappings().all()]
+    for row in rows:
+        locked = legacy_decision_locked(row['work_date'])
+        row['legacy_decision_locked'] = locked
+        row['legacy_decision_message'] = LEGACY_OT_LOCK_MESSAGE if locked else None
+        row['actual_overtime_label'] = ('Giờ ngoài ca ghi nhận — có quyết định HR lịch sử'
+            if row['decision'] == 'APPROVED' else 'Giờ ngoài ca ghi nhận — chưa xác nhận OT được phép')
+    return rows
 
 @router.put('/overtime-approvals/{attendance_id}')
 async def decide_overtime(attendance_id:int,req:OvertimeDecision,
@@ -95,7 +157,6 @@ async def decide_overtime(attendance_id:int,req:OvertimeDecision,
         LEFT JOIN attendance_overtime_approvals ota USING(attendance_id)
         WHERE a.attendance_id=:id FOR UPDATE OF a'''),{'id':attendance_id})).mappings().first()
     if not row: raise HTTPException(404,'Không tìm thấy phiên chấm công')
-
     # No self-approval: không được tự duyệt OT của chính mình
     if current_user.get('employee_id') and row['employee_id'] == current_user['employee_id']:
         raise HTTPException(403, 'Không được tự phê duyệt hoặc từ chối tăng ca của chính mình.')
@@ -106,6 +167,8 @@ async def decide_overtime(attendance_id:int,req:OvertimeDecision,
         if not user_store_id or row['store_id'] != user_store_id:
             raise HTTPException(403, 'Chỉ được duyệt OT cho nhân viên thuộc cửa hàng được phân công.')
 
+    if legacy_decision_locked(row['work_date']):
+        raise HTTPException(409, {"code": "OT_LEGACY_APPROVAL_CLOSED", "message": LEGACY_OT_LOCK_MESSAGE})
     if not row['check_out_time'] or not row['overtime_hours'] or row['overtime_hours']<=0:
         raise HTTPException(409,'Chỉ duyệt OT cho phiên đã check-out và có giờ OT thực tế')
     if len(req.reason.strip())<3 or round(req.approved_hours,2)!=req.approved_hours:
@@ -256,6 +319,10 @@ async def calculate_payroll(
     finalized = (await db.execute(text("SELECT 1 FROM payrolls WHERE salary_period=:period AND payment_status IN ('CONFIRMED','PAID') LIMIT 1"), {"period": period})).first()
     if finalized:
         raise HTTPException(409, "Kỳ lương đã duyệt/chi trả. Không được tính lại; cần quy trình điều chỉnh có phê duyệt riêng.")
+
+    # Verify the installed database procedure before commission calculation or draft deletion.
+    await ensure_payroll_ot_procedure_is_approval_gated(db)
+    await ensure_ot_period_policy(db, period)
 
     # 1. Tính hoa hồng trước
     await db.execute(text("CALL sp_calculate_monthly_commission(:period)"), {"period": period})

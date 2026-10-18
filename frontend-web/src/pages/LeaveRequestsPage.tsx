@@ -6,7 +6,9 @@ import { EmployeeSearchSelect } from '../components/common/EmployeeSearchSelect'
 import { LEAVE_STATUS_LABELS } from '../constants/navigation'
 import { formatDate } from '../utils/formatters'
 import type { LeaveRequest, LeaveBalance, LeaveType, LeaveRequestCreate, Employee } from '../types'
-import { leaveApi, employeeApi } from '../services/api'
+import { leaveApi, employeeApi, overtimeRequestApi } from '../services/api'
+import { useSearchParams } from 'react-router-dom'
+import { OvertimeApprovalsPanel } from './OvertimeApprovalsPanel'
 import './PayslipPrint.css'
 import './LeavePrint.css'
 
@@ -127,13 +129,16 @@ interface LocalProofFile {
 }
 
 export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageProps) {
+  const [searchParams] = useSearchParams()
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([])
+  const [overtimeCount, setOvertimeCount] = useState<number | null>(null)
   const [leaveBalance, setLeaveBalance] = useState<LeaveBalance | null>(null)
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([])
   const [leaveStats, setLeaveStats] = useState<any>(null)
   const [calendarLeaves, setCalendarLeaves] = useState<LeaveRequest[]>([])
 
-  const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'director_pending' | 'approved' | 'rejected' | 'calendar'>('all')
+  const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'director_pending' | 'approved' | 'rejected' | 'calendar' | 'overtime'>(() =>
+    searchParams.get('tab') === 'overtime' ? 'overtime' : 'all')
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedTypeFilter, setSelectedTypeFilter] = useState<string>('all')
   const [calendarMonth, setCalendarMonth] = useState<string>(new Date().toISOString().slice(0, 7))
@@ -186,6 +191,25 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
   const isHrManager = !isPersonalView && userRoles.includes('HR_MANAGER')
   const isStoreManager = !isPersonalView && userRoles.includes('STORE_MANAGER')
   const isDirector = !isPersonalView && userRoles.includes('DIRECTOR')
+
+  useEffect(() => {
+    if (searchParams.get('tab') === 'overtime') setActiveTab('overtime')
+  }, [searchParams])
+
+  const refreshOvertimeCount = useCallback(async () => {
+    try {
+      const result = await overtimeRequestApi.count()
+      setOvertimeCount(result.count)
+    } catch {
+      // Keep a previously loaded count; hide the badge until the first load succeeds.
+    }
+  }, [])
+
+  useEffect(() => {
+    void refreshOvertimeCount()
+    window.addEventListener('focus', refreshOvertimeCount)
+    return () => window.removeEventListener('focus', refreshOvertimeCount)
+  }, [refreshOvertimeCount])
 
   // Leave balances and limits
   const annualTotal = leaveBalance?.annual_leave_total ?? 12
@@ -888,21 +912,21 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
       {/* Page Header */}
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
         <div>
-          <h1 className="page-title">{isPersonalView ? 'Nghỉ Phép & Đơn Của Tôi' : 'Quản lý Nghỉ Phép'}</h1>
+          <h1 className="page-title">{activeTab === 'overtime' ? 'Đăng ký OT' : isPersonalView ? 'Nghỉ Phép & Đơn Của Tôi' : 'Quản lý Nghỉ Phép'}</h1>
           <p style={{ color: 'var(--text-secondary, #6b7280)', fontSize: '0.9rem', marginTop: '4px' }}>
-            {isPersonalView ? 'Theo dõi số dư phép năm và gửi đơn xin nghỉ phép cá nhân' : 'Theo dõi và phê duyệt đơn xin nghỉ phép nhân sự TechZone'}
+            {activeTab === 'overtime' ? 'Theo dõi xác nhận và phê duyệt đăng ký tăng ca theo đúng phạm vi quyền.' : isPersonalView ? 'Theo dõi số dư phép năm và gửi đơn xin nghỉ phép cá nhân' : 'Theo dõi và phê duyệt đơn xin nghỉ phép nhân sự TechZone'}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        {activeTab !== 'overtime' && <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <button className="btn btn-primary" onClick={() => handleOpenCreateModal()}>
             {Icons.plus}
             {isPersonalView ? 'Tạo đơn xin nghỉ phép' : 'Tạo đơn cho nhân viên'}
           </button>
-        </div>
+        </div>}
       </div>
 
       {/* KPI Cards */}
-      <div className="stat-grid-4">
+      {activeTab !== 'overtime' && <div className="stat-grid-4">
         <StatCard
           icon={Icons.calendar}
           iconColor="blue"
@@ -927,7 +951,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
           label="Phép năm đã duyệt"
           value={`${annualUsed} ngày`}
         />
-      </div>
+      </div>}
 
       {/* Main Content Card */}
       <div className="card">
@@ -1069,10 +1093,21 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
               <span style={{ display: 'inline-flex', alignItems: 'center' }}>{Icons.calendar}</span>
               <span>Lịch nghỉ phép</span>
             </button>
+            <button
+              type="button"
+              className={`leave-tab-btn overtime-tab-btn ${activeTab === 'overtime' ? 'active' : ''}`}
+              onClick={() => { setActiveTab('overtime'); void refreshOvertimeCount() }}
+            >
+              <span style={{ display: 'inline-flex', alignItems: 'center' }}>{Icons.zap}</span>
+              <span>Đăng ký OT</span>
+              {overtimeCount !== null && <span className="leave-tab-badge" title="Tổng số đơn OT trong phạm vi bạn được xem" aria-label={`${overtimeCount} đơn đăng ký OT`}>
+                {overtimeCount}
+              </span>}
+            </button>
           </div>
 
           {/* Search & Leave Type Dropdown (Always on the same row) */}
-          <div
+          {activeTab !== 'overtime' && <div
             style={{
               display: 'flex',
               gap: '10px',
@@ -1156,11 +1191,13 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                 </option>
               ))}
             </select>
-          </div>
+          </div>}
         </div>
 
         {/* Tab 1: List Table */}
-        {activeTab !== 'calendar' ? (
+        {activeTab === 'overtime' ? (
+          <OvertimeApprovalsPanel user={user} requestId={Number(searchParams.get('request_id')) || undefined} />
+        ) : activeTab !== 'calendar' ? (
           isLoading ? (
             <div className="card-body" style={{ textAlign: 'center', padding: '40px' }}>
               Đang tải danh sách đơn nghỉ phép...
