@@ -33,6 +33,7 @@ import { OverviewPage } from './pages/OverviewPage'
 import { EmployeeListPage } from './pages/EmployeeListPage'
 import { AttendancePage } from './pages/AttendancePage'
 import { LeaveRequestsPage } from './pages/LeaveRequestsPage'
+import { OvertimeRequestsPage } from './pages/OvertimeRequestsPage'
 import { PayrollPage } from './pages/PayrollPage'
 import { ReportsPage } from './pages/ReportsPage'
 import { AuditLogPage } from './pages/AuditLogPage'
@@ -189,6 +190,8 @@ export function App() {
             <Route path="/work-schedules" element={<ProtectedRoute path="/work-schedules"><WorkSchedulesPage user={user} /></ProtectedRoute>} />
             <Route path="/leave" element={<LeaveRequestsPage user={user} />} />
             <Route path="/my-leave" element={<ProtectedRoute path="/my-leave"><LeaveRequestsPage user={user} personal /></ProtectedRoute>} />
+            <Route path="/overtime" element={<ProtectedRoute path="/overtime"><OvertimeRequestsPage user={user} /></ProtectedRoute>} />
+            <Route path="/my-overtime" element={<ProtectedRoute path="/my-overtime"><OvertimeRequestsPage user={user} personal /></ProtectedRoute>} />
             <Route path="/payroll" element={<ProtectedRoute path="/payroll"><PayrollPage user={user} /></ProtectedRoute>} />
             <Route path="/payroll-fund" element={<ProtectedRoute path="/payroll-fund"><PayrollFundPage branch={userRole === 'STORE_MANAGER'} /></ProtectedRoute>} />
             <Route path="/settlements" element={<ProtectedRoute path="/settlements"><PayrollSettlementsPage /></ProtectedRoute>} />
