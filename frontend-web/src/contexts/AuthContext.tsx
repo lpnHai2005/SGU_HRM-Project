@@ -335,8 +335,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const fetchAuditLogs = useCallback(async (params?: any) => {
     setState(prev => ({ ...prev, isLoading: true }));
     try {
-      const auditLogs = await auditApi.getAll(params);
-      setState(prev => ({ ...prev, auditLogs, isLoading: false }));
+      const res = await auditApi.getAll(params);
+      const items = Array.isArray(res) ? res : (Array.isArray(res?.items) ? res.items : []);
+      setState(prev => ({ ...prev, auditLogs: items, isLoading: false }));
     } catch (error) {
       setState(prev => ({ ...prev, isLoading: false }));
       throw error;

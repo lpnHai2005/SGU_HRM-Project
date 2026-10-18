@@ -69,8 +69,11 @@ export function StoreDetailDrawer({ store, onClose, onEdit }: {
 
   useEffect(() => {
     let current = true
-    api.get<AuditEntry[]>('/audit-logs', { limit: 200, entity_name: 'stores' })
-      .then(rows => { if (current) setAudit(rows.filter(row => row.entity_id === String(store.store_id)).slice(0, 5)) })
+    api.get<any>('/audit-logs', { limit: 200, page_size: 200, entity_name: 'stores' })
+      .then(res => {
+        const rows: AuditEntry[] = Array.isArray(res) ? res : (Array.isArray(res?.items) ? res.items : [])
+        if (current) setAudit(rows.filter(row => String(row.entity_id) === String(store.store_id)).slice(0, 5))
+      })
       .catch(() => { if (current) setAuditError('Chưa tải được lịch sử thay đổi.') })
       .finally(() => { if (current) setAuditLoading(false) })
     return () => { current = false }

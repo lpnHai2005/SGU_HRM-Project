@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { LayoutDashboard, Users, Clock, CalendarDays, Wallet, ChartColumn, Shield, ClipboardList, Image as ImageIcon, ImageOff, ZoomIn, ZoomOut,
-  ChevronLeft, ChevronRight, ChevronDown, Check, X, LogOut, Zap, DollarSign, Plus,
+  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown, Check, X, LogOut, Zap, DollarSign, Plus,
   TrendingUp, TrendingDown, FileText, Monitor, Printer, User, Building2, Search,
   ListFilter, EllipsisVertical, CircleCheck, CircleAlert, CircleX, Sun, Moon, Menu,
   Info, RefreshCw, LoaderCircle, Eye, Pencil, TriangleAlert, Bell, Palmtree,
@@ -8,7 +8,7 @@ import { LayoutDashboard, Users, Clock, CalendarDays, Wallet, ChartColumn, Shiel
   Paperclip, Upload, MapPin } from 'lucide-react'
 const glyphs = { download: Download, briefcase: BriefcaseBusiness, dashboard: LayoutDashboard, users: Users, clock: Clock, calendar: CalendarDays,
   wallet: Wallet, chart: ChartColumn, shield: Shield, chevronLeft: ChevronLeft,
-  chevronRight: ChevronRight, chevronDown: ChevronDown, check: Check, x: X, close: X,
+  chevronRight: ChevronRight, chevronsLeft: ChevronsLeft, chevronsRight: ChevronsRight, chevronDown: ChevronDown, check: Check, x: X, close: X,
   logOut: LogOut, zap: Zap, dollar: DollarSign, plus: Plus, trendingUp: TrendingUp,
   trendingDown: TrendingDown, fileText: FileText, techzone: Monitor, printer: Printer,
   user: User, building: Building2, search: Search, filter: ListFilter, moreVertical: EllipsisVertical,
