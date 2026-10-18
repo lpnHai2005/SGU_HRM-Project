@@ -282,19 +282,31 @@ async def get_payroll_fund_summary(
         SELECT 
             COALESCE(s.store_name, d.department_name, 'Khác') as unit_name,
             COUNT(p.payroll_id) as employee_count,
-            SUM(p.actual_base_salary) as total_base_salary,
-            SUM(p.overtime_salary) as total_overtime,
-            SUM(p.position_allowance + p.seniority_allowance + p.project_allowance + p.meal_transport_allowance) as total_allowances,
-            SUM(p.commission_amount) as total_commissions,
-            SUM(p.bonus_amount) as total_bonuses,
-            SUM(p.gross_income) as total_gross,
-            SUM(p.total_insurance) as total_insurance,
-            SUM(p.penalty_deduction) as total_penalties,
-            SUM(p.net_salary) as total_net
+            COALESCE(SUM(p.total_earnings - COALESCE(ot.amount, 0)), 0) as total_base_salary,
+            COALESCE(SUM(COALESCE(ot.amount, 0)), 0) as total_overtime,
+            COALESCE(SUM(p.total_allowances), 0) as total_allowances,
+            COALESCE(SUM(COALESCE(comm.amount, 0)), 0) as total_commissions,
+            COALESCE(SUM(p.total_bonuses - COALESCE(comm.amount, 0)), 0) as total_bonuses,
+            COALESCE(SUM(p.gross_income), 0) as total_gross,
+            COALESCE(SUM(p.total_insurance), 0) as total_insurance,
+            COALESCE(SUM(COALESCE(pen.amount, 0)), 0) as total_penalties,
+            COALESCE(SUM(p.net_salary), 0) as total_net
         FROM payrolls p
         JOIN employees e ON p.employee_id = e.employee_id
         LEFT JOIN stores s ON e.store_id = s.store_id
         LEFT JOIN departments d ON e.department_id = d.department_id
+        LEFT JOIN (
+            SELECT payroll_id, SUM(amount) as amount FROM payroll_details 
+            WHERE item_code = 'OVERTIME' GROUP BY payroll_id
+        ) ot ON ot.payroll_id = p.payroll_id
+        LEFT JOIN (
+            SELECT payroll_id, SUM(amount) as amount FROM payroll_details 
+            WHERE item_code = 'COMMISSION' GROUP BY payroll_id
+        ) comm ON comm.payroll_id = p.payroll_id
+        LEFT JOIN (
+            SELECT payroll_id, SUM(amount) as amount FROM payroll_details 
+            WHERE item_code = 'PENALTY' GROUP BY payroll_id
+        ) pen ON pen.payroll_id = p.payroll_id
         WHERE p.salary_period = :period {scope_sql}
         GROUP BY COALESCE(s.store_name, d.department_name, 'Khác')
         ORDER BY total_gross DESC
@@ -303,13 +315,17 @@ async def get_payroll_fund_summary(
     # Tổng cộng toàn chuỗi
     total_res = (await db.execute(text(f"""
         SELECT 
-            COUNT(payroll_id) as total_headcount,
-            COALESCE(SUM(gross_income), 0) as total_gross_fund,
-            COALESCE(SUM(net_salary), 0) as total_net_fund,
-            COALESCE(SUM(total_insurance), 0) as total_insurance_fund,
-            COALESCE(SUM(commission_amount), 0) as total_commission_fund
+            COUNT(p.payroll_id) as total_headcount,
+            COALESCE(SUM(p.gross_income), 0) as total_gross_fund,
+            COALESCE(SUM(p.net_salary), 0) as total_net_fund,
+            COALESCE(SUM(p.total_insurance), 0) as total_insurance_fund,
+            COALESCE(SUM(comm.amount), 0) as total_commission_fund
         FROM payrolls p
         JOIN employees e ON e.employee_id = p.employee_id
+        LEFT JOIN (
+            SELECT payroll_id, SUM(amount) as amount FROM payroll_details 
+            WHERE item_code = 'COMMISSION' GROUP BY payroll_id
+        ) comm ON comm.payroll_id = p.payroll_id
         WHERE p.salary_period = :period {scope_sql}
     """), scope_params)).mappings().first()
 

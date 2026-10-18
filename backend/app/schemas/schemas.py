@@ -728,6 +728,10 @@ class PayrollOut(BaseModel):
     unworked_hours: Optional[float] = 0.0
     time_deduction_amount: Optional[float] = 0.0
     contract_salary: Optional[float] = 0.0
+    total_earnings: Optional[float] = 0.0
+    total_allowances: Optional[float] = 0.0
+    total_bonuses: Optional[float] = 0.0
+    total_deductions: Optional[float] = 0.0
     actual_base_salary: Optional[float] = 0.0
     overtime_salary: Optional[float] = 0.0
     position_allowance: Optional[float] = 0.0
