@@ -1,6 +1,7 @@
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Icons } from '../common/Icons'
-import { navigationForUser, ROLE_LABELS } from '../../constants/navigation'
+import { navigationForUser, ROLE_LABELS, type NavItemConfig, type NavSubItemConfig } from '../../constants/navigation'
 import { getInitials } from '../../utils/formatters'
 import type { UserRole } from '../../types'
 
@@ -29,15 +30,43 @@ export function Sidebar({
     if (onCloseMobile) onCloseMobile()
   }
 
-  const navItems = navigationForUser(user)
+  const userKey = `${user?.user_id || ''}-${(user?.roles || []).join(',')}-${user?.employee_id || ''}-${user?.store_id || ''}`
+  // Memoize navigation items with stable key to prevent re-creation
+  const navItems = useMemo<NavItemConfig[]>(() => navigationForUser(user), [userKey])
+
+  const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>(() => {
+    const initial: Record<string, boolean> = {}
+    navItems.forEach((item: NavItemConfig) => {
+      if (item.children?.some((c: NavSubItemConfig) => c.path === location.pathname)) {
+        initial[item.id] = true
+      }
+    })
+    return initial
+  })
+
+  useEffect(() => {
+    setExpandedItems(prev => {
+      let changed = false
+      const next = { ...prev }
+      navItems.forEach((item: NavItemConfig) => {
+        if (item.children?.some((c: NavSubItemConfig) => c.path === location.pathname)) {
+          if (!next[item.id]) {
+            next[item.id] = true
+            changed = true
+          }
+        }
+      })
+      return changed ? next : prev
+    })
+  }, [location.pathname, navItems])
 
   // Group items by section
-  const sections = navItems.reduce((acc, item) => {
+  const sections = navItems.reduce<Record<string, NavItemConfig[]>>((acc, item: NavItemConfig) => {
     const sec = item.section || 'Chung'
     if (!acc[sec]) acc[sec] = []
     acc[sec].push(item)
     return acc
-  }, {} as Record<string, typeof navItems>)
+  }, {})
 
   return (
     <>
@@ -81,21 +110,108 @@ export function Sidebar({
           {Object.entries(sections).map(([section, items]) => (
             <div key={section} className="nav-section">
               {!collapsed && <div className="nav-section-title">{section}</div>}
-              {items.map((item) => (
-                <div
-                  key={item.id}
-                  className={`nav-item ${location.pathname === item.path || (item.path === '/' && location.pathname === '/dashboard') ? 'active' : ''}`}
-                  onClick={() => handleNavigate(item.path)}
-                  onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') handleNavigate(item.path) }}
-                  role="link"
-                  tabIndex={0}
-                  aria-current={location.pathname === item.path ? 'page' : undefined}
-                  title={item.label}
-                >
-                  {Icons[item.icon]}
-                  {!collapsed && <span className="nav-item-label">{item.label}</span>}
-                </div>
-              ))}
+              {items.map((item: NavItemConfig) => {
+                const hasChildren = item.children && item.children.length > 0
+                const isExpanded = Boolean(expandedItems[item.id])
+                const isChildActive = hasChildren && item.children!.some((c: NavSubItemConfig) => c.path === location.pathname)
+                const isActive = (location.pathname === item.path || (item.path === '/' && location.pathname === '/dashboard')) || isChildActive
+
+                if (hasChildren) {
+                  return (
+                    <div key={item.id} className="nav-item-group">
+                      <div
+                        className={`nav-item nav-item-parent ${isActive ? 'active' : ''}`}
+                        onClick={() => {
+                          if (collapsed) {
+                            onToggle()
+                            setExpandedItems(prev => ({ ...prev, [item.id]: true }))
+                          } else {
+                            setExpandedItems(prev => ({ ...prev, [item.id]: !prev[item.id] }))
+                          }
+                        }}
+                        onKeyDown={event => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            if (collapsed) {
+                              onToggle()
+                              setExpandedItems(prev => ({ ...prev, [item.id]: true }))
+                            } else {
+                              setExpandedItems(prev => ({ ...prev, [item.id]: !prev[item.id] }))
+                            }
+                          }
+                        }}
+                        role="button"
+                        tabIndex={0}
+                        aria-expanded={isExpanded}
+                        title={item.label}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '9px', minWidth: 0, flex: 1 }}>
+                          {Icons[item.icon] || Icons.clipboardList}
+                          {!collapsed && <span className="nav-item-label">{item.label}</span>}
+                        </div>
+                        {!collapsed && (
+                          <span
+                            className="nav-item-arrow"
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                              transition: 'transform 0.2s ease',
+                              opacity: 0.7,
+                            }}
+                          >
+                            {Icons.chevronDown}
+                          </span>
+                        )}
+                      </div>
+
+                      {!collapsed && isExpanded && (
+                        <div className="nav-submenu">
+                          {item.children!.map((child: NavSubItemConfig) => {
+                            const isSubActive = location.pathname === child.path
+                            return (
+                              <div
+                                key={child.id}
+                                className={`nav-subitem ${isSubActive ? 'active' : ''}`}
+                                onClick={() => handleNavigate(child.path)}
+                                onKeyDown={event => {
+                                  if (event.key === 'Enter' || event.key === ' ') handleNavigate(child.path)
+                                }}
+                                role="link"
+                                tabIndex={0}
+                                aria-current={isSubActive ? 'page' : undefined}
+                                title={child.label}
+                              >
+                                {child.icon && (
+                                  <span className="nav-subitem-icon">
+                                    {Icons[child.icon]}
+                                  </span>
+                                )}
+                                <span className="nav-subitem-label">{child.label}</span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )
+                }
+
+                return (
+                  <div
+                    key={item.id}
+                    className={`nav-item ${isActive ? 'active' : ''}`}
+                    onClick={() => handleNavigate(item.path)}
+                    onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') handleNavigate(item.path) }}
+                    role="link"
+                    tabIndex={0}
+                    aria-current={location.pathname === item.path ? 'page' : undefined}
+                    title={item.label}
+                  >
+                    {Icons[item.icon]}
+                    {!collapsed && <span className="nav-item-label">{item.label}</span>}
+                  </div>
+                )
+              })}
             </div>
           ))}
         </nav>

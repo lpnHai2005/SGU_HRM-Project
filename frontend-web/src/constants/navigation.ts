@@ -9,6 +9,13 @@ export const LEAVE_STATUS_LABELS: Record<string, string> = {
   PENDING: 'Chờ duyệt', STORE_APPROVED: 'Cửa hàng đã duyệt',
   HR_APPROVED: 'Đã duyệt', REJECTED: 'Từ chối', CANCELLED: 'Đã hủy',
 }
+export interface NavSubItemConfig {
+  id: string
+  path: string
+  label: string
+  icon?: string
+}
+
 export interface NavItemConfig {
   id: string
   path: string
@@ -20,6 +27,7 @@ export interface NavItemConfig {
   requiresEmployee?: boolean
   requiresStore?: boolean
   permission?: string
+  children?: NavSubItemConfig[]
 }
 const managers: UserRole[] = ['ADMIN', 'DIRECTOR', 'HR_MANAGER', 'STORE_MANAGER']
 const financeManagers: UserRole[] = ['ADMIN', 'DIRECTOR', 'HR_MANAGER']
@@ -47,13 +55,37 @@ export const NAVIGATION: NavItemConfig[] = [
   { id: 'my-schedules', path: '/my-schedules', label: 'Lịch ca của tôi', icon: 'calendar', section: 'Cá nhân', roles: ['STORE_MANAGER'], hiddenFor: ['DIRECTOR', 'ADMIN'], requiresEmployee: true },
   { id: 'my-attendance', path: '/my-attendance', label: 'Bảng công của tôi', icon: 'clock', section: 'Cá nhân', roles: ['STORE_MANAGER'], hiddenFor: ['DIRECTOR', 'ADMIN'], requiresEmployee: true },
   { id: 'my-activity', path: '/my-activity', label: 'Nhật ký của tôi', icon: 'chart', section: 'Cá nhân', roles: ['STORE_MANAGER'], hiddenFor: ['DIRECTOR', 'ADMIN'], requiresEmployee: true },
-  { id: 'my-leave', path: '/my-leave', label: 'Nghỉ phép của tôi', icon: 'leave', section: 'Cá nhân', roles: managers, requiresEmployee: true },
+  {
+    id: 'my-requests',
+    path: '/my-leave',
+    label: 'Đơn từ của tôi',
+    icon: 'clipboardList',
+    section: 'Cá nhân',
+    roles: managers,
+    requiresEmployee: true,
+    children: [
+      { id: 'my-leave-sub', path: '/my-leave', label: 'Đơn nghỉ phép', icon: 'leave' },
+      { id: 'my-overtime-sub', path: '/my-overtime', label: 'Đơn OT', icon: 'clock' },
+    ],
+  },
   { id: 'my-payroll', path: '/my-payroll', label: 'Lương & Hợp đồng của tôi', icon: 'wallet', section: 'Cá nhân', roles: managers, requiresEmployee: true },
   { id: 'my-attendance-staff', path: '/my-attendance', label: 'Bảng công cá nhân', icon: 'clock', section: 'Công việc của tôi', roles: ['EMPLOYEE'], requiresEmployee: true },
   { id: 'my-schedules-staff', path: '/my-schedules', label: 'Lịch ca & Phân công', icon: 'calendar', section: 'Công việc của tôi', roles: ['EMPLOYEE'], requiresEmployee: true },
   { id: 'my-activity-staff', path: '/my-activity', label: 'Nhật ký làm việc', icon: 'chart', section: 'Công việc của tôi', roles: ['EMPLOYEE'], requiresEmployee: true },
   { id: 'projects-staff', path: '/projects', label: 'Dự án tham gia', icon: 'briefcase', section: 'Công việc của tôi', roles: ['EMPLOYEE'], requiresEmployee: true },
-  { id: 'leave-staff', path: '/leave', label: 'Nghỉ phép & Đơn của tôi', icon: 'fileText', section: 'Đơn từ', roles: ['EMPLOYEE'] },
+  {
+    id: 'my-requests-staff',
+    path: '/my-leave',
+    label: 'Đơn từ của tôi',
+    icon: 'clipboardList',
+    section: 'Đơn từ',
+    roles: ['EMPLOYEE'],
+    requiresEmployee: true,
+    children: [
+      { id: 'my-leave-staff-sub', path: '/my-leave', label: 'Đơn nghỉ phép', icon: 'leave' },
+      { id: 'my-overtime-staff-sub', path: '/my-overtime', label: 'Đơn OT', icon: 'clock' },
+    ],
+  },
   { id: 'my-payroll-staff', path: '/my-payroll', label: 'Lương & Hợp đồng', icon: 'wallet', section: 'Thu nhập', roles: ['EMPLOYEE'], requiresEmployee: true },
 ]
 export function canAccessNavigation(item: NavItemConfig, user: NavigationUser | null | undefined): boolean {
@@ -90,5 +122,18 @@ export function navigationForUser(user: NavigationUser | null | undefined): NavI
   return NAVIGATION.filter(item => canAccessNavigation(item, user))
 }
 export function canAccessPath(path: string, user: NavigationUser | null | undefined): boolean {
-  return NAVIGATION.some(item => item.path === path && canAccessNavigation(item, user))
+  if (!user) return false
+  if (path === '/my-leave' || path === '/my-overtime') {
+    return Boolean(user.employee_id || user.roles?.includes('ADMIN') || user.roles?.includes('DIRECTOR'))
+  }
+  if (path === '/overtime') {
+    const roles = user.roles || []
+    return roles.some(r => ['ADMIN', 'DIRECTOR', 'HR_MANAGER', 'STORE_MANAGER'].includes(r))
+  }
+  return NAVIGATION.some(item => {
+    if (!canAccessNavigation(item, user)) return false
+    if (item.path === path) return true
+    if (item.children?.some(child => child.path === path)) return true
+    return false
+  })
 }

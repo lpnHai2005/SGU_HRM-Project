@@ -15,11 +15,11 @@ export function BottomNav({ onOpenMenu, user }: BottomNavProps) {
   const manager = user?.roles?.some(role => ['ADMIN', 'DIRECTOR', 'HR_MANAGER', 'STORE_MANAGER'].includes(role))
   const preferred = manager
     ? ['dashboard', 'attendance', 'leave', 'employees']
-    : ['dashboard', 'my-attendance-staff', 'leave-staff', 'my-payroll-staff']
+    : ['dashboard', 'my-attendance-staff', 'my-requests-staff', 'my-payroll-staff']
   const primaryItems = preferred.flatMap(id => visible.filter(item => item.id === id))
   const compactLabels: Record<string, string> = {
     dashboard: 'Trang chủ', attendance: 'Bảng công', leave: 'Đơn từ', employees: 'Nhân sự',
-    'my-attendance-staff': 'Bảng công', 'leave-staff': 'Đơn từ', 'my-payroll-staff': 'Lương',
+    'my-attendance-staff': 'Bảng công', 'my-requests-staff': 'Đơn từ', 'leave-staff': 'Đơn từ', 'my-payroll-staff': 'Lương',
   }
   return (
     <nav className="mobile-bottom-nav" aria-label="Điều hướng chính di động">

@@ -473,6 +473,7 @@ export interface OvertimeRequest {
   parent_request_id?: number | null
   replaced_by_request_id?: number | null
   created_by: number
+  created_at?: string | null
   creator_username?: string | null
   reviewer_username?: string | null
   reviewed_by?: number | null
