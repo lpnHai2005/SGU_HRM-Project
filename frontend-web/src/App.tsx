@@ -188,7 +188,7 @@ export function App() {
             <Route path="/my-attendance" element={<ProtectedRoute path="/my-attendance"><AttendancePage key="personal" user={user} personal /></ProtectedRoute>} />
             <Route path="/attendance" element={<ProtectedRoute path="/attendance"><MonthlyAttendancePage user={user}/></ProtectedRoute>} />
             <Route path="/work-schedules" element={<ProtectedRoute path="/work-schedules"><WorkSchedulesPage user={user} /></ProtectedRoute>} />
-            <Route path="/leave" element={<LeaveRequestsPage user={user} />} />
+            <Route path="/leave" element={<ProtectedRoute path="/leave"><LeaveRequestsPage user={user} /></ProtectedRoute>} />
             <Route path="/my-leave" element={<ProtectedRoute path="/my-leave"><LeaveRequestsPage user={user} personal /></ProtectedRoute>} />
             <Route path="/overtime" element={<ProtectedRoute path="/overtime"><OvertimeRequestsPage user={user} /></ProtectedRoute>} />
             <Route path="/my-overtime" element={<ProtectedRoute path="/my-overtime"><OvertimeRequestsPage user={user} personal /></ProtectedRoute>} />

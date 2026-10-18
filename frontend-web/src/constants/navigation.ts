@@ -44,7 +44,18 @@ export const NAVIGATION: NavItemConfig[] = [
   { id: 'resignations', path: '/resignations', label: 'Quản lý thôi việc', icon: 'clipboardList', section: 'Nhân sự', roles: ['ADMIN', 'DIRECTOR', 'HR_MANAGER'] },
   { id: 'work-schedules', path: '/work-schedules', label: 'Quản lý lịch làm việc', icon: 'calendar', section: 'Vận hành', roles: managers },
   { id: 'attendance', path: '/attendance', label: 'Quản lý công & OT', icon: 'clock', section: 'Vận hành', roles: managers },
-  { id: 'leave', path: '/leave', label: 'Quản lý đơn từ', icon: 'clipboardList', section: 'Vận hành', roles: managers },
+  {
+    id: 'leave',
+    path: '/leave',
+    label: 'Quản lý đơn từ',
+    icon: 'clipboardList',
+    section: 'Vận hành',
+    roles: managers,
+    children: [
+      { id: 'leave-requests-sub', path: '/leave', label: 'Đơn nghỉ phép', icon: 'leave' },
+      { id: 'overtime-requests-sub', path: '/overtime', label: 'Đơn OT', icon: 'clock' },
+    ],
+  },
   { id: 'activity', path: '/activity', label: 'Nhật ký đội ngũ', icon: 'chart', section: 'Vận hành', roles: managers },
   { id: 'projects', path: '/projects', label: 'Quản lý dự án', icon: 'briefcase', section: 'Vận hành', roles: managers },
   { id: 'sales', path: '/sales', label: 'Doanh số & Hoa hồng', icon: 'trendingUp', section: 'Kinh doanh & Tài chính', roles: managers },
@@ -126,7 +137,7 @@ export function canAccessPath(path: string, user: NavigationUser | null | undefi
   if (path === '/my-leave' || path === '/my-overtime') {
     return Boolean(user.employee_id || user.roles?.includes('ADMIN') || user.roles?.includes('DIRECTOR'))
   }
-  if (path === '/overtime') {
+  if (path === '/overtime' || path === '/leave') {
     const roles = user.roles || []
     return roles.some(r => ['ADMIN', 'DIRECTOR', 'HR_MANAGER', 'STORE_MANAGER'].includes(r))
   }

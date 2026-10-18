@@ -102,6 +102,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
   const [actionLoading, setActionLoading] = useState(false)
   const [selectedRequest, setSelectedRequest] = useState<OvertimeRequest | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [openMenuId, setOpenMenuId] = useState<number | null>(null)
 
   // Create Modal State
   const [createModalOpen, setCreateModalOpen] = useState(false)
@@ -201,6 +202,12 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
     const reqId = Number(searchParams.get('request_id'))
     if (reqId && reqId > 0) void openDetail(reqId)
   }, [openDetail, searchParams])
+
+  useEffect(() => {
+    const handleClickOutside = () => setOpenMenuId(null)
+    document.addEventListener('click', handleClickOutside)
+    return () => document.removeEventListener('click', handleClickOutside)
+  }, [])
 
   // Filter requests by activeTab and search
   const filteredRequests = useMemo(() => {
@@ -700,7 +707,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
             Đang tải danh sách đơn đăng ký tăng ca...
           </div>
         ) : (
-          <div className="table-container">
+          <div className="table-container" style={{ minHeight: '320px' }}>
             <table className="data-table">
               <thead>
                 <tr>
@@ -713,17 +720,21 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
                   <th>TRẠNG THÁI</th>
                   <th>CẤP 1 (CHT / NV)</th>
                   <th>CẤP 2 (HR DUYỆT)</th>
-                  <th style={{ width: '100px', textAlign: 'center' }}>THAO TÁC</th>
+                  <th style={{ width: '95px', textAlign: 'center' }}>THAO TÁC</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredRequests.map(req => {
+                {filteredRequests.map((req, index) => {
                   const hours = durationHours(req)
                   const isAssignedToMe = Number(req.employee_id) === Number(user?.employee_id)
+                  const isCreator = req.created_by === user?.user_id
                   const canSelfConfirm = isAssignedToMe && req.status === 'PENDING_EMPLOYEE_CONFIRMATION'
                   const canHrApprove = isReviewer && req.status === 'PENDING_HR' && req.created_by !== user?.user_id && !isAssignedToMe
                   const canCancel = ['DRAFT', 'PENDING_EMPLOYEE_CONFIRMATION', 'PENDING_HR'].includes(req.status) &&
-                    (req.created_by === user?.user_id || isAssignedToMe)
+                    (isCreator || isAssignedToMe)
+                  const canRevoke = req.status === 'APPROVED' && !req.revoke_requested_at && (isReviewer || isStoreManager || isAssignedToMe || isCreator)
+                  const hasAnyAction = true
+                  const isNearBottom = index >= filteredRequests.length - 2 && filteredRequests.length > 2
 
                   return (
                     <tr
@@ -816,51 +827,163 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
                         )}
                       </td>
                       <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', justifyContent: 'center' }}>
-                          {canSelfConfirm && (
-                            <button
-                              type="button"
-                              className="btn btn-primary btn-sm"
-                              style={{ padding: '3px 8px', fontSize: '11px', backgroundColor: 'var(--status-success)', borderColor: 'var(--status-success)' }}
-                              onClick={() => void handleConfirmOT(req.request_id)}
-                              disabled={actionLoading}
-                              title="Xác nhận đồng ý tăng ca"
-                            >
-                              Xác nhận
-                            </button>
-                          )}
-                          {canHrApprove && (
-                            <button
-                              type="button"
-                              className="btn btn-primary btn-sm"
-                              style={{ padding: '3px 8px', fontSize: '11px' }}
-                              onClick={() => void handleApproveOT(req.request_id)}
-                              disabled={actionLoading}
-                              title="HR duyệt đơn tăng ca"
-                            >
-                              Duyệt
-                            </button>
-                          )}
-                          {canCancel && (
-                            <button
-                              type="button"
-                              className="btn btn-secondary btn-sm"
-                              style={{ padding: '3px 6px', fontSize: '11px', color: 'var(--status-error)' }}
-                              onClick={() => void handleCancelOT(req.request_id)}
-                              disabled={actionLoading}
-                              title="Hủy đơn này"
-                            >
-                              Hủy
-                            </button>
-                          )}
+                        <div style={{ display: 'inline-flex', gap: '4px', alignItems: 'center', position: 'relative' }}>
+                          {/* Nút 1: Xem chi tiết (Mắt) */}
                           <button
                             type="button"
-                            className="btn btn-secondary btn-sm"
-                            style={{ padding: '3px 8px', fontSize: '11px' }}
+                            className="btn btn-secondary btn-sm btn-icon"
+                            title="Xem chi tiết đơn"
                             onClick={() => void openDetail(req.request_id)}
                           >
-                            Chi tiết
+                            {Icons.eye}
                           </button>
+
+                          {/* Nút 2: Tùy chọn thao tác (Dấu 3 chấm) */}
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm btn-icon"
+                            title={hasAnyAction ? "Tùy chọn thao tác" : "Không có thao tác khác"}
+                            disabled={!hasAnyAction}
+                            style={{
+                              opacity: hasAnyAction ? 1 : 0.4,
+                              cursor: hasAnyAction ? 'pointer' : 'not-allowed',
+                            }}
+                            onClick={(e) => {
+                              if (!hasAnyAction) return
+                              e.stopPropagation()
+                              setOpenMenuId(openMenuId === req.request_id ? null : req.request_id)
+                            }}
+                          >
+                            {Icons.moreVertical}
+                          </button>
+
+                          {/* Dropdown Menu thao tác */}
+                          {openMenuId === req.request_id && hasAnyAction && (
+                            <div
+                              className="action-dropdown"
+                              onClick={(e) => e.stopPropagation()}
+                              style={{
+                                position: 'absolute',
+                                ...(isNearBottom ? { bottom: '100%', marginBottom: '4px' } : { top: '100%', marginTop: '4px' }),
+                                right: 0,
+                                zIndex: 120,
+                                minWidth: '205px',
+                              }}
+                            >
+                              <button
+                                type="button"
+                                className="action-dropdown-item"
+                                onClick={() => {
+                                  setOpenMenuId(null)
+                                  void openDetail(req.request_id)
+                                }}
+                              >
+                                <span className="action-icon" style={{ color: 'var(--status-info)' }}>{Icons.eye}</span>
+                                <span>Xem chi tiết & Đối soát</span>
+                              </button>
+
+                              {!isPersonalView && (
+                                <button
+                                  type="button"
+                                  className="action-dropdown-item"
+                                  onClick={() => {
+                                    setOpenMenuId(null)
+                                    setCreateForm(prev => ({
+                                      ...prev,
+                                      employee_id: req.employee_id,
+                                      store_id: req.store_id || prev.store_id,
+                                    }))
+                                    setCreateModalOpen(true)
+                                  }}
+                                >
+                                  <span className="action-icon" style={{ color: 'var(--status-success)' }}>{Icons.plus}</span>
+                                  <span>Tạo đơn hộ nhân viên này</span>
+                                </button>
+                              )}
+
+                              {canSelfConfirm && (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="action-dropdown-item"
+                                    onClick={() => {
+                                      setOpenMenuId(null)
+                                      void handleConfirmOT(req.request_id)
+                                    }}
+                                  >
+                                    <span className="action-icon icon-promote">{Icons.check}</span>
+                                    <span>Xác nhận tăng ca (Cấp 1)</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="action-dropdown-item danger"
+                                    onClick={() => {
+                                      setOpenMenuId(null)
+                                      handleOpenReject(req.request_id, 'decline')
+                                    }}
+                                  >
+                                    <span className="action-icon icon-danger">✕</span>
+                                    <span>Từ chối đề xuất tăng ca</span>
+                                  </button>
+                                </>
+                              )}
+
+                              {canHrApprove && (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="action-dropdown-item"
+                                    onClick={() => {
+                                      setOpenMenuId(null)
+                                      void handleApproveOT(req.request_id)
+                                    }}
+                                  >
+                                    <span className="action-icon icon-promote">{Icons.check}</span>
+                                    <span>Phê duyệt tăng ca (HR)</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="action-dropdown-item danger"
+                                    onClick={() => {
+                                      setOpenMenuId(null)
+                                      handleOpenReject(req.request_id, 'reject')
+                                    }}
+                                  >
+                                    <span className="action-icon icon-danger">✕</span>
+                                    <span>Từ chối duyệt đơn OT</span>
+                                  </button>
+                                </>
+                              )}
+
+                              {canRevoke && (
+                                <button
+                                  type="button"
+                                  className="action-dropdown-item danger"
+                                  onClick={() => {
+                                    setOpenMenuId(null)
+                                    handleOpenReject(req.request_id, 'revoke')
+                                  }}
+                                >
+                                  <span className="action-icon icon-danger">✕</span>
+                                  <span>Yêu cầu thu hồi / Hủy duyệt</span>
+                                </button>
+                              )}
+
+                              {canCancel && (
+                                <button
+                                  type="button"
+                                  className="action-dropdown-item danger"
+                                  onClick={() => {
+                                    setOpenMenuId(null)
+                                    void handleCancelOT(req.request_id)
+                                  }}
+                                >
+                                  <span className="action-icon icon-danger">✕</span>
+                                  <span>Hủy đơn đăng ký OT</span>
+                                </button>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </td>
                     </tr>
