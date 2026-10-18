@@ -748,7 +748,7 @@ export interface AuditLog {
   username?: string | null;
   action: string;
   entity_name: string;
-  entity_id?: string | null;
+  entity_id?: string | number | null;
   old_values?: any;
   new_values?: any;
   ip_address?: string | null;

@@ -1,0 +1,373 @@
+/* AuditLogPage.css */
+
+.audit-page {
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+/* Header Actions & Stat Badge */
+.audit-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.audit-total-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: var(--surface-card, #ffffff);
+  border: 1px solid var(--border-default, #e2e8f0);
+  border-radius: var(--radius-full, 9999px);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+[data-theme="dark"] .audit-total-badge {
+  background: var(--surface-card, #1e293b);
+  border-color: var(--border-default, rgba(255, 255, 255, 0.12));
+  box-shadow: none;
+}
+
+.audit-total-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-primary, #0284c7);
+}
+
+.audit-total-icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+[data-theme="dark"] .audit-total-icon {
+  color: #38bdf8;
+}
+
+.audit-total-label {
+  font-weight: 500;
+  color: var(--text-secondary, #64748b);
+  margin-right: 2px;
+}
+
+[data-theme="dark"] .audit-total-label {
+  color: var(--text-secondary, #94a3b8);
+}
+
+.audit-total-number {
+  font-weight: 700;
+  color: var(--color-primary, #0284c7);
+  font-feature-settings: "tnum";
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+[data-theme="dark"] .audit-total-number {
+  color: #38bdf8;
+}
+
+/* Badge System for Audit Actions */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm, 6px);
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+
+.badge-slate {
+  background: rgba(148, 163, 184, 0.15);
+  color: #64748b;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+[data-theme="dark"] .badge-slate {
+  background: rgba(148, 163, 184, 0.12);
+  color: #94a3b8;
+  border-color: rgba(148, 163, 184, 0.2);
+}
+
+.badge-green {
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+[data-theme="dark"] .badge-green {
+  background: rgba(16, 185, 129, 0.18);
+  color: #34d399;
+  border-color: rgba(52, 211, 153, 0.3);
+}
+
+.badge-blue {
+  background: rgba(14, 165, 233, 0.12);
+  color: #0284c7;
+  border: 1px solid rgba(14, 165, 233, 0.25);
+}
+
+[data-theme="dark"] .badge-blue {
+  background: rgba(14, 165, 233, 0.18);
+  color: #38bdf8;
+  border-color: rgba(56, 189, 248, 0.3);
+}
+
+.badge-amber {
+  background: rgba(245, 158, 11, 0.12);
+  color: #d97706;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+[data-theme="dark"] .badge-amber {
+  background: rgba(245, 158, 11, 0.18);
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.3);
+}
+
+.badge-red {
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+[data-theme="dark"] .badge-red {
+  background: rgba(239, 68, 68, 0.18);
+  color: #f87171;
+  border-color: rgba(248, 113, 113, 0.3);
+}
+
+/* Enhanced Pagination Bar */
+.audit-pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border-subtle, #f1f5f9);
+  background: var(--surface-card, #ffffff);
+}
+
+[data-theme="dark"] .audit-pagination-bar {
+  background: var(--surface-card, #1e293b);
+  border-color: var(--border-subtle, rgba(255, 255, 255, 0.08));
+}
+
+.audit-pagination-info {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 13px;
+  color: var(--text-secondary, #64748b);
+}
+
+.audit-page-size-selector {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text-secondary, #64748b);
+}
+
+.audit-page-size-select {
+  padding: 3px 8px;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid var(--border-default, #e2e8f0);
+  background: var(--surface-card, #ffffff);
+  color: var(--text-primary, #1e293b);
+  font-size: 12.5px;
+  cursor: pointer;
+  outline: none;
+}
+
+[data-theme="dark"] .audit-page-size-select {
+  background: var(--surface-ground, #0f172a);
+  border-color: var(--border-default, rgba(255, 255, 255, 0.15));
+  color: var(--text-primary, #f8fafc);
+}
+
+.audit-pagination-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pagination-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid var(--border-default, #e2e8f0);
+  background: var(--surface-card, #ffffff);
+  color: var(--text-primary, #1e293b);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.pagination-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.pagination-btn:hover:not(:disabled) {
+  background: var(--surface-hover, #f1f5f9);
+  border-color: var(--border-strong, #cbd5e1);
+  color: var(--color-primary, #0284c7);
+}
+
+.pagination-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+[data-theme="dark"] .pagination-btn {
+  background: var(--surface-card, #1e293b);
+  border-color: var(--border-default, rgba(255, 255, 255, 0.15));
+  color: var(--text-primary, #f8fafc);
+}
+
+[data-theme="dark"] .pagination-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #38bdf8;
+}
+
+/* Middle Jump Box */
+.pagination-jump-box {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text-secondary, #64748b);
+  margin: 0 4px;
+}
+
+.pagination-input-wrap {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border-default, #e2e8f0);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--surface-card, #ffffff);
+  overflow: hidden;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+[data-theme="dark"] .pagination-input-wrap {
+  background: var(--surface-ground, #0f172a);
+  border-color: var(--border-default, rgba(255, 255, 255, 0.15));
+}
+
+.pagination-input-wrap:focus-within {
+  border-color: var(--color-primary, #0284c7);
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.15);
+}
+
+.pagination-input {
+  width: 44px;
+  height: 30px;
+  padding: 0 4px;
+  border: none;
+  background: transparent;
+  text-align: center;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary, #1e293b);
+  outline: none;
+  -moz-appearance: textfield;
+}
+
+[data-theme="dark"] .pagination-input {
+  color: var(--text-primary, #f8fafc);
+}
+
+.pagination-input::-webkit-outer-spin-button,
+.pagination-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.pagination-search-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary, #64748b);
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.pagination-search-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.pagination-search-btn:hover {
+  color: var(--color-primary, #0284c7);
+  background: var(--surface-hover, #f1f5f9);
+}
+
+[data-theme="dark"] .pagination-search-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #38bdf8;
+}
+
+/* Modal and Diffs */
+.audit-diff-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.audit-diff-table th,
+.audit-diff-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-subtle, #f1f5f9);
+  text-align: left;
+}
+
+.audit-diff-table th {
+  background: var(--surface-hover, #f8fafc);
+  color: var(--text-secondary, #64748b);
+  font-weight: 600;
+  font-size: 12px;
+}
+
+[data-theme="dark"] .audit-diff-table th {
+  background: rgba(255, 255, 255, 0.05);
+  color: #94a3b8;
+}
+
+.audit-diff-del {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.08);
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-decoration: line-through;
+  word-break: break-all;
+}
+
+.audit-diff-add {
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.08);
+  padding: 2px 6px;
+  border-radius: 4px;
+  word-break: break-all;
+}

@@ -871,13 +871,30 @@ export const userApi = {
 
 import type { AuditLog } from '../types';
 
+export interface AuditLogResponse {
+  items: AuditLog[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
 export const auditApi = {
   getAll: async (params?: {
-    limit?: number
-    action?: string
-    entity_name?: string
-  }): Promise<AuditLog[]> => {
-    return api.get<AuditLog[]>('/audit-logs', params);
+    page?: number;
+    page_size?: number;
+    action?: string;
+    entity_name?: string;
+    start_date?: string;
+    end_date?: string;
+  }): Promise<AuditLogResponse> => {
+    return api.get<AuditLogResponse>('/audit-logs', params);
+  },
+  getActions: async (): Promise<string[]> => {
+    return api.get<string[]>('/audit-logs/actions');
+  },
+  getEntities: async (): Promise<string[]> => {
+    return api.get<string[]>('/audit-logs/entities');
   },
 };
 
