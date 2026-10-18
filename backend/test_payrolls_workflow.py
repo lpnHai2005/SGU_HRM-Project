@@ -29,6 +29,7 @@ async def run_tests():
     # Dọn dẹp dữ liệu kiểm thử cũ nếu có
     async with AsyncSessionLocal() as db:
         await db.execute(text("DELETE FROM leave_requests WHERE employee_id = 4 AND (start_date = '2026-09-18' OR reason LIKE '%Kiểm thử%')"))
+        await db.execute(text("UPDATE payrolls SET payment_status = 'DRAFT' WHERE salary_period = '2026-09'"))
         await db.commit()
 
     transport = httpx.ASGITransport(app=app)
@@ -51,9 +52,11 @@ async def run_tests():
 
         # 2. KIỂM THỬ ĐẶT DOANH SỐ CHO STAFF_DŨNG (VÍ DỤ 220 TRIỆU ĐỒNG TỪ WORKFLOW)
         print("\n[BƯỚC 2] Thiết lập doanh số bán lẻ 220 triệu cho staff_dung (Phone 150M, Laptop 70M, KPI 100%)...")
+        async with AsyncSessionLocal() as db:
+            emp4_store = (await db.execute(text("SELECT store_id FROM employees WHERE employee_id = 4"))).scalar() or 5
         sales_payload = {
             "employee_id": 4, # Phạm Quốc Dũng
-            "store_id": 1,
+            "store_id": emp4_store,
             "salary_period": test_period,
             "phone_revenue": 150000000.0,
             "laptop_revenue": 70000000.0,
@@ -140,11 +143,21 @@ async def run_tests():
         print(f"    * Lương Gross: {dung_payroll['gross_income']:,.0f} VNĐ")
         print(f"    * Bảo hiểm 10.5%: {dung_payroll['total_insurance']:,.0f} VNĐ")
         print(f"    * Lương Thực lĩnh NET: {dung_payroll['net_salary']:,.0f} VNĐ")
+        print(f"    * [BOTTOM-UP BUCKETS] Earnings: {dung_payroll['total_earnings']:,.0f} | Allowances: {dung_payroll['total_allowances']:,.0f} | Bonuses: {dung_payroll['total_bonuses']:,.0f} | Deductions: {dung_payroll['total_deductions']:,.0f}")
 
         # Xác minh công thức toán học
         assert dung_payroll['unpaid_leave_days'] >= 1.0, "Chưa ghi nhận ngày nghỉ không lương!"
         assert dung_payroll['actual_base_salary'] < dung_payroll['contract_salary'], "Lương cơ bản thực nhận phải bị trừ do nghỉ không lương!"
         assert dung_payroll['commission_amount'] == 2200000.0, "Hoa hồng không khớp!"
+        assert dung_payroll['total_earnings'] > 0, "total_earnings phải lớn hơn 0!"
+        assert dung_payroll['total_allowances'] > 0, "total_allowances phải lớn hơn 0!"
+        assert dung_payroll['total_bonuses'] > 0, "total_bonuses phải lớn hơn 0!"
+        assert dung_payroll['total_deductions'] > 0, "total_deductions phải lớn hơn 0!"
+
+        # HR phê duyệt bảng lương chuyển sang CONFIRMED để phát hành phiếu cho nhân viên
+        res = await client.post("/api/v1/payrolls/confirm-all", json={"salary_period": test_period}, headers=hr_headers)
+        assert res.status_code == 200, f"Duyệt bảng lương thất bại: {res.text}"
+        print(f" -> HR đã duyệt chính thức (CONFIRMED) bảng lương kỳ {test_period}")
 
         # 8. KIỂM TRA ENDPOINT GET /api/payrolls/{id} (CHI TIẾT VÀ 12 DÒNG GIẢI TRÌNH)
         print("\n[BƯỚC 8] Kiểm tra endpoint GET /api/payrolls/{id} (12 dòng giải trình cấu phần)...")
@@ -192,13 +205,8 @@ async def run_tests():
         assert "monthly_records" in annual_data
         assert "company" in annual_data
 
-        # 11. KIỂM TRA DUYỆT BẢNG LƯƠNG (DRAFT -> CONFIRMED -> PAID)
-        print("\n[BƯỚC 11] Kiểm tra quy trình duyệt trạng thái hàng loạt (CONFIRM-ALL & PAY-ALL)...")
-        # Duyệt CONFIRMED
-        res = await client.post("/api/v1/payrolls/confirm-all", json={"salary_period": test_period}, headers=hr_headers)
-        assert res.status_code == 200
-        print(f" -> {res.json()['message']}")
-
+        # 11. KIỂM TRA CHI TRẢ BẢNG LƯƠNG TOÀN CHUỖI (CONFIRMED -> PAID)
+        print("\n[BƯỚC 11] Kiểm tra quy trình chi trả chuyển khoản toàn chuỗi (PAY-ALL)...")
         # Chi trả PAID
         res = await client.post("/api/v1/payrolls/pay-all", json={"salary_period": test_period, "payment_date": str(date.today())}, headers=hr_headers)
         assert res.status_code == 200

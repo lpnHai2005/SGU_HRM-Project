@@ -646,6 +646,10 @@ export interface Payroll {
   unworked_hours?: number;
   time_deduction_amount?: number;
   contract_salary?: number;
+  total_earnings?: number;
+  total_allowances?: number;
+  total_bonuses?: number;
+  total_deductions?: number;
   actual_base_salary?: number;
   overtime_salary?: number;
   position_allowance?: number;

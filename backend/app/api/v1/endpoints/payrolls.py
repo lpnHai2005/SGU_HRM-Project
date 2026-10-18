@@ -85,6 +85,32 @@ async def ensure_ot_period_policy(db, period):
         raise HTTPException(409, {"code": "OT_PAYROLL_REVIEW_REQUIRED",
             "message": "Kỳ lương có giờ ngoài ca từ ngày áp dụng quy chế OT mới. Chưa có đường đối chiếu OT được phép với giờ thực tế; vui lòng rà soát trước khi tính lại hoặc chốt lương."})
 
+def populate_payroll_breakdown_from_details(pr_dict: dict, details_list: list):
+    """Bottom-Up architecture helper: derives granular breakdown fields from payroll_details."""
+    det_map = {d["item_code"]: float(d["amount"] or 0) for d in details_list}
+    time_ded = det_map.get("BASE_SALARY_DEDUCTION", 0.0)
+    contract_sal = float(pr_dict.get("contract_salary") or 0.0)
+    pr_dict["time_deduction_amount"] = time_ded
+    pr_dict["actual_base_salary"] = max(0.0, contract_sal - time_ded)
+    pr_dict["overtime_salary"] = det_map.get("OVERTIME", 0.0)
+    pr_dict["position_allowance"] = det_map.get("POSITION_ALLOWANCE", 0.0)
+    pr_dict["seniority_allowance"] = det_map.get("SENIORITY_ALLOWANCE", 0.0)
+    pr_dict["project_allowance"] = det_map.get("PROJECT_ALLOWANCE", 0.0)
+    pr_dict["meal_transport_allowance"] = det_map.get("MEAL_ALLOWANCE", 0.0)
+    pr_dict["commission_amount"] = det_map.get("COMMISSION", 0.0)
+    pr_dict["holiday_bonus"] = det_map.get("HOLIDAY_BONUS", 0.0)
+    pr_dict["productivity_bonus"] = det_map.get("PRODUCTIVITY_BONUS", 0.0)
+    pr_dict["bonus_amount"] = pr_dict["holiday_bonus"] + pr_dict["productivity_bonus"]
+    pr_dict["penalty_deduction"] = det_map.get("PENALTY", 0.0)
+    pr_dict["personal_income_tax"] = det_map.get("PIT", 0.0)
+    tot_ins = float(pr_dict.get("total_insurance") or 0.0)
+    pr_dict["bhxh_amount"] = round(tot_ins * 8.0 / 10.5, 2) if tot_ins > 0 else 0.0
+    pr_dict["bhyt_amount"] = round(tot_ins * 1.5 / 10.5, 2) if tot_ins > 0 else 0.0
+    pr_dict["bhtn_amount"] = round(tot_ins * 1.0 / 10.5, 2) if tot_ins > 0 else 0.0
+    pr_dict["total_deductions"] = float(pr_dict.get("total_deductions") or 0.0)
+    pr_dict["total_deduction"] = pr_dict["total_deductions"]
+    return pr_dict
+
 async def reapply_payroll_adjustments(db, period, adjustments):
     """Carry audited draft adjustments across recalculation, keyed by employee."""
     for adjustment in adjustments:
@@ -96,7 +122,7 @@ async def reapply_payroll_adjustments(db, period, adjustments):
         addition=float(adjustment['addition_amount'] or 0)
         deduction=float(adjustment['deduction_amount'] or 0)
         await db.execute(text('''UPDATE payrolls SET gross_income=COALESCE(gross_income,0)+:addition,
-            total_deduction=COALESCE(total_deduction,0)+:deduction,
+            total_deductions=COALESCE(total_deductions,0)+:deduction,
             net_salary=COALESCE(net_salary,0)+:addition-:deduction,updated_at=clock_timestamp()
             WHERE payroll_id=:id'''),{'id':new_id,'addition':addition,'deduction':deduction})
         await db.execute(text('''INSERT INTO payroll_manual_adjustments(payroll_id,addition_amount,deduction_amount,reason,edited_by)
@@ -216,14 +242,10 @@ async def list_payrolls(
         SELECT p.payroll_id, p.employee_id, e.employee_code, e.full_name as employee_name,
                s.store_name, pos.position_name, p.salary_period,
                p.standard_working_days, p.actual_working_days, p.paid_leave_days, p.unpaid_leave_days,
-               p.unworked_hours, p.time_deduction_amount,
-               p.contract_salary, p.actual_base_salary, p.overtime_salary,
-               p.position_allowance, p.seniority_allowance, p.project_allowance,
-               p.meal_transport_allowance, p.commission_amount, p.bonus_amount,
-               p.holiday_bonus, p.productivity_bonus,
-               p.gross_income, p.bhxh_amount, p.bhyt_amount, p.bhtn_amount,
-               p.total_insurance, p.personal_income_tax, p.penalty_deduction, p.total_deduction,
-               p.net_salary, p.payment_status, p.payment_date,
+               p.unworked_hours,
+               p.contract_salary, p.total_earnings, p.total_allowances, p.total_bonuses,
+               p.total_insurance, p.total_deductions,
+               p.gross_income, p.net_salary, p.payment_status, p.payment_date,
                COALESCE(att.attendance_actual_days,0) AS attendance_actual_days,
                COALESCE(att.attendance_hours,0) AS attendance_hours,
                COALESCE(att.attendance_late_minutes,0) AS attendance_late_minutes,
@@ -289,7 +311,9 @@ async def list_payrolls(
             FROM payroll_details WHERE payroll_id = :pid
             ORDER BY detail_id ASC
         """), {"pid": pr["payroll_id"]})
-        pr_dict["details"] = det_res.mappings().all()
+        details_list = [dict(d) for d in det_res.mappings().all()]
+        pr_dict["details"] = details_list
+        populate_payroll_breakdown_from_details(pr_dict, details_list)
         result.append(pr_dict)
 
     return result
@@ -355,6 +379,16 @@ async def calculate_payroll(
         "total_gross_income": float(total_gross),
         "total_net_salary": float(total_net)
     }
+
+
+@router.get("/generate/{month}", summary="Lấy danh sách bảng lương tháng (Alias workflow GET)")
+async def get_generate_payroll_month(
+    month: str,
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "ADMIN", "DIRECTOR"])),
+    db: AsyncSession = Depends(get_db)
+):
+    """Alias nhanh cho việc lấy danh sách bảng lương tháng"""
+    return await list_payrolls(period=month, employee_id=None, store_id=None, payment_status=None, current_user=current_user, db=db)
 
 
 @router.post("/generate/{month}", summary="Chốt và tự động tính bảng lương tháng (Week 3.2)")
@@ -522,19 +556,26 @@ async def get_annual_salary(
     monthly_res = await db.execute(text("""
         SELECT payroll_id, employee_id, salary_period,
                standard_working_days, actual_working_days, paid_leave_days, unpaid_leave_days,
-               contract_salary, actual_base_salary, overtime_salary,
-               position_allowance, seniority_allowance, project_allowance,
-               meal_transport_allowance, commission_amount, bonus_amount,
-               holiday_bonus, productivity_bonus, gross_income,
-               bhxh_amount, bhyt_amount, bhtn_amount, total_insurance,
-               personal_income_tax, penalty_deduction, total_deduction,
-               net_salary, payment_status, payment_date
+               contract_salary, total_earnings, total_allowances, total_bonuses,
+               total_insurance, total_deductions,
+               gross_income, net_salary, payment_status, payment_date
         FROM payrolls
         WHERE employee_id = :eid AND salary_period LIKE :year_prefix
           AND payment_status IN ('CONFIRMED','PAID')
         ORDER BY salary_period ASC
     """), {"eid": employee_id, "year_prefix": f"{year}-%"})
-    monthly_list = [dict(m) for m in monthly_res.mappings().all()]
+    monthly_rows = [dict(m) for m in monthly_res.mappings().all()]
+    monthly_list = []
+    for m in monthly_rows:
+        det_res = await db.execute(text("""
+            SELECT detail_id, item_code, item_name, item_type, calculation_formula, amount, notes
+            FROM payroll_details WHERE payroll_id = :pid
+            ORDER BY detail_id ASC
+        """), {"pid": m["payroll_id"]})
+        details_list = [dict(d) for d in det_res.mappings().all()]
+        m["details"] = details_list
+        populate_payroll_breakdown_from_details(m, details_list)
+        monthly_list.append(m)
 
     # Lấy dữ liệu tổng hợp năm từ View
     res = await db.execute(text("""
@@ -1201,10 +1242,11 @@ async def get_printable_payslip(
         final_deductions.append(d_dict)
 
     # Nếu có bảo hiểm và chưa được bóc tách riêng từng dòng
-    if (not has_broken_insurance or has_lumped_insurance) and float(row.get("total_insurance") or 0) > 0:
-        bhxh = float(row.get("bhxh_amount") or 0)
-        bhyt = float(row.get("bhyt_amount") or 0)
-        bhtn = float(row.get("bhtn_amount") or 0)
+    tot_ins = float(row.get("total_insurance") or 0)
+    if (not has_broken_insurance or has_lumped_insurance) and tot_ins > 0:
+        bhxh = float(row.get("bhxh_amount") or round(tot_ins * 8.0 / 10.5, 2))
+        bhyt = float(row.get("bhyt_amount") or round(tot_ins * 1.5 / 10.5, 2))
+        bhtn = float(row.get("bhtn_amount") or round(tot_ins * 1.0 / 10.5, 2))
         if bhxh > 0:
             final_deductions.append({
                 "item_code": "BHXH",
@@ -1266,7 +1308,7 @@ async def get_printable_payslip(
     # Tính toán chuẩn xác tổng thu nhập, tổng khấu trừ và thực lĩnh
     # A payslip is a presentation of the approved ledger, never a recalculation.
     calc_total_earnings = float(row["gross_income"] or 0)
-    calc_total_deductions = float(row["total_deduction"] or 0)
+    calc_total_deductions = float(row.get("total_deductions") or row.get("total_deduction") or 0)
     net_val = float(row["net_salary"] or 0)
     net_in_words = currency_to_vietnamese_words(net_val)
 
@@ -1276,6 +1318,11 @@ async def get_printable_payslip(
     year_val = period_parts[0] if len(period_parts) > 0 else "2026"
 
     current_time_str = datetime.now().strftime("%d/%m/%Y %H:%M")
+
+    det_map = {d["item_code"]: float(d["amount"] or 0) for d in details}
+    time_ded = det_map.get("BASE_SALARY_DEDUCTION", 0.0)
+    contract_sal = float(row.get("contract_salary") or 0.0)
+    actual_base = max(0.0, contract_sal - time_ded)
 
     return {
         "payroll_id": row["payroll_id"],
@@ -1329,12 +1376,13 @@ async def get_printable_payslip(
         "earnings": final_earnings,
         "deductions": final_deductions,
         "summary": {
-            "contract_salary": float(row["contract_salary"] or 0),
-            "time_deduction_amount": float(row["time_deduction_amount"] or 0),
-            "actual_base_salary": float(row["actual_base_salary"] or 0),
+            "contract_salary": contract_sal,
+            "time_deduction_amount": time_ded,
+            "actual_base_salary": actual_base,
             "gross_income": float(calc_total_earnings),
-            "total_insurance": float(row["total_insurance"] or 0),
+            "total_insurance": float(row.get("total_insurance") or 0),
             "total_deduction": float(calc_total_deductions),
+            "total_deductions": float(calc_total_deductions),
             "net_salary": float(net_val),
             "net_salary_in_words": net_in_words,
             "payment_status": row["payment_status"],
@@ -1353,14 +1401,10 @@ async def get_payroll_detail(
         SELECT p.payroll_id, p.employee_id, e.employee_code, e.full_name as employee_name,
                s.store_name, pos.position_name, p.salary_period,
                p.standard_working_days, p.actual_working_days, p.paid_leave_days, p.unpaid_leave_days,
-               p.unworked_hours, p.time_deduction_amount,
-               p.contract_salary, p.actual_base_salary, p.overtime_salary,
-               p.position_allowance, p.seniority_allowance, p.project_allowance,
-               p.meal_transport_allowance, p.commission_amount, p.bonus_amount,
-               p.holiday_bonus, p.productivity_bonus,
-               p.gross_income, p.bhxh_amount, p.bhyt_amount, p.bhtn_amount,
-               p.total_insurance, p.personal_income_tax, p.penalty_deduction, p.total_deduction,
-               p.net_salary, p.payment_status, p.payment_date
+               p.unworked_hours,
+               p.contract_salary, p.total_earnings, p.total_allowances, p.total_bonuses,
+               p.total_insurance, p.total_deductions,
+               p.gross_income, p.net_salary, p.payment_status, p.payment_date
         FROM payrolls p
         JOIN employees e ON p.employee_id = e.employee_id
         LEFT JOIN stores s ON e.store_id = s.store_id
@@ -1403,7 +1447,9 @@ async def get_payroll_detail(
         FROM payroll_details WHERE payroll_id = :pid
         ORDER BY detail_id ASC
     """), {"pid": payroll_id})
-    pr_dict["details"] = det_res.mappings().all()
+    details_list = [dict(d) for d in det_res.mappings().all()]
+    pr_dict["details"] = details_list
+    populate_payroll_breakdown_from_details(pr_dict, details_list)
 
     return pr_dict
 
@@ -1421,7 +1467,7 @@ async def update_payroll_adjustments(
     if not period:
         raise HTTPException(404, "Không tìm thấy phiếu lương")
     await lock_payroll_period(db, period)
-    row = (await db.execute(text('''SELECT p.payroll_id,p.salary_period,p.payment_status,p.gross_income,p.total_deduction,p.net_salary,
+    row = (await db.execute(text('''SELECT p.payroll_id,p.salary_period,p.payment_status,p.gross_income,p.total_deductions,p.net_salary,
         adj.addition_amount,adj.deduction_amount,adj.reason FROM payrolls p
         LEFT JOIN payroll_manual_adjustments adj USING(payroll_id)
         WHERE p.payroll_id=:id FOR UPDATE OF p'''), {'id': payroll_id})).mappings().first()
@@ -1434,7 +1480,7 @@ async def update_payroll_adjustments(
     delta_add = req.addition_amount - old_add
     delta_ded = req.deduction_amount - old_ded
     await db.execute(text('''UPDATE payrolls SET gross_income=COALESCE(gross_income,0)+:add_delta,
-        total_deduction=COALESCE(total_deduction,0)+:ded_delta,
+        total_deductions=COALESCE(total_deductions,0)+:ded_delta,
         net_salary=COALESCE(net_salary,0)+:add_delta-:ded_delta,updated_at=clock_timestamp()
         WHERE payroll_id=:id'''), {'id': payroll_id,'add_delta':delta_add,'ded_delta':delta_ded})
     await db.execute(text('''INSERT INTO payroll_manual_adjustments(payroll_id,addition_amount,deduction_amount,reason,edited_by)
