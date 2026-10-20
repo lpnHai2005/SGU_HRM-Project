@@ -726,6 +726,8 @@ export interface User {
   employee_id?: number | null;
   employee_code?: string | null;
   full_name?: string | null;
+  department_name?: string | null;
+  store_name?: string | null;
   roles: string[];
   created_at?: string | null;
 }
@@ -735,14 +737,17 @@ export interface UserCreate {
   password: string;
   email: string;
   phone?: string;
-  employee_id?: number;
+  employee_id?: number | null;
+  role_id?: number;
   role_ids?: number[];
 }
 
 export interface UserUpdate {
   email?: string;
-  phone?: string;
+  phone?: string | null;
+  employee_id?: number | null;
   is_active?: boolean;
+  role_id?: number;
   role_ids?: number[];
   password?: string;
 }
