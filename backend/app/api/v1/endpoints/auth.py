@@ -21,6 +21,13 @@ class PasswordChange(BaseModel):
     new_password: SecretStr
 
 
+def _normalize_login_credentials(username_value: object, password_value: object) -> tuple[str, str]:
+    """Normalize the account identifier, but preserve password characters verbatim."""
+    username = str(username_value or "").strip()
+    password = password_value if isinstance(password_value, str) else ""
+    return username, password
+
+
 @router.post('/change-password')
 async def change_password(req: PasswordChange, current_user=Depends(get_current_user), db: AsyncSession=Depends(get_db)):
     current, new = req.current_password.get_secret_value(), req.new_password.get_secret_value()
@@ -75,20 +82,18 @@ async def login(
     request: Request,
     db: AsyncSession = Depends(get_db)
 ):
+    content_type = request.headers.get("content-type", "")
     username = ""
     password = ""
 
     # Trích xuất linh hoạt từ Form-data (Swagger OAuth2) hoặc JSON body (React/Axios)
-    content_type = request.headers.get("content-type", "")
     if "application/x-www-form-urlencoded" in content_type or "multipart/form-data" in content_type:
         form = await request.form()
-        username = str(form.get("username", "")).strip()
-        password = str(form.get("password", "")).strip()
+        username, password = _normalize_login_credentials(form.get("username", ""), form.get("password", ""))
     else:
         try:
             body = await request.json()
-            username = str(body.get("username", "")).strip()
-            password = str(body.get("password", "")).strip()
+            username, password = _normalize_login_credentials(body.get("username", ""), body.get("password", ""))
         except Exception:
             pass
 

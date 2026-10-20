@@ -37,6 +37,9 @@ def test_manager_transfer_requires_confirmation_before_writing():
     assert db.commits == 0
     assert not any('UPDATE stores' in sql or 'INSERT INTO stores(' in sql for sql,_ in db.calls)
     assert any('FOR UPDATE OF e' in sql for sql,_ in db.calls)
+    assignment_query = next(sql for sql, _ in db.calls if 'SELECT store_id,store_code,store_name FROM stores' in sql)
+    assert 'IS NULL OR' not in assignment_query
+    assert 'store_id<>:target_id' not in assignment_query
 
 def test_confirmed_manager_transfer_is_atomic_and_audited():
     db=FakeDB([{'store_id':3,'store_code':'TZ-Q3','store_name':'Branch 3'}])
@@ -48,6 +51,8 @@ def test_confirmed_manager_transfer_is_atomic_and_audited():
     assert len(transfer_audits) == 1
     assert transfer_audits[0]['old'].find('"manager_employee_id": 7') >= 0
     assert not any('UPDATE employees' in sql or 'work_schedules' in sql for sql,_ in db.calls)
+    assignment_query = next(sql for sql, _ in db.calls if 'SELECT store_id,store_code,store_name FROM stores' in sql)
+    assert 'store_id<>:target_id' not in assignment_query
 
 
 def test_new_store_code_must_have_tz_prefix_and_suffix():

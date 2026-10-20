@@ -597,7 +597,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
             </div>
           </div>
 
-          {canRunPayroll&&<PayrollOvertimePanel period={selectedPeriod}/>}
+          {canRunPayroll&&<PayrollOvertimePanel period={selectedPeriod} mode="history"/>}
 
           {/* 4 Balanced Stat Cards for the Month */}
           <div className="stat-grid-4">

@@ -8,6 +8,24 @@ import './NotificationBell.css'
 
 type Notice = { id: string; title: string; href: string; is_read: boolean; category?: string; tone?: 'success' | 'warning' | 'error' | 'info'; overtime_status?: string; created_at?: string | null }
 
+function normalizeNoticeRows(value: unknown): Notice[] {
+  let rows: unknown
+  if (Array.isArray(value)) rows = value
+  else if (value && typeof value === 'object') {
+    const payload = value as Record<string, unknown>
+    rows = Array.isArray(payload.items) ? payload.items : payload.notifications
+  }
+  if (!Array.isArray(rows) || !rows.every((row): row is Notice => {
+    if (!row || typeof row !== 'object') return false
+    const item = row as Record<string, unknown>
+    return typeof item.id === 'string' && typeof item.title === 'string' &&
+      typeof item.href === 'string' && typeof item.is_read === 'boolean'
+  })) {
+    throw new Error('Dữ liệu thông báo không hợp lệ. Vui lòng thử lại.')
+  }
+  return rows
+}
+
 const noticeTone = (item: Notice) => item.tone || 'info'
 const noticeIcon = (item: Notice) => item.category === 'Chấm công' ? Icons.clock : noticeTone(item) === 'error' ? Icons.xCircle : noticeTone(item) === 'success' ? Icons.checkCircle : Icons.calendar
 
@@ -18,13 +36,15 @@ export function NotificationBell({ user }: { user: { user_id: number } }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const root = useRef<HTMLDivElement>(null)
+  const retryLoad = useRef<() => void>(() => {})
   const navigate = useNavigate()
 
   useEffect(() => {
     let live = true, initial = true, known = new Set<string>()
-    const load = async () => {
+    const load = async (showLoading = false) => {
+      if (showLoading) setLoading(true)
       try {
-        const rows = await api.get<Notice[]>('/operations/notifications')
+        const rows = normalizeNoticeRows(await api.get<unknown>('/operations/notifications'))
         if (!live) return
         setItems(rows); setError('')
         if (!initial) rows.filter(row => !known.has(row.id) && !row.is_read).forEach(row => {
@@ -39,9 +59,10 @@ export function NotificationBell({ user }: { user: { user_id: number } }) {
         if (live) setError(cause instanceof Error ? cause.message : 'Không tải được thông báo')
       } finally { if (live) setLoading(false) }
     }
-    void load()
-    const timer = window.setInterval(load, 30000)
-    return () => { live = false; clearInterval(timer) }
+    retryLoad.current = () => { void load(true) }
+    void load(true)
+    const timer = window.setInterval(() => { void load() }, 30000)
+    return () => { live = false; retryLoad.current = () => {}; clearInterval(timer) }
   }, [user.user_id])
 
   useEffect(() => {
@@ -75,7 +96,7 @@ export function NotificationBell({ user }: { user: { user_id: number } }) {
       <div className="notification-tabs" role="group" aria-label="Lọc thông báo"><button type="button" className={filter === 'all' ? 'active' : ''} aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>Tất cả</button><button type="button" className={filter === 'unread' ? 'active' : ''} aria-pressed={filter === 'unread'} onClick={() => setFilter('unread')}>Chưa đọc <span>{unread}</span></button></div>
       <div className="notification-list">
         {loading && <p className="notification-empty">Đang tải thông báo…</p>}
-        {error && <p className="notification-empty" role="alert">{error}<button type="button" onClick={() => window.location.reload()}>Tải lại</button></p>}
+        {error && <p className="notification-empty" role="alert">{error}<button type="button" disabled={loading} onClick={() => retryLoad.current()}>{loading ? 'Đang thử lại…' : 'Thử lại'}</button></p>}
         {!loading && !error && visible.length === 0 && <p className="notification-empty">{filter === 'unread' ? 'Không có thông báo chưa đọc.' : 'Chưa có thông báo nào.'}</p>}
         {visible.map(item => <button type="button" key={item.id} className={`notification-item tone-${noticeTone(item)} ${item.is_read ? 'is-read' : ''}`} onClick={() => void select(item)}><span className="notification-item-icon">{noticeIcon(item)}</span><span className="notification-item-body"><small>{item.category || 'Hoạt động'}</small><strong>{item.title}</strong>{item.category === 'Đăng ký OT' && item.overtime_status && <span className={`notification-overtime-status ${overtimeStatusClass(item.overtime_status)}`}>{overtimeStatusLabel(item.overtime_status)}</span>}{item.created_at && <time dateTime={item.created_at}>{new Date(item.created_at).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</time>}</span>{!item.is_read && <span className="notification-unread-dot" aria-label="Chưa đọc" />}</button>)}
       </div>

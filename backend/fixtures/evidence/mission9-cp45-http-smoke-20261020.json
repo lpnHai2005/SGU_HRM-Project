@@ -1,0 +1,35 @@
+{
+  "checkpoint": "MISSION9-CP45",
+  "date": "2026-10-20",
+  "scope": "Local API smoke only; no authentication token, database writes, migrations, or Cloud calls",
+  "api_target": "127.0.0.1:8000",
+  "before_temporary_server_start": {
+    "health": "NO_RESPONSE",
+    "interpretation": "No service was listening at the configured local API address during the initial check"
+  },
+  "after_temporary_standard_reload_server_start": {
+    "health_http": 200,
+    "health_database": "connected",
+    "cors_options_http": 200,
+    "cors_allow_origin": "http://localhost:3000",
+    "payrolls_v1_unauthenticated_http": 401,
+    "payroll_alias_v1_unauthenticated_http": 401,
+    "payroll_alias_api_unauthenticated_http": 401,
+    "legacy_ot_history_unauthenticated_http": 401,
+    "authenticated_payroll_request": "NOT_TESTED"
+  },
+  "read_only_exception_schema_guard_probe": {
+    "database": "mission9_synthetic",
+    "core_reconciliation_schema": "present",
+    "exception_case_tables": "missing",
+    "result_http": 503,
+    "result_code": "OT_RECONCILIATION_EXCEPTION_SCHEMA_NOT_INSTALLED",
+    "database_transaction": "READ ONLY then ROLLBACK"
+  },
+  "notes": [
+    "Unauthenticated 401 responses confirm routes are mounted and reachable; they do not verify a signed-in Payroll response.",
+    "The health endpoint reports environment=production as a source constant; it is not evidence of the connected database environment.",
+    "A separate no-reload Uvicorn invocation selected ProactorEventLoop and failed async psycopg DB access; the project's reload-mode launch selected a compatible loop and passed the health DB check.",
+    "The temporary API process was stopped after the smoke checks."
+  ]
+}

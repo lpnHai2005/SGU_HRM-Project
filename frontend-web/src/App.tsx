@@ -7,7 +7,7 @@ import { ActivityPage } from './pages/ActivityPage'
 import { PersonalSchedulesPage } from './pages/PersonalSchedulesPage'
 import { assignedShift } from './services/assignedShift'
 import { useState, useEffect } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useSearchParams } from 'react-router-dom'
 import './App.css'
 import { useAuth } from './contexts/AuthContext'
 import { Icons } from './components/common/Icons'
@@ -67,9 +67,23 @@ function ProtectedRoute({ children, path }: { children: React.ReactNode; path: s
 
 export function App() {
   const { user, isAuthenticated, isLoading, logout } = useAuth()
+  const [routeSearchParams] = useSearchParams()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [attendanceLoading, setAttendanceLoading] = useState(false)
+  const roles: string[] = user?.roles || []
+  const isStandaloneEmployee = roles.includes('EMPLOYEE')
+    && !roles.some(role => ['ADMIN', 'HR_MANAGER', 'STORE_MANAGER', 'DIRECTOR'].includes(role))
+  const legacyOvertimeDeepLink = routeSearchParams.get('tab') === 'overtime'
+  const legacyOvertimeRequestId = routeSearchParams.get('request_id')
+  const legacyOvertimeCaseId = routeSearchParams.get('case_id')
+  const legacyOvertimeTarget = (personal: boolean) => {
+    const path = personal || isStandaloneEmployee ? '/my-overtime' : '/overtime'
+    const params = new URLSearchParams()
+    if (legacyOvertimeRequestId) params.set('request_id', legacyOvertimeRequestId)
+    if (legacyOvertimeCaseId) params.set('case_id', legacyOvertimeCaseId)
+    return `${path}${params.size ? `?${params.toString()}` : ''}`
+  }
 
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     return (localStorage.getItem('techzone_theme') as 'light' | 'dark') || 'light'
@@ -188,8 +202,12 @@ export function App() {
             <Route path="/my-attendance" element={<ProtectedRoute path="/my-attendance"><AttendancePage key="personal" user={user} personal /></ProtectedRoute>} />
             <Route path="/attendance" element={<ProtectedRoute path="/attendance"><MonthlyAttendancePage user={user}/></ProtectedRoute>} />
             <Route path="/work-schedules" element={<ProtectedRoute path="/work-schedules"><WorkSchedulesPage user={user} /></ProtectedRoute>} />
-            <Route path="/leave" element={<ProtectedRoute path="/leave"><LeaveRequestsPage user={user} /></ProtectedRoute>} />
-            <Route path="/my-leave" element={<ProtectedRoute path="/my-leave"><LeaveRequestsPage user={user} personal /></ProtectedRoute>} />
+            <Route path="/leave" element={legacyOvertimeDeepLink
+              ? <Navigate to={legacyOvertimeTarget(false)} replace />
+              : <ProtectedRoute path="/leave"><LeaveRequestsPage user={user} /></ProtectedRoute>} />
+            <Route path="/my-leave" element={legacyOvertimeDeepLink
+              ? <Navigate to={legacyOvertimeTarget(true)} replace />
+              : <ProtectedRoute path="/my-leave"><LeaveRequestsPage user={user} personal /></ProtectedRoute>} />
             <Route path="/overtime" element={<ProtectedRoute path="/overtime"><OvertimeRequestsPage user={user} /></ProtectedRoute>} />
             <Route path="/my-overtime" element={<ProtectedRoute path="/my-overtime"><OvertimeRequestsPage user={user} personal /></ProtectedRoute>} />
             <Route path="/payroll" element={<ProtectedRoute path="/payroll"><PayrollPage user={user} /></ProtectedRoute>} />

@@ -1,0 +1,26 @@
+{
+  "suite": "Payroll API Contract & Integration Candidate",
+  "recorded_at_utc": "2026-10-20T04:45:18.672925+00:00",
+  "database": {
+    "name": "ot_ledger_synthetic_20261020",
+    "host": "127.0.0.1",
+    "port": 5432,
+    "user": "postgres",
+    "marker": "TECHZONE_SYNTHETIC_OT_LEDGER_20261020",
+    "source_schema": "mission9_synthetic",
+    "source_mode": "READ_ONLY schema-only clone; synthetic rows only"
+  },
+  "baseline_procedure_sha256": "c4b02a2a3cf126f92c5418286bd6e5b6d43583eb02b25cc0255cfc3ba12a5d28",
+  "candidate_api_sha256": "5adaceeffd210c19bf2a28e960bb6d469f870c28ff7b9705068fac032fd47e33",
+  "candidate_guard_sql_sha256": "62ddfc2aa318b473cb39b085c861c95bf4782e6c30ff09edac36d2264f79e90c",
+  "test_script_sha256": "d1b58be794580e23d51536ad1aed7809d3084e231e19124d140ca043def63caa",
+  "test_cases": 0,
+  "failures": 0,
+  "errors": 1,
+  "skipped": 0,
+  "successful": false,
+  "fixture_guard_installed": false,
+  "synthetic_paid_fixture_id": null,
+  "database_removed": true,
+  "error": null
+}

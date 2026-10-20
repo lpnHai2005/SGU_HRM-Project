@@ -2,7 +2,13 @@
 // API Configuration
 // ============================================
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
+import { resolveApiBaseUrl } from './apiBaseUrl';
+
+const API_BASE_URL = resolveApiBaseUrl(
+  import.meta.env.VITE_API_URL,
+  typeof window === 'undefined' ? 'localhost' : window.location.hostname,
+  import.meta.env.DEV,
+);
 
 // ============================================
 // Token Management
@@ -15,6 +21,7 @@ const friendlyApiMessages: Record<string, string> = {
   OT_RECONCILIATION_SCHEMA_NOT_INSTALLED: 'Máy chủ chưa cài schema đối soát OT. Liên hệ quản trị viên; không thử xác nhận lại.',
   OT_RECONCILIATION_STALE: 'Dữ liệu đơn OT hoặc chấm công đã thay đổi. Hãy tải lại kết quả đối soát.',
   OT_RECONCILIATION_NEEDS_REVIEW: 'Dữ liệu chấm công cần rà soát trước khi xác nhận giờ OT.',
+  OT_RECONCILIATION_NOT_READY: 'Chưa đến thời điểm đối soát. Có thể xem trước hoặc quyết định sau khi khung giờ OT kết thúc.',
   OT_VERIFIED_INTERVAL_CONFLICT: 'Nhân viên đã có giờ OT xác nhận trong khung giờ giao nhau. Hãy kiểm tra đơn liên quan.',
   SCHEDULE_CONFLICT: 'Nhân viên đã có ca làm việc trùng thời gian. Hãy chọn ca khác hoặc điều chỉnh lịch đang xung đột.',
   SCHEDULE_AMBIGUOUS: 'Có nhiều lịch phù hợp với thao tác này. Hãy chọn đúng ca được phân công rồi thử lại.',
@@ -408,9 +415,11 @@ export const workScheduleApi = {
     api.post(`/fixed-schedules/${ruleId}/stop`, { reason, effective_date }),
 };
 
-import type { OvertimeReconciliation, OvertimeRequest } from '../types';
+import type { OvertimeReconciliation, OvertimeReconciliationCase, OvertimeRequest } from '../types';
 
 export const overtimeReconciliationApi = {
+  list: (params: { status?: string; date_from?: string; date_to?: string; store_id?: number; limit?: number } = {}): Promise<OvertimeReconciliation[]> =>
+    api.get('/overtime-reconciliations', params),
   detail: (requestId: number): Promise<OvertimeReconciliation> =>
     api.get(`/overtime-reconciliations/${requestId}`),
   preview: (requestId: number): Promise<OvertimeReconciliation> =>
@@ -419,6 +428,21 @@ export const overtimeReconciliationApi = {
     api.post(`/overtime-reconciliations/${requestId}/verify`, { expected_version, reason }),
   reject: (requestId: number, expected_version: number, reason: string): Promise<OvertimeReconciliation> =>
     api.post(`/overtime-reconciliations/${requestId}/reject`, { expected_version, reason }),
+  requestExplanation: (requestId: number, expected_version: number, reason: string): Promise<OvertimeReconciliationCase> =>
+    api.post(`/overtime-reconciliations/${requestId}/explanation-requests`, { expected_version, reason }),
+  respondToExplanation: (requestId: number, caseId: number, expected_case_version: number, response: string): Promise<OvertimeReconciliationCase> =>
+    api.post(`/overtime-reconciliations/${requestId}/explanation-cases/${caseId}/respond`, { expected_case_version, response }),
+  closeExplanation: (requestId: number, caseId: number, expected_case_version: number, reason: string): Promise<OvertimeReconciliationCase> =>
+    api.post(`/overtime-reconciliations/${requestId}/explanation-cases/${caseId}/close`, { expected_case_version, reason }),
+  requestReview: (requestId: number, expected_reconciliation_version: number, reason: string): Promise<OvertimeReconciliationCase> =>
+    api.post(`/overtime-reconciliations/${requestId}/review-requests`, { expected_reconciliation_version, reason }),
+  decideReview: (requestId: number, caseId: number, expected_case_version: number,
+    expected_reconciliation_version: number, decision: 'ACCEPT' | 'REJECT', reason: string): Promise<{
+      case: OvertimeReconciliationCase
+      reconciliation: OvertimeReconciliation
+    }> => api.post(`/overtime-reconciliations/${requestId}/review-requests/${caseId}/decision`, {
+      expected_case_version, expected_reconciliation_version, decision, reason,
+    }),
 };
 
 export const overtimeRequestApi = {

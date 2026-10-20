@@ -8,6 +8,13 @@ export interface LoginPageProps {
   onLogin: () => void
 }
 
+function getLoginErrorMessage(error: unknown): string {
+  if (error instanceof TypeError) {
+    return 'Không thể kết nối máy chủ. Kiểm tra mạng và cấu hình địa chỉ API của môi trường đang dùng.'
+  }
+  return error instanceof Error && error.message ? error.message : 'Đăng nhập thất bại'
+}
+
 export function LoginPage({ onLogin }: LoginPageProps) {
   const { login } = useAuth()
   const [username, setUsername] = useState('')
@@ -33,7 +40,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       await login(username, password)
       onLogin()
     } catch (err: any) {
-      setError(err.message || 'Đăng nhập thất bại')
+      setError(getLoginErrorMessage(err))
     } finally {
       setIsLoading(false)
     }
@@ -49,7 +56,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       await login(testUsername, '123456')
       onLogin()
     } catch (err: any) {
-      setError(err.message || 'Đăng nhập thất bại')
+      setError(getLoginErrorMessage(err))
     } finally {
       setIsLoading(false)
     }

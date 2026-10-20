@@ -10,6 +10,14 @@ backend/.env
 **/.env
 frontend/.env.local
 
+# Personal backend database configs and local environment switch helper
+/backend/.env.backup
+/backend/.env.local
+/backend/.env.supabase
+/backend/.env.previous
+/backend/.env.previous.*
+/backend/switch-env.ps1
+
 # Build outputs
 frontend/dist/
 *.pyc
@@ -32,6 +40,7 @@ tmp/pdf-deps/
 tmp/ui-check/
 tmp/mobile-*.png
 *.log
+/review-artifacts/
 .agents
 .agent
 .claude

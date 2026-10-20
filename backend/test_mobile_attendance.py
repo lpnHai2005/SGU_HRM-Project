@@ -5,10 +5,12 @@ from datetime import datetime, timezone, timedelta
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 import jwt
-from fastapi import HTTPException, UploadFile
+from fastapi import FastAPI, HTTPException, UploadFile
 from pydantic import ValidationError
 from app.api.v1.endpoints import mobile_attendance as api
+from app.api.deps import get_current_user
 from app.core.config import settings
+from app.core.database import get_db
 from test_attendance_sessions import result
 
 USER = dict(employee_id=3, store_id=1, roles=['EMPLOYEE'])
@@ -112,6 +114,48 @@ class Workflow(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(await api.perform('CHECK_IN',body(),USER,self.db),{'attendance_id':9})
         self.assertEqual(self.db.execute.call_args.args[1]['att'],9)
         self.db.commit.assert_awaited_once()
+
+    async def test_mobile_payload_cannot_select_another_employee(self):
+        request = body(employee_id=4)
+        self.assertFalse(hasattr(request, 'employee_id'))
+        empty = result(); empty.first.return_value = None
+        self.db.execute.side_effect = [
+            result(), empty, result(dict(shift_id=1, store_id=1)), result(),
+        ]
+        async def core(req, user, db):
+            self.assertEqual(user['employee_id'], 3)
+            self.assertIsNone(req.employee_id)
+            return {'attendance_id': 9}
+        with patch.object(api.attendances, 'check_in', core):
+            result_body = await api.perform('CHECK_IN', request, USER, self.db)
+        self.assertEqual(result_body, {'attendance_id': 9})
+        proof_values = self.db.execute.call_args.args[1]
+        self.assertEqual(proof_values['emp'], 3)
+
+    async def test_mobile_unmapped_account_rejected_before_database_access(self):
+        for kind in ['CHECK_IN', 'CHECK_OUT']:
+            with self.subTest(kind=kind):
+                self.db.reset_mock()
+                with self.assertRaises(HTTPException) as caught:
+                    await api.perform(kind, body(), dict(USER, employee_id=None), self.db)
+                self.assertEqual(caught.exception.status_code, 403)
+                self.db.execute.assert_not_awaited()
+                self.db.commit.assert_not_awaited()
+
+    async def test_mobile_missing_or_invalid_jwt_rejected_before_attendance_access(self):
+        app = FastAPI()
+        app.include_router(api.router, prefix='/mobile-attendance')
+        app.dependency_overrides[get_db] = lambda: self.db
+        self.assertNotIn(get_current_user, app.dependency_overrides)
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:
+            for path in ['/mobile-attendance/check-in', '/mobile-attendance/check-out']:
+                for headers in [{}, {'Authorization': 'Bearer invalid-token'}]:
+                    with self.subTest(path=path, headers=headers):
+                        self.db.reset_mock()
+                        response = await client.post(path, json=body().model_dump(mode='json'), headers=headers)
+                        self.assertEqual(response.status_code, 401, response.text)
+                        self.db.execute.assert_not_awaited()
+                        self.db.commit.assert_not_awaited()
 
     async def test_core_conflict_does_not_write_proof(self):
         empty = result(); empty.first.return_value=None

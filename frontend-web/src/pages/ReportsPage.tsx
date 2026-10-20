@@ -54,7 +54,7 @@ export function ReportsPage({ user: _user }: ReportsPageProps) {
         </div>
       </div>
 
-      <div className="stat-grid-4">
+      <div className="stat-grid-4 kpi-hover-grid">
         <StatCard
           label="Tổng nhân sự hệ thống"
           value={employees.length}

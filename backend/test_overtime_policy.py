@@ -53,8 +53,8 @@ class FakeDatabase:
     async def execute(self, statement, *_args, **_kwargs):
         sql = str(statement)
         self.statements.append(sql)
-        if "SELECT a.attendance_id,a.work_date,a.overtime_hours,a.check_out_time" in sql:
-            return Result({"attendance_id": 11, "work_date": self.work_date,
+        if "SELECT a.attendance_id,a.employee_id,e.store_id,a.work_date,a.overtime_hours,a.check_out_time" in sql:
+            return Result({"attendance_id": 11, "employee_id": 11, "store_id": 1, "work_date": self.work_date,
                 "overtime_hours": 1.5, "check_out_time": datetime.now(timezone.utc),
                 "old_hours": None, "old_decision": None})
         if "SELECT 1 FROM payrolls WHERE salary_period" in sql:

@@ -242,10 +242,13 @@ async def save_store(req, store_id, user, db):
                 FOR UPDATE OF e'''), {'id': manager_id})).mappings().first()
             if not manager:
                 raise HTTPException(422, 'Manager must be an active employee with STORE_MANAGER role')
-            other_assignments = (await db.execute(text('''SELECT store_id,store_code,store_name FROM stores
-                WHERE manager_employee_id=:manager_id AND is_active IS TRUE
-                  AND (:target_id IS NULL OR store_id<>:target_id)
-                ORDER BY store_id FOR UPDATE'''), {'manager_id': manager_id, 'target_id': store_id})).mappings().all()
+            target_filter = ' AND store_id<>:target_id' if store_id is not None else ''
+            assignment_params = {'manager_id': manager_id}
+            if store_id is not None:
+                assignment_params['target_id'] = store_id
+            other_assignments = (await db.execute(text(f'''SELECT store_id,store_code,store_name FROM stores
+                WHERE manager_employee_id=:manager_id AND is_active IS TRUE{target_filter}
+                ORDER BY store_id FOR UPDATE'''), assignment_params)).mappings().all()
             if other_assignments and req.is_active and not transfer_confirmed:
                 raise HTTPException(409, detail={
                     'code': 'STORE_MANAGER_TRANSFER_REQUIRED',
