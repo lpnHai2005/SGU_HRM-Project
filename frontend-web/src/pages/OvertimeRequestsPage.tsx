@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Icons } from '../components/common/Icons'
 import { StatCard } from '../components/common/StatCard'
 import { EmptyState } from '../components/common/EmptyState'
 import { EmployeeSearchSelect } from '../components/common/EmployeeSearchSelect'
 import { formatDate } from '../utils/formatters'
-import type { Employee, Lookups, OvertimeRequest, OvertimeRequestStatus } from '../types'
-import { employeeApi, overtimeRequestApi } from '../services/api'
+import type { Employee, Lookups, OvertimeReconciliation, OvertimeRequest, OvertimeRequestStatus } from '../types'
+import { employeeApi, overtimeReconciliationApi, overtimeRequestApi } from '../services/api'
 import { OVERTIME_REQUEST_STATUS_OPTIONS, overtimeStatusClass, overtimeStatusLabel } from '../components/schedule/overtimeDisplay'
 import { OvertimeReconciliationSection } from '../components/schedule/OvertimeReconciliationSection'
 import { toast } from 'sonner'
@@ -30,6 +30,12 @@ function monthRange(day: string) {
   }
 }
 
+function shiftDate(day: string, amount: number) {
+  const date = new Date(`${day}T00:00:00Z`)
+  date.setUTCDate(date.getUTCDate() + amount)
+  return date.toISOString().slice(0, 10)
+}
+
 function displayDate(day?: string | null): string {
   if (!day) return '—'
   const [year, month, date] = day.slice(0, 10).split('-')
@@ -49,6 +55,24 @@ function durationHours(request: OvertimeRequest): number {
   if (!request.starts_at || !request.ends_at) return 0
   const hours = Math.max(0, (new Date(request.ends_at).getTime() - new Date(request.starts_at).getTime()) / 3_600_000)
   return Number(hours.toFixed(1))
+}
+
+function hasCompleteApprovalContext(
+  context: OvertimeRequest['approval_context'] | null | undefined,
+): context is NonNullable<OvertimeRequest['approval_context']> {
+  return Boolean(
+    context
+    && Array.isArray(context.related_schedules)
+    && Array.isArray(context.conflicts),
+  )
+}
+
+function matchesRequestQuery(request: OvertimeRequest, value: string) {
+  const query = value.trim().toLowerCase()
+  if (!query) return true
+  return [`OT #${request.request_id}`, String(request.request_id), request.employee_name,
+    request.employee_code, request.store_name, request.reason].some(item =>
+    String(item || '').toLowerCase().includes(query))
 }
 
 function getStatusBadgeClass(status: string): string {
@@ -79,8 +103,10 @@ function makeIdempotencyKey() {
 export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequestsPageProps) {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const notificationCaseId = Number(searchParams.get('case_id')) || undefined
   const userRoles: string[] = user?.roles || []
   const isReviewer = userRoles.includes('ADMIN') || userRoles.includes('HR_MANAGER') || userRoles.includes('DIRECTOR')
+  const canReviewLifecycle = userRoles.includes('ADMIN') || userRoles.includes('HR_MANAGER')
   const isStoreManager = userRoles.includes('STORE_MANAGER')
   const canManageOvertime = !personal && (isReviewer || isStoreManager)
   const isPersonalView = personal || !canManageOvertime
@@ -90,12 +116,22 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
 
   const [dateFrom, setDateFrom] = useState(initialRange.from)
   const [dateTo, setDateTo] = useState(initialRange.to)
+  const [draftDateFrom, setDraftDateFrom] = useState(initialRange.from)
+  const [draftDateTo, setDraftDateTo] = useState(initialRange.to)
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [storeId, setStoreId] = useState<string>('')
+  const [draftStoreId, setDraftStoreId] = useState<string>('')
   const [searchTerm, setSearchTerm] = useState('')
   const [activeTab, setActiveTab] = useState<'all' | 'pending_confirm' | 'pending_hr' | 'approved' | 'rejected_cancelled'>('all')
 
   const [requests, setRequests] = useState<OvertimeRequest[]>([])
+  const [reconciliations, setReconciliations] = useState<OvertimeReconciliation[]>([])
+  const [reconciliationError, setReconciliationError] = useState('')
+  const [workspaceTab, setWorkspaceTab] = useState<'requests' | 'reconciliation' | 'history'>(() =>
+    searchParams.get('tab') === 'reconciliation' && canManageOvertime && isReviewer
+      ? 'reconciliation'
+      : 'requests'
+  )
   const [stores, setStores] = useState<Array<{ store_id: number; store_name: string }>>([])
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
@@ -103,6 +139,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
   const [selectedRequest, setSelectedRequest] = useState<OvertimeRequest | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [openMenuId, setOpenMenuId] = useState<number | null>(null)
+  const filterDisclosureRef = useRef<HTMLDetailsElement>(null)
 
   // Create Modal State
   const [createModalOpen, setCreateModalOpen] = useState(false)
@@ -120,7 +157,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
   const [rejectModalOpen, setRejectModalOpen] = useState(false)
   const [rejectReason, setRejectReason] = useState('')
   const [rejectTargetId, setRejectTargetId] = useState<number | null>(null)
-  const [rejectType, setRejectType] = useState<'reject' | 'decline' | 'revoke'>('reject')
+  const [rejectType, setRejectType] = useState<'reject' | 'decline' | 'revoke' | 'revoke-reject'>('reject')
 
   // Amend Modal State
   const [amendModalOpen, setAmendModalOpen] = useState(false)
@@ -156,7 +193,8 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
     setLoading(true)
     try {
       const params: any = {
-        date_from: dateFrom,
+        // Include the prior local date so an overnight OT interval crossing into the selected period is available for verified-hour allocation.
+        date_from: isPersonalView ? shiftDate(dateFrom, -1) : dateFrom,
         date_to: dateTo,
         limit: 200,
       }
@@ -168,15 +206,34 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
         params.store_id = Number(storeId)
       }
 
-      const list = await overtimeRequestApi.list(params)
+      const [list, reconciliationList] = await Promise.all([
+        overtimeRequestApi.list(params),
+        overtimeReconciliationApi.list({
+          date_from: isPersonalView ? shiftDate(dateFrom, -1) : dateFrom,
+          date_to: dateTo,
+          ...(storeId && isReviewer ? { store_id: Number(storeId) } : {}),
+          limit: 100,
+        }).catch(err => {
+          setReconciliationError(err?.message || 'Không tải được dữ liệu đối soát OT')
+          return null
+        }),
+      ])
       setRequests(list)
+      if (reconciliationList) {
+        setReconciliations(reconciliationList)
+        setReconciliationError('')
+      } else {
+        setReconciliations([])
+      }
     } catch (err: any) {
       toast.error(err.message || 'Không thể tải danh sách đăng ký OT')
       setRequests([])
+      setReconciliations([])
+      setReconciliationError(err.message || 'Không tải được dữ liệu đối soát OT')
     } finally {
       setLoading(false)
     }
-  }, [dateFrom, dateTo, isPersonalView, isStoreManager, storeId, user?.employee_id, user?.store_id])
+  }, [dateFrom, dateTo, isPersonalView, isReviewer, isStoreManager, storeId, user?.employee_id, user?.store_id])
 
   useEffect(() => {
     void loadRequests()
@@ -209,9 +266,21 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
     return () => document.removeEventListener('click', handleClickOutside)
   }, [])
 
+  useEffect(() => {
+    const closeFilterOnOutsideClick = (event: MouseEvent) => {
+      const disclosure = filterDisclosureRef.current
+      if (disclosure?.open && event.target instanceof Node && !disclosure.contains(event.target)) {
+        disclosure.open = false
+      }
+    }
+    document.addEventListener('click', closeFilterOnOutsideClick)
+    return () => document.removeEventListener('click', closeFilterOnOutsideClick)
+  }, [])
+
   // Filter requests by activeTab and search
   const filteredRequests = useMemo(() => {
     return requests.filter(req => {
+      if (req.work_date < dateFrom || req.work_date > dateTo) return false
       // Tab filter
       if (activeTab === 'pending_confirm' && req.status !== 'PENDING_EMPLOYEE_CONFIRMATION') return false
       if (activeTab === 'pending_hr' && req.status !== 'PENDING_HR') return false
@@ -234,22 +303,72 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
 
       return true
     })
-  }, [requests, activeTab, statusFilter, searchTerm])
+  }, [requests, activeTab, dateFrom, dateTo, statusFilter, searchTerm])
 
   // Calculate Stat counts
   const statCounts = useMemo(() => {
-    const total = requests.length
-    const pendingConfirm = requests.filter(r => r.status === 'PENDING_EMPLOYEE_CONFIRMATION').length
-    const pendingHr = requests.filter(r => r.status === 'PENDING_HR').length
-    const approved = requests.filter(r => r.status === 'APPROVED').length
-    const rejected = requests.filter(r => ['REJECTED', 'EMPLOYEE_DECLINED', 'CANCELLED'].includes(r.status)).length
+    const periodRequests = requests.filter(request => request.work_date >= dateFrom && request.work_date <= dateTo)
+    const total = periodRequests.length
+    const pendingConfirm = periodRequests.filter(r => r.status === 'PENDING_EMPLOYEE_CONFIRMATION').length
+    const pendingHr = periodRequests.filter(r => r.status === 'PENDING_HR').length
+    const approved = periodRequests.filter(r => r.status === 'APPROVED').length
+    const rejected = periodRequests.filter(r => ['REJECTED', 'EMPLOYEE_DECLINED', 'CANCELLED'].includes(r.status)).length
 
-    const approvedHoursSum = requests
-      .filter(r => r.status === 'APPROVED')
-      .reduce((acc, cur) => acc + durationHours(cur), 0)
+    const reconciliationByRequest = new Map(reconciliations.map(item => [item.request_id, item]))
+    const verified = periodRequests.filter(request => {
+      const rec = reconciliationByRequest.get(request.request_id)
+      return request.status === 'APPROVED' && rec?.effective_status === 'VERIFIED'
+        && rec.source_current && rec.payable_microseconds > 0
+    }).length
+    const pendingReconciliation = periodRequests.filter(request => {
+      if (request.status !== 'APPROVED' || (request.revoke_requested_at && !request.revoke_decided_at)) return false
+      const rec = reconciliationByRequest.get(request.request_id)
+      return !rec || ['PENDING_RECONCILIATION', 'NEEDS_REVIEW'].includes(rec.effective_status)
+    }).length
 
-    return { total, pendingConfirm, pendingHr, approved, rejected, approvedHoursSum }
-  }, [requests])
+    return { total, pendingConfirm, pendingHr, approved, rejected, verified, pendingReconciliation }
+  }, [dateFrom, dateTo, reconciliations, requests])
+
+  const personalVerifiedHours = useMemo(() => {
+    if (reconciliationError) return null
+    const requestMap = new Map(requests.map(request => [request.request_id, request]))
+    const start = new Date(`${dateFrom}T00:00:00+07:00`).getTime()
+    const end = new Date(`${dateTo}T23:59:59.999+07:00`).getTime()
+    let milliseconds = 0
+    for (const reconciliation of reconciliations) {
+      const request = requestMap.get(reconciliation.request_id)
+      if (!request || request.status !== 'APPROVED' || !reconciliation.source_current
+          || reconciliation.effective_status !== 'VERIFIED' || !reconciliation.payable_microseconds) continue
+      if (request.revoke_requested_at && !request.revoke_decided_at) continue
+      for (const interval of reconciliation.eligible_intervals || []) {
+        const left = Math.max(start, new Date(interval.starts_at).getTime())
+        const right = Math.min(end, new Date(interval.ends_at).getTime())
+        if (right > left) milliseconds += right - left
+      }
+    }
+    return milliseconds / 3_600_000
+  }, [dateFrom, dateTo, reconciliationError, reconciliations, requests])
+
+  const reconciliationByRequest = useMemo(
+    () => new Map(reconciliations.map(item => [item.request_id, item])), [reconciliations],
+  )
+
+  const reconciliationRows = useMemo(() => {
+    const rows = requests.filter(request => request.status === 'APPROVED'
+      && request.work_date >= dateFrom && request.work_date <= dateTo
+      && matchesRequestQuery(request, searchTerm))
+      .map(request => ({ request, reconciliation: reconciliationByRequest.get(request.request_id) }))
+    if (workspaceTab === 'history') {
+      return rows.filter(({ reconciliation }) => reconciliation
+        && ['VERIFIED', 'REJECTED', 'NEEDS_REVIEW'].includes(reconciliation.effective_status))
+    }
+    return rows
+  }, [dateFrom, dateTo, reconciliationByRequest, requests, searchTerm, workspaceTab])
+
+  const historicalRequests = useMemo(() => requests.filter(request =>
+    ['APPROVED', 'REJECTED', 'EMPLOYEE_DECLINED', 'CANCELLED', 'REVOKED', 'REPLACED'].includes(request.status)
+      && request.work_date >= dateFrom && request.work_date <= dateTo
+      && matchesRequestQuery(request, searchTerm)), [dateFrom, dateTo, requests, searchTerm])
 
   // Estimated hours for create modal
   const estimatedCreateHours = useMemo(() => {
@@ -291,7 +410,37 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
     }
   }
 
-  const handleOpenReject = (requestId: number, type: 'reject' | 'decline' | 'revoke') => {
+  const handleApproveAmendment = async (requestId: number) => {
+    if (!window.confirm('Duyệt bản OT thay thế và giữ nguyên lịch sử đơn gốc?')) return
+    setActionLoading(true)
+    try {
+      await overtimeRequestApi.approveAmendment(requestId)
+      toast.success('Đã duyệt bản OT thay thế; đơn gốc được lưu trong lịch sử.')
+      await loadRequests()
+      if (selectedRequest?.request_id === requestId) void openDetail(requestId)
+    } catch (err: any) {
+      toast.error(err.message || 'Duyệt bản OT thay thế thất bại')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handleApproveRevocation = async (requestId: number) => {
+    if (!window.confirm('Xác nhận thu hồi đơn OT? Lịch sử yêu cầu và quyết định sẽ được giữ lại.')) return
+    setActionLoading(true)
+    try {
+      await overtimeRequestApi.approveRevocation(requestId)
+      toast.success('Đã duyệt thu hồi đơn OT.')
+      await loadRequests()
+      if (selectedRequest?.request_id === requestId) void openDetail(requestId)
+    } catch (err: any) {
+      toast.error(err.message || 'Duyệt thu hồi đơn OT thất bại')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handleOpenReject = (requestId: number, type: 'reject' | 'decline' | 'revoke' | 'revoke-reject') => {
     setRejectTargetId(requestId)
     setRejectType(type)
     setRejectReason('')
@@ -312,6 +461,9 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
       } else if (rejectType === 'revoke') {
         await overtimeRequestApi.requestRevocation(rejectTargetId, rejectReason.trim())
         toast.success('Đã gửi yêu cầu thu hồi đơn OT.')
+      } else if (rejectType === 'revoke-reject') {
+        await overtimeRequestApi.rejectRevocation(rejectTargetId, rejectReason.trim())
+        toast.success('Đã từ chối yêu cầu thu hồi; đơn OT gốc vẫn có hiệu lực.')
       } else {
         await overtimeRequestApi.reject(rejectTargetId, rejectReason.trim())
         toast.success('Đã từ chối đơn tăng ca.')
@@ -412,28 +564,56 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
     }
   }
 
+  const hasCustomDateRange = dateFrom !== initialRange.from || dateTo !== initialRange.to
+  const activeAdvancedFilterCount = Number(hasCustomDateRange) + Number(Boolean(storeId))
+  const hasActiveFilters = hasCustomDateRange || Boolean(storeId) || Boolean(searchTerm.trim())
+    || (workspaceTab === 'requests' && activeTab !== 'all')
+  const clearAdvancedFilters = () => {
+    setDateFrom(initialRange.from)
+    setDateTo(initialRange.to)
+    setStoreId('')
+    setDraftDateFrom(initialRange.from)
+    setDraftDateTo(initialRange.to)
+    setDraftStoreId('')
+    if (filterDisclosureRef.current) filterDisclosureRef.current.open = false
+  }
+  const applyAdvancedFilters = () => {
+    if (draftDateFrom && draftDateTo && draftDateFrom > draftDateTo) return
+    setDateFrom(draftDateFrom)
+    setDateTo(draftDateTo)
+    setStoreId(draftStoreId)
+    if (filterDisclosureRef.current) filterDisclosureRef.current.open = false
+  }
+  const resetAllFilters = () => {
+    clearAdvancedFilters()
+    setSearchTerm('')
+    setActiveTab('all')
+    setStatusFilter('all')
+  }
+  const statusTabLabels: Record<typeof activeTab, string> = {
+    all: 'Tất cả',
+    pending_confirm: isPersonalView ? 'Chờ bạn xác nhận' : 'Chờ NV C1',
+    pending_hr: 'Chờ HR C2',
+    approved: 'Đã duyệt',
+    rejected_cancelled: 'Từ chối/Hủy',
+  }
+  const selectedStoreName = stores.find(store => String(store.store_id) === storeId)?.store_name || 'Cửa hàng đã chọn'
+
   return (
-    <div className="page-container">
+    <div className="page-container overtime-page">
       {/* Page Header */}
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
         <div>
-          <h1 className="page-title">{isPersonalView ? 'Đơn OT Của Tôi' : 'Quản lý Đăng Ký OT'}</h1>
+          <h1 className="page-title">{isPersonalView ? 'Đơn OT của tôi' : isReviewer ? 'Quản lý Đăng ký & Đối soát OT' : 'Quản lý Đăng ký OT'}</h1>
           <p style={{ color: 'var(--text-secondary, #6b7280)', fontSize: '0.9rem', marginTop: '4px' }}>
             {isPersonalView
               ? 'Theo dõi danh sách đăng ký tăng ca, xác nhận lịch OT và đối soát bảng lương cá nhân'
-              : 'Theo dõi, phê duyệt đơn đăng ký tăng ca 2 cấp và liên kết đối soát bảng lương TechZone'}
+              : isReviewer
+                ? 'Quản lý đăng ký tăng ca, phê duyệt kế hoạch và xác nhận giờ làm thêm thực tế.'
+                : 'Theo dõi và đề xuất đăng ký tăng ca cho nhân viên thuộc chi nhánh.'}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <button
-            className="btn btn-secondary"
-            onClick={() => void loadRequests()}
-            disabled={loading}
-            title="Tải lại danh sách"
-          >
-            {Icons.refresh}
-            <span>Làm mới</span>
-          </button>
+        <div className="overtime-page-header-actions">
           <button
             className="btn btn-primary"
             onClick={() => {
@@ -456,14 +636,14 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
       </div>
 
       {/* KPI Stat Cards */}
-      <div className="stat-grid-4">
+      <div className="stat-grid-4 kpi-hover-grid">
         {isPersonalView ? (
           <>
             <StatCard
               icon={Icons.clock}
               iconColor="blue"
-              label="Giờ OT đã duyệt (kỳ này)"
-              value={`${statCounts.approvedHoursSum.toFixed(1)} giờ`}
+              label="Giờ OT đã xác nhận (kỳ này)"
+              value={personalVerifiedHours === null ? 'Chưa xác minh' : `${personalVerifiedHours.toFixed(1)} giờ`}
             />
             <StatCard
               icon={Icons.alertCircle}
@@ -507,35 +687,91 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
             <StatCard
               icon={Icons.checkCircle}
               iconColor="green"
-              label="Đã phê duyệt"
-              value={`${statCounts.approved} đơn`}
+              label="Đã VERIFIED"
+              value={reconciliationError ? 'Chưa xác minh' : `${statCounts.verified} đơn`}
             />
           </>
         )}
       </div>
 
+      <div className="card overtime-management-card">
+        <div className="card-header overtime-management-card-header">
+        {canManageOvertime && <nav className="overtime-workspace-tabs" aria-label="Khu vực quản lý OT">
+          <button type="button" className={workspaceTab === 'requests' ? 'active' : ''}
+            onClick={() => setWorkspaceTab('requests')}>Đăng ký &amp; Phê duyệt OT</button>
+          {isReviewer && <button type="button" className={workspaceTab === 'reconciliation' ? 'active' : ''}
+            onClick={() => setWorkspaceTab('reconciliation')}>Đối soát OT <span>{statCounts.pendingReconciliation}</span></button>}
+          <button type="button" className={workspaceTab === 'history' ? 'active' : ''}
+            onClick={() => setWorkspaceTab('history')}>Lịch sử OT</button>
+        </nav>}
+
+        <section className="overtime-filter-toolbar" aria-label="Tìm kiếm và bộ lọc OT">
+          <label className="overtime-query-control">
+            <span className="overtime-query-field">
+              {Icons.search}
+              <input
+                type="text"
+                className="form-input"
+                value={searchTerm}
+                onChange={event => setSearchTerm(event.target.value)}
+                placeholder="Nhân viên, mã OT, cửa hàng hoặc lý do"
+                aria-label="Tìm nhân viên, mã OT, cửa hàng hoặc lý do"
+              />
+              {searchTerm && <button type="button" onClick={() => setSearchTerm('')} aria-label="Xóa từ khóa tìm kiếm" title="Xóa từ khóa tìm kiếm">{Icons.close}</button>}
+            </span>
+          </label>
+          <div className="overtime-toolbar-actions">
+            <details ref={filterDisclosureRef} className="overtime-filter-disclosure" onKeyDown={event => {
+              if (event.key === 'Escape') {
+                event.currentTarget.open = false
+                event.currentTarget.querySelector('summary')?.focus()
+              }
+            }}>
+              <summary aria-controls="overtime-advanced-filter-panel" onClick={() => {
+                setDraftDateFrom(dateFrom)
+                setDraftDateTo(dateTo)
+                setDraftStoreId(storeId)
+              }}>
+                {Icons.filter}<span>Bộ lọc</span>
+                <span className="overtime-filter-count" aria-label={`${activeAdvancedFilterCount} bộ lọc nâng cao đang áp dụng`}>{activeAdvancedFilterCount}</span>
+              </summary>
+              <div className="overtime-filter-popover" id="overtime-advanced-filter-panel" role="dialog" aria-label="Bộ lọc nâng cao">
+                <div className="overtime-filter-popover-heading">
+                  <div><strong>Bộ lọc nâng cao</strong><small>Mặc định theo tháng hiện tại; phạm vi cửa hàng tuân theo quyền tài khoản.</small></div>
+                </div>
+                <div className={`overtime-filter-fields ${!isPersonalView && isReviewer && stores.length > 0 ? 'has-store-filter' : ''}`}>
+                  <label><span>Từ ngày</span><input type="date" className="form-input" value={draftDateFrom} max={draftDateTo || undefined} onChange={event => setDraftDateFrom(event.target.value)} /></label>
+                  <label><span>Đến ngày</span><input type="date" className="form-input" value={draftDateTo} min={draftDateFrom || undefined} onChange={event => setDraftDateTo(event.target.value)} /></label>
+                  {!isPersonalView && isReviewer && stores.length > 0 && <label className="overtime-store-filter"><span>Cửa hàng</span><select className="form-select" value={draftStoreId} onChange={event => setDraftStoreId(event.target.value)}><option value="">Tất cả cửa hàng</option>{stores.map(store => <option key={store.store_id} value={String(store.store_id)}>{store.store_name}</option>)}</select></label>}
+                </div>
+                <div className="overtime-filter-popover-footer">
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={clearAdvancedFilters} disabled={!hasCustomDateRange && !storeId && draftDateFrom === initialRange.from && draftDateTo === initialRange.to && !draftStoreId}>Xóa bộ lọc</button>
+                  <button type="button" className="btn btn-primary btn-sm" onClick={applyAdvancedFilters} disabled={Boolean(draftDateFrom && draftDateTo && draftDateFrom > draftDateTo)}>Áp dụng</button>
+                </div>
+              </div>
+            </details>
+            <button type="button" className="btn btn-secondary overtime-toolbar-refresh" onClick={() => void loadRequests()} disabled={loading} title="Tải lại danh sách">{Icons.refresh}<span>Làm mới</span></button>
+          </div>
+        </section>
+
+        {hasActiveFilters && <div className="overtime-active-filters" aria-label="Bộ lọc đang áp dụng">
+          {searchTerm.trim() && <span className="overtime-filter-chip"><span>Từ khóa: {searchTerm.trim()}</span><button type="button" aria-label="Xóa từ khóa tìm kiếm" onClick={() => setSearchTerm('')}>{Icons.close}</button></span>}
+          {hasCustomDateRange && <span className="overtime-filter-chip"><span>Thời gian: {dateFrom ? displayDate(dateFrom) : '—'} – {dateTo ? displayDate(dateTo) : '—'}</span><button type="button" aria-label="Đặt lại khoảng ngày" onClick={() => { setDateFrom(initialRange.from); setDateTo(initialRange.to) }}>{Icons.close}</button></span>}
+          {storeId && <span className="overtime-filter-chip"><span>Cửa hàng: {selectedStoreName}</span><button type="button" aria-label="Xóa bộ lọc cửa hàng" onClick={() => setStoreId('')}>{Icons.close}</button></span>}
+          {workspaceTab === 'requests' && activeTab !== 'all' && <span className="overtime-filter-chip"><span>Trạng thái: {statusTabLabels[activeTab]}</span><button type="button" aria-label="Xóa bộ lọc trạng thái" onClick={() => setActiveTab('all')}>{Icons.close}</button></span>}
+          <button type="button" className="overtime-reset-all" onClick={resetAllFilters}>Đặt lại tất cả</button>
+        </div>}
+        </div>
+
       {/* Main Card */}
-      <div className="card">
-        {/* Card Header & Tabs (Optimized layout exactly matching LeaveRequestsPage) */}
-        <div className="card-header leave-requests-header" style={{ flexWrap: 'wrap', gap: '12px', overflowX: 'visible' }}>
-          {/* Tabs */}
-          <div
-            className="tabs"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              marginBottom: 0,
-              borderBottom: 'none',
-              padding: 0,
-              flexShrink: 0,
-              whiteSpace: 'nowrap',
-            }}
-          >
+      {workspaceTab === 'requests' && <div className="overtime-request-card">
+        <div className="overtime-request-filter-section">
+          <nav className="overtime-status-tabs" aria-label="Lọc đơn theo trạng thái">
             <button
               type="button"
               className={`leave-tab-btn ${activeTab === 'all' ? 'active' : ''}`}
               onClick={() => setActiveTab('all')}
+              aria-pressed={activeTab === 'all'}
             >
               <span>Tất cả</span>
               <span className="leave-tab-badge">{statCounts.total}</span>
@@ -544,6 +780,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
               type="button"
               className={`leave-tab-btn ${activeTab === 'pending_confirm' ? 'active' : ''}`}
               onClick={() => setActiveTab('pending_confirm')}
+              aria-pressed={activeTab === 'pending_confirm'}
             >
               <span>{isPersonalView ? 'Chờ bạn xác nhận' : 'Chờ NV xác nhận (C1)'}</span>
               <span
@@ -561,6 +798,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
               type="button"
               className={`leave-tab-btn ${activeTab === 'pending_hr' ? 'active' : ''}`}
               onClick={() => setActiveTab('pending_hr')}
+              aria-pressed={activeTab === 'pending_hr'}
             >
               <span>Chờ HR duyệt (C2)</span>
               <span
@@ -578,6 +816,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
               type="button"
               className={`leave-tab-btn ${activeTab === 'approved' ? 'active' : ''}`}
               onClick={() => setActiveTab('approved')}
+              aria-pressed={activeTab === 'approved'}
             >
               <span>Đã duyệt</span>
               <span className="leave-tab-badge">{statCounts.approved}</span>
@@ -586,119 +825,15 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
               type="button"
               className={`leave-tab-btn ${activeTab === 'rejected_cancelled' ? 'active' : ''}`}
               onClick={() => setActiveTab('rejected_cancelled')}
+              aria-pressed={activeTab === 'rejected_cancelled'}
             >
               <span>Từ chối / Hủy</span>
               <span className="leave-tab-badge">{statCounts.rejected}</span>
             </button>
-          </div>
-
-          {/* Search & Filter Controls on the same row */}
-          <div
-            style={{
-              display: 'flex',
-              gap: '10px',
-              alignItems: 'center',
-              flexShrink: 0,
-              marginLeft: 'auto',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            <div className="search-box" style={{ width: '210px', minWidth: '150px', position: 'relative' }}>
-              <span
-                className="search-icon"
-                style={{
-                  position: 'absolute',
-                  left: '10px',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  color: 'var(--text-muted)',
-                  pointerEvents: 'none',
-                }}
-              >
-                {Icons.search}
-              </span>
-              <input
-                type="text"
-                className="form-input"
-                placeholder="Tìm nhân viên, mã OT..."
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-                style={{
-                  height: '34px',
-                  paddingLeft: '32px',
-                  paddingRight: searchTerm ? '28px' : '10px',
-                  fontSize: '13px',
-                  width: '100%',
-                }}
-              />
-              {searchTerm && (
-                <button
-                  type="button"
-                  onClick={() => setSearchTerm('')}
-                  style={{
-                    position: 'absolute',
-                    right: '8px',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    color: 'var(--text-muted)',
-                    fontSize: '12px',
-                    padding: '2px',
-                    display: 'flex',
-                    alignItems: 'center',
-                  }}
-                  title="Xóa tìm kiếm"
-                >
-                  {Icons.close}
-                </button>
-              )}
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <input
-                type="date"
-                className="form-input"
-                value={dateFrom}
-                onChange={e => setDateFrom(e.target.value)}
-                style={{ height: '34px', fontSize: '12.5px', width: '125px', padding: '0 6px' }}
-                title="Từ ngày"
-              />
-              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>-</span>
-              <input
-                type="date"
-                className="form-input"
-                value={dateTo}
-                onChange={e => setDateTo(e.target.value)}
-                style={{ height: '34px', fontSize: '12.5px', width: '125px', padding: '0 6px' }}
-                title="Đến ngày"
-              />
-            </div>
-
-            {!isPersonalView && isReviewer && stores.length > 0 && (
-              <select
-                className="form-select"
-                value={storeId}
-                onChange={e => setStoreId(e.target.value)}
-                style={{
-                  height: '34px',
-                  width: 'auto',
-                  minWidth: '135px',
-                  fontSize: '13px',
-                }}
-              >
-                <option value="">Tất cả cửa hàng</option>
-                {stores.map(s => (
-                  <option key={s.store_id} value={String(s.store_id)}>
-                    {s.store_name}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
+          </nav>
+          <label className="overtime-status-mobile"><span>Trạng thái đơn</span><select className="form-select" value={activeTab} onChange={event => setActiveTab(event.target.value as typeof activeTab)} aria-label="Lọc đơn theo trạng thái">
+            {Object.entries(statusTabLabels).map(([value, label]) => <option key={value} value={value}>{label} ({value === 'all' ? statCounts.total : value === 'pending_confirm' ? statCounts.pendingConfirm : value === 'pending_hr' ? statCounts.pendingHr : value === 'approved' ? statCounts.approved : statCounts.rejected})</option>)}
+          </select></label>
         </div>
 
         {/* Table Section */}
@@ -707,12 +842,13 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
             Đang tải danh sách đơn đăng ký tăng ca...
           </div>
         ) : (
-          <div className="table-container" style={{ minHeight: '320px' }}>
-            <table className="data-table">
+          <div className="table-container overtime-request-table-wrap" style={{ minHeight: '320px' }}>
+            <table className="data-table overtime-request-table">
               <thead>
                 <tr>
                   <th>MÃ ĐƠN</th>
                   <th>NHÂN VIÊN</th>
+                  <th>NGƯỜI ĐĂNG KÝ</th>
                   <th>NGÀY TĂNG CA</th>
                   <th>KHUNG GIỜ</th>
                   <th>TỔNG GIỜ</th>
@@ -742,7 +878,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
                       style={{ cursor: 'pointer' }}
                       onClick={() => void openDetail(req.request_id)}
                     >
-                      <td>
+                      <td data-label="Mã đơn">
                         <span className="table-cell-mono font-bold" style={{ cursor: 'pointer', color: 'var(--primary-color, #2563eb)' }}>
                           #{req.request_id}
                         </span>
@@ -752,7 +888,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
                           </div>
                         )}
                       </td>
-                      <td>
+                      <td data-label="Nhân viên">
                         <div>
                           <div style={{ fontWeight: 600 }}>{req.employee_name || `Nhân viên #${req.employee_id}`}</div>
                           <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary, #6b7280)' }}>
@@ -760,20 +896,21 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
                           </div>
                         </div>
                       </td>
-                      <td>
+                      <td data-label="Người đăng ký">{req.creator_username || `User #${req.created_by}`}</td>
+                      <td data-label="Ngày tăng ca">
                         <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
                           {displayDate(req.work_date)}
                         </span>
                       </td>
-                      <td>
+                      <td data-label="Khung giờ">
                         <span className="table-cell-mono" style={{ fontSize: '0.85rem' }}>
                           {timeOnly(req.starts_at)} → {timeOnly(req.ends_at)}
                         </span>
                       </td>
-                      <td>
+                      <td data-label="Tổng giờ">
                         <strong style={{ color: 'var(--text-primary)' }}>{hours} giờ</strong>
                       </td>
-                      <td
+                      <td data-label="Lý do"
                         style={{ maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
                         title={req.reason}
                       >
@@ -781,7 +918,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
                           {req.reason}
                         </span>
                       </td>
-                      <td>
+                      <td data-label="Trạng thái">
                         <span className={`status-pill ${getStatusBadgeClass(req.status)}`}>
                           {overtimeStatusLabel(req.status)}
                         </span>
@@ -789,7 +926,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
                           <span className="overtime-overdue-badge" style={{ marginLeft: '4px' }}>Quá hạn</span>
                         )}
                       </td>
-                      <td>
+                      <td data-label="Cấp 1 (CHT / NV)">
                         {/* Cấp 1 CHT / NV xác nhận */}
                         {req.employee_confirmed_at ? (
                           <div style={{ fontSize: '0.8rem', color: 'var(--status-success)' }}>
@@ -806,7 +943,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
                           </div>
                         )}
                       </td>
-                      <td>
+                      <td data-label="Cấp 2 (HR duyệt)">
                         {/* Cấp 2 HR / Admin phê duyệt */}
                         {req.status === 'APPROVED' ? (
                           <div style={{ fontSize: '0.8rem', color: 'var(--status-success)' }}>
@@ -826,13 +963,14 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
                           <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>—</span>
                         )}
                       </td>
-                      <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                      <td data-label="Thao tác" style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
                         <div style={{ display: 'inline-flex', gap: '4px', alignItems: 'center', position: 'relative' }}>
                           {/* Nút 1: Xem chi tiết (Mắt) */}
                           <button
                             type="button"
                             className="btn btn-secondary btn-sm btn-icon"
                             title="Xem chi tiết đơn"
+                            aria-label={`Xem chi tiết đơn OT ${req.request_id}`}
                             onClick={() => void openDetail(req.request_id)}
                           >
                             {Icons.eye}
@@ -843,6 +981,8 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
                             type="button"
                             className="btn btn-secondary btn-sm btn-icon"
                             title={hasAnyAction ? "Tùy chọn thao tác" : "Không có thao tác khác"}
+                            aria-label={`Tùy chọn thao tác đơn OT ${req.request_id}`}
+                            aria-expanded={openMenuId === req.request_id}
                             disabled={!hasAnyAction}
                             style={{
                               opacity: hasAnyAction ? 1 : 0.4,
@@ -861,6 +1001,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
                           {openMenuId === req.request_id && hasAnyAction && (
                             <div
                               className="action-dropdown"
+                              role="menu"
                               onClick={(e) => e.stopPropagation()}
                               style={{
                                 position: 'absolute',
@@ -991,12 +1132,13 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
                 })}
                 {filteredRequests.length === 0 && (
                   <tr>
-                    <td colSpan={10} style={{ padding: '40px 20px' }}>
+                    <td colSpan={11} style={{ padding: '40px 20px' }}>
                       <EmptyState
                         icon={Icons.clock}
                         title="Không tìm thấy đơn đăng ký OT nào"
                         description="Không có đơn tăng ca nào phù hợp với bộ lọc tìm kiếm hiện tại."
                       />
+                      <div className="overtime-empty-actions"><button type="button" className="btn btn-secondary btn-sm" onClick={resetAllFilters}>Đặt lại bộ lọc</button></div>
                     </td>
                   </tr>
                 )}
@@ -1004,6 +1146,57 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
             </table>
           </div>
         )}
+      </div>}
+
+      {workspaceTab === 'reconciliation' && isReviewer && <section className="overtime-workspace-card" aria-label="Danh sách đối soát OT">
+        <header className="overtime-workspace-card-header">
+          <div><h2>Đối soát OT</h2><p>Chỉ các đơn đã APPROVED được đưa vào đối soát. VERIFIED là giờ đã HR xác nhận, chưa đồng nghĩa đã thanh toán.</p></div>
+          <span className="overtime-workspace-count">{reconciliationRows.length} đơn</span>
+        </header>
+        {reconciliationError ? <div className="overtime-workspace-error" role="alert">{reconciliationError} <button className="btn btn-secondary btn-sm" onClick={() => void loadRequests()}>Thử lại</button></div>
+          : loading ? <div className="overtime-workspace-empty" role="status">Đang tải dữ liệu đối soát…</div>
+            : reconciliationRows.length === 0 ? <div className="overtime-workspace-empty">Không có đơn OT đã duyệt trong kỳ lọc.<button type="button" className="btn btn-secondary btn-sm" onClick={resetAllFilters}>Đặt lại bộ lọc</button></div>
+              : <div className="table-container overtime-workspace-table-wrap"><table className="data-table overtime-workspace-table">
+                <thead><tr><th>Mã đơn</th><th>Nhân viên / Cửa hàng</th><th>Ngày OT</th><th>Khung OT duyệt</th><th>Giờ duyệt</th><th>Attendance</th><th>Giờ OT đề xuất</th><th>Chênh lệch</th><th>Trạng thái</th><th>Chi tiết</th></tr></thead>
+                <tbody>{reconciliationRows.map(({ request, reconciliation }) => {
+                  const proposed = reconciliation?.proposed_microseconds || 0
+                  const approved = durationHours(request)
+                  const proposedHours = proposed / 3_600_000_000
+                  const difference = proposedHours - approved
+                  const statusValue = reconciliation?.display_status || reconciliation?.effective_status || 'PENDING_RECONCILIATION'
+                  const executionValue = reconciliation?.execution_status
+                  const executionLabel = executionValue === 'NOT_STARTED' ? 'Chưa đến giờ OT'
+                    : executionValue === 'IN_PROGRESS' ? 'Đang thực hiện OT'
+                      : executionValue === 'ATTENDANCE_INCOMPLETE' ? 'Attendance chưa hoàn tất'
+                        : executionValue === 'ENDED' ? 'Đã kết thúc' : ''
+                  const attendanceLabel = reconciliationError ? 'Chưa xác minh'
+                    : reconciliation?.attendance_ids?.length ? `${reconciliation.attendance_ids.length} phiên liên quan`
+                      : reconciliation ? 'Chưa có phiên phù hợp' : 'Chưa chạy preview'
+                  return <tr key={request.request_id}>
+                    <td data-label="Mã đơn"><button type="button" className="overtime-request-link" onClick={() => void openDetail(request.request_id)}>OT #{request.request_id}</button></td>
+                    <td data-label="Nhân viên / Cửa hàng"><strong>{request.employee_name || `Nhân viên #${request.employee_id}`}</strong><small>{request.employee_code || ''}{request.store_name ? ` · ${request.store_name}` : ''}</small></td>
+                    <td data-label="Ngày OT">{displayDate(request.work_date)}</td><td data-label="Khung OT duyệt">{timeOnly(request.starts_at)}–{timeOnly(request.ends_at)}</td>
+                    <td data-label="Giờ duyệt">{approved.toFixed(1)} giờ</td><td data-label="Attendance">{attendanceLabel}</td><td data-label="Giờ OT đề xuất">{reconciliation ? `${proposedHours.toFixed(1)} giờ` : 'Chưa có'}</td>
+                    <td data-label="Chênh lệch">{reconciliation ? `${difference > 0 ? '+' : ''}${difference.toFixed(1)} giờ` : '—'}</td>
+                    <td data-label="Trạng thái"><span className={`overtime-reconciliation-chip is-${statusValue.toLowerCase()}`}>{statusValue === 'PENDING_RECONCILIATION' ? 'Chờ đối soát' : statusValue === 'NEEDS_REVIEW' ? (reconciliation?.source_current ? 'Cần rà soát' : 'Nguồn đã đổi · stale') : statusValue === 'VERIFIED' ? 'VERIFIED' : 'Đã từ chối'}</span>{executionLabel && executionValue !== 'ENDED' && <small className="overtime-reconciliation-execution-label">{executionLabel}</small>}</td>
+                    <td data-label="Chi tiết"><button type="button" className="btn btn-secondary btn-sm" onClick={() => void openDetail(request.request_id)}>Xem chi tiết</button></td>
+                  </tr>
+                })}</tbody>
+              </table></div>}
+        <footer className="overtime-reconciliation-list-note">Attendance chi tiết, lịch sử phiên bản, Preview, Verify và Reject được mở trong Drawer của từng đơn theo quyền backend.</footer>
+      </section>}
+
+      {workspaceTab === 'history' && canManageOvertime && <section className="overtime-workspace-card" aria-label="Lịch sử OT">
+        <header className="overtime-workspace-card-header"><div><h2>Lịch sử OT</h2><p>Tra cứu quyết định đơn, thu hồi, điều chỉnh và kết quả đối soát trong phạm vi được cấp.</p></div><span className="overtime-workspace-count">{historicalRequests.length} đơn</span></header>
+        {loading ? <div className="overtime-workspace-empty" role="status">Đang tải lịch sử…</div>
+          : <div className="table-container overtime-workspace-table-wrap"><table className="data-table overtime-workspace-table"><thead><tr><th>Mã đơn</th><th>Nhân viên</th><th>Ngày OT</th><th>Người đăng ký</th><th>HR duyệt</th><th>Đối soát</th><th>Cập nhật</th><th>Chi tiết</th></tr></thead><tbody>
+            {historicalRequests.map(request => {
+              const reconciliation = reconciliationByRequest.get(request.request_id)
+              return <tr key={request.request_id}><td data-label="Mã đơn">OT #{request.request_id}</td><td data-label="Nhân viên"><strong>{request.employee_name || `Nhân viên #${request.employee_id}`}</strong><small>{request.employee_code || ''}</small></td><td data-label="Ngày OT">{displayDate(request.work_date)}</td><td data-label="Người đăng ký">{request.creator_username || `User #${request.created_by}`}</td><td data-label="HR duyệt">{request.reviewer_username || '—'}</td><td data-label="Đối soát">{reconciliation?.effective_status || (request.status === 'APPROVED' ? 'Chưa đối soát' : 'Không áp dụng')}</td><td data-label="Cập nhật">{request.updated_at ? formatDate(request.updated_at) : '—'}</td><td data-label="Chi tiết"><button type="button" className="btn btn-secondary btn-sm" onClick={() => void openDetail(request.request_id)}>Timeline</button></td></tr>
+            })}
+            {historicalRequests.length === 0 && <tr><td colSpan={8}><EmptyState icon={Icons.clock} title="Chưa có lịch sử OT" description="Không có đơn nào phù hợp với các bộ lọc hiện tại." /><div className="overtime-empty-actions"><button type="button" className="btn btn-secondary btn-sm" onClick={resetAllFilters}>Đặt lại bộ lọc</button></div></td></tr>}
+          </tbody></table></div>}
+      </section>}
       </div>
 
       {/* MODAL 1: TẠO ĐƠN ĐĂNG KÝ OT MỚI */}
@@ -1235,17 +1428,26 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
             if (e.target === e.currentTarget && !actionLoading) setSelectedRequest(null)
           }}
         >
-          <aside className="overtime-detail-drawer" role="dialog" aria-modal="true">
+          <aside
+            className="overtime-detail-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={`overtime-detail-title-${selectedRequest.request_id}`}
+          >
             <header className="overtime-drawer-header">
               <div>
                 <span className="overtime-drawer-eyebrow">HỒ SƠ ĐĂNG KÝ TĂNG CA</span>
-                <h2 style={{ margin: '4px 0 0 0', fontSize: '1.25rem' }}>
+                <h2
+                  id={`overtime-detail-title-${selectedRequest.request_id}`}
+                  style={{ margin: '4px 0 0 0', fontSize: '1.25rem' }}
+                >
                   Đơn OT #{selectedRequest.request_id}
                 </h2>
               </div>
               <button
                 type="button"
                 className="btn btn-secondary btn-icon"
+                aria-label="Đóng chi tiết"
                 onClick={() => setSelectedRequest(null)}
                 disabled={actionLoading}
               >
@@ -1271,6 +1473,47 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
                   {overtimeStatusLabel(selectedRequest.status)}
                 </span>
               </div>
+
+              {hasCompleteApprovalContext(selectedRequest.approval_context) ? (
+                selectedRequest.approval_context.conflicts.length > 0 ? (
+                  <section className="overtime-conflict-warning" role="alert" aria-live="polite">
+                    <strong>Có xung đột cần rà soát</strong>
+                    <ul className="overtime-request-conflict-list">
+                      {selectedRequest.approval_context.conflicts.map((conflict, index) => {
+                        const schedule = conflict.schedule_id
+                          ? selectedRequest.approval_context?.related_schedules.find(
+                            item => item.schedule_id === conflict.schedule_id,
+                          )
+                          : undefined
+                        const reference = schedule
+                          ? `Ca ${schedule.shift_name} · ${displayDate(schedule.work_date)} · ${timeOnly(schedule.starts_at)}–${timeOnly(schedule.ends_at)}`
+                          : conflict.request_id
+                            ? `Đơn OT #${conflict.request_id}`
+                            : conflict.leave_request_id
+                              ? `Đơn nghỉ #${conflict.leave_request_id}`
+                              : null
+
+                        return (
+                          <li key={`${conflict.code}-${conflict.schedule_id || conflict.request_id || conflict.leave_request_id || index}`}>
+                            <span>{conflict.message}</span>
+                            {reference && <small>{reference}</small>}
+                          </li>
+                        )
+                      })}
+                    </ul>
+                    <p>Đây là kết quả kiểm tra tại thời điểm mở hồ sơ. Máy chủ sẽ kiểm tra lại xung đột ngay trước khi phê duyệt.</p>
+                  </section>
+                ) : (
+                  <div className="overtime-no-conflict" role="status">
+                    Chưa phát hiện xung đột lịch, đơn OT hoặc nghỉ phép liên quan. Máy chủ vẫn kiểm tra lại trước khi phê duyệt.
+                  </div>
+                )
+              ) : (
+                <div className="overtime-conflict-warning" role="alert">
+                  <strong>Chưa tải được kết quả kiểm tra xung đột</strong>
+                  <p>Hãy tải lại hồ sơ trước khi quyết định. Máy chủ vẫn thực hiện kiểm tra độc lập khi phê duyệt.</p>
+                </div>
+              )}
 
               {/* Thông tin chính */}
               <div className="overtime-detail-grid">
@@ -1449,7 +1692,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
                 {/* Phần Đối Soát Chấm Công Thực Tế */}
                 {selectedRequest.status === 'APPROVED' && (
                   <div style={{ marginTop: '16px' }}>
-                    <OvertimeReconciliationSection request={selectedRequest} user={user} />
+                    <OvertimeReconciliationSection key={selectedRequest.request_id} request={selectedRequest} user={user} highlightCaseId={notificationCaseId} />
                   </div>
                 )}
               </div>
@@ -1493,15 +1736,43 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
                   <button
                     type="button"
                     className="btn btn-primary"
-                    onClick={() => void handleApproveOT(selectedRequest.request_id)}
+                    onClick={() => void (selectedRequest.request_type === 'AMENDMENT'
+                      ? handleApproveAmendment(selectedRequest.request_id)
+                      : handleApproveOT(selectedRequest.request_id))}
                     disabled={actionLoading}
                   >
-                    Phê duyệt OT (HR)
+                    {selectedRequest.request_type === 'AMENDMENT' ? 'Duyệt bản OT thay thế' : 'Phê duyệt OT (HR)'}
                   </button>
                 </>
               )}
 
               {/* Hủy đơn nếu còn đang chờ */}
+              {canReviewLifecycle && selectedRequest.status === 'APPROVED'
+                && selectedRequest.revoke_requested_at && !selectedRequest.revoke_decided_at
+                && selectedRequest.revoke_requested_by !== user?.user_id
+                && selectedRequest.created_by !== user?.user_id
+                && Number(selectedRequest.employee_id) !== Number(user?.employee_id) && (
+                <div style={{ flexBasis: '100%', padding: '12px 14px', border: '1px solid var(--border-default)', borderRadius: '10px', background: 'var(--surface-subtle)' }}>
+                  <p style={{ margin: '0 0 10px', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                    Đang chờ xử lý yêu cầu thu hồi của {selectedRequest.creator_username || 'người tạo'}:
+                    {' '}{selectedRequest.revoke_reason || 'Không có nội dung'}
+                  </p>
+                  {selectedRequest.lifecycle?.attendance_linked && (
+                    <p role="status" style={{ margin: '0 0 10px', color: 'var(--status-warning)', fontSize: '12px' }}>
+                      Đã phát sinh Attendance. Backend yêu cầu xử lý ngoại lệ trước khi duyệt thu hồi trực tiếp.
+                    </p>
+                  )}
+                  {!selectedRequest.lifecycle?.attendance_linked && (
+                    <button type="button" className="btn btn-danger" onClick={() => void handleApproveRevocation(selectedRequest.request_id)} disabled={actionLoading}>
+                      Duyệt thu hồi OT
+                    </button>
+                  )}
+                  <button type="button" className="btn btn-secondary" onClick={() => handleOpenReject(selectedRequest.request_id, 'revoke-reject')} disabled={actionLoading}>
+                    Từ chối yêu cầu thu hồi
+                  </button>
+                </div>
+              )}
+
               {['DRAFT', 'PENDING_EMPLOYEE_CONFIRMATION', 'PENDING_HR'].includes(selectedRequest.status) &&
                 (selectedRequest.created_by === user?.user_id || Number(selectedRequest.employee_id) === Number(user?.employee_id)) && (
                 <button
@@ -1548,7 +1819,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
             position: 'fixed',
             inset: 0,
             backgroundColor: 'rgba(0,0,0,0.5)',
-            zIndex: 1100,
+            zIndex: 1300,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -1566,6 +1837,8 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
                 ? 'Từ Chối Đề Xuất Tăng Ca'
                 : rejectType === 'revoke'
                   ? 'Yêu Cầu Thu Hồi Đơn OT'
+                  : rejectType === 'revoke-reject'
+                    ? 'T\u1eeb ch\u1ed1i y\u00eau c\u1ea7u thu h\u1ed3i OT'
                   : 'Từ Chối Đơn Đăng Ký OT'}
             </h3>
             <p style={{ margin: '0 0 14px 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
@@ -1608,7 +1881,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
             position: 'fixed',
             inset: 0,
             backgroundColor: 'rgba(0,0,0,0.5)',
-            zIndex: 1100,
+            zIndex: 1300,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',

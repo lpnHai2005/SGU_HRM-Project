@@ -108,7 +108,13 @@ export function WorkScheduleCalendar({
       aria-label={`Mở đơn OT ${request.request_id}: ${request.employee_name}, ${overtimeStatusLabel(request.status)}`}
       title={`OT #${request.request_id} · ${request.employee_name} · ${request.starts_at.slice(11, 16)}–${request.ends_at.slice(11, 16)} · ${overtimeStatusLabel(request.status)}`}
       data-overtime-request-id={request.request_id}
-      onClick={event => { event.stopPropagation(); navigate(`/leave?tab=overtime&request_id=${request.request_id}`) }}>
+      onClick={event => {
+        event.stopPropagation()
+        const roles: string[] = user?.roles || []
+        const isStandaloneEmployee = roles.includes('EMPLOYEE')
+          && !roles.some(role => ['ADMIN', 'HR_MANAGER', 'STORE_MANAGER', 'DIRECTOR'].includes(role))
+        navigate(`${isStandaloneEmployee ? '/my-overtime' : '/overtime'}?request_id=${request.request_id}`)
+      }}>
       <strong>{compact ? 'OT' : request.employee_name}</strong>
       <span>{request.starts_at.slice(11, 16)}–{request.ends_at.slice(11, 16)}</span>
       <small>{compact ? overtimeCompactStatusLabel(request.status) : overtimeStatusLabel(request.status)} · #{request.request_id}</small>

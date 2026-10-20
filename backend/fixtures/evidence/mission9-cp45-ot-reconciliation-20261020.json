@@ -1,0 +1,31 @@
+{
+  "checkpoint": "MISSION9-CP45",
+  "date": "2026-10-20",
+  "suite": "backend/test_overtime_reconciliation.py",
+  "result": "PASS",
+  "tests_run": 36,
+  "tests_passed": 36,
+  "failures": 0,
+  "errors": 0,
+  "skips": 0,
+  "execution": "Windows Python 3.12 using WindowsSelectorEventLoopPolicy for async psycopg",
+  "database": {
+    "name": "ot_cutover02_m9_cp45d_20261020",
+    "host": "127.0.0.1",
+    "port": 5432,
+    "environment": "dedicated local synthetic fixture",
+    "fixture_setup": "synthetic users/employees/schedules; migrations 20261017, 20261018, 20261019, 20261021, 20261022, 20261023; 20261020 role/ACL migration intentionally omitted",
+    "removed_after_test": true
+  },
+  "coverage": [
+    "interval math, no attendance, open sessions, overnight/month split and overlap review",
+    "OT request visibility, employee confirmation/decline, HR decisions and scope RBAC",
+    "reconciliation versioning, stale source, revocation and append-only event audit",
+    "notification recipient scope and duplicate prevention",
+    "concurrent source mutation vs HR verify and two-HR decision race"
+  ],
+  "limitations": [
+    "PostgreSQL local synthetic only; no Supabase Cloud or staging calls",
+    "No authenticated browser E2E in this suite"
+  ]
+}

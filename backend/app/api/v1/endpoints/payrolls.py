@@ -243,8 +243,11 @@ async def list_payrolls(
                s.store_name, pos.position_name, p.salary_period,
                p.standard_working_days, p.actual_working_days, p.paid_leave_days, p.unpaid_leave_days,
                p.unworked_hours,
-               p.contract_salary, p.total_earnings, p.total_allowances, p.total_bonuses,
-               p.total_insurance, p.total_deductions,
+               p.contract_salary, p.gross_income AS total_earnings,
+               (COALESCE(p.position_allowance,0) + COALESCE(p.seniority_allowance,0)
+                + COALESCE(p.project_allowance,0) + COALESCE(p.meal_transport_allowance,0)) AS total_allowances,
+               COALESCE(p.bonus_amount,0) AS total_bonuses,
+               p.total_insurance, p.total_deduction AS total_deductions,
                p.gross_income, p.net_salary, p.payment_status, p.payment_date,
                COALESCE(att.attendance_actual_days,0) AS attendance_actual_days,
                COALESCE(att.attendance_hours,0) AS attendance_hours,
@@ -556,8 +559,11 @@ async def get_annual_salary(
     monthly_res = await db.execute(text("""
         SELECT payroll_id, employee_id, salary_period,
                standard_working_days, actual_working_days, paid_leave_days, unpaid_leave_days,
-               contract_salary, total_earnings, total_allowances, total_bonuses,
-               total_insurance, total_deductions,
+               contract_salary, gross_income AS total_earnings,
+               (COALESCE(position_allowance,0) + COALESCE(seniority_allowance,0)
+                + COALESCE(project_allowance,0) + COALESCE(meal_transport_allowance,0)) AS total_allowances,
+               COALESCE(bonus_amount,0) AS total_bonuses,
+               total_insurance, total_deduction AS total_deductions,
                gross_income, net_salary, payment_status, payment_date
         FROM payrolls
         WHERE employee_id = :eid AND salary_period LIKE :year_prefix
@@ -1402,8 +1408,11 @@ async def get_payroll_detail(
                s.store_name, pos.position_name, p.salary_period,
                p.standard_working_days, p.actual_working_days, p.paid_leave_days, p.unpaid_leave_days,
                p.unworked_hours,
-               p.contract_salary, p.total_earnings, p.total_allowances, p.total_bonuses,
-               p.total_insurance, p.total_deductions,
+                p.contract_salary, p.gross_income AS total_earnings,
+                (COALESCE(p.position_allowance,0) + COALESCE(p.seniority_allowance,0)
+                 + COALESCE(p.project_allowance,0) + COALESCE(p.meal_transport_allowance,0)) AS total_allowances,
+                COALESCE(p.bonus_amount,0) AS total_bonuses,
+                p.total_insurance, p.total_deduction AS total_deductions,
                p.gross_income, p.net_salary, p.payment_status, p.payment_date
         FROM payrolls p
         JOIN employees e ON p.employee_id = e.employee_id

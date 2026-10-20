@@ -1,0 +1,39 @@
+{
+  "suite": "Payroll v2 Checkpoint 44 locking/freshness/lifecycle candidate",
+  "recorded_at_utc": "2026-10-20T05:09:26.514868+00:00",
+  "database": {
+    "name": "ot_ledger_synthetic_20261020",
+    "host": "127.0.0.1",
+    "port": 5432,
+    "user": "postgres",
+    "marker": "TECHZONE_SYNTHETIC_OT_LEDGER_20261020",
+    "postgres_version": "17.11",
+    "source_mode": "schema-only clone; synthetic rows only"
+  },
+  "lock_strategy": "SERIALIZABLE + period advisory lock + row-scoped run/payroll/actor locks",
+  "test_cases": 5,
+  "test_names": [
+    "serializable confirm does not block Attendance writer",
+    "confirmed source stale is sticky; pay holds; snapshot immutable",
+    "stale prepared run invalidation releases reservation; replacement prepares",
+    "run with DRAFT payroll rows cannot be replaced automatically",
+    "serializable source gate detects phantom OT request"
+  ],
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "successful": true,
+  "api_source_sha256": "c4749064209a2225719d4d082356143c5732f20f281aca553d2314581c72f2a6",
+  "lifecycle_sql_sha256": "e19e4c1c4adff4719cc980494b6ec19c661428fdaeac36992bf537f923d97ae6",
+  "test_source_sha256": "a735d550320075b7b93edd68d4c8e38f70f186964e9212058b573ce86a3b1980",
+  "observed_concurrency": {
+    "attendance_writer_committed_while_confirm_paused": true,
+    "attendance_race_confirm_http": 200,
+    "attendance_race_effective_state": "CONFIRMED_STALE",
+    "phantom_request_committed_while_confirm_paused": true,
+    "phantom_confirm_http": 200,
+    "phantom_after_confirm_hold": "PAYROLL_CONFIRMED_SOURCE_STALE_HOLD"
+  },
+  "database_removed": true,
+  "error": null
+}

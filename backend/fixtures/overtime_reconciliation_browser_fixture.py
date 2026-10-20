@@ -6,7 +6,7 @@ loopback ot_cutover02_* database. This module refuses any other target.
 
 import json
 import os
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 
 from fastapi import FastAPI, Request
 from sqlalchemy import text
@@ -34,6 +34,15 @@ USERS = {
 
 app = FastAPI()
 app.include_router(overtime_reconciliations.router, prefix="/api/v1/overtime-reconciliations")
+_REAL_UTC_NOW = overtime_reconciliations._utc_now
+_FIXTURE_CLOCK: datetime | None = None
+
+
+def _fixture_utc_now() -> datetime:
+    return _FIXTURE_CLOCK.astimezone(timezone.utc) if _FIXTURE_CLOCK else _REAL_UTC_NOW()
+
+
+overtime_reconciliations._utc_now = _fixture_utc_now
 
 
 async def fixture_user(request: Request):
@@ -45,10 +54,12 @@ app.dependency_overrides[get_current_user] = fixture_user
 
 @app.post("/fixture/seed")
 async def seed(missing_attendance: bool = False):
+    global _FIXTURE_CLOCK
     async with engine.begin() as conn:
         last_day = (await conn.execute(text("""SELECT MAX(work_date) FROM overtime_requests
             WHERE employee_id=21"""))).scalar_one()
         day = max((last_day or date(2026, 11, 1)) + timedelta(days=1), date(2026, 11, 2))
+        _FIXTURE_CLOCK = datetime.combine(day, time(19, 1), timezone(timedelta(hours=7)))
         stamp = day.isoformat()
         start = f"{stamp}T17:00:00+07:00"
         end = f"{stamp}T19:00:00+07:00"

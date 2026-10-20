@@ -1,0 +1,21 @@
+{
+  "database": "ot_ledger_synthetic_20261020",
+  "host": "127.0.0.1",
+  "port": 5432,
+  "user": "postgres",
+  "source_schema_only": "mission9_synthetic",
+  "simulated_cutoff": "2030-01-01",
+  "actual_cutoff": "NOT_SET",
+  "policy": "DISABLED",
+  "api_browser_staging": "NOT_RUN",
+  "tests_run": 17,
+  "failures": [],
+  "errors": [],
+  "skips": [],
+  "pass": 17,
+  "database_removed": true,
+  "sha256": {
+    "payroll_ot_segment_ledger_candidate.sql": "48700136bb820c05a20beec026c63a5adcbcc02ce3a9f5e9bacd39570977d36e",
+    "test_ot_segment_ledger_candidate.py": "c2c16b65bcfa63b516540a70fdcf9be3d4467db9b23a98f5d70b3ae835b802a0"
+  }
+}

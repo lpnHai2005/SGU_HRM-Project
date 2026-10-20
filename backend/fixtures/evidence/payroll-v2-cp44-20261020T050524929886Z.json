@@ -1,0 +1,30 @@
+{
+  "suite": "Payroll v2 Checkpoint 44 locking/freshness/lifecycle candidate",
+  "recorded_at_utc": "2026-10-20T05:05:24.923718+00:00",
+  "database": {
+    "name": "ot_ledger_synthetic_20261020",
+    "host": "127.0.0.1",
+    "port": 5432,
+    "user": "postgres",
+    "marker": "TECHZONE_SYNTHETIC_OT_LEDGER_20261020",
+    "postgres_version": "17.11",
+    "source_mode": "schema-only clone; synthetic rows only"
+  },
+  "lock_strategy": "SERIALIZABLE + period advisory lock + row-scoped run/payroll/actor locks",
+  "test_cases": 4,
+  "test_names": [
+    "serializable confirm does not block Attendance writer",
+    "confirmed source stale is sticky; pay holds; snapshot immutable",
+    "stale prepared run invalidation releases reservation; replacement prepares",
+    "run with DRAFT payroll rows cannot be replaced automatically"
+  ],
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "successful": true,
+  "api_source_sha256": "1ebc5bc5417c818e5e6b97d407f16606a9f8d0777350a160a3220bfd2a650d1b",
+  "lifecycle_sql_sha256": "e19e4c1c4adff4719cc980494b6ec19c661428fdaeac36992bf537f923d97ae6",
+  "test_source_sha256": "04cad4a3f8181abbbd7d97fff41ff102f37346810d8801eee85fbe15885bbadb",
+  "database_removed": true,
+  "error": null
+}

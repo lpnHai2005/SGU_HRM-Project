@@ -414,11 +414,53 @@ export type OvertimeRequestStatus =
 export type OvertimeReconciliationStatus =
   | 'PENDING_RECONCILIATION' | 'NEEDS_REVIEW' | 'VERIFIED' | 'REJECTED'
 
+export type OvertimeExecutionStatus =
+  | 'NOT_STARTED' | 'IN_PROGRESS' | 'ENDED' | 'ATTENDANCE_INCOMPLETE'
+
+export type OvertimeReconciliationCaseType = 'EXPLANATION' | 'REVIEW_REQUEST'
+export type OvertimeReconciliationCaseStatus = 'OPEN' | 'RESPONDED' | 'CLOSED' | 'ACCEPTED' | 'DECLINED'
+
+export interface OvertimeReconciliationCaseEvent {
+  case_event_id: number
+  actor_id: number
+  action: string
+  from_status: OvertimeReconciliationCaseStatus | null
+  to_status: OvertimeReconciliationCaseStatus
+  version: number
+  reason?: string | null
+  details: Record<string, unknown>
+  created_at: string
+}
+
+export interface OvertimeReconciliationCase {
+  case_id: number
+  request_id: number
+  reconciliation_version: number
+  case_type: OvertimeReconciliationCaseType
+  status: OvertimeReconciliationCaseStatus
+  version: number
+  opened_by: number
+  reason: string
+  employee_response?: string | null
+  responded_by?: number | null
+  responded_at?: string | null
+  resolved_by?: number | null
+  resolved_at?: string | null
+  resolution_reason?: string | null
+  created_at: string
+  updated_at: string
+  events: OvertimeReconciliationCaseEvent[]
+}
+
 export interface OvertimeReconciliation {
   request_id: number
   request_status: OvertimeRequestStatus
+  request_eligible?: boolean
   status: OvertimeReconciliationStatus
   effective_status: OvertimeReconciliationStatus
+  display_status?: OvertimeReconciliationStatus
+  execution_status?: OvertimeExecutionStatus
+  reconciliation_window_open?: boolean
   version: number
   proposed_microseconds: number
   verified_microseconds: number | null
@@ -454,6 +496,8 @@ export interface OvertimeReconciliation {
     new_values: Record<string, unknown>
     created_at: string
   }>
+  exception_workflow_available?: boolean
+  exception_cases?: OvertimeReconciliationCase[]
 }
 
 export interface OvertimeRequest {

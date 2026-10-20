@@ -1,0 +1,73 @@
+{
+  "checkpoint": 47,
+  "date": "2026-10-20",
+  "scope": "OT exception schema and review-only Payroll VERIFIED_ONLY candidate",
+  "environment": {
+    "database": "mission9_synthetic",
+    "server_address": "::1",
+    "port": 5432,
+    "postgres_version": "17.11",
+    "connected_role": "postgres",
+    "remote_database_accessed": false
+  },
+  "migration": {
+    "file": "backend/migrations/20261023_overtime_reconciliation_exceptions.sql",
+    "sha256": "c3cbdfe14e9491b0c706839e81fc12a47a463f7d6acd091cfb623d46fd733e03",
+    "applied_to_local_synthetic": true,
+    "new_objects": [
+      "public.overtime_reconciliation_cases",
+      "public.overtime_reconciliation_case_events"
+    ],
+    "rls_enabled": true,
+    "event_log_append_only_trigger_enabled": true,
+    "service_role_event_privileges": ["SELECT", "INSERT"],
+    "service_role_event_denied": ["UPDATE", "DELETE", "TRUNCATE"],
+    "anon_and_authenticated_direct_table_privileges": false,
+    "business_data_counts_unchanged": true,
+    "payroll_procedure_sha256_before_after": "c4b02a2a3cf126f92c5418286bd6e5b6d43583eb02b25cc0255cfc3ba12a5d28",
+    "migration_tracker_present": false
+  },
+  "ot_exception_integration": {
+    "test_module": "backend/test_overtime_reconciliation.py",
+    "tests_run": 36,
+    "passed": 36,
+    "failed": 0,
+    "skipped": 0,
+    "synthetic_database_marker": "TECHZONE_MISSION9_SYNTHETIC_FIXTURE_20261020",
+    "fixture_cleanup_verified": true,
+    "coverage": [
+      "employee explanation and response",
+      "HR manual closure",
+      "appeal submission and decision",
+      "HR REOPEN creates a new reconciliation version",
+      "stale source protection",
+      "audit and notification scope",
+      "RBAC and concurrent decisions"
+    ]
+  },
+  "payroll_candidate": {
+    "installed_procedure_changed": false,
+    "installed_procedure_sha256": "c4b02a2a3cf126f92c5418286bd6e5b6d43583eb02b25cc0255cfc3ba12a5d28",
+    "review_only_candidate": "backend/fixtures/payroll_v2_candidate_procedure.sql",
+    "candidate_sha256": "93fb3648bff936033d0c3cb2e7db6e070910aced440e2232497a0ba5f50c25d7",
+    "candidate_has_legacy_attendance_overtime_approvals_reference": false,
+    "candidate_tests": {"run": 6, "passed": 6, "failed": 0},
+    "ledger_regression": {
+      "run": 26,
+      "passed": 26,
+      "failed": 0,
+      "evidence": "backend/fixtures/evidence/ot-ledger-20261020T091853467440Z.json"
+    },
+    "non_ot_components_preserved": true,
+    "confirmed_paid_history_immutable_in_synthetic_test": true,
+    "synthetic_candidate_database_cleanup_verified": true,
+    "live_router_or_payroll_source_switched": false
+  },
+  "policy_and_release": {
+    "ot_registration_policy_mode": "DISABLED",
+    "cutoff_date": null,
+    "supabase_cloud_or_staging_tested": false,
+    "mission_9": "PARTIAL",
+    "blocker": "Payroll Owner approval and independently verified staging/backup remain pending"
+  }
+}
