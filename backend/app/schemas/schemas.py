@@ -69,15 +69,22 @@ class UserCreate(BaseModel):
     email: str
     phone: Optional[str] = None
     employee_id: Optional[int] = None
+    role_id: Optional[int] = None
     role_ids: List[int] = Field(default_factory=lambda: [4]) # Mặc định là EMPLOYEE (role_id = 4)
 
 
 class UserUpdate(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
+    employee_id: Optional[int] = None
     is_active: Optional[bool] = None
+    role_id: Optional[int] = None
     role_ids: Optional[List[int]] = None
     password: Optional[str] = None
+
+
+class AdminResetPassword(BaseModel):
+    new_password: str = Field(..., min_length=6, max_length=72, description="Mật khẩu mới tối thiểu 6 ký tự, tối đa 72 byte")
 
 
 class UserResponse(BaseModel):
@@ -90,6 +97,8 @@ class UserResponse(BaseModel):
     employee_id: Optional[int] = None
     employee_code: Optional[str] = None
     full_name: Optional[str] = None
+    department_name: Optional[str] = None
+    store_name: Optional[str] = None
     roles: List[str] = Field(default_factory=list)
     created_at: Optional[datetime] = None
 

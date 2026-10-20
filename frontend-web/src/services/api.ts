@@ -841,6 +841,7 @@ export const roleApi = {
 import type {
   User,
   UserCreate,
+  UserUpdate,
 } from '../types';
 
 export const userApi = {
@@ -854,6 +855,18 @@ export const userApi = {
 
   create: async (data: UserCreate): Promise<User> => {
     return api.post<User>('/users', data);
+  },
+
+  update: async (userId: number, data: UserUpdate): Promise<User> => {
+    return api.put<User>(`/users/${userId}`, data);
+  },
+
+  resetPassword: async (userId: number, newPassword: string): Promise<{ message: string }> => {
+    return api.post(`/users/${userId}/reset-password`, { new_password: newPassword });
+  },
+
+  delete: async (userId: number): Promise<{ message: string; action: 'DELETED' | 'DEACTIVATED'; is_active?: boolean }> => {
+    return api.delete(`/users/${userId}`);
   },
 
   updateStatus: async (userId: number, isActive: boolean): Promise<{ message: string; is_active: boolean }> => {

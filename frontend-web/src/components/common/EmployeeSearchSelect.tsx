@@ -3,9 +3,17 @@
  * Bộ chọn nhân viên kết hợp tìm kiếm thời gian thực (Searchable Combobox)
  * Chuẩn Vero Design System (Linear / Attio minimalist, dual theme)
  */
-import { useState, useRef, useEffect, useMemo } from 'react'
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { Icons } from './Icons'
 import { getInitials } from '../../utils/formatters'
+
+export interface EmployeeBadge {
+  text: string
+  color?: string
+  backgroundColor?: string
+  border?: string
+}
 
 export interface EmployeeSearchSelectProps {
   employees: any[]
@@ -15,6 +23,9 @@ export interface EmployeeSearchSelectProps {
   disabled?: boolean
   required?: boolean
   label?: string
+  clearOptionLabel?: string
+  getItemDisabled?: (emp: any) => boolean
+  getItemBadge?: (emp: any) => EmployeeBadge | null
 }
 
 export function EmployeeSearchSelect({
@@ -25,11 +36,16 @@ export function EmployeeSearchSelect({
   disabled = false,
   required = false,
   label,
+  clearOptionLabel,
+  getItemDisabled,
+  getItemBadge,
 }: EmployeeSearchSelectProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const containerRef = useRef<HTMLDivElement>(null)
+  const popoverRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const [dropdownPos, setDropdownPos] = useState<React.CSSProperties>({})
 
   // Current selected employee object
   const selectedEmployee = useMemo(() => {
@@ -47,25 +63,62 @@ export function EmployeeSearchSelect({
         (emp.employee_code && emp.employee_code.toLowerCase().includes(term)) ||
         (emp.department_name && emp.department_name.toLowerCase().includes(term)) ||
         (emp.position_name && emp.position_name.toLowerCase().includes(term)) ||
+        (emp.store_name && emp.store_name.toLowerCase().includes(term)) ||
         (emp.phone && emp.phone.includes(term))
     )
   }, [employees, searchTerm])
 
-  // Close dropdown when clicking outside
+  // Calculate dropdown popover position relative to viewport so it floats outside any modal
+  const updatePosition = useCallback(() => {
+    if (!containerRef.current) return
+    const rect = containerRef.current.getBoundingClientRect()
+    const spaceBelow = window.innerHeight - rect.bottom
+    const spaceAbove = rect.top
+    const openUpwards = spaceBelow < 280 && spaceAbove > spaceBelow
+
+    setDropdownPos({
+      position: 'fixed',
+      top: openUpwards ? undefined : `${rect.bottom + 4}px`,
+      bottom: openUpwards ? `${window.innerHeight - rect.top + 4}px` : undefined,
+      left: `${rect.left}px`,
+      width: `${rect.width}px`,
+      zIndex: 99999,
+    })
+  }, [])
+
+  // Close dropdown when clicking outside or pressing Escape
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(target) &&
+        popoverRef.current &&
+        !popoverRef.current.contains(target)
+      ) {
+        setIsOpen(false)
+      }
+    }
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
         setIsOpen(false)
       }
     }
     if (isOpen) {
+      updatePosition()
       document.addEventListener('mousedown', handleOutsideClick)
+      document.addEventListener('keydown', handleKeyDown)
+      window.addEventListener('resize', updatePosition)
+      window.addEventListener('scroll', updatePosition, true)
       setTimeout(() => searchInputRef.current?.focus(), 50)
     }
     return () => {
       document.removeEventListener('mousedown', handleOutsideClick)
+      document.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', updatePosition, true)
     }
-  }, [isOpen])
+  }, [isOpen, updatePosition])
 
   const handleSelect = (emp: any) => {
     onChange(emp.employee_id, emp)
@@ -195,26 +248,24 @@ export function EmployeeSearchSelect({
         </div>
       </div>
 
-      {/* Dropdown Popover */}
-      {isOpen && (
-        <div
-          style={{
-            position: 'absolute',
-            top: 'calc(100% + 4px)',
-            left: 0,
-            right: 0,
-            zIndex: 1100,
-            background: 'var(--surface-card)',
-            border: '1px solid var(--border-default)',
-            borderRadius: 'var(--radius-md)',
-            boxShadow: 'var(--shadow-lg, 0 10px 25px rgba(0,0,0,0.25))',
-            maxHeight: '280px',
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-            animation: 'fadeIn 0.15s ease-out',
-          }}
-        >
+      {/* Dropdown Popover via React Portal directly into document.body to float above modals */}
+      {isOpen &&
+        createPortal(
+          <div
+            ref={popoverRef}
+            style={{
+              ...dropdownPos,
+              background: 'var(--surface-card)',
+              border: '1px solid var(--border-default)',
+              borderRadius: 'var(--radius-md)',
+              boxShadow: '0 20px 35px -5px rgba(0, 0, 0, 0.35)',
+              maxHeight: '280px',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              animation: 'fadeIn 0.15s ease-out',
+            }}
+          >
           {/* Search Input Bar */}
           <div
             style={{
@@ -262,21 +313,58 @@ export function EmployeeSearchSelect({
 
           {/* Results List */}
           <div style={{ overflowY: 'auto', flex: 1, padding: '4px' }}>
+            {clearOptionLabel && !searchTerm && (
+              <div
+                onClick={() => {
+                  onChange(null, null)
+                  setIsOpen(false)
+                  setSearchTerm('')
+                }}
+                style={{
+                  padding: '8px 10px',
+                  borderRadius: 'var(--radius-sm)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  color: 'var(--text-tertiary)',
+                  fontSize: '12.5px',
+                  borderBottom: '1px solid var(--border-default)',
+                  marginBottom: '4px',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'var(--surface-ground)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent'
+                }}
+              >
+                <span style={{ display: 'flex', alignItems: 'center' }}>{Icons.x}</span>
+                <span>{clearOptionLabel}</span>
+              </div>
+            )}
             {filteredEmployees.length === 0 ? (
               <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '12.5px' }}>
                 Không tìm thấy nhân viên phù hợp
               </div>
             ) : (
               filteredEmployees.map((emp) => {
-                const isSelected = selectedEmployee && selectedEmployee.employee_id === emp.employee_id
+                const isSelected = selectedEmployee && String(selectedEmployee.employee_id) === String(emp.employee_id)
+                const isDisabledItem = getItemDisabled ? getItemDisabled(emp) : false
+                const itemBadge = getItemBadge ? getItemBadge(emp) : null
+
                 return (
                   <div
                     key={emp.employee_id}
-                    onClick={() => handleSelect(emp)}
+                    onClick={() => {
+                      if (isDisabledItem) return
+                      handleSelect(emp)
+                    }}
                     style={{
                       padding: '8px 10px',
                       borderRadius: 'var(--radius-sm)',
-                      cursor: 'pointer',
+                      cursor: isDisabledItem ? 'not-allowed' : 'pointer',
+                      opacity: isDisabledItem ? 0.55 : 1,
                       display: 'flex',
                       alignItems: 'center',
                       gap: '10px',
@@ -284,10 +372,10 @@ export function EmployeeSearchSelect({
                       transition: 'background-color 0.1s',
                     }}
                     onMouseEnter={(e) => {
-                      if (!isSelected) e.currentTarget.style.backgroundColor = 'var(--surface-ground)'
+                      if (!isSelected && !isDisabledItem) e.currentTarget.style.backgroundColor = 'var(--surface-ground)'
                     }}
                     onMouseLeave={(e) => {
-                      if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent'
+                      if (!isSelected && !isDisabledItem) e.currentTarget.style.backgroundColor = 'transparent'
                     }}
                   >
                     <div
@@ -309,7 +397,7 @@ export function EmployeeSearchSelect({
                       {getInitials(emp.full_name)}
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                         <span style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)' }}>
                           {emp.full_name}
                         </span>
@@ -326,6 +414,21 @@ export function EmployeeSearchSelect({
                         >
                           {emp.employee_code}
                         </span>
+                        {itemBadge && (
+                          <span
+                            style={{
+                              fontSize: '11px',
+                              padding: '1px 6px',
+                              borderRadius: '4px',
+                              fontWeight: 500,
+                              color: itemBadge.color || 'var(--text-secondary)',
+                              background: itemBadge.backgroundColor || 'var(--surface-ground)',
+                              border: itemBadge.border || '1px solid var(--border-default)',
+                            }}
+                          >
+                            {itemBadge.text}
+                          </span>
+                        )}
                       </div>
                       <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>
                         {emp.department_name || 'Phòng ban'} · {emp.position_name || 'Chức vụ'}
@@ -340,8 +443,9 @@ export function EmployeeSearchSelect({
               })
             )}
           </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
     </div>
   )
 }

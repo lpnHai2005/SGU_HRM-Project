@@ -353,6 +353,52 @@ async def approve_resignation(
         "notes": approve_data.notes
     })
 
+    # Nếu ngày làm việc cuối cùng <= hôm nay: Tự động khóa tài khoản và chuyển trạng thái nhân viên thành RESIGNED ngay lập tức
+    account_deactivated = False
+    if approve_data.approved_last_working_date <= date.today():
+        await db.execute(text("""
+            UPDATE employees
+            SET employment_status = 'RESIGNED',
+                resignation_date = :r_date,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE employee_id = :eid;
+        """), {"eid": resignation["employee_id"], "r_date": approve_data.approved_last_working_date})
+
+        user_res = await db.execute(text("""
+            UPDATE users
+            SET is_active = FALSE,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE employee_id = :eid
+            RETURNING user_id, username;
+        """), {"eid": resignation["employee_id"]})
+        locked_u = user_res.mappings().first()
+        if locked_u:
+            account_deactivated = True
+            await record_audit_log(
+                db=db,
+                user_id=user_id,
+                action="DEACTIVATE_USER_ON_RESIGNATION",
+                entity_name="users",
+                entity_id=str(locked_u["user_id"]),
+                old_values={"is_active": True},
+                new_values={"is_active": False, "reason": f"Thôi việc hiệu lực ngay theo đơn #{resignation_id}"}
+            )
+
+        await db.execute(text("""
+            UPDATE contracts
+            SET status = 'TERMINATED',
+                termination_date = :term_date,
+                termination_reason = :reason,
+                terminated_by = :user_id,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE employee_id = :eid AND status IN ('ACTIVE', 'DRAFT');
+        """), {
+            "eid": resignation["employee_id"],
+            "term_date": approve_data.approved_last_working_date,
+            "reason": f"Nghỉ việc theo đơn thôi việc đã duyệt #{resignation_id}",
+            "user_id": user_id
+        })
+
     # Audit log
     await record_audit_log(
         db=db,
@@ -364,17 +410,101 @@ async def approve_resignation(
         new_values={
             "status": "APPROVED",
             "approved_last_working_date": str(approve_data.approved_last_working_date),
-            "approved_by": user_id
+            "approved_by": user_id,
+            "account_deactivated": account_deactivated
         }
     )
 
     await db.commit()
 
+    msg = "Duyệt đơn thôi việc thành công! " + (
+        "Vì ngày làm việc cuối cùng là hôm nay hoặc đã qua, tài khoản người dùng đã được tự động vô hiệu hóa."
+        if account_deactivated else
+        "Hợp đồng và tài khoản vẫn giữ hiệu lực đến ngày làm việc cuối cùng."
+    )
+
     return {
-        "message": "Duyệt đơn thôi việc thành công! Hợp đồng vẫn giữ hiệu lực đến ngày làm việc cuối cùng.",
+        "message": msg,
         "resignation_id": resignation_id,
         "status": "APPROVED",
-        "approved_last_working_date": str(approve_data.approved_last_working_date)
+        "approved_last_working_date": str(approve_data.approved_last_working_date),
+        "account_deactivated": account_deactivated
+    }
+
+
+@router.post("/{resignation_id}/finalize", summary="Hoàn tất thủ tục thôi việc & Tự động vô hiệu hóa tài khoản")
+async def finalize_resignation(
+    resignation_id: int,
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Hoàn tất thủ tục thôi việc (khi nhân viên đã hoàn tất bàn giao công việc):
+    - Chuyển trạng thái nhân viên thành RESIGNED
+    - Tự động vô hiệu hóa tài khoản đăng nhập (users.is_active = FALSE)
+    - Chấm dứt hợp đồng lao động đang hoạt động
+    """
+    resignation = await ResignationService.get_resignation_or_404(db, resignation_id)
+    if resignation["status"] != "APPROVED":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Chỉ có thể hoàn tất đơn thôi việc đã ở trạng thái APPROVED. Trạng thái hiện tại: {resignation['status']}"
+        )
+
+    user_id = current_user.get("user_id")
+    eid = resignation["employee_id"]
+    last_date = resignation.get("approved_last_working_date") or date.today()
+
+    await db.execute(text("""
+        UPDATE employees
+        SET employment_status = 'RESIGNED',
+            resignation_date = :r_date,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE employee_id = :eid;
+    """), {"eid": eid, "r_date": last_date})
+
+    user_res = await db.execute(text("""
+        UPDATE users
+        SET is_active = FALSE,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE employee_id = :eid
+        RETURNING user_id, username;
+    """), {"eid": eid})
+    locked_user = user_res.mappings().first()
+
+    await db.execute(text("""
+        UPDATE contracts
+        SET status = 'TERMINATED',
+            termination_date = :term_date,
+            termination_reason = :reason,
+            terminated_by = :user_id,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE employee_id = :eid AND status IN ('ACTIVE', 'DRAFT');
+    """), {
+        "eid": eid,
+        "term_date": last_date,
+        "reason": f"Hoàn tất thủ tục thôi việc #{resignation_id}",
+        "user_id": user_id
+    })
+
+    if locked_user:
+        await record_audit_log(
+            db=db,
+            user_id=user_id,
+            action="DEACTIVATE_USER_ON_RESIGNATION_FINALIZED",
+            entity_name="users",
+            entity_id=str(locked_user["user_id"]),
+            old_values={"is_active": True},
+            new_values={"is_active": False, "reason": f"Hoàn tất đơn thôi việc #{resignation_id}"}
+        )
+
+    await db.commit()
+
+    return {
+        "message": "Đã hoàn tất thủ tục thôi việc và tự động vô hiệu hóa tài khoản đăng nhập thành công!",
+        "resignation_id": resignation_id,
+        "account_locked": bool(locked_user),
+        "username": locked_user["username"] if locked_user else None
     }
 
 
