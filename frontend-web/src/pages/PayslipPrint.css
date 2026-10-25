@@ -271,13 +271,17 @@
     background: #ffffff !important;
   }
 
+  body:has(.print-active-overlay) #root {
+    display: none !important;
+  }
+
   body * {
     visibility: hidden;
   }
 
   .print-active-overlay,
   .print-active-overlay * {
-    visibility: visible;
+    visibility: visible !important;
   }
 
   .no-print {
@@ -288,8 +292,11 @@
     position: static !important;
     background: #ffffff !important;
     padding: 0 !important;
+    margin: 0 !important;
     overflow: visible !important;
     display: block !important;
+    width: 100% !important;
+    height: auto !important;
   }
 
   .print-modal {

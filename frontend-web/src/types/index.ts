@@ -808,3 +808,108 @@ export interface AuditLog {
   ip_address?: string | null;
   created_at: string;
 }
+
+// ============================================
+// Report & Dashboard Types
+// ============================================
+
+export interface DemographicsGroupItem {
+  [key: string]: string | number;
+  total: number;
+}
+
+export interface DemographicsReportData {
+  total_employees?: number;
+  education: Array<{ education_level: string; total: number }>;
+  salary_range: Array<{ salary_range: string; total: number }>;
+  seniority: Array<{ seniority_group: string; total: number }>;
+  gender?: Array<{ gender: string; total: number }>;
+  age_group?: Array<{ age_group: string; total: number }>;
+  details?: any[];
+}
+
+export interface HeadcountTrendPoint {
+  month: string;
+  hired: number;
+  resigned: number;
+  active_total: number;
+}
+
+export interface PayrollTrendPoint {
+  period: string;
+  employee_count: number;
+  gross_total: number;
+  net_total: number;
+  insurance_total: number;
+  bonus_total: number;
+}
+
+export interface AttendanceSummaryData {
+  period: string;
+  total_records: number;
+  by_status: Array<{
+    status: string;
+    label: string;
+    count: number;
+    rate: number;
+  }>;
+  total_working_hours: number;
+  total_ot_hours: number;
+  total_late_minutes: number;
+  on_time_rate: number;
+  details?: any[];
+}
+
+export interface LeaveSummaryData {
+  period: string;
+  total_requests: number;
+  by_type: Array<{
+    type_name: string;
+    count: number;
+    days: number;
+  }>;
+  by_status: Array<{
+    status: string;
+    label: string;
+    count: number;
+  }>;
+  details?: any[];
+}
+
+export interface SalesPerformanceReportData {
+  records: Array<{
+    employee_id: number;
+    employee_code?: string;
+    employee_name: string;
+    store_name?: string;
+    salary_period: string;
+    phone_revenue: number;
+    laptop_revenue: number;
+    accessory_revenue: number;
+    total_revenue: number;
+    target_kpi: number;
+    kpi_completion_rate: number;
+    commission_amount: number;
+  }>;
+  summary: {
+    total_sales_employees: number;
+    total_phone_revenue: number;
+    total_laptop_revenue: number;
+    total_accessory_revenue: number;
+    grand_total_revenue: number;
+    total_target_kpi: number;
+    avg_kpi_completion_rate: number;
+    total_commission_paid: number;
+  };
+}
+
+export interface HRStatusReportData {
+  store_id: number;
+  store_name: string;
+  total_staff: number;
+  active_staff: number;
+  probation_staff: number;
+  resigned_staff: number;
+  total_contract_salary: number;
+}
+

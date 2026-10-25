@@ -207,8 +207,10 @@ class StoreDeleteRequest(BaseModel):
             raise ValueError('Lý do phải có ít nhất 8 ký tự không tính khoảng trắng')
         return value
 
+store_viewers = require_roles(['ADMIN', 'DIRECTOR', 'HR_MANAGER', 'STORE_MANAGER'])
+
 @router.get('')
-async def list_stores(user=Depends(admin),db:AsyncSession=Depends(get_db)):
+async def list_stores(user=Depends(store_viewers), db:AsyncSession=Depends(get_db)):
     return [dict(r) for r in (await db.execute(text('''SELECT s.*,g.latitude,g.longitude,g.radius_meters,
         COALESCE((SELECT array_agg(n.network::text ORDER BY n.network::text)
                   FROM store_web_attendance_networks n WHERE n.store_id=s.store_id),ARRAY[]::text[]) AS wifi_networks,
