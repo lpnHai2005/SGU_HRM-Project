@@ -2,7 +2,8 @@ import logging
 import asyncio
 from contextlib import suppress
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from app.core.config import settings
@@ -87,6 +88,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.exception_handler(Exception)
+async def global_unhandled_exception_handler(request: Request, exc: Exception):
+    logger.exception(f"Lỗi chưa bắt được tại {request.method} {request.url.path}: {exc}")
+    origin = request.headers.get("origin")
+    headers = {}
+    if origin:
+        headers["Access-Control-Allow-Origin"] = origin
+        headers["Access-Control-Allow-Credentials"] = "true"
+        headers["Access-Control-Allow-Methods"] = "*"
+        headers["Access-Control-Allow-Headers"] = "*"
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Lỗi hệ thống máy chủ: {str(exc)}"},
+        headers=headers
+    )
 
 # Mount các tuyến API v1
 app.include_router(api_router, prefix=settings.API_V1_STR)

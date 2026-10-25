@@ -17,6 +17,7 @@ from app.core.ot_registration_policy import (
 from app.api.deps import get_current_user, require_roles
 from app.core.vietnamese_number import currency_to_vietnamese_words
 from app.core.excel_exporter import create_styled_excel
+import logging
 from app.schemas.schemas import (
     PayrollOut, PayrollDetailOut, CalculatePayrollRequest,
     SalesRecordCreate, SalesRecordOut, SalesRecordUpdate,
@@ -25,6 +26,7 @@ from app.schemas.schemas import (
     ProjectOut, ProjectMemberOut, PayrollPeriodReopenRequest
 )
 
+logger = logging.getLogger("techzone_hrm.payrolls")
 router = APIRouter()
 
 async def lock_payroll_period(db, period):
@@ -243,11 +245,12 @@ async def list_payrolls(
                s.store_name, pos.position_name, p.salary_period,
                p.standard_working_days, p.actual_working_days, p.paid_leave_days, p.unpaid_leave_days,
                p.unworked_hours,
-               p.contract_salary, p.gross_income AS total_earnings,
-               (COALESCE(p.position_allowance,0) + COALESCE(p.seniority_allowance,0)
-                + COALESCE(p.project_allowance,0) + COALESCE(p.meal_transport_allowance,0)) AS total_allowances,
-               COALESCE(p.bonus_amount,0) AS total_bonuses,
-               p.total_insurance, p.total_deduction AS total_deductions,
+               p.contract_salary,
+               COALESCE(p.total_earnings, p.gross_income) AS total_earnings,
+               COALESCE(p.total_allowances, 0) AS total_allowances,
+               COALESCE(p.total_bonuses, 0) AS total_bonuses,
+               COALESCE(p.total_insurance, 0) AS total_insurance,
+               COALESCE(p.total_deductions, 0) AS total_deductions,
                p.gross_income, p.net_salary, p.payment_status, p.payment_date,
                COALESCE(att.attendance_actual_days,0) AS attendance_actual_days,
                COALESCE(att.attendance_hours,0) AS attendance_hours,
@@ -559,11 +562,12 @@ async def get_annual_salary(
     monthly_res = await db.execute(text("""
         SELECT payroll_id, employee_id, salary_period,
                standard_working_days, actual_working_days, paid_leave_days, unpaid_leave_days,
-               contract_salary, gross_income AS total_earnings,
-               (COALESCE(position_allowance,0) + COALESCE(seniority_allowance,0)
-                + COALESCE(project_allowance,0) + COALESCE(meal_transport_allowance,0)) AS total_allowances,
-               COALESCE(bonus_amount,0) AS total_bonuses,
-               total_insurance, total_deduction AS total_deductions,
+               contract_salary,
+               COALESCE(total_earnings, gross_income) AS total_earnings,
+               COALESCE(total_allowances, 0) AS total_allowances,
+               COALESCE(total_bonuses, 0) AS total_bonuses,
+               COALESCE(total_insurance, 0) AS total_insurance,
+               COALESCE(total_deductions, 0) AS total_deductions,
                gross_income, net_salary, payment_status, payment_date
         FROM payrolls
         WHERE employee_id = :eid AND salary_period LIKE :year_prefix
@@ -584,11 +588,18 @@ async def get_annual_salary(
         monthly_list.append(m)
 
     # Lấy dữ liệu tổng hợp năm từ View
-    res = await db.execute(text("""
-        SELECT * FROM v_annual_salary_summary
-        WHERE employee_id = :eid AND salary_year = :year
-    """), {"eid": employee_id, "year": year})
-    row = res.mappings().first()
+    row = None
+    try:
+        res = await db.execute(text("""
+            SELECT * FROM v_annual_salary_summary
+            WHERE employee_id = :eid AND salary_year = :year
+        """), {"eid": employee_id, "year": year})
+        row = res.mappings().first()
+    except Exception as e:
+        logger.warning(f"Không thể đọc view v_annual_salary_summary: {e}")
+        await db.rollback()
+        row = None
+
     if not set(roles) & {'ADMIN', 'HR_MANAGER', 'DIRECTOR'}:
         row = None  # The legacy view includes drafts; self-service uses released rows only.
 
@@ -1408,11 +1419,12 @@ async def get_payroll_detail(
                s.store_name, pos.position_name, p.salary_period,
                p.standard_working_days, p.actual_working_days, p.paid_leave_days, p.unpaid_leave_days,
                p.unworked_hours,
-                p.contract_salary, p.gross_income AS total_earnings,
-                (COALESCE(p.position_allowance,0) + COALESCE(p.seniority_allowance,0)
-                 + COALESCE(p.project_allowance,0) + COALESCE(p.meal_transport_allowance,0)) AS total_allowances,
-                COALESCE(p.bonus_amount,0) AS total_bonuses,
-                p.total_insurance, p.total_deduction AS total_deductions,
+               p.contract_salary,
+               COALESCE(p.total_earnings, p.gross_income) AS total_earnings,
+               COALESCE(p.total_allowances, 0) AS total_allowances,
+               COALESCE(p.total_bonuses, 0) AS total_bonuses,
+               COALESCE(p.total_insurance, 0) AS total_insurance,
+               COALESCE(p.total_deductions, 0) AS total_deductions,
                p.gross_income, p.net_salary, p.payment_status, p.payment_date
         FROM payrolls p
         JOIN employees e ON p.employee_id = e.employee_id

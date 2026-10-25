@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { Icons } from '../components/common/Icons'
 import { StatCard } from '../components/common/StatCard'
 import { EmptyState } from '../components/common/EmptyState'
@@ -1161,7 +1162,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
         const netSalary = monthlyPrintData.summary?.net_salary ?? selectedPayroll?.net_salary
         const netInWords = monthlyPrintData.summary?.net_salary_in_words ?? (selectedPayroll as any)?.net_salary_in_words
 
-        return (
+        return createPortal(
           <div className="modal-overlay print-active-overlay" onClick={() => setIsMonthlyPrintModalOpen(false)}>
             <div className="modal print-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '880px', padding: 0, maxHeight: '92vh' }}>
               {/* Modal Header */}
@@ -1380,7 +1381,8 @@ export function PayrollPage({ user }: PayrollPageProps) {
                 </button>
               </div>
             </div>
-          </div>
+          </div>,
+          document.body
         )
       })()}
 
@@ -1391,7 +1393,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
         const printDate = parsePrintDate(annualData.generated_date)
         const salaryYear = annualData.salary_year || selectedYear
 
-        return (
+        return createPortal(
           <div className="modal-overlay print-active-overlay" onClick={() => setIsAnnualPrintModalOpen(false)}>
             <div className="modal print-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '900px', padding: 0, maxHeight: '92vh' }}>
               {/* Header */}
@@ -1564,7 +1566,8 @@ export function PayrollPage({ user }: PayrollPageProps) {
                 </button>
               </div>
             </div>
-          </div>
+          </div>,
+          document.body
         )
       })()}
     </div>

@@ -136,7 +136,7 @@ class ApiClient {
     }
 
     const token = tokenService.get();
-    if (token) {
+    if (token && token !== 'null' && token !== 'undefined') {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
@@ -798,20 +798,51 @@ export const payrollApi = {
 // ============================================
 
 export const reportApi = {
-  getDashboardStats: async (period?: string): Promise<any> => {
-    return api.get('/reports/dashboard-stats', period ? { period } : undefined);
+  getDashboardStats: async (period?: string, storeId?: number): Promise<any> => {
+    const params: Record<string, any> = {};
+    if (period) params.period = period;
+    if (storeId) params.store_id = storeId;
+    return api.get('/reports/dashboard-stats', Object.keys(params).length ? params : undefined);
   },
 
   getMonthlyStatus: async (): Promise<any> => {
     return api.get('/reports/monthly-status');
   },
 
-  getDemographics: async (storeId?: number): Promise<any> => {
-    return api.get('/reports/demographics', storeId ? { store_id: storeId } : undefined);
+  getDemographics: async (storeId?: number, includeResigned: boolean = false): Promise<any> => {
+    const params: Record<string, any> = {};
+    if (storeId) params.store_id = storeId;
+    if (includeResigned) params.include_resigned = true;
+    return api.get('/reports/demographics', Object.keys(params).length ? params : undefined);
   },
 
-  getPayrollFund: async (period?: string): Promise<any> => {
-    return api.get('/reports/payroll-fund', period ? { period } : undefined);
+  getHeadcountTrend: async (months: number = 6): Promise<any> => {
+    return api.get('/reports/headcount-trend', { months });
+  },
+
+  getPayrollTrend: async (limit: number = 6): Promise<any> => {
+    return api.get('/reports/payroll-trend', { limit });
+  },
+
+  getAttendanceSummary: async (period?: string, storeId?: number): Promise<any> => {
+    const params: Record<string, any> = {};
+    if (period) params.period = period;
+    if (storeId) params.store_id = storeId;
+    return api.get('/reports/attendance-summary', Object.keys(params).length ? params : undefined);
+  },
+
+  getLeaveSummary: async (period?: string, storeId?: number): Promise<any> => {
+    const params: Record<string, any> = {};
+    if (period) params.period = period;
+    if (storeId) params.store_id = storeId;
+    return api.get('/reports/leave-summary', Object.keys(params).length ? params : undefined);
+  },
+
+  getPayrollFund: async (period?: string, storeId?: number): Promise<any> => {
+    const params: Record<string, any> = {};
+    if (period) params.period = period;
+    if (storeId) params.store_id = storeId;
+    return api.get('/reports/payroll-fund', Object.keys(params).length ? params : undefined);
   },
 
   getSalesPerformance: async (params?: { period?: string; store_id?: number }): Promise<any> => {
@@ -820,6 +851,34 @@ export const reportApi = {
 
   getAuditLogs: async (limit?: number, action?: string): Promise<any[]> => {
     return api.get<any[]>('/reports/audit-logs', { limit: limit || 50, action });
+  },
+
+  exportOverviewExcel: async (period?: string, storeId?: number): Promise<Blob> => {
+    const token = tokenService.get();
+    const params: Record<string, any> = {};
+    if (period) params.period = period;
+    if (storeId) params.store_id = storeId;
+    if (token && token !== 'null' && token !== 'undefined') params.token = token;
+    
+    return api.getBlob('/reports/export/overview/excel', params);
+  },
+
+  exportDemographicsExcel: async (storeId?: number): Promise<Blob> => {
+    const token = tokenService.get();
+    const params: Record<string, any> = {};
+    if (storeId) params.store_id = storeId;
+    if (token && token !== 'null' && token !== 'undefined') params.token = token;
+    
+    return api.getBlob('/reports/export/demographics/excel', params);
+  },
+
+  exportPayrollSummaryExcel: async (period?: string): Promise<Blob> => {
+    const token = tokenService.get();
+    const params: Record<string, any> = {};
+    if (period) params.period = period;
+    if (token && token !== 'null' && token !== 'undefined') params.token = token;
+    
+    return api.getBlob('/reports/export/payroll-summary/excel', params);
   },
 
   getExportDemographicsExcelUrl: (storeId?: number): string => {
@@ -832,6 +891,13 @@ export const reportApi = {
     return `${API_BASE_URL}/reports/export/payroll-summary/excel${params}`;
   },
 };
+
+export const storeApi = {
+  getAll: async (): Promise<any[]> => {
+    return api.get<any[]>('/stores');
+  },
+};
+
 
 
 // ============================================

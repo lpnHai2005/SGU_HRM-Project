@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useSearchParams } from 'react-router-dom'
 import { Icons } from '../components/common/Icons'
 import { StatCard } from '../components/common/StatCard'
@@ -1055,7 +1056,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
         const netSalary = monthlyPrintData.summary?.net_salary ?? currentPayroll?.net_salary
         const netInWords = monthlyPrintData.summary?.net_salary_in_words ?? (currentPayroll as any)?.net_salary_in_words
 
-        return (
+        return createPortal(
           <div className="modal-overlay print-active-overlay" onClick={() => setIsMonthlyPrintModalOpen(false)}>
             <div className="modal print-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '880px', padding: 0, maxHeight: '92vh' }}>
               {/* Header */}
@@ -1474,7 +1475,8 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
               </button>
             </div>
             </>)}
-          </div>
+          </div>,
+          document.body
         )
       })()}
 
@@ -1485,7 +1487,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
         const printDate = parsePrintDate(annualData.generated_date)
         const salaryYear = annualData.salary_year || selectedYear
 
-        return (
+        return createPortal(
           <div className="modal-overlay print-active-overlay" onClick={() => setIsAnnualPrintModalOpen(false)}>
             <div className="modal print-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '900px', padding: 0, maxHeight: '92vh' }}>
               {/* Header */}
@@ -1658,14 +1660,15 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
                 </button>
               </div>
             </div>
-          </div>
+          </div>,
+          document.body
         )
       })()}
 
       {/* ========================================================================= */}
       {/* MODAL 3: BẢN IN HỢP ĐỒNG LAO ĐỘNG (KHỔ A4) */}
       {/* ========================================================================= */}
-      {isContractPrintModalOpen && selectedContract && (
+      {isContractPrintModalOpen && selectedContract && createPortal(
         <div className="modal-overlay print-active-overlay" onClick={() => setIsContractPrintModalOpen(false)}>
           <div className="modal print-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '880px', padding: 0, maxHeight: '92vh' }}>
             {/* Header */}
@@ -1815,7 +1818,8 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
       {isPayrollRegulationOpen && (
         <PayrollRegulationDialog onClose={() => setIsPayrollRegulationOpen(false)} />
