@@ -217,6 +217,7 @@ export function App() {
             <Route path="/my-contracts" element={<Navigate to="/my-payroll?tab=contracts" replace />} />
             <Route path="/sales" element={<ProtectedRoute path="/sales"><SalesCommissionPage /></ProtectedRoute>} />
             <Route path="/projects" element={<ProtectedRoute path="/projects"><ProjectsPage /></ProtectedRoute>} />
+            <Route path="/my-projects" element={<ProtectedRoute path="/my-projects"><ProjectsPage personal /></ProtectedRoute>} />
             <Route path="/reports" element={<ProtectedRoute path="/reports"><ReportsPage user={user} /></ProtectedRoute>} />
             <Route path="/audit" element={<ProtectedRoute path="/audit"><AuditLogPage user={user} /></ProtectedRoute>} />
             <Route path="/login" element={<Navigate to="/" replace />} />

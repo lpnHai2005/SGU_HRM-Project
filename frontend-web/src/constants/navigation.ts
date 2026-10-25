@@ -80,10 +80,11 @@ export const NAVIGATION: NavItemConfig[] = [
     ],
   },
   { id: 'my-payroll', path: '/my-payroll', label: 'Lương & Hợp đồng của tôi', icon: 'wallet', section: 'Cá nhân', roles: managers, requiresEmployee: true },
+  { id: 'my-projects', path: '/my-projects', label: 'Dự án của tôi', icon: 'briefcase', section: 'Cá nhân', roles: managers },
   { id: 'my-attendance-staff', path: '/my-attendance', label: 'Bảng công cá nhân', icon: 'clock', section: 'Công việc của tôi', roles: ['EMPLOYEE'], requiresEmployee: true },
   { id: 'my-schedules-staff', path: '/my-schedules', label: 'Lịch ca & Phân công', icon: 'calendar', section: 'Công việc của tôi', roles: ['EMPLOYEE'], requiresEmployee: true },
   { id: 'my-activity-staff', path: '/my-activity', label: 'Nhật ký làm việc', icon: 'chart', section: 'Công việc của tôi', roles: ['EMPLOYEE'], requiresEmployee: true },
-  { id: 'projects-staff', path: '/projects', label: 'Dự án tham gia', icon: 'briefcase', section: 'Công việc của tôi', roles: ['EMPLOYEE'], requiresEmployee: true },
+  { id: 'projects-staff', path: '/my-projects', label: 'Dự án của tôi', icon: 'briefcase', section: 'Công việc của tôi', roles: ['EMPLOYEE'] },
   {
     id: 'my-requests-staff',
     path: '/my-leave',
@@ -153,8 +154,8 @@ export function canAccessPath(path: string, user: NavigationUser | null | undefi
   if (path === '/reports') {
     return userRoles.includes('DIRECTOR') || userRoles.includes('HR_MANAGER')
   }
-  if (path === '/my-leave' || path === '/my-overtime') {
-    return Boolean(user.employee_id || userRoles.includes('ADMIN') || userRoles.includes('DIRECTOR'))
+  if (path === '/my-leave' || path === '/my-overtime' || path === '/my-projects') {
+    return Boolean(user.employee_id || userRoles.includes('ADMIN') || userRoles.includes('DIRECTOR') || userRoles.includes('HR_MANAGER') || userRoles.includes('STORE_MANAGER') || userRoles.includes('EMPLOYEE'))
   }
   if (path === '/overtime' || path === '/leave') {
     return userRoles.some(r => ['ADMIN', 'DIRECTOR', 'HR_MANAGER', 'STORE_MANAGER'].includes(r))
