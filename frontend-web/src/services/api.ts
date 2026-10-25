@@ -671,6 +671,11 @@ export const leaveApi = {
 import type {
   Payroll,
   SalesRecordCreate,
+  Project,
+  ProjectRole,
+  ProjectRoleAllowance,
+  PayrollPolicySetting,
+  PayrollPeriodBonus,
 } from '../types';
 
 export const payrollApi = {
@@ -720,8 +725,72 @@ export const payrollApi = {
     return api.get(`/payrolls/commissions/calculate/${month}`);
   },
 
-  getProjects: async (): Promise<any[]> => {
-    return api.get('/payrolls/projects/list');
+  getProjects: async (): Promise<Project[]> => {
+    return api.get<Project[]>('/payrolls/projects/list');
+  },
+
+  createProject: async (data: {
+    project_code: string;
+    project_name: string;
+    description?: string;
+    start_date: string;
+    end_date?: string;
+    status?: string;
+    budget?: number;
+  }): Promise<{ message: string; project: Project }> => {
+    return api.post('/payrolls/projects', data);
+  },
+
+  getProjectRoles: async (): Promise<ProjectRole[]> => {
+    return api.get<ProjectRole[]>('/payrolls/projects/roles');
+  },
+
+  createProjectRole: async (data: { role_code: string; role_name: string; description?: string; display_order?: number }): Promise<ProjectRole> => {
+    return api.post<ProjectRole>('/payrolls/projects/roles', data);
+  },
+
+  getProjectRoleAllowances: async (projectId: number): Promise<ProjectRoleAllowance[]> => {
+    return api.get<ProjectRoleAllowance[]>(`/payrolls/projects/${projectId}/role-allowances`);
+  },
+
+  setProjectRoleAllowance: async (projectId: number, data: { role_code: string; allowance_amount: number; notes?: string }): Promise<ProjectRoleAllowance> => {
+    return api.post<ProjectRoleAllowance>(`/payrolls/projects/${projectId}/role-allowances`, data);
+  },
+
+  addProjectMember: async (projectId: number, data: { employee_id: number; project_role?: string; project_allowance?: number; joined_date: string; left_date?: string }): Promise<any> => {
+    return api.post(`/payrolls/projects/${projectId}/members`, data);
+  },
+
+  updateProjectMember: async (memberId: number, data: { project_role?: string; project_allowance?: number; is_active?: boolean }): Promise<any> => {
+    return api.put(`/payrolls/projects/members/${memberId}`, data);
+  },
+
+  removeProjectMember: async (memberId: number): Promise<any> => {
+    return api.delete(`/payrolls/projects/members/${memberId}`);
+  },
+
+  getPolicySettings: async (): Promise<PayrollPolicySetting[]> => {
+    return api.get<PayrollPolicySetting[]>('/payrolls/policies/settings');
+  },
+
+  updatePolicySetting: async (key: string, data: { numeric_value: number; description?: string }): Promise<PayrollPolicySetting> => {
+    return api.put<PayrollPolicySetting>(`/payrolls/policies/settings/${key}`, data);
+  },
+
+  getPeriodBonuses: async (period?: string): Promise<PayrollPeriodBonus[]> => {
+    return api.get<PayrollPeriodBonus[]>('/payrolls/policies/period-bonuses', period ? { period } : undefined);
+  },
+
+  createPeriodBonus: async (data: { salary_period: string; bonus_code: string; bonus_name: string; calculation_type: string; base_amount: number; applies_to?: string; is_recurring?: boolean }): Promise<PayrollPeriodBonus> => {
+    return api.post<PayrollPeriodBonus>('/payrolls/policies/period-bonuses', data);
+  },
+
+  updatePeriodBonus: async (bonusId: number, data: Partial<PayrollPeriodBonus>): Promise<PayrollPeriodBonus> => {
+    return api.put<PayrollPeriodBonus>(`/payrolls/policies/period-bonuses/${bonusId}`, data);
+  },
+
+  deletePeriodBonus: async (bonusId: number): Promise<{ message: string }> => {
+    return api.delete(`/payrolls/policies/period-bonuses/${bonusId}`);
   },
 
   getPayslip: async (payrollId: number): Promise<any> => {

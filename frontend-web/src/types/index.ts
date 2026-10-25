@@ -913,3 +913,77 @@ export interface HRStatusReportData {
   total_contract_salary: number;
 }
 
+export interface ProjectRole {
+  role_code: string;
+  role_name: string;
+  description?: string | null;
+  display_order?: number;
+  is_active?: boolean;
+  created_at?: string;
+}
+
+export interface ProjectRoleAllowance {
+  id?: number;
+  project_id: number;
+  role_code: string;
+  role_name?: string | null;
+  allowance_amount: number;
+  notes?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ProjectMember {
+  project_member_id: number;
+  project_id: number;
+  employee_id: number;
+  employee_code?: string;
+  employee_name: string;
+  position_name?: string;
+  project_role: string;
+  project_allowance: number;
+  joined_date: string;
+  left_date?: string | null;
+  is_active: boolean;
+}
+
+export interface Project {
+  project_id: number;
+  project_code: string;
+  project_name: string;
+  description?: string | null;
+  start_date: string;
+  end_date?: string | null;
+  status: string;
+  budget?: number | null;
+  role_allowances?: ProjectRoleAllowance[];
+  members: ProjectMember[];
+}
+
+export interface PayrollPolicySetting {
+  setting_id: number;
+  setting_key: string;
+  setting_name: string;
+  setting_group: string;
+  numeric_value: number;
+  unit?: string;
+  description?: string | null;
+  is_active: boolean;
+  updated_at?: string;
+}
+
+export interface PayrollPeriodBonus {
+  bonus_id: number;
+  salary_period: string;
+  bonus_code: string;
+  bonus_name: string;
+  calculation_type: 'FIXED_AMOUNT' | 'COEFFICIENT' | 'CONTRACT_SALARY' | string;
+  base_amount: number;
+  applies_to?: string;
+  is_recurring?: boolean;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+

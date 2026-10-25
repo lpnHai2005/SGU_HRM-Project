@@ -5,7 +5,7 @@ import { LayoutDashboard, Users, Clock, CalendarDays, Wallet, ChartColumn, Shiel
   ListFilter, EllipsisVertical, CircleCheck, CircleAlert, CircleX, Sun, Moon, Menu,
   Info, RefreshCw, LoaderCircle, Eye, Pencil, TriangleAlert, Bell, Palmtree,
   CircleMinus, LockKeyhole, Store, Sparkles, Download, BriefcaseBusiness, RotateCcw,
-  Paperclip, Upload, MapPin } from 'lucide-react'
+  Paperclip, Upload, MapPin, Settings } from 'lucide-react'
 const glyphs = { download: Download, briefcase: BriefcaseBusiness, dashboard: LayoutDashboard, users: Users, clock: Clock, calendar: CalendarDays,
   wallet: Wallet, chart: ChartColumn, shield: Shield, chevronLeft: ChevronLeft,
   chevronRight: ChevronRight, chevronsLeft: ChevronsLeft, chevronsRight: ChevronsRight, chevronDown: ChevronDown, check: Check, x: X, close: X,
@@ -17,7 +17,7 @@ const glyphs = { download: Download, briefcase: BriefcaseBusiness, dashboard: La
   eye: Eye, edit: Pencil, alertTriangle: TriangleAlert, bell: Bell, leave: Palmtree, clipboardList: ClipboardList,
   image: ImageIcon, imageOff: ImageOff, zoomIn: ZoomIn, zoomOut: ZoomOut,
   minusCircle: CircleMinus, lock: LockKeyhole, store: Store, sparkles: Sparkles, undo: RotateCcw,
-  paperclip: Paperclip, upload: Upload, mapPin: MapPin }
+  paperclip: Paperclip, upload: Upload, mapPin: MapPin, settings: Settings }
 export const Icons: Record<string, ReactNode> = Object.fromEntries(
   Object.entries(glyphs).map(([key, Glyph]) => [key, <Glyph key={key} size={20} strokeWidth={1.8} aria-hidden="true" focusable="false" />]),
 )

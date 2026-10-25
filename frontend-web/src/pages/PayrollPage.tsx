@@ -508,6 +508,10 @@ export function PayrollPage({ user }: PayrollPageProps) {
                 {Icons.clock}
                 Quy định chấm công
               </button>
+              <button type="button" className="btn btn-secondary" onClick={() => setIsPayrollRegulationOpen(true)} title="Xem và điều chỉnh quy chế lương, phạt trễ, phụ cấp cơm xe, thưởng lễ tết">
+                {Icons.settings}
+                Quy chế & Cài đặt lương
+              </button>
               <span className="text-secondary" style={{ fontSize: '13px', fontWeight: 600 }}>Kỳ tính lương:</span>
               <select
                 className="form-select"
