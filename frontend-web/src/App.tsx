@@ -1,3 +1,4 @@
+import { AiChatbotWidget } from './components/ai/AiChatbotWidget'
 import { AccountPage } from './pages/AccountPage'
 import { MonthlyAttendancePage } from './pages/MonthlyAttendancePage'
 import { StoresPage } from './pages/StoreManagementPage'
@@ -71,6 +72,7 @@ export function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [attendanceLoading, setAttendanceLoading] = useState(false)
+  const [isAiOpen, setIsAiOpen] = useState(false)
   const roles: string[] = user?.roles || []
   const isStandaloneEmployee = roles.includes('EMPLOYEE')
     && !roles.some(role => ['ADMIN', 'HR_MANAGER', 'STORE_MANAGER', 'DIRECTOR'].includes(role))
@@ -174,6 +176,7 @@ export function App() {
         theme={theme}
         onToggleTheme={toggleTheme}
         onToggleMobileMenu={() => setMobileMenuOpen(prev => !prev)}
+        onOpenAi={() => setIsAiOpen(true)}
       />
       <main className="main-content">
         <ErrorBoundary>
@@ -227,6 +230,11 @@ export function App() {
       </main>
       <BottomNav
         onOpenMenu={() => setMobileMenuOpen(true)}
+        user={user}
+      />
+      <AiChatbotWidget
+        isOpen={isAiOpen}
+        onClose={() => setIsAiOpen(false)}
         user={user}
       />
     </div>

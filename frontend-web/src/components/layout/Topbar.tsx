@@ -11,6 +11,7 @@ export interface TopbarProps {
   theme: 'light' | 'dark'
   onToggleTheme: () => void
   onToggleMobileMenu?: () => void
+  onOpenAi?: () => void
 }
 
 const PAGE_TITLES: Record<string, string> = {
@@ -36,6 +37,7 @@ export function Topbar({
   theme,
   onToggleTheme,
   onToggleMobileMenu,
+  onOpenAi,
 }: TopbarProps) {
   const location = useLocation()
   const navigate = useNavigate()
@@ -81,7 +83,7 @@ export function Topbar({
         </button>
         <button
           className="btn btn-ai"
-          onClick={() => toast('✦ Trợ lý AI TechZone: Hệ thống đang kết nối trực tiếp cơ sở dữ liệu và vận hành ổn định.')}
+          onClick={onOpenAi || (() => toast('✦ Trợ lý AI TechZone: Hệ thống đang kết nối trực tiếp cơ sở dữ liệu và vận hành ổn định.'))}
           title="Hỏi trợ lý AI TechZone"
         >
           ✦ Trợ lý AI

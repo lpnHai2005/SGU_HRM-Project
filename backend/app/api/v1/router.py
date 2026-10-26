@@ -5,7 +5,7 @@ from sqlalchemy import text
 from app.core.database import get_db
 from app.api.v1.endpoints import (
     auth, users, roles, audit_logs,
-    employees, attendances, leaves, payrolls, reports, ai_copilot, mobile_attendance,
+    employees, attendances, leaves, payrolls, reports, ai_chatbot, mobile_attendance,
     work_schedules, fixed_schedules, operations, overtime_requests, overtime_reconciliations, contracts, resignations
 )
 
@@ -32,7 +32,7 @@ api_router.include_router(payrolls.router, prefix="/payrolls", tags=["Lương & 
 api_router.include_router(payrolls.router, prefix="/payroll", tags=["Lương & Thưởng (Payroll alias)"])
 api_router.include_router(reports.router, prefix="/reports", tags=["Báo cáo & Thống kê (Reports)"])
 api_router.include_router(audit_logs.router, prefix="/audit-logs", tags=["Nhật ký Hệ thống (Audit Logs)"])
-api_router.include_router(ai_copilot.router, prefix="/ai-copilot", tags=["Trợ lý AI (AI Copilot)"])
+api_router.include_router(ai_chatbot.router, prefix="/ai-chatbot", tags=["Trợ lý AI (AI Chatbot)"])
 
 # 2. Endpoint kiểm tra sức khỏe hệ thống & kết nối Supabase CSDL
 @api_router.get(

@@ -1,0 +1,47 @@
+{
+  "timestamp": "2026-10-26T21:11:00.699933",
+  "total_test_cases": 5,
+  "overall_metrics": {
+    "faithfulness": 0.9394,
+    "answer_relevancy": 0.9554,
+    "context_precision": 0.9377,
+    "context_recall": 0.9362
+  },
+  "details": [
+    {
+      "question": "Quy định xử lý nhân viên đi trễ trên 15 phút tại c...",
+      "faithfulness": 0.9333,
+      "answer_relevancy": 0.9655,
+      "context_precision": 0.9586,
+      "context_recall": 0.9458
+    },
+    {
+      "question": "Công ty TechZone tính hoa hồng bán hàng cho nhân v...",
+      "faithfulness": 0.9414,
+      "answer_relevancy": 0.9676,
+      "context_precision": 0.9595,
+      "context_recall": 0.9516
+    },
+    {
+      "question": "Quy trình nộp và phê duyệt đơn xin nghỉ ốm đau hoặ...",
+      "faithfulness": 0.9526,
+      "answer_relevancy": 0.9556,
+      "context_precision": 0.94,
+      "context_recall": 0.9516
+    },
+    {
+      "question": "Tiêu chuẩn số ngày công chuẩn trong tháng để hưởng...",
+      "faithfulness": 0.9376,
+      "answer_relevancy": 0.9471,
+      "context_precision": 0.9029,
+      "context_recall": 0.9012
+    },
+    {
+      "question": "Bán kính cho phép chấm công qua GPS/Geofence tại m...",
+      "faithfulness": 0.932,
+      "answer_relevancy": 0.9414,
+      "context_precision": 0.9276,
+      "context_recall": 0.9309
+    }
+  ]
+}

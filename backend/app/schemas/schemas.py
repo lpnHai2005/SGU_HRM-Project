@@ -891,18 +891,43 @@ class ProjectOut(BaseModel):
 
 
 # ===================================================================================
-# 10. AI COPILOT SCHEMAS
+# 10. AI CHATBOT SCHEMAS
 # ===================================================================================
 
-class AICopilotQuery(BaseModel):
+class ActionProposal(BaseModel):
+    action_type: str  # "create_leave_request" | "cancel_leave_request"
+    title: str
+    description: str
+    payload: Dict[str, Any]
+    requires_attachment: bool = False
+    attachment_hint: Optional[str] = None
+
+
+class AIChatbotQuery(BaseModel):
     query: str
     user_context: Optional[Dict[str, Any]] = None
+    conversation_history: Optional[List[Dict[str, str]]] = Field(default_factory=list)
+    thread_id: Optional[str] = None
 
 
-class AICopilotResponse(BaseModel):
+class AIChatbotConfirmActionRequest(BaseModel):
+    action_type: str
+    payload: Dict[str, Any]
+    confirmed: bool = True
+    attachment_url: Optional[str] = None
+
+
+class AIChatbotResponse(BaseModel):
     answer: str
     sources: List[str] = Field(default_factory=list)
     confidence: float = 0.95
+    tools_used: List[str] = Field(default_factory=list)
+    action_proposal: Optional[ActionProposal] = None
+    requires_action: bool = False
+    thread_id: Optional[str] = None
+
+
+
 
 
 # ===================================================================================
@@ -1002,4 +1027,3 @@ class PayrollPeriodBonusOut(BaseModel):
     updated_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
-

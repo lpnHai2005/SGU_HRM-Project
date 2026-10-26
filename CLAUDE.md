@@ -26,7 +26,7 @@ SGU-HRM-Project/
 │   │   │           ├── payrolls.py   # Payroll + commissions + projects
 │   │   │           ├── roles.py       # RBAC roles & permissions
 │   │   │           ├── reports.py     # Reports
-│   │   │           └── ai_copilot.py # AI Copilot
+│   │   │           └── ai_chatbot.py # AI Chatbot
 │   │   ├── core/
 │   │   │   ├── config.py      # Settings từ .env
 │   │   │   ├── database.py    # SQLAlchemy async session

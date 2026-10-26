@@ -1085,4 +1085,135 @@ export const healthApi = {
   },
 };
 
+// ============================================
+// AI Chatbot API
+// ============================================
+
+export interface AIChatbotResponse {
+  answer: string;
+  sources: string[];
+  confidence: number;
+  tools_used?: string[];
+  action_proposal?: {
+    action_type: string;
+    title: string;
+    description: string;
+    payload: any;
+    requires_attachment?: boolean;
+    attachment_hint?: string;
+  };
+  requires_action?: boolean;
+  thread_id?: string;
+}
+
+export interface AIChatbotStreamCallbacks {
+  onStart?: (data: { thread_id: string }) => void;
+  onStatus?: (message: string) => void;
+  onToken?: (token: string) => void;
+  onDone?: (data: {
+    answer: string;
+    sources: string[];
+    tools_used: string[];
+    action_proposal?: any;
+    requires_action?: boolean;
+    thread_id: string;
+  }) => void;
+  onError?: (err: Error) => void;
+}
+
+export const aiChatbotApi = {
+  query: async (query: string, thread_id?: string): Promise<AIChatbotResponse> => {
+    return api.post<AIChatbotResponse>('/ai-chatbot/query', { query, thread_id });
+  },
+
+  getHistory: async (thread_id?: string, limit: number = 50): Promise<{ thread_id?: string; messages: any[] }> => {
+    return api.get<{ thread_id?: string; messages: any[] }>('/ai-chatbot/history', { thread_id, limit });
+  },
+
+  streamQuery: async (
+    query: string,
+    thread_id: string | undefined,
+    callbacks: AIChatbotStreamCallbacks,
+    signal?: AbortSignal
+  ): Promise<void> => {
+    const token = tokenService.get();
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (token && token !== 'null' && token !== 'undefined') {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const res = await fetch(`${API_BASE_URL}/ai-chatbot/stream`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ query, thread_id }),
+      signal,
+    });
+
+    if (!res.ok) {
+      let errMsg = `Lỗi máy chủ (${res.status})`;
+      try {
+        const errJson = await res.json();
+        errMsg = errJson.detail || errMsg;
+      } catch {
+        // fallback
+      }
+      const err = new Error(errMsg);
+      callbacks.onError?.(err);
+      throw err;
+    }
+
+    if (!res.body) {
+      throw new Error('ReadableStream không được trình duyệt hỗ trợ.');
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n\n');
+      buffer = lines.pop() || '';
+
+      for (const block of lines) {
+        const trimmed = block.trim();
+        if (!trimmed.startsWith('data:')) continue;
+        const dataStr = trimmed.slice(5).trim();
+        if (!dataStr) continue;
+
+        try {
+          const parsed = JSON.parse(dataStr);
+          if (parsed.event === 'start') {
+            callbacks.onStart?.(parsed);
+          } else if (parsed.event === 'status') {
+            callbacks.onStatus?.(parsed.message || '');
+          } else if (parsed.event === 'token') {
+            callbacks.onToken?.(parsed.text || '');
+          } else if (parsed.event === 'done') {
+            callbacks.onDone?.(parsed);
+          }
+        } catch {
+          // ignore parsing error for chunk boundary
+        }
+      }
+    }
+  },
+
+  confirmAction: async (data: {
+    action_type: string;
+    payload: any;
+    confirmed: boolean;
+    attachment_url?: string;
+  }): Promise<any> => {
+    return api.post<any>('/ai-chatbot/confirm-action', data);
+  },
+};
+
+
+
 export default api;
