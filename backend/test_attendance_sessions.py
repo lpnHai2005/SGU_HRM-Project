@@ -91,6 +91,127 @@ class Endpoints(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 403)
         self.db.commit.assert_not_awaited()
 
+    async def test_proxy_checkin_forbidden_for_every_role_and_store_scope(self):
+        for role in ['EMPLOYEE', 'STORE_MANAGER', 'HR_MANAGER', 'ADMIN', 'DIRECTOR']:
+            for target_employee_id in [4, 5]:
+                with self.subTest(role=role, target_employee_id=target_employee_id):
+                    actor = dict(employee_id=3, store_id=1, roles=[role])
+                    self.app.dependency_overrides[get_current_user] = lambda actor=actor: actor
+                    self.db.execute.reset_mock()
+                    self.db.commit.reset_mock()
+                    response = await self.client.post(
+                        '/attendances/check-in',
+                        json={'employee_id': target_employee_id, 'shift_id': 1},
+                    )
+                    self.assertEqual(response.status_code, 403, response.text)
+                    self.db.execute.assert_not_awaited()
+                    self.db.commit.assert_not_awaited()
+
+    async def test_unmapped_account_cannot_check_in_or_out(self):
+        actor = dict(employee_id=None, store_id=1, roles=['STORE_MANAGER'])
+        self.app.dependency_overrides[get_current_user] = lambda: actor
+        for path, body in [
+            ('/attendances/check-in', {'shift_id': 1}),
+            ('/attendances/check-out', {'attendance_id': 99}),
+        ]:
+            with self.subTest(path=path):
+                self.db.execute.reset_mock()
+                self.db.commit.reset_mock()
+                response = await self.client.post(path, json=body)
+                self.assertEqual(response.status_code, 403, response.text)
+                self.db.execute.assert_not_awaited()
+                self.db.commit.assert_not_awaited()
+
+    async def test_missing_or_invalid_jwt_rejected_before_attendance_access(self):
+        app = FastAPI()
+        app.include_router(api.router, prefix='/attendances')
+        app.dependency_overrides[get_db] = lambda: self.db
+        async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as client:
+            for path, body in [
+                ('/attendances/check-in', {'shift_id': 1}),
+                ('/attendances/check-out', {'attendance_id': 99}),
+            ]:
+                for headers in [{}, {'Authorization': 'Bearer invalid-token'}]:
+                    with self.subTest(path=path, headers=headers):
+                        self.db.reset_mock()
+                        response = await client.post(path, json=body, headers=headers)
+                        self.assertEqual(response.status_code, 401, response.text)
+                        self.db.execute.assert_not_awaited()
+                        self.db.commit.assert_not_awaited()
+
+    async def test_privileged_roles_can_check_in_and_out_self(self):
+        for role in ['HR_MANAGER', 'ADMIN', 'DIRECTOR']:
+            with self.subTest(role=role):
+                actor = dict(employee_id=3, store_id=1, roles=[role])
+                self.app.dependency_overrides[get_current_user] = lambda actor=actor: actor
+                self.db.reset_mock()
+                body = await self.check_in_for_schedule(None)
+                self.assertEqual(body['attendance_id'], 99)
+
+                self.db.commit.reset_mock()
+                att = dict(attendance_id=99, employee_id=3, store_id=1,
+                           check_in_time=NOW-timedelta(hours=2), check_out_time=None,
+                           work_date=NOW.date(), start_time=time(8), end_time=time(16),
+                           work_hours=8, late_minutes=0)
+                self.db.execute.side_effect = [
+                    result(dict(employee_id=3)),
+                    result(dict(employee_id=3, store_id=1, full_name='Self')),
+                    result(att), result(),
+                ]
+                response = await self.client.post('/attendances/check-out', json={'attendance_id': 99})
+                self.assertEqual(response.status_code, 200, response.text)
+                self.db.commit.assert_awaited_once()
+
+    async def test_proxy_checkout_forbidden_for_every_role_without_writes(self):
+        for role in ['EMPLOYEE', 'STORE_MANAGER', 'HR_MANAGER', 'ADMIN', 'DIRECTOR']:
+            with self.subTest(role=role):
+                actor = dict(employee_id=3, store_id=1, roles=[role])
+                self.app.dependency_overrides[get_current_user] = lambda actor=actor: actor
+                self.db.execute.reset_mock()
+                self.db.commit.reset_mock()
+                self.db.execute.side_effect = [result(dict(employee_id=4))]
+                response = await self.client.post(
+                    '/attendances/check-out', json={'attendance_id': 99},
+                )
+                self.assertEqual(response.status_code, 403, response.text)
+                self.db.execute.assert_awaited_once()
+                statement = str(self.db.execute.await_args.args[0]).lower()
+                self.assertTrue(statement.lstrip().startswith('select'))
+                self.assertNotIn('insert', statement)
+                self.assertNotIn('update', statement)
+                self.db.commit.assert_not_awaited()
+
+    async def test_manager_can_check_in_and_out_self(self):
+        manager = dict(employee_id=3, store_id=1, roles=['STORE_MANAGER'])
+        self.app.dependency_overrides[get_current_user] = lambda: manager
+        body = await self.check_in_for_schedule(None)
+        self.assertEqual(body['attendance_id'], 99)
+
+        self.db.commit.reset_mock()
+        att = dict(attendance_id=99, employee_id=3, store_id=1,
+                   check_in_time=NOW-timedelta(hours=2), check_out_time=None,
+                   work_date=NOW.date(), start_time=time(8), end_time=time(16),
+                   work_hours=8, late_minutes=0)
+        self.db.execute.side_effect = [
+            result(dict(employee_id=3)),
+            result(dict(employee_id=3, store_id=1, full_name='Manager')),
+            result(att),
+            result(),
+        ]
+        response = await self.client.post('/attendances/check-out', json={'attendance_id': 99})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.db.commit.assert_awaited_once()
+
+    async def test_manager_attendance_read_scope_remains_available(self):
+        manager = dict(employee_id=3, store_id=1, roles=['STORE_MANAGER'])
+        self.app.dependency_overrides[get_current_user] = lambda: manager
+        self.db.execute.return_value = result(rows=[])
+        response = await self.client.get('/attendances?employee_id=4')
+        self.assertEqual(response.status_code, 200, response.text)
+        statement, params = self.db.execute.await_args.args
+        self.assertIn('a.store_id = :mgr_store_id', str(statement))
+        self.assertEqual(params['mgr_store_id'], 1)
+
     async def test_manager_cross_branch_forbidden(self):
         self.app.dependency_overrides[get_current_user] = lambda: dict(USER, roles=['STORE_MANAGER'])
         self.db.execute.return_value = result(dict(employee_id=4, store_id=2))

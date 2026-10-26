@@ -884,6 +884,7 @@ class ProjectOut(BaseModel):
     end_date: Optional[date] = None
     status: str = "IN_PROGRESS"
     budget: Optional[float] = 0.0
+    role_allowances: List['ProjectRoleAllowanceOut'] = Field(default_factory=list)
     members: List[ProjectMemberOut] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
@@ -902,3 +903,103 @@ class AICopilotResponse(BaseModel):
     answer: str
     sources: List[str] = Field(default_factory=list)
     confidence: float = 0.95
+
+
+# ===================================================================================
+# 11. PROJECT ROLES & ROLE ALLOWANCE SCHEMAS
+# ===================================================================================
+
+class ProjectRoleOut(BaseModel):
+    role_code: str
+    role_name: str
+    description: Optional[str] = None
+    display_order: Optional[int] = 1
+    is_active: Optional[bool] = True
+    created_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProjectRoleCreate(BaseModel):
+    role_code: str = Field(..., pattern=r"^[A-Z0-9_]{3,50}$", description="Mã vai trò in hoa (VD: PROJECT_LEAD)")
+    role_name: str = Field(..., min_length=2, max_length=100)
+    description: Optional[str] = None
+    display_order: Optional[int] = 1
+
+
+class ProjectRoleAllowanceCreate(BaseModel):
+    role_code: str
+    allowance_amount: float = Field(ge=0, description="Mức tiền phụ cấp cho vai trò này trong dự án")
+    notes: Optional[str] = None
+
+
+class ProjectRoleAllowanceOut(BaseModel):
+    id: int
+    project_id: int
+    role_code: str
+    role_name: Optional[str] = None
+    allowance_amount: float
+    notes: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ===================================================================================
+# 12. SALARY POLICY & PERIOD BONUS SCHEMAS
+# ===================================================================================
+
+class PayrollPolicySettingOut(BaseModel):
+    setting_id: int
+    setting_key: str
+    setting_name: str
+    setting_group: str
+    numeric_value: float
+    unit: Optional[str] = "VND"
+    description: Optional[str] = None
+    is_active: bool = True
+    updated_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PayrollPolicySettingUpdate(BaseModel):
+    numeric_value: float = Field(..., description="Giá trị tham số mới")
+    description: Optional[str] = None
+
+
+class PayrollPeriodBonusCreate(BaseModel):
+    salary_period: str = Field(..., pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$", description="Kỳ lương 'YYYY-MM'")
+    bonus_code: str = Field(..., pattern=r"^[A-Z0-9_]{3,50}$", description="Mã thưởng (VD: TET_BONUS)")
+    bonus_name: str = Field(..., min_length=3, max_length=150)
+    calculation_type: str = Field("COEFFICIENT", pattern=r"^(FIXED_AMOUNT|COEFFICIENT|CONTRACT_SALARY)$")
+    base_amount: float = Field(ge=0, description="Số tiền cơ sở làm căn cứ tính thưởng")
+    applies_to: Optional[str] = "ALL"
+    is_recurring: Optional[bool] = False
+
+
+class PayrollPeriodBonusUpdate(BaseModel):
+    bonus_name: Optional[str] = None
+    calculation_type: Optional[str] = None
+    base_amount: Optional[float] = None
+    applies_to: Optional[str] = None
+    is_recurring: Optional[bool] = None
+    is_active: Optional[bool] = None
+
+
+class PayrollPeriodBonusOut(BaseModel):
+    bonus_id: int
+    salary_period: str
+    bonus_code: str
+    bonus_name: str
+    calculation_type: str
+    base_amount: float
+    applies_to: Optional[str] = "ALL"
+    is_recurring: Optional[bool] = False
+    is_active: bool = True
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+

@@ -62,7 +62,7 @@ export const NAVIGATION: NavItemConfig[] = [
   { id: 'payroll-fund', path: '/payroll-fund', label: 'Quỹ lương', icon: 'dollar', section: 'Kinh doanh & Tài chính', roles: financeManagers },
   { id: 'payroll', path: '/payroll', label: 'Quản lý bảng lương', icon: 'wallet', section: 'Kinh doanh & Tài chính', roles: financeManagers },
   { id: 'settlements', path: '/settlements', label: 'Thanh toán & Đối soát', icon: 'checkCircle', section: 'Kinh doanh & Tài chính', roles: financeManagers },
-  { id: 'reports', path: '/reports', label: 'Trung tâm báo cáo & KPI', icon: 'chart', section: 'Báo cáo', roles: managers },
+  { id: 'reports', path: '/reports', label: 'Trung tâm báo cáo & KPI', icon: 'chart', section: 'Báo cáo', roles: ['DIRECTOR', 'HR_MANAGER'], hiddenFor: ['ADMIN'] },
   { id: 'my-schedules', path: '/my-schedules', label: 'Lịch ca của tôi', icon: 'calendar', section: 'Cá nhân', roles: ['STORE_MANAGER'], hiddenFor: ['DIRECTOR', 'ADMIN'], requiresEmployee: true },
   { id: 'my-attendance', path: '/my-attendance', label: 'Bảng công của tôi', icon: 'clock', section: 'Cá nhân', roles: ['STORE_MANAGER'], hiddenFor: ['DIRECTOR', 'ADMIN'], requiresEmployee: true },
   { id: 'my-activity', path: '/my-activity', label: 'Nhật ký của tôi', icon: 'chart', section: 'Cá nhân', roles: ['STORE_MANAGER'], hiddenFor: ['DIRECTOR', 'ADMIN'], requiresEmployee: true },
@@ -80,10 +80,11 @@ export const NAVIGATION: NavItemConfig[] = [
     ],
   },
   { id: 'my-payroll', path: '/my-payroll', label: 'Lương & Hợp đồng của tôi', icon: 'wallet', section: 'Cá nhân', roles: managers, requiresEmployee: true },
+  { id: 'my-projects', path: '/my-projects', label: 'Dự án của tôi', icon: 'briefcase', section: 'Cá nhân', roles: managers },
   { id: 'my-attendance-staff', path: '/my-attendance', label: 'Bảng công cá nhân', icon: 'clock', section: 'Công việc của tôi', roles: ['EMPLOYEE'], requiresEmployee: true },
   { id: 'my-schedules-staff', path: '/my-schedules', label: 'Lịch ca & Phân công', icon: 'calendar', section: 'Công việc của tôi', roles: ['EMPLOYEE'], requiresEmployee: true },
   { id: 'my-activity-staff', path: '/my-activity', label: 'Nhật ký làm việc', icon: 'chart', section: 'Công việc của tôi', roles: ['EMPLOYEE'], requiresEmployee: true },
-  { id: 'projects-staff', path: '/projects', label: 'Dự án tham gia', icon: 'briefcase', section: 'Công việc của tôi', roles: ['EMPLOYEE'], requiresEmployee: true },
+  { id: 'projects-staff', path: '/my-projects', label: 'Dự án của tôi', icon: 'briefcase', section: 'Công việc của tôi', roles: ['EMPLOYEE'] },
   {
     id: 'my-requests-staff',
     path: '/my-leave',
@@ -101,23 +102,33 @@ export const NAVIGATION: NavItemConfig[] = [
 ]
 export function canAccessNavigation(item: NavItemConfig, user: NavigationUser | null | undefined): boolean {
   if (!user) return false
-  const userRoles = (user.roles || []) as UserRole[]
+  const userRoles = [
+    (user as any)?.role,
+    ...(Array.isArray(user.roles) ? user.roles : []),
+  ].filter((v): v is string => typeof v === 'string').map(v => v.toUpperCase()) as UserRole[]
 
-  // Xác định effectiveRole - DIRECTOR là role cao nhất
+  // Xác định effectiveRole - DIRECTOR là role cao nhất, sau đó đến ADMIN
   const effectiveRole = (['DIRECTOR', 'ADMIN', 'HR_MANAGER', 'STORE_MANAGER', 'EMPLOYEE'] as const)
     .find(role => userRoles.includes(role)) || 'EMPLOYEE'
+
+  // Kiểm tra hiddenFor trước tiên (ví dụ: reports ẩn hoàn toàn với ADMIN)
+  if (item.hiddenFor?.includes(effectiveRole)) return false
+  if (item.hiddenFor?.some(r => userRoles.includes(r))) return false
 
   // Kiểm tra user có vai trò phù hợp với item không
   const hasRoleAccess = item.roles.some(r => userRoles.includes(r))
   if (!hasRoleAccess) return false
 
-  // Kiểm tra hiddenFor
-  if (item.hiddenFor?.includes(effectiveRole)) return false
-
   // DIRECTOR là role cao nhất - xem được tất cả trang quản lý được gán cho DIRECTOR
   if (effectiveRole === 'DIRECTOR') {
     if (item.requiresEmployee && !user.employee_id) return false
     return true
+  }
+
+  // ADMIN là Quản trị viên hệ thống - chỉ xem các trang mà ADMIN được cấp phép trong item.roles
+  if (effectiveRole === 'ADMIN') {
+    if (item.requiresEmployee && !user.employee_id) return false
+    return item.roles.includes('ADMIN')
   }
 
   // STORE_MANAGER cần có store_id cho các trang chi nhánh
@@ -134,12 +145,20 @@ export function navigationForUser(user: NavigationUser | null | undefined): NavI
 }
 export function canAccessPath(path: string, user: NavigationUser | null | undefined): boolean {
   if (!user) return false
-  if (path === '/my-leave' || path === '/my-overtime') {
-    return Boolean(user.employee_id || user.roles?.includes('ADMIN') || user.roles?.includes('DIRECTOR'))
+  const userRoles = [
+    (user as any)?.role,
+    ...(Array.isArray(user.roles) ? user.roles : []),
+  ].filter((v): v is string => typeof v === 'string').map(v => v.toUpperCase()) as UserRole[]
+
+  // Báo cáo & KPI: CHỈ DÀNH RIÊNG CHO GIÁM ĐỐC VÀ HR_MANAGER (ADMIN BỊ CHẶN)
+  if (path === '/reports') {
+    return userRoles.includes('DIRECTOR') || userRoles.includes('HR_MANAGER')
+  }
+  if (path === '/my-leave' || path === '/my-overtime' || path === '/my-projects') {
+    return Boolean(user.employee_id || userRoles.includes('ADMIN') || userRoles.includes('DIRECTOR') || userRoles.includes('HR_MANAGER') || userRoles.includes('STORE_MANAGER') || userRoles.includes('EMPLOYEE'))
   }
   if (path === '/overtime' || path === '/leave') {
-    const roles = user.roles || []
-    return roles.some(r => ['ADMIN', 'DIRECTOR', 'HR_MANAGER', 'STORE_MANAGER'].includes(r))
+    return userRoles.some(r => ['ADMIN', 'DIRECTOR', 'HR_MANAGER', 'STORE_MANAGER'].includes(r))
   }
   return NAVIGATION.some(item => {
     if (!canAccessNavigation(item, user)) return false

@@ -171,7 +171,8 @@ async def require_assigned_shift(db, employee, shift_id):
 
 
 async def perform(kind, req, user, db):
-    employee = await attendances.authorize_employee(db, user, user.get('employee_id'), lock=True)
+    employee_id = attendances.require_self_attendance_target(user)
+    employee = await attendances.authorize_employee(db, user, employee_id, lock=True)
     previous = (await db.execute(text('SELECT check_type, result, verification_status FROM mobile_attendance_proofs WHERE employee_id=:emp AND request_id=:request'),
                                {'emp':employee['employee_id'], 'request':req.request_id})).mappings().first()
     if previous:

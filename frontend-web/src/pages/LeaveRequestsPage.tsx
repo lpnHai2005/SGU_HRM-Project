@@ -7,7 +7,6 @@ import { LEAVE_STATUS_LABELS } from '../constants/navigation'
 import { formatDate } from '../utils/formatters'
 import type { LeaveRequest, LeaveBalance, LeaveType, LeaveRequestCreate, Employee } from '../types'
 import { leaveApi, employeeApi } from '../services/api'
-import { useSearchParams } from 'react-router-dom'
 import './PayslipPrint.css'
 import './LeavePrint.css'
 
@@ -128,7 +127,6 @@ interface LocalProofFile {
 }
 
 export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageProps) {
-  const [searchParams] = useSearchParams()
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([])
   const [leaveBalance, setLeaveBalance] = useState<LeaveBalance | null>(null)
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([])

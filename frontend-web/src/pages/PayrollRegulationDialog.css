@@ -1,13 +1,524 @@
-.payroll-regulation{width:min(840px,calc(100vw - 24px));max-width:840px;padding:0;overflow:hidden}
-.payroll-regulation .modal-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:20px 24px;border-bottom:1px solid var(--border-subtle)}
-.payroll-regulation .modal-header h2{margin:0 0 5px}.payroll-regulation .modal-header p{margin:0;color:var(--text-secondary);font-size:13px}
-.payroll-regulation-body{padding:20px 24px;overflow-y:auto;max-height:65vh}
-.payroll-regulation-scroll{overflow-x:auto;border:1px solid var(--border-default);border-radius:12px}
-.payroll-regulation table{width:100%;min-width:650px;border-collapse:collapse;font-size:13px}
-.payroll-regulation th,.payroll-regulation td{padding:12px;text-align:left;vertical-align:top;border-bottom:1px solid var(--border-subtle);line-height:1.45}
-.payroll-regulation thead{background:var(--surface-subtle)}.payroll-regulation thead th{color:var(--text-secondary);font-size:11px;text-transform:uppercase;letter-spacing:.04em}
-.payroll-regulation tbody th{width:23%;font-weight:700}.payroll-regulation tbody td:last-child{width:23%;color:var(--text-secondary)}
-.payroll-regulation-note{color:var(--text-secondary);font-size:12px;line-height:1.55}
-.payroll-regulation-approval{display:flex;flex-direction:column;gap:7px;margin-top:16px;padding:16px;border:1px dashed var(--border-default);border-radius:12px;background:var(--surface-subtle)}
-.payroll-regulation-approval span{font-size:11px;font-weight:800;letter-spacing:.06em}.payroll-regulation-approval strong{font-size:13px;color:var(--status-warning,#b45309)}.payroll-regulation-approval small{color:var(--text-secondary)}
-@media(max-width:600px){.payroll-regulation .modal-header,.payroll-regulation-body{padding:16px}}
+/* =========================================================================
+   TechZone HRM - Minimalist Payroll Regulation & Policy Dialog
+   Clean, Minimalist, High-Density B2B Interface (Vero Minimalist)
+   Zero Clutter • No Superfluous Icons • Smooth Scrolling Fixed
+   ========================================================================= */
+
+/* Retain backward-compatibility for AttendanceRegulationDialog */
+.payroll-regulation {
+  width: min(840px, calc(100vw - 24px));
+  max-width: 840px;
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+.payroll-regulation .modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--border-default);
+  flex-shrink: 0;
+}
+.payroll-regulation .modal-header h2 { margin: 0 0 4px; font-size: 16px; }
+.payroll-regulation .modal-header p { margin: 0; color: var(--text-secondary); font-size: 12.5px; }
+.payroll-regulation-body {
+  padding: 18px 22px;
+  overflow-y: scroll !important;
+  flex: 1 1 0px !important;
+  min-height: 0 !important;
+  max-height: calc(86vh - 120px);
+}
+.payroll-regulation-scroll { overflow-x: auto; border: 1px solid var(--border-default); border-radius: 6px; }
+.payroll-regulation table { width: 100%; min-width: 650px; border-collapse: collapse; font-size: 13px; }
+.payroll-regulation th, .payroll-regulation td { padding: 10px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border-subtle); line-height: 1.45; }
+.payroll-regulation thead { background: var(--surface-subtle); }
+.payroll-regulation thead th { color: var(--text-secondary); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.payroll-regulation tbody th { width: 23%; font-weight: 600; }
+.payroll-regulation tbody td:last-child { width: 23%; color: var(--text-secondary); }
+.payroll-regulation-note { color: var(--text-secondary); font-size: 12px; line-height: 1.5; margin-top: 12px; }
+.payroll-regulation-approval { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; padding: 14px; border: 1px solid var(--border-default); border-radius: 6px; background: var(--surface-subtle); }
+.payroll-regulation-approval span { font-size: 11px; font-weight: 700; letter-spacing: .05em; }
+.payroll-regulation-approval strong { font-size: 13px; color: var(--text-primary); }
+.payroll-regulation-approval small { color: var(--text-secondary); }
+
+/* =========================================================================
+   Payroll Regulation Dialog Shell (Minimalist)
+   ========================================================================= */
+.prd-modal {
+  width: min(940px, calc(100vw - 32px));
+  max-width: 940px;
+  height: 86vh;
+  max-height: 86vh;
+  min-height: 520px;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid var(--border-default);
+  background: var(--surface-card);
+  box-shadow: var(--shadow-elevation-high, 0 16px 36px -8px rgba(0, 0, 0, 0.45));
+  color: var(--text-primary);
+  position: relative;
+}
+
+/* Header */
+.prd-header {
+  flex-shrink: 0;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-default);
+  background: var(--surface-card);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.prd-header-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+.prd-header-desc {
+  margin: 3px 0 0 0;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+/* Tabs */
+.prd-tabs {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--border-default);
+  background: var(--surface-subtle);
+  padding: 0 16px;
+  gap: 4px;
+}
+
+.prd-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 11px 12px;
+  border: none;
+  background: transparent;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.12s ease;
+}
+
+.prd-tab-btn:hover {
+  color: var(--text-primary);
+}
+
+.prd-tab-btn.active {
+  color: var(--text-primary);
+  font-weight: 600;
+  border-bottom-color: var(--action-primary, #ffffff);
+}
+
+.prd-tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 5px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  border-radius: 4px;
+  background: var(--surface-card);
+  color: var(--text-tertiary);
+  border: 1px solid var(--border-default);
+}
+
+.prd-tab-btn.active .prd-tab-count {
+  color: var(--text-primary);
+  border-color: var(--border-hover, #52525b);
+}
+
+/* Body with Strict Scroll Fix */
+.prd-body,
+.modal-body.prd-body {
+  flex: 1 1 0px !important;
+  min-height: 0 !important;
+  height: 0 !important;
+  overflow-y: scroll !important;
+  overflow-x: hidden !important;
+  overscroll-behavior: contain;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Ensure smooth custom scrollbar */
+.prd-body::-webkit-scrollbar {
+  width: 7px;
+  display: block;
+}
+.prd-body::-webkit-scrollbar-track {
+  background: var(--surface-subtle);
+  border-radius: 4px;
+}
+.prd-body::-webkit-scrollbar-thumb {
+  background: var(--border-hover, #52525b);
+  border-radius: 4px;
+}
+.prd-body::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
+
+/* Minimalist Toolbar */
+.prd-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.prd-search-box {
+  position: relative;
+  width: 260px;
+  min-width: 200px;
+}
+
+.prd-search-icon {
+  position: absolute;
+  left: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+
+.prd-search-input {
+  width: 100%;
+  height: 30px;
+  padding: 0 28px 0 30px;
+  font-size: 12px;
+  border-radius: var(--radius-xs, 4px);
+  border: 1px solid var(--border-default);
+  background: var(--surface-card);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.12s ease;
+}
+
+.prd-search-input:focus {
+  border-color: var(--action-primary, #ffffff);
+}
+
+.prd-search-clear {
+  position: absolute;
+  right: 7px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 2px;
+}
+
+.prd-search-clear:hover {
+  color: var(--text-primary);
+}
+
+.prd-chips {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.prd-chip {
+  padding: 3px 9px;
+  font-size: 11.5px;
+  font-weight: 500;
+  border-radius: var(--radius-xs, 4px);
+  border: 1px solid var(--border-default);
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.12s ease;
+}
+
+.prd-chip:hover {
+  color: var(--text-primary);
+  border-color: var(--border-hover, #52525b);
+}
+
+.prd-chip.active {
+  background: var(--surface-card);
+  color: var(--text-primary);
+  border-color: var(--action-primary, #ffffff);
+  font-weight: 600;
+}
+
+/* Minimal Table */
+.prd-table-card {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs, 4px);
+  background: var(--surface-card);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.prd-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.prd-table th {
+  padding: 9px 12px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  background: var(--surface-subtle);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.prd-table td {
+  padding: 10px 12px;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--border-subtle, #1a1a1d);
+  line-height: 1.4;
+}
+
+.prd-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.prd-table tbody tr:hover td {
+  background-color: var(--surface-subtle);
+}
+
+/* Subtle Neutral Badges */
+.prd-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 3px;
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-default);
+  white-space: nowrap;
+}
+
+/* Monospace Values */
+.prd-mono-val {
+  font-family: var(--font-mono);
+  font-feature-settings: 'tnum' 1;
+  font-weight: 600;
+}
+
+/* Action Cell & Button Group (Exact Match to LeaveRequestsPage) */
+.prd-action-cell {
+  text-align: center;
+}
+
+.prd-action-group {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+/* =========================================================================
+   TAB 3: QUY CHẾ TÍNH LƯƠNG & CÔNG THỨC (Minimalist Technical Doc)
+   ========================================================================= */
+.prd-rule-section {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs, 4px);
+  background: var(--surface-card);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.prd-rule-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.prd-rule-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.prd-rule-formula {
+  font-family: var(--font-mono);
+  font-feature-settings: 'tnum' 1;
+  font-size: 11.5px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-default);
+  border-radius: 3px;
+  padding: 6px 10px;
+  color: var(--text-primary);
+  line-height: 1.45;
+  overflow-x: auto;
+}
+
+.prd-rule-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.prd-rule-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.prd-rule-item .dot {
+  color: var(--text-tertiary);
+  margin-top: 1px;
+}
+
+.prd-rule-item strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* 3-Step Approval Layout */
+.prd-steps-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.prd-step-box {
+  padding: 10px 12px;
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  background: var(--surface-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.prd-step-num {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  letter-spacing: 0.04em;
+}
+
+.prd-step-role {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.prd-step-desc {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+/* Footer */
+.prd-footer {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border-default);
+  padding: 12px 20px;
+  background: var(--surface-card);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.prd-footer-note {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+/* Sub-modal */
+.prd-submodal {
+  max-width: 520px;
+  width: 92%;
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid var(--border-default);
+  background: var(--surface-card);
+}
+
+.prd-submodal .modal-header {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border-default);
+  background: var(--surface-card);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.prd-submodal .modal-body {
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 65vh;
+  overflow-y: auto;
+}
+
+.prd-submodal .modal-footer {
+  padding: 12px 18px;
+  border-top: 1px solid var(--border-default);
+  background: var(--surface-card);
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@media (max-width: 768px) {
+  .prd-modal {
+    width: 96%;
+    height: 90vh;
+  }
+  .prd-steps-row {
+    grid-template-columns: 1fr;
+  }
+  .prd-header, .prd-body, .prd-footer {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+}

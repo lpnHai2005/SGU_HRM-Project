@@ -7,7 +7,7 @@ from app.core.config import settings
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
     Kiểm tra mật khẩu văn bản thô với chuỗi bcrypt hash.
-    Hỗ trợ chuẩn hóa định dạng $2a$ sang $2b$ và fallback an toàn cho mật khẩu test 123456.
+    Hỗ trợ chuẩn hóa định dạng $2a$ sang $2b$; lỗi xác minh luôn bị từ chối.
     """
     try:
         if not hashed_password or not plain_password:
@@ -22,8 +22,8 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         # Trường hợp plain password so sánh trực tiếp trong môi trường dev
         return plain_password == hashed_password
     except Exception:
-        # Fallback an toàn cho test accounts
-        return plain_password == "123456"
+        # Fail closed: lỗi định dạng/hash/runtime không được bỏ qua xác minh.
+        return False
 
 def get_password_hash(password: str) -> str:
     """Tạo chuỗi bcrypt hash bảo mật"""

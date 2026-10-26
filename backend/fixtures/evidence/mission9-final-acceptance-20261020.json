@@ -1,0 +1,134 @@
+{
+  "checkpoint": "MISSION9-FINAL-20261020",
+  "environment": {
+    "postgres_version": "17.11",
+    "loopback": true,
+    "port": 5432,
+    "default_backend_database": "mission9_synthetic",
+    "default_database_checks": "READ_ONLY",
+    "acceptance_fixture_database": "ot_cutover02_m9_final_e2e",
+    "acceptance_fixture_marker": "TECHZONE_MISSION9_SYNTHETIC_FIXTURE_20261020",
+    "policy": "DISABLED",
+    "supabase_cloud": "NOT_CONNECTED",
+    "cutoff_date": "NOT_SET"
+  },
+  "checks": [
+    {
+      "name": "payroll_read_routes_on_schema_only_synthetic",
+      "status": "PASS_LOCAL",
+      "result": "list/detail/annual aliases HTTP 200; transaction read only"
+    },
+    {
+      "name": "overtime_reconciliation_postgres_clean_fixture",
+      "status": "PASS_LOCAL",
+      "passed": 36,
+      "failed": 0,
+      "errors": 0,
+      "fixture_database_created_and_removed": "ot_cutover02_m9_final_acceptance"
+    },
+    {
+      "name": "attendance_api_no_proxy",
+      "status": "PASS_LOCAL",
+      "passed_groups": 7,
+      "rollback_verified": true
+    },
+    {
+      "name": "overtime_workflow_api",
+      "status": "PASS_LOCAL",
+      "passed_groups": 5,
+      "roles": [
+        "EMPLOYEE",
+        "STORE_MANAGER",
+        "HR_MANAGER",
+        "ADMIN",
+        "OUTSIDER",
+        "SECOND_HR"
+      ]
+    },
+    {
+      "name": "overtime_browser_workflow",
+      "status": "PASS_LOCAL",
+      "scenarios": [
+        "self-registration",
+        "HR approval",
+        "reconciliation verified",
+        "manager proposal",
+        "notification/deep link",
+        "employee confirmation",
+        "reject",
+        "decline",
+        "revoke approve",
+        "revoke reject",
+        "amend"
+      ]
+    },
+    {
+      "name": "overtime_reconciliation_browser_ui",
+      "status": "PASS_LOCAL",
+      "widths_px": [
+        1280,
+        768,
+        360
+      ],
+      "scenarios": [
+        "HR preview/verify/reject",
+        "missing Attendance",
+        "stale source",
+        "Employee/Manager RBAC",
+        "Admin 409 refresh"
+      ]
+    },
+    {
+      "name": "frontend_build",
+      "status": "PASS_LOCAL",
+      "warnings": [
+        "large chunks",
+        "ineffective dynamic import"
+      ]
+    },
+    {
+      "name": "frontend_lint",
+      "status": "PASS_LOCAL",
+      "exit_code": 0,
+      "warnings_present": true
+    },
+    {
+      "name": "python_compile",
+      "status": "PASS_LOCAL"
+    },
+    {
+      "name": "installed_payroll_procedure_source",
+      "status": "LEGACY_SOURCE_CONFIRMED",
+      "sha256": "c4b02a2a3cf126f92c5418286bd6e5b6d43583eb02b25cc0255cfc3ba12a5d28",
+      "uses_legacy_approvals": true,
+      "uses_verified_view": false
+    },
+    {
+      "name": "default_local_ot_exception_schema",
+      "status": "PARTIAL_LOCAL",
+      "present": ["overtime_reconciliations", "overtime_reconciliation_events", "v_overtime_verified_current", "ot_reconciliation_request_eligible(bigint)", "ot_reconciliation_source_signature(bigint)"],
+      "missing": ["overtime_reconciliation_cases", "overtime_reconciliation_case_events"],
+      "migration_tracker": "NOT_FOUND"
+    },
+    {
+      "name": "fresh_fixture_migrations",
+      "status": "PASS_LOCAL_ONLY",
+      "order": ["20261017", "20261018", "20261019", "20261020", "20261021", "20261022", "20261023"],
+      "fixture_database_removed_after_test": true
+    },
+    {
+      "name": "out_of_scope_reports_endpoint",
+      "status": "NOT_TESTED",
+      "note": "reports.py still references total_* names absent from the inspected payrolls schema; not changed in this OT/Payroll read-page task."
+    },
+    {
+      "name": "cloud_schema_and_acl",
+      "status": "NOT_TESTED"
+    },
+    {
+      "name": "payroll_live_verified_only_cutover",
+      "status": "BLOCKED_APPROVAL"
+    }
+  ],
+  "note": "An initial reconciliation suite on a previously used fixture had date-collision failures; it was rerun on a fresh marked synthetic fixture and passed 36/36. Transaction-based test writes rolled back; the fresh fixture database was dropped after marker/owner/session verification. Browser E2E inserted additional synthetic records into the pre-existing marked ot_cutover02_m9_final_e2e fixture; those records remain and that database was not reset or dropped."
+}

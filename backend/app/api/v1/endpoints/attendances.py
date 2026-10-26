@@ -42,6 +42,16 @@ async def require_store_web_network(db: AsyncSession, store_id: int, client_host
         raise HTTPException(403, 'IP kết nối không thuộc danh sách được phép chấm công web tại cửa hàng.')
 
 
+def require_self_attendance_target(user, requested_employee_id=None):
+    """Write endpoints are self-only; keep authorize_employee broad for scoped reads."""
+    employee_id = user.get("employee_id")
+    if not isinstance(employee_id, int) or isinstance(employee_id, bool) or employee_id <= 0:
+        raise HTTPException(403, "Tài khoản chưa được liên kết hồ sơ nhân viên.")
+    if requested_employee_id is not None and requested_employee_id != employee_id:
+        raise HTTPException(403, "Chỉ được tự chấm công cho tài khoản của bạn.")
+    return employee_id
+
+
 async def authorize_employee(db, user, employee_id, lock=False):
     if not employee_id:
         raise HTTPException(400, "Tài khoản chưa liên kết hồ sơ nhân viên.")
@@ -472,7 +482,9 @@ async def get_my_attendance_history(
 @router.post("/check-in", status_code=201, summary="Mở lượt chấm công mới")
 async def check_in(req: CheckInRequest, current_user: dict = Depends(get_current_user),
                    db: AsyncSession = Depends(get_db), request: Request = None):
-    emp_id = req.employee_id or current_user.get("employee_id")
+    # The trusted user-to-employee mapping comes from get_current_user; a client
+    # employee_id may only confirm the same identity, never select another target.
+    emp_id = require_self_attendance_target(current_user, req.employee_id)
     employee = await authorize_employee(db, current_user, emp_id, lock=True)
     # Employee row lock serializes all check-in/check-out requests, including first entry.
     now = local_now()
@@ -522,20 +534,26 @@ async def check_in(req: CheckInRequest, current_user: dict = Depends(get_current
 @router.post("/check-out", summary="Đóng lượt chấm công đang mở")
 async def check_out(req: CheckOutRequest, current_user: dict = Depends(get_current_user),
                     db: AsyncSession = Depends(get_db), request: Request = None):
-    emp_id = current_user.get("employee_id")
+    emp_id = require_self_attendance_target(current_user)
     if req.attendance_id:
         owner = (await db.execute(text("SELECT employee_id FROM attendances WHERE attendance_id = :id"),
                                  {"id": req.attendance_id})).mappings().first()
         if not owner:
             raise HTTPException(404, "Không tìm thấy lượt chấm công.")
-        emp_id = owner["employee_id"]
+        if owner["employee_id"] != emp_id:
+            raise HTTPException(403, "Không được check-out lượt chấm công của nhân viên khác.")
     await authorize_employee(db, current_user, emp_id, lock=True)
-    condition = "a.attendance_id = :id" if req.attendance_id else "a.employee_id = :id AND a.check_in_time IS NOT NULL AND a.check_out_time IS NULL"
+    if req.attendance_id:
+        condition = "a.attendance_id = :id AND a.employee_id = :owner_employee_id"
+        params = {"id": req.attendance_id, "owner_employee_id": emp_id}
+    else:
+        condition = "a.employee_id = :id AND a.check_in_time IS NOT NULL AND a.check_out_time IS NULL"
+        params = {"id": emp_id}
     att = (await db.execute(text("""
         SELECT a.*, ws.start_time, ws.end_time, ws.work_hours
         FROM attendances a JOIN work_shifts ws ON ws.shift_id = a.shift_id
         WHERE """ + condition + " ORDER BY a.attendance_id DESC LIMIT 1 FOR UPDATE OF a"),
-        {"id": req.attendance_id or emp_id})).mappings().first()
+        params)).mappings().first()
     if not att:
         raise HTTPException(404, "Không có lượt đang mở để check-out.")
     if request is not None:

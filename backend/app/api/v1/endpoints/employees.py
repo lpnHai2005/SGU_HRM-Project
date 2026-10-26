@@ -258,6 +258,7 @@ async def update_employee(
     # 2. Tạo phụ lục hợp đồng - Sắp triển khai
     # Không tự động cập nhật basic_salary của hợp đồng ACTIVE trực tiếp
     # để đảm bảo tính lịch sử của hợp đồng lao động.
+    data.pop("basic_salary", None)
 
     for k, v in data.items():
         if k in ["employee_id", "full_name"]:
@@ -374,4 +375,3 @@ async def promote_employee(
 
     await db.commit()
     return {"message": "Thăng chức và điều chuyển nhân sự thành công!", "new_position_id": new_position_id}
-

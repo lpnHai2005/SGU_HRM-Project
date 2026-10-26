@@ -195,7 +195,7 @@ export function OvertimeApprovalsPanel({ user, requestId }: Props) {
 
   const closeDetail = () => {
     setSelected(null)
-    if (requestId) navigate('/leave?tab=overtime', { replace: true })
+    if (requestId) navigate(isEmployee ? '/my-overtime' : '/overtime', { replace: true })
   }
 
   const runAction = async (action: () => Promise<OvertimeRequest>, success: string) => {

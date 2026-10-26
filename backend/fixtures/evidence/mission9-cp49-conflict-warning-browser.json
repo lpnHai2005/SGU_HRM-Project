@@ -1,0 +1,76 @@
+{
+  "generated_at": "2026-10-20T11:33:07.642Z",
+  "environment": "local Vite + real Chrome; all /api responses synthetic/intercepted; no database connection",
+  "browser": "Google Chrome headless via Playwright Core",
+  "base_url": "http://127.0.0.1:3176",
+  "tests_run": 13,
+  "pass": 13,
+  "fail": 0,
+  "results": [
+    {
+      "case": "conflicts_schedule_duplicate_leave",
+      "result": "PASS",
+      "viewport": 1440
+    },
+    {
+      "case": "complete_check_no_conflicts",
+      "result": "PASS",
+      "viewport": 1440
+    },
+    {
+      "case": "missing_check_context_fails_closed",
+      "result": "PASS",
+      "viewport": 1440
+    },
+    {
+      "case": "partial_check_context_fails_closed_without_crash",
+      "result": "PASS",
+      "viewport": 1440
+    },
+    {
+      "case": "changed_ot_time_refetches_conflict_context",
+      "result": "PASS",
+      "viewport": 1440
+    },
+    {
+      "case": "responsive_conflict",
+      "result": "PASS",
+      "viewport": 1440
+    },
+    {
+      "case": "responsive_missing_context",
+      "result": "PASS",
+      "viewport": 1440
+    },
+    {
+      "case": "responsive_conflict",
+      "result": "PASS",
+      "viewport": 1024
+    },
+    {
+      "case": "responsive_missing_context",
+      "result": "PASS",
+      "viewport": 1024
+    },
+    {
+      "case": "responsive_conflict",
+      "result": "PASS",
+      "viewport": 768
+    },
+    {
+      "case": "responsive_missing_context",
+      "result": "PASS",
+      "viewport": 768
+    },
+    {
+      "case": "responsive_conflict",
+      "result": "PASS",
+      "viewport": 360
+    },
+    {
+      "case": "responsive_missing_context",
+      "result": "PASS",
+      "viewport": 360
+    }
+  ]
+}
