@@ -1,3 +1,5 @@
+from uuid import UUID
+from typing import Literal
 from datetime import datetime, date
 from typing import Optional, List, Dict, Any, Union
 from pydantic import BaseModel, Field, ConfigDict, field_validator
@@ -894,8 +896,28 @@ class ProjectOut(BaseModel):
 # 10. AI CHATBOT SCHEMAS
 # ===================================================================================
 
+class CreateLeaveProposalPayload(BaseModel):
+    leave_type_id: int
+    leave_type_code: str
+    leave_type_name: str
+    start_date: str
+    end_date: str
+    total_days: float
+    reason: str = Field(..., max_length=500)
+    requires_attachment: bool = False
+    attachment_url: Optional[str] = Field(None, max_length=1000)
+
+
+class CancelLeaveProposalPayload(BaseModel):
+    request_id: Optional[int] = None
+    request_ids: Optional[List[int]] = None
+    cancel_all: bool = False
+    reason: Optional[str] = Field(None, max_length=500)
+
+
 class ActionProposal(BaseModel):
-    action_type: str  # "create_leave_request" | "cancel_leave_request"
+    proposal_id: Optional[UUID] = None
+    action_type: Literal["create_leave_request", "cancel_leave_request"]
     title: str
     description: str
     payload: Dict[str, Any]
@@ -904,18 +926,32 @@ class ActionProposal(BaseModel):
 
 
 class AIChatbotQuery(BaseModel):
-    query: str
+    query: str = Field(..., min_length=1, max_length=1000, description="Nội dung câu hỏi của người dùng")
     user_context: Optional[Dict[str, Any]] = None
     conversation_history: Optional[List[Dict[str, str]]] = Field(default_factory=list)
-    thread_id: Optional[str] = None
+    thread_id: Optional[str] = Field(None, max_length=100, pattern=r"^[a-zA-Z0-9_\-\.:]+$", description="Mã phiên hội thoại")
 
 
 class AIChatbotConfirmActionRequest(BaseModel):
-    action_type: str
-    payload: Dict[str, Any]
-    confirmed: bool = True
-    attachment_url: Optional[str] = None
-    thread_id: Optional[str] = None
+    proposal_id: Optional[UUID] = Field(None, description="Mã định danh đề xuất hành động HITL")
+    action_type: Literal["create_leave_request", "cancel_leave_request"]
+    payload: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    confirmed: bool  # Bắt buộc, không có giá trị mặc định
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    reason: Optional[str] = Field(None, max_length=500)
+    attachment_url: Optional[str] = Field(None, max_length=1000)
+    thread_id: Optional[str] = Field(None, max_length=100, pattern=r"^[a-zA-Z0-9_\-\.:]+$")
+
+    @field_validator("attachment_url")
+    @classmethod
+    def validate_attachment_url(cls, v: Optional[str]) -> Optional[str]:
+        if not v:
+            return None
+        v_strip = v.strip()
+        if not v_strip.startswith("https://"):
+            raise ValueError("Đường dẫn minh chứng (attachment_url) bắt buộc phải sử dụng giao thức HTTPS an toàn (bắt đầu bằng https://)")
+        return v_strip
 
 
 class AIChatbotResponse(BaseModel):

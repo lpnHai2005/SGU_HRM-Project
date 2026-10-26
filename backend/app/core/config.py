@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     LANGSMITH_ENDPOINT: str = ""
     LANGCHAIN_TRACING_V2: str = "true"
     LANGSMITH_TRACING: str = "true"
+    LANGSMITH_HIDE_SENSITIVE_DATA: bool = True
+    AI_CHATBOT_RATE_LIMIT_PER_MINUTE: int = 20
+    REDIS_URL: Optional[str] = None
+    AI_CHATBOT_CACHE_ENABLED: bool = True
+    AI_CHATBOT_CACHE_TTL_SECONDS: int = 3600
 
     @model_validator(mode="after")
     def sync_langsmith_tracing(self):

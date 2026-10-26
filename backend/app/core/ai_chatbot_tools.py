@@ -4,6 +4,7 @@ Cung cấp 26 tools chuyên sâu với cơ chế RBAC Scope Checking và HITL Ac
 Tuyệt đối bảo vệ dữ liệu: Nhân viên chỉ xem dữ liệu cá nhân; CHT chỉ xem chi nhánh phụ trách.
 """
 
+import re
 from datetime import date, datetime
 from typing import Dict, Any, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,7 +12,7 @@ from sqlalchemy import text
 
 
 # ===================================================================================
-# RBAC SCOPE HELPERS
+# RBAC SCOPE HELPERS (1B.5)
 # ===================================================================================
 
 def check_permission(current_user: dict, allowed_roles: List[str]) -> bool:
@@ -31,6 +32,45 @@ def is_store_manager(current_user: dict) -> bool:
 
 def is_accountant(current_user: dict) -> bool:
     return check_permission(current_user, ["ADMIN", "ACCOUNTANT", "HR_MANAGER"])
+
+
+def assert_can_access_employee(
+    current_user: dict,
+    target_employee_id: Optional[int],
+    target_store_id: Optional[int]
+) -> Optional[str]:
+    """
+    Kiểm tra quyền truy cập thông tin nhân viên tập trung (1B.5).
+    Trả về None nếu hợp lệ, trả về chuỗi thông báo lỗi (str) nếu bị từ chối.
+    Fail-closed: Tránh tuyệt đối so sánh None == None.
+    """
+    if is_hr_or_admin(current_user):
+        return None
+
+    curr_emp_id = current_user.get("employee_id")
+    curr_store_id = current_user.get("store_id")
+
+    if is_store_manager(current_user):
+        if curr_store_id is not None and target_store_id is not None and int(curr_store_id) == int(target_store_id):
+            return None
+        if curr_emp_id is not None and target_employee_id is not None and int(curr_emp_id) == int(target_employee_id):
+            return None
+        return "Truy cập bị từ chối: Cửa hàng trưởng chỉ được xem dữ liệu nhân sự thuộc chi nhánh quản lý."
+
+    if curr_emp_id is not None and target_employee_id is not None and int(curr_emp_id) == int(target_employee_id):
+        return None
+
+    return "Truy cập bị từ chối: Bạn chỉ có quyền truy cập dữ liệu của chính mình."
+
+
+def mask_middle(val: Optional[str], visible_start: int = 2, visible_end: int = 4) -> Optional[str]:
+    """Che các ký tự ở giữa chuỗi để bảo vệ PII (1B.10)."""
+    if not val:
+        return val
+    s = str(val).strip()
+    if len(s) <= visible_start + visible_end:
+        return "****" + s[-visible_end:] if len(s) >= visible_end else "****"
+    return s[:visible_start] + "*" * (len(s) - visible_start - visible_end) + s[-visible_end:]
 
 
 # ===================================================================================
@@ -55,7 +95,27 @@ async def get_my_profile(args: Dict[str, Any], current_user: dict, db: AsyncSess
     """)
     res = await db.execute(query, {"emp_id": emp_id})
     row = res.mappings().first()
-    return dict(row) if row else {"error": "Không tìm thấy hồ sơ nhân viên."}
+    if not row:
+        return {"error": "Không tìm thấy hồ sơ nhân viên."}
+    profile = dict(row)
+
+    # Bảo vệ dữ liệu nhạy cảm PII (1B.10): Chỉ hiển thị khi user hỏi trực tiếp và che bớt số ở giữa
+    q_lower = str(args.get("query", "")).lower()
+    has_pii_inquiry = bool(re.search(r"\b(số tài khoản|stk|ngân hàng|bank|mã số thuế|mst|mã bhxh|số bhxh|bảo hiểm xã hội)\b", q_lower))
+    if not has_pii_inquiry:
+        profile.pop("bank_account_number", None)
+        profile.pop("bank_name", None)
+        profile.pop("tax_code", None)
+        profile.pop("insurance_code", None)
+    else:
+        if profile.get("bank_account_number"):
+            profile["bank_account_number"] = mask_middle(profile["bank_account_number"], 2, 4)
+        if profile.get("tax_code"):
+            profile["tax_code"] = mask_middle(profile["tax_code"], 2, 3)
+        if profile.get("insurance_code"):
+            profile["insurance_code"] = mask_middle(profile["insurance_code"], 2, 3)
+
+    return profile
 
 
 async def get_employee_profile(args: Dict[str, Any], current_user: dict, db: AsyncSession) -> Dict[str, Any]:
@@ -79,13 +139,10 @@ async def get_employee_profile(args: Dict[str, Any], current_user: dict, db: Asy
     if not row:
         return {"error": f"Không tìm thấy nhân viên với mã/ID '{emp_ident}'."}
 
-    # RBAC check
-    if not is_hr_or_admin(current_user):
-        if is_store_manager(current_user):
-            if row["store_id"] != current_user.get("store_id"):
-                return {"error": "Truy cập bị từ chối: Cửa hàng trưởng chỉ được xem thông tin nhân sự thuộc cửa hàng phụ trách."}
-        elif row["employee_id"] != current_user.get("employee_id"):
-            return {"error": "Truy cập bị từ chối: Bạn chỉ có quyền xem thông tin hồ sơ của chính mình."}
+    # RBAC check (1B.5)
+    err = assert_can_access_employee(current_user, row["employee_id"], row["store_id"])
+    if err:
+        return {"error": err}
 
     return dict(row)
 
@@ -96,7 +153,10 @@ async def search_employees(args: Dict[str, Any], current_user: dict, db: AsyncSe
 
     if not is_hr_or_admin(current_user):
         if is_store_manager(current_user):
-            store_id = current_user.get("store_id")  # Scope lock
+            user_store_id = current_user.get("store_id")
+            if not user_store_id:
+                return {"error": "Truy cập bị từ chối: Tài khoản Cửa hàng trưởng chưa được cấu hình chi nhánh quản lý (store_id is None)."}
+            store_id = user_store_id  # Scope lock
         else:
             return {"error": "Truy cập bị từ chối: Nhân viên thông thường không có quyền tìm kiếm danh sách nhân sự."}
 
@@ -126,12 +186,20 @@ async def search_employees(args: Dict[str, Any], current_user: dict, db: AsyncSe
 
 async def get_employee_contract(args: Dict[str, Any], current_user: dict, db: AsyncSession) -> Dict[str, Any]:
     emp_ident = args.get("employee_id") or args.get("employee_code") or current_user.get("employee_id")
+    if not emp_ident:
+        return {"error": "Tài khoản của bạn chưa được liên kết với hồ sơ nhân viên để tra cứu hợp đồng."}
+
     query = text("""
         SELECT c.contract_id, c.contract_number, c.contract_type, c.start_date, c.end_date,
                c.basic_salary, c.insurance_salary, c.working_hours_per_week, c.status,
-               e.employee_id, e.employee_code, e.full_name, e.store_id
+               c.signed_date, c.salary_percentage,
+               e.employee_id, e.employee_code, e.full_name, e.store_id,
+               pos.position_name, d.department_name, s.store_name
         FROM contracts c
         JOIN employees e ON c.employee_id = e.employee_id
+        LEFT JOIN positions pos ON e.position_id = pos.position_id
+        LEFT JOIN departments d ON e.department_id = d.department_id
+        LEFT JOIN stores s ON e.store_id = s.store_id
         WHERE (e.employee_id::text = :ident OR LOWER(e.employee_code) = LOWER(:ident))
         ORDER BY c.created_at DESC
         LIMIT 1
@@ -139,17 +207,44 @@ async def get_employee_contract(args: Dict[str, Any], current_user: dict, db: As
     res = await db.execute(query, {"ident": str(emp_ident).strip()})
     row = res.mappings().first()
     if not row:
-        return {"error": "Không tìm thấy hợp đồng lao động."}
+        return {"error": "Không tìm thấy hợp đồng lao động trên hệ thống."}
 
-    # RBAC check
-    if not is_hr_or_admin(current_user):
-        if is_store_manager(current_user):
-            if row["store_id"] != current_user.get("store_id"):
-                return {"error": "Truy cập bị từ chối: Cửa hàng trưởng chỉ được xem hợp đồng nhân sự chi nhánh mình."}
-        elif row["employee_id"] != current_user.get("employee_id"):
-            return {"error": "Truy cập bị từ chối: Bạn chỉ có thể xem hợp đồng của chính mình."}
+    # RBAC check (1B.5)
+    err = assert_can_access_employee(current_user, row["employee_id"], row["store_id"])
+    if err:
+        return {"error": err}
 
-    return dict(row)
+    data = dict(row)
+
+    contract_type_map = {
+        "INDEFINITE": "Không xác định thời hạn",
+        "FIXED_1_YEAR": "Xác định thời hạn 1 năm",
+        "FIXED_2_YEAR": "Xác định thời hạn 2 năm",
+        "FIXED_3_YEAR": "Xác định thời hạn 3 năm",
+        "PROBATION": "Thử việc",
+        "SEASONAL": "Thời vụ / Theo mùa"
+    }
+    status_map = {
+        "ACTIVE": "Đang có hiệu lực",
+        "EXPIRED": "Đã hết hạn",
+        "TERMINATED": "Đã chấm dứt"
+    }
+
+    basic_sal = float(data.get("basic_salary") or 0)
+    ins_sal = float(data.get("insurance_salary") or 0)
+
+    data["contract_type_label"] = contract_type_map.get(data.get("contract_type"), data.get("contract_type"))
+    data["status_label"] = status_map.get(data.get("status"), data.get("status"))
+    data["basic_salary_formatted"] = f"{basic_sal:,.0f} VNĐ"
+    data["insurance_salary_formatted"] = f"{ins_sal:,.0f} VNĐ"
+    if data.get("start_date"):
+        data["start_date_str"] = data["start_date"].strftime("%d/%m/%Y")
+    if data.get("end_date"):
+        data["end_date_str"] = data["end_date"].strftime("%d/%m/%Y")
+    else:
+        data["end_date_str"] = "Không thời hạn"
+
+    return data
 
 
 # ===================================================================================
@@ -199,18 +294,15 @@ async def get_employee_attendance(args: Dict[str, Any], current_user: dict, db: 
     if not emp_ident:
         return {"error": "Vui lòng cung cấp mã hoặc ID nhân viên."}
 
-    # Verify target & RBAC
+    # Verify target & RBAC (1B.5)
     emp_res = await db.execute(text("SELECT employee_id, full_name, store_id FROM employees WHERE employee_id::text = :ident OR LOWER(employee_code) = LOWER(:ident)"), {"ident": str(emp_ident).strip()})
     emp = emp_res.mappings().first()
     if not emp:
         return {"error": "Không tìm thấy nhân viên."}
 
-    if not is_hr_or_admin(current_user):
-        if is_store_manager(current_user):
-            if emp["store_id"] != current_user.get("store_id"):
-                return {"error": "Truy cập bị từ chối: Không được xem chấm công nhân sự chi nhánh khác."}
-        elif emp["employee_id"] != current_user.get("employee_id"):
-            return {"error": "Truy cập bị từ chối."}
+    err = assert_can_access_employee(current_user, emp["employee_id"], emp["store_id"])
+    if err:
+        return {"error": err}
 
     today = date.today()
     month = int(args.get("month", today.month))
@@ -263,12 +355,10 @@ async def get_employee_work_schedule(args: Dict[str, Any], current_user: dict, d
     if not emp:
         return {"error": "Không tìm thấy nhân viên."}
 
-    if not is_hr_or_admin(current_user):
-        if is_store_manager(current_user):
-            if emp["store_id"] != current_user.get("store_id"):
-                return {"error": "Truy cập bị từ chối."}
-        elif emp["employee_id"] != current_user.get("employee_id"):
-            return {"error": "Truy cập bị từ chối."}
+    # RBAC check (1B.5)
+    err = assert_can_access_employee(current_user, emp["employee_id"], emp["store_id"])
+    if err:
+        return {"error": err}
 
     query = text("""
         SELECT ws.work_date, sh.shift_name, sh.start_time, sh.end_time, s.store_name, ws.notes
@@ -373,65 +463,52 @@ async def get_leave_request_detail(args: Dict[str, Any], current_user: dict, db:
     if not row:
         return {"error": f"Không tìm thấy đơn nghỉ phép #{req_id}."}
 
-    # RBAC check
-    if not is_hr_or_admin(current_user):
-        if is_store_manager(current_user):
-            if row["store_id"] != current_user.get("store_id") and row["employee_id"] != current_user.get("employee_id"):
-                return {"error": "Truy cập bị từ chối."}
-        elif row["employee_id"] != current_user.get("employee_id"):
-            return {"error": "Truy cập bị từ chối."}
+    # RBAC check (1B.5)
+    err = assert_can_access_employee(current_user, row["employee_id"], row["store_id"])
+    if err:
+        return {"error": err}
 
     return dict(row)
 
 
-async def create_leave_request(args: Dict[str, Any], current_user: dict, db: AsyncSession) -> Dict[str, Any]:
+async def validate_leave_request(
+    db: AsyncSession,
+    current_user: dict,
+    leave_type_code_or_id: Any,
+    start_d: date,
+    end_d: date,
+    reason: str,
+    attachment_url: Optional[str] = None
+) -> Dict[str, Any]:
     """
-    HITL Tool: KHÔNG ghi trực tiếp vào CSDL!
-    Xác thực toàn diện các ràng buộc (trạng thái nhân viên, số dư, trùng lịch, hạn mức, minh chứng)
-    và trả về Action Proposal để user xác nhận trên UI.
+    Hàm xác thực nghiệp vụ thống nhất cho đơn xin nghỉ phép (2.7 Unified Leave Validation Service).
+    Dùng chung giữa tool create_leave_request và endpoint confirm_chatbot_action.
     """
     emp_id = current_user.get("employee_id")
     if not emp_id:
-        return {"error": "Tài khoản chưa được liên kết với hồ sơ nhân viên để tạo đơn."}
+        return {"valid": False, "error": "Tài khoản chưa được liên kết với hồ sơ nhân viên.", "status_code": 400}
 
-    # 1. Kiểm tra trạng thái làm việc của nhân viên
+    # 1. Trạng thái nhân viên
     emp_res = await db.execute(text("SELECT employee_id, full_name, store_id, employment_status FROM employees WHERE employee_id = :id"), {"id": emp_id})
     emp_row = emp_res.mappings().first()
     if not emp_row:
-        return {"error": "Không tìm thấy hồ sơ nhân viên trong hệ thống."}
+        return {"valid": False, "error": "Không tìm thấy hồ sơ nhân viên trong hệ thống.", "status_code": 404}
     if emp_row.get("employment_status") in ["RESIGNED", "TERMINATED"]:
-        return {"error": f"Nhân viên {emp_row['full_name']} đã thôi việc/nghỉ việc, không thể tạo đơn nghỉ phép."}
+        return {"valid": False, "error": f"Nhân viên {emp_row['full_name']} đã thôi việc/nghỉ việc, không thể tạo đơn nghỉ phép.", "status_code": 400}
 
-    leave_type_code = str(args.get("leave_type_code", "PHEP_NAM")).upper().strip()
-    start_date_str = args.get("start_date")
-    end_date_str = args.get("end_date")
-    reason = args.get("reason", "").strip()
-
-    if not start_date_str or not end_date_str:
-        return {"error": "Vui lòng cung cấp ngày bắt đầu (start_date) và kết thúc (end_date) định dạng YYYY-MM-DD."}
-
-    try:
-        start_d = datetime.strptime(start_date_str, "%Y-%m-%d").date()
-        end_d = datetime.strptime(end_date_str, "%Y-%m-%d").date()
-    except Exception:
-        return {"error": "Định dạng ngày không hợp lệ. Vui lòng nhập định dạng YYYY-MM-DD."}
-
+    # 2. Ngày bắt đầu và kết thúc
     if start_d > end_d:
-        return {"error": "Ngày bắt đầu nghỉ không được lớn hơn ngày kết thúc."}
+        return {"valid": False, "error": "Ngày bắt đầu nghỉ không được lớn hơn ngày kết thúc.", "status_code": 400}
 
-    # Không cho tạo đơn ngày trong quá khứ
     today = date.today()
     if start_d < today:
-        return {
-            "error": f"Không thể tạo đơn nghỉ phép cho ngày trong quá khứ (trước ngày {today.strftime('%d/%m/%Y')}). Vui lòng chọn ngày bắt đầu từ hôm nay trở đi."
-        }
+        return {"valid": False, "error": f"Không thể tạo đơn nghỉ phép cho ngày trong quá khứ (trước ngày {today.strftime('%d/%m/%Y')}).", "status_code": 400}
 
-    # Tính số ngày nghỉ (ước lượng sơ bộ, tính cả ngày bắt đầu và kết thúc)
     total_days = float((end_d - start_d).days + 1)
     if total_days <= 0:
-        return {"error": "Số ngày xin nghỉ phải lớn hơn 0."}
+        return {"valid": False, "error": "Số ngày xin nghỉ phải lớn hơn 0.", "status_code": 400}
 
-    # 2. Kiểm tra trùng lặp thời gian với các đơn đã nộp (PENDING, STORE_APPROVED, HR_APPROVED)
+    # 3. Trùng lặp thời gian
     overlap_res = await db.execute(text("""
         SELECT request_id, start_date, end_date, status
         FROM leave_requests
@@ -449,18 +526,38 @@ async def create_leave_request(args: Dict[str, Any], current_user: dict, db: Asy
         s_str = overlap['start_date'].strftime('%d/%m/%Y') if hasattr(overlap['start_date'], 'strftime') else str(overlap['start_date'])
         e_str = overlap['end_date'].strftime('%d/%m/%Y') if hasattr(overlap['end_date'], 'strftime') else str(overlap['end_date'])
         return {
-            "error": f"Bạn đã có đơn nghỉ phép (Mã #{overlap['request_id']}) trong khoảng thời gian {s_str} đến {e_str} đang chờ duyệt hoặc đã được phê duyệt. Hệ thống không cho phép tạo đơn trùng lịch."
+            "valid": False,
+            "error": f"Bạn đã có đơn nghỉ phép (Mã #{overlap['request_id']}) trong khoảng thời gian {s_str} đến {e_str} đang chờ duyệt hoặc đã được phê duyệt.",
+            "status_code": 400
         }
 
-    # 3. Check leave type
-    type_res = await db.execute(text("SELECT leave_type_id, type_code, type_name, max_days_allowed, requires_attachment FROM leave_types WHERE type_code = :tc"), {"tc": leave_type_code})
+    # 4. Kiểm tra loại phép
+    type_res = await db.execute(text("""
+        SELECT leave_type_id, type_code, type_name, max_days_allowed, requires_attachment
+        FROM leave_types
+        WHERE type_code = :tc OR leave_type_id::text = :tc
+    """), {"tc": str(leave_type_code_or_id).strip()})
     lt = type_res.mappings().first()
     if not lt:
-        return {"error": f"Loại phép '{leave_type_code}' không hợp lệ. Các loại hỗ trợ: PHEP_NAM, NGHI_OM, THAI_SAN, VIEC_RIENG, KHONG_LUONG, THOI_VIEC."}
+        return {
+            "valid": False,
+            "error": f"Loại phép '{leave_type_code_or_id}' không hợp lệ. Các loại hỗ trợ: PHEP_NAM, NGHI_OM, THAI_SAN, VIEC_RIENG, KHONG_LUONG, THOI_VIEC.",
+            "status_code": 400
+        }
 
-    # 4. Kiểm tra số dư phép khả dụng nếu là PHEP_NAM hoặc hạn mức tối đa của loại phép
+    # 5. Yêu cầu minh chứng (nếu có attachment_url truyền vào)
+    requires_att = bool(lt["requires_attachment"])
+    if requires_att and attachment_url is not None:
+        if not attachment_url or not str(attachment_url).strip().startswith("https://"):
+            return {
+                "valid": False,
+                "error": f"Loại đơn '{lt['type_name']}' bắt buộc phải cung cấp liên kết minh chứng HTTPS an toàn (bắt đầu bằng https://).",
+                "status_code": 400
+            }
+
+    # 6. Hạn mức ngày phép
     available_limit = None
-    if leave_type_code == "PHEP_NAM":
+    if lt["type_code"] == "PHEP_NAM":
         bal = await get_my_leave_balance({}, current_user, db)
         rem = bal.get("annual_leave_remaining", 0)
         pend = bal.get("annual_leave_pending", 0)
@@ -468,7 +565,9 @@ async def create_leave_request(args: Dict[str, Any], current_user: dict, db: Asy
         available_limit = avail
         if total_days > avail:
             return {
-                "error": f"Số ngày nghỉ yêu cầu ({total_days} ngày) vượt quá số ngày phép năm còn lại khả dụng của bạn ({avail} ngày; đã dùng: {bal.get('annual_leave_used', 0)} ngày, đang chờ duyệt: {pend} ngày). Vui lòng điều chỉnh lại thời gian hoặc chọn loại nghỉ không lương (KHONG_LUONG)."
+                "valid": False,
+                "error": f"Số ngày nghỉ yêu cầu ({total_days} ngày) vượt quá số ngày phép năm còn lại khả dụng của bạn ({avail} ngày; đã dùng: {bal.get('annual_leave_used', 0)} ngày, đang chờ duyệt: {pend} ngày).",
+                "status_code": 400
             }
     else:
         max_days = lt.get("max_days_allowed")
@@ -476,11 +575,62 @@ async def create_leave_request(args: Dict[str, Any], current_user: dict, db: Asy
             available_limit = float(max_days)
             if total_days > float(max_days):
                 return {
-                    "error": f"Loại nghỉ '{lt['type_name']}' chỉ được nghỉ tối đa {max_days} ngày theo quy định. Bạn đang đăng ký {total_days} ngày. Vui lòng điều chỉnh lại thời gian."
+                    "valid": False,
+                    "error": f"Loại nghỉ '{lt['type_name']}' chỉ được nghỉ tối đa {max_days} ngày theo quy định. Bạn đang đăng ký {total_days} ngày.",
+                    "status_code": 400
                 }
 
-    requires_att = bool(lt["requires_attachment"])
-    hint = "Loại đơn này bắt buộc đính kèm minh chứng hợp lệ (tệp giấy xác nhận khám chữa bệnh / viện phí / đơn thôi việc hoặc liên kết minh chứng)." if requires_att else None
+    return {
+        "valid": True,
+        "leave_type": dict(lt),
+        "total_days": total_days,
+        "available_limit": available_limit,
+        "requires_attachment": requires_att
+    }
+
+
+async def create_leave_request(args: Dict[str, Any], current_user: dict, db: AsyncSession) -> Dict[str, Any]:
+    """
+    HITL Tool: KHÔNG ghi trực tiếp vào CSDL!
+    Sử dụng validate_leave_request (2.7) để kiểm tra toàn diện
+    và trả về Action Proposal để user xác nhận trên UI.
+    """
+    emp_id = current_user.get("employee_id")
+    if not emp_id:
+        return {"error": "Tài khoản chưa được liên kết với hồ sơ nhân viên để tạo đơn."}
+
+    leave_type_code = str(args.get("leave_type_code", "PHEP_NAM")).upper().strip()
+    start_date_str = args.get("start_date")
+    end_date_str = args.get("end_date")
+    reason = args.get("reason", "").strip()
+
+    if not start_date_str or not end_date_str:
+        return {"error": "Vui lòng cung cấp ngày bắt đầu (start_date) và kết thúc (end_date) định dạng YYYY-MM-DD."}
+
+    try:
+        start_d = datetime.strptime(start_date_str, "%Y-%m-%d").date()
+        end_d = datetime.strptime(end_date_str, "%Y-%m-%d").date()
+    except Exception:
+        return {"error": "Định dạng ngày không hợp lệ. Vui lòng nhập định dạng YYYY-MM-DD."}
+
+    # Xác thực tập trung qua Unified Leave Service (2.7)
+    val = await validate_leave_request(
+        db=db,
+        current_user=current_user,
+        leave_type_code_or_id=leave_type_code,
+        start_d=start_d,
+        end_d=end_d,
+        reason=reason,
+        attachment_url=None
+    )
+    if not val["valid"]:
+        return {"error": val["error"]}
+
+    lt = val["leave_type"]
+    total_days = val["total_days"]
+    available_limit = val["available_limit"]
+    requires_att = val["requires_attachment"]
+    hint = "Loại đơn này bắt buộc đính kèm minh chứng hợp lệ (liên kết minh chứng HTTPS an toàn)." if requires_att else None
     display_reason = reason if reason else "Đăng ký qua Trợ lý AI Chatbot"
 
     start_fmt = start_d.strftime("%d/%m/%Y")
@@ -513,11 +663,6 @@ async def create_leave_request(args: Dict[str, Any], current_user: dict, db: Asy
 async def cancel_leave_request(args: Dict[str, Any], current_user: dict, db: AsyncSession) -> Dict[str, Any]:
     """
     HITL Tool: Đề xuất hủy đơn nghỉ phép của chính mình khi đơn còn ở PENDING / STORE_APPROVED.
-    Hỗ trợ:
-    1. Hủy theo request_id cụ thể (e.g. #70) hoặc danh sách request_ids
-    2. Hủy tất cả đơn đang chờ duyệt (cancel_all=True)
-    3. Tự động đề xuất hủy nếu nhân viên chỉ có đúng 1 đơn đang chờ duyệt
-    4. Liệt kê danh sách đơn chờ duyệt nếu nhân viên có nhiều đơn và chưa chỉ rõ mã
     """
     emp_id = current_user.get("employee_id")
     if not emp_id:
@@ -586,8 +731,9 @@ async def cancel_leave_request(args: Dict[str, Any], current_user: dict, db: Asy
     if single_target_id:
         res = await db.execute(
             text("""
-                SELECT lr.request_id, lr.employee_id, lr.status, lr.start_date, lr.end_date, lr.total_days, lt.type_name
+                SELECT lr.request_id, lr.employee_id, e.store_id, lr.status, lr.start_date, lr.end_date, lr.total_days, lt.type_name
                 FROM leave_requests lr
+                JOIN employees e ON lr.employee_id = e.employee_id
                 JOIN leave_types lt ON lr.leave_type_id = lt.leave_type_id
                 WHERE lr.request_id = :id
             """),
@@ -597,8 +743,10 @@ async def cancel_leave_request(args: Dict[str, Any], current_user: dict, db: Asy
         if not row:
             return {"error": f"Không tìm thấy đơn nghỉ phép #{single_target_id} trong hệ thống."}
 
-        if row["employee_id"] != emp_id and not is_hr_or_admin(current_user):
-            return {"error": "Truy cập bị từ chối: Bạn chỉ có thể hủy đơn nghỉ phép của chính mình."}
+        # RBAC check (1B.5)
+        err = assert_can_access_employee(current_user, row["employee_id"], row["store_id"])
+        if err:
+            return {"error": err}
 
         if row["status"] in ["CANCELLED", "REJECTED"]:
             return {"error": f"Đơn #{single_target_id} đã ở trạng thái {row['status']}, không thể hủy tiếp."}
@@ -696,7 +844,7 @@ async def get_pending_leave_requests(args: Dict[str, Any], current_user: dict, d
 
 
 # ===================================================================================
-# 4. PAYROLL & COMPENSATION TOOLS (4 tools) - NO SALES COMMISSION!
+# 4. PAYROLL & COMPENSATION TOOLS (4 tools) (2.2)
 # ===================================================================================
 
 async def get_my_payroll(args: Dict[str, Any], current_user: dict, db: AsyncSession) -> Dict[str, Any]:
@@ -704,27 +852,36 @@ async def get_my_payroll(args: Dict[str, Any], current_user: dict, db: AsyncSess
     if not emp_id:
         return {"error": "Tài khoản chưa được liên kết với nhân viên."}
 
+    # 2.2: Nhân viên chỉ xem bảng lương CONFIRMED hoặc PAID
+    status_filter = ""
+    if not is_accountant(current_user):
+        status_filter = " AND payment_status IN ('CONFIRMED', 'PAID')"
+
     period = args.get("salary_period")
     if not period:
-        # Lấy kỳ lương gần nhất
-        p_res = await db.execute(text("SELECT salary_period FROM payrolls WHERE employee_id = :id ORDER BY salary_period DESC LIMIT 1"), {"id": emp_id})
+        # Lấy kỳ lương gần nhất có trạng thái được phép xem
+        p_res = await db.execute(text(f"""
+            SELECT salary_period FROM payrolls
+            WHERE employee_id = :id {status_filter}
+            ORDER BY salary_period DESC LIMIT 1
+        """), {"id": emp_id})
         period = p_res.scalar()
         if not period:
-            return {"error": "Chưa có bảng lương nào được phát hành cho bạn."}
+            return {"error": "Chưa có bảng lương chính thức nào được phát hành cho bạn (có thể đang trong kỳ tính hoặc chờ duyệt)."}
 
-    query = text("""
+    query = text(f"""
         SELECT p.payroll_id, p.salary_period, p.standard_working_days, p.actual_working_days,
                p.contract_salary, p.total_allowances, p.total_bonuses, p.total_insurance,
                p.total_deductions, p.gross_income, p.net_salary, p.payment_status
         FROM payrolls p
-        WHERE p.employee_id = :id AND p.salary_period = :period
+        WHERE p.employee_id = :id AND p.salary_period = :period {status_filter}
     """)
     res = await db.execute(query, {"id": emp_id, "period": period})
     p_row = res.mappings().first()
     if not p_row:
-        return {"error": f"Không tìm thấy bảng lương kỳ {period} của bạn."}
+        return {"error": f"Không tìm thấy bảng lương chính thức kỳ {period} của bạn."}
 
-    # Chi tiết khoản phụ cấp dự án và phụ cấp khác
+    # Chi tiết khoản phụ cấp dự án, hoa hồng và các khoản khác
     details_res = await db.execute(text("""
         SELECT item_code, item_name, item_type, amount, notes
         FROM payroll_details
@@ -735,7 +892,7 @@ async def get_my_payroll(args: Dict[str, Any], current_user: dict, db: AsyncSess
     return {
         "summary": dict(p_row),
         "details": details,
-        "note": "Thu nhập biến đổi tại TechZone căn cứ theo Phụ cấp phân bổ từ các Dự án tham gia (không áp dụng hoa hồng bán hàng cá nhân)."
+        "note": "Bảng lương bao gồm lương hợp đồng, phụ cấp dự án/chức vụ/ăn trưa, hoa hồng/thưởng hiệu quả (nếu có) và các khoản khấu trừ theo quy định."
     }
 
 
@@ -744,11 +901,15 @@ async def get_my_payroll_history(args: Dict[str, Any], current_user: dict, db: A
     if not emp_id:
         return {"error": "Tài khoản chưa được liên kết với nhân viên."}
 
+    status_filter = ""
+    if not is_accountant(current_user):
+        status_filter = " AND payment_status IN ('CONFIRMED', 'PAID')"
+
     limit = int(args.get("limit", 6))
-    query = text("""
+    query = text(f"""
         SELECT salary_period, contract_salary, total_allowances, gross_income, net_salary, payment_status
         FROM payrolls
-        WHERE employee_id = :id
+        WHERE employee_id = :id {status_filter}
         ORDER BY salary_period DESC
         LIMIT :lim
     """)
@@ -807,7 +968,7 @@ async def get_payroll_period(args: Dict[str, Any], current_user: dict, db: Async
 
 
 # ===================================================================================
-# 5. PROJECT MANAGEMENT TOOLS (2 tools) - Core Replacement for Commissions
+# 5. PROJECT MANAGEMENT TOOLS (2 tools) (1B.3)
 # ===================================================================================
 
 async def get_my_projects(args: Dict[str, Any], current_user: dict, db: AsyncSession) -> Dict[str, Any]:
@@ -815,6 +976,7 @@ async def get_my_projects(args: Dict[str, Any], current_user: dict, db: AsyncSes
     if not emp_id:
         return {"error": "Tài khoản chưa được liên kết với nhân viên."}
 
+    # 1B.3: Join đúng theo DDL UNIQUE (project_id, role_code), không có pra.is_active
     query = text("""
         SELECT p.project_id, p.project_code, p.project_name, p.status as project_status,
                pm.project_role, pr.role_name,
@@ -823,18 +985,36 @@ async def get_my_projects(args: Dict[str, Any], current_user: dict, db: AsyncSes
         FROM project_members pm
         JOIN projects p ON pm.project_id = p.project_id
         LEFT JOIN project_roles pr ON pm.project_role = pr.role_code
-        LEFT JOIN project_role_allowances pra ON pm.project_role = pra.role_code AND pra.is_active = TRUE
+        LEFT JOIN project_role_allowances pra ON pra.project_id = pm.project_id AND pra.role_code = pm.project_role
         WHERE pm.employee_id = :id AND pm.is_active = TRUE
         ORDER BY p.start_date DESC
     """)
     res = await db.execute(query, {"id": emp_id})
     projects = [dict(r) for r in res.mappings().all()]
-    total_allowance = sum(float(p.get("monthly_allowance") or 0) for p in projects)
+    total_allowance = 0.0
+
+    status_map = {
+        "PLANNING": "Đang lập kế hoạch",
+        "IN_PROGRESS": "Đang tiến hành",
+        "COMPLETED": "Đã hoàn thành",
+        "ON_HOLD": "Tạm dừng",
+        "CANCELLED": "Đã hủy"
+    }
+
+    for p in projects:
+        allowance_num = float(p.get("monthly_allowance") or 0)
+        total_allowance += allowance_num
+        p["monthly_allowance"] = allowance_num
+        p["monthly_allowance_formatted"] = f"{int(allowance_num):,} VNĐ" if allowance_num > 0 else "0 VNĐ"
+        p["status_label"] = status_map.get(str(p.get("project_status")), str(p.get("project_status")))
+        if p.get("joined_date"):
+            p["joined_date_str"] = p["joined_date"].strftime("%d/%m/%Y")
 
     return {
         "employee_name": current_user.get("full_name"),
         "total_active_projects": len(projects),
         "total_monthly_project_allowance": total_allowance,
+        "total_monthly_project_allowance_formatted": f"{int(total_allowance):,} VNĐ",
         "projects": projects
     }
 
@@ -849,11 +1029,29 @@ async def get_project_detail(args: Dict[str, Any], current_user: dict, db: Async
         FROM projects
         WHERE project_id::text = :ident OR LOWER(project_code) = LOWER(:ident)
     """), {"ident": str(proj_ident).strip()})
-    project = p_res.mappings().first()
-    if not project:
+    project_row = p_res.mappings().first()
+    if not project_row:
         return {"error": f"Không tìm thấy dự án '{proj_ident}'."}
 
-    # Fetch members
+    project = dict(project_row)
+    is_admin_user = is_hr_or_admin(current_user)
+
+    # RBAC check: Nhân viên thường chỉ được xem chi tiết dự án mình tham gia
+    if not is_admin_user:
+        emp_id = current_user.get("employee_id")
+        if not emp_id:
+            return {"error": "Truy cập bị từ chối: Tài khoản chưa liên kết nhân viên."}
+        is_mem = await db.execute(text("""
+            SELECT 1 FROM project_members
+            WHERE project_id = :pid AND employee_id = :eid AND is_active = TRUE
+        """), {"pid": project["project_id"], "eid": emp_id})
+        if not is_mem.first():
+            return {"error": "Truy cập bị từ chối: Bạn chỉ có thể xem chi tiết các dự án mà mình đang tham gia."}
+
+        # 1B.3: Ẩn ngân sách dự án đối với nhân viên thông thường
+        project.pop("budget", None)
+
+    # Fetch members: Join đúng theo DDL UNIQUE (project_id, role_code)
     m_res = await db.execute(text("""
         SELECT e.employee_code, e.full_name, pm.project_role, pr.role_name,
                COALESCE(NULLIF(pm.project_allowance, 0), pra.allowance_amount, 0) as allowance,
@@ -861,13 +1059,21 @@ async def get_project_detail(args: Dict[str, Any], current_user: dict, db: Async
         FROM project_members pm
         JOIN employees e ON pm.employee_id = e.employee_id
         LEFT JOIN project_roles pr ON pm.project_role = pr.role_code
-        LEFT JOIN project_role_allowances pra ON pm.project_role = pra.role_code AND pra.is_active = TRUE
+        LEFT JOIN project_role_allowances pra ON pra.project_id = pm.project_id AND pra.role_code = pm.project_role
         WHERE pm.project_id = :pid
     """), {"pid": project["project_id"]})
-    members = [dict(m) for m in m_res.mappings().all()]
+    members = []
+    curr_emp_code = (current_user.get("employee_code") or "").strip().lower()
+
+    for m in m_res.mappings().all():
+        m_dict = dict(m)
+        # 1B.3: Nhân viên thường không được xem phụ cấp của thành viên khác
+        if not is_admin_user and (m_dict.get("employee_code") or "").strip().lower() != curr_emp_code:
+            m_dict.pop("allowance", None)
+        members.append(m_dict)
 
     return {
-        "project": dict(project),
+        "project": project,
         "total_members": len(members),
         "members": members
     }
@@ -878,14 +1084,18 @@ async def get_project_detail(args: Dict[str, Any], current_user: dict, db: Async
 # ===================================================================================
 
 async def get_store_info(args: Dict[str, Any], current_user: dict, db: AsyncSession) -> Dict[str, Any]:
-    store_id = args.get("store_id") or current_user.get("store_id")
-    if not store_id:
+    raw_store_id = args.get("store_id") or current_user.get("store_id")
+    if not raw_store_id:
         return {"error": "Vui lòng chỉ định cửa hàng (store_id)."}
+    try:
+        store_id = int(raw_store_id)
+    except (ValueError, TypeError):
+        return {"error": "Mã cửa hàng không hợp lệ."}
 
-    # Scope check
-    if not is_hr_or_admin(current_user) and is_store_manager(current_user):
-        if int(store_id) != current_user.get("store_id"):
-            return {"error": "Truy cập bị từ chối: Cửa hàng trưởng chỉ được xem thông tin chi nhánh của mình."}
+    user_store_id = current_user.get("store_id")
+    if not is_hr_or_admin(current_user):
+        if not user_store_id or store_id != int(user_store_id):
+            return {"error": "Truy cập bị từ chối: Bạn chỉ có quyền xem thông tin chi nhánh cửa hàng của mình."}
 
     query = text("""
         SELECT s.store_id, s.store_code, s.store_name, s.address, s.district, s.city, s.phone,
@@ -897,7 +1107,7 @@ async def get_store_info(args: Dict[str, Any], current_user: dict, db: AsyncSess
         WHERE s.store_id = :sid
         GROUP BY s.store_id, mgr.full_name
     """)
-    res = await db.execute(query, {"sid": int(store_id)})
+    res = await db.execute(query, {"sid": store_id})
     row = res.mappings().first()
     return dict(row) if row else {"error": "Không tìm thấy cửa hàng."}
 
@@ -927,12 +1137,20 @@ async def get_store_employees(args: Dict[str, Any], current_user: dict, db: Asyn
 
 
 async def get_store_schedule(args: Dict[str, Any], current_user: dict, db: AsyncSession) -> Dict[str, Any]:
-    store_id = args.get("store_id") or current_user.get("store_id")
-    work_date_str = args.get("work_date", str(date.today()))
+    raw_store_id = args.get("store_id") or current_user.get("store_id")
+    if not raw_store_id:
+        return {"error": "Vui lòng chỉ định cửa hàng (store_id)."}
+    try:
+        sid = int(raw_store_id)
+    except (ValueError, TypeError):
+        return {"error": "Mã cửa hàng không hợp lệ."}
 
-    if not is_hr_or_admin(current_user) and is_store_manager(current_user):
-        if int(store_id) != current_user.get("store_id"):
-            return {"error": "Truy cập bị từ chối: Chỉ được xem ca làm chi nhánh của mình."}
+    work_date_str = args.get("work_date", str(date.today()))
+    user_store_id = current_user.get("store_id")
+
+    if not is_hr_or_admin(current_user):
+        if not user_store_id or sid != int(user_store_id):
+            return {"error": "Truy cập bị từ chối: Bạn chỉ được xem ca làm chi nhánh cửa hàng của mình."}
 
     query = text("""
         SELECT ws.schedule_id, e.employee_code, e.full_name, sh.shift_name, sh.start_time, sh.end_time, ws.notes
@@ -942,8 +1160,8 @@ async def get_store_schedule(args: Dict[str, Any], current_user: dict, db: Async
         WHERE ws.store_id = :sid AND ws.work_date = :wdate AND ws.cancelled_at IS NULL
         ORDER BY sh.start_time ASC
     """)
-    res = await db.execute(query, {"sid": int(store_id), "wdate": work_date_str})
-    return {"store_id": int(store_id), "work_date": work_date_str, "schedules": [dict(r) for r in res.mappings().all()]}
+    res = await db.execute(query, {"sid": sid, "wdate": work_date_str})
+    return {"store_id": sid, "work_date": work_date_str, "schedules": [dict(r) for r in res.mappings().all()]}
 
 
 # ===================================================================================
@@ -977,7 +1195,10 @@ async def get_attendance_summary(args: Dict[str, Any], current_user: dict, db: A
     store_id = args.get("store_id")
 
     if is_store_manager(current_user) and not is_hr_or_admin(current_user):
-        store_id = current_user.get("store_id")
+        user_store_id = current_user.get("store_id")
+        if not user_store_id:
+            return {"error": "Truy cập bị từ chối: Tài khoản Cửa hàng trưởng chưa được cấu hình chi nhánh quản lý (store_id is None)."}
+        store_id = user_store_id
 
     where = ["EXTRACT(MONTH FROM a.work_date) = :m", "EXTRACT(YEAR FROM a.work_date) = :y"]
     params: Dict[str, Any] = {"m": month, "y": year}
@@ -987,10 +1208,10 @@ async def get_attendance_summary(args: Dict[str, Any], current_user: dict, db: A
 
     query = text(f"""
         SELECT COUNT(*) as total_records,
-               COUNT(*) FILTER (WHERE a.late_minutes > 0) as late_shifts,
-               SUM(a.late_minutes) as total_late_minutes,
-               SUM(a.overtime_hours) as total_overtime_hours,
-               SUM(a.actual_work_hours) as total_actual_work_hours
+                COUNT(*) FILTER (WHERE a.late_minutes > 0) as late_shifts,
+                SUM(a.late_minutes) as total_late_minutes,
+                SUM(a.overtime_hours) as total_overtime_hours,
+                SUM(a.actual_work_hours) as total_actual_work_hours
         FROM attendances a
         WHERE {' AND '.join(where)}
     """)
@@ -1006,7 +1227,10 @@ async def get_leave_statistics(args: Dict[str, Any], current_user: dict, db: Asy
     store_id = args.get("store_id")
 
     if is_store_manager(current_user) and not is_hr_or_admin(current_user):
-        store_id = current_user.get("store_id")
+        user_store_id = current_user.get("store_id")
+        if not user_store_id:
+            return {"error": "Truy cập bị từ chối: Tài khoản Cửa hàng trưởng chưa được cấu hình chi nhánh quản lý (store_id is None)."}
+        store_id = user_store_id
 
     where = ["EXTRACT(YEAR FROM lr.start_date) = :y"]
     params: Dict[str, Any] = {"y": year}
