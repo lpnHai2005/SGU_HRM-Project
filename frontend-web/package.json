@@ -15,8 +15,10 @@
     "lucide-react": "^1.55.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "react-markdown": "^10.1.0",
     "react-router-dom": "^7.18.4",
     "recharts": "^3.10.1",
+    "remark-gfm": "^4.0.1",
     "sonner": "^2.0.8",
     "trackasia-gl": "^2.0.1"
   },

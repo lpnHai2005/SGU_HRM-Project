@@ -29,6 +29,38 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "TechZone HRM API"
     API_V1_STR: str = "/api/v1"
 
+    # Mistral AI & LangChain / LangSmith Configuration
+    MISTRAL_API_KEY: str = ""
+    MISTRAL_CHAT_MODEL: str = "ministral-14b-2512"  # Đổi model tại đây (ví dụ: mistral-small-latest, mistral-large-latest, open-mistral-nemo, codestral-latest)
+    MISTRAL_EMBED_MODEL: str = "mistral-embed-2312"   # Model tạo vector 1024 chiều
+    MISTRAL_TEMPERATURE: float = 0.1
+    LANGCHAIN_API_KEY: str = ""
+    LANGSMITH_API_KEY: str = ""
+    LANGCHAIN_PROJECT: str = "hrm-rag-chatbot"
+    LANGSMITH_PROJECT: str = ""
+    LANGCHAIN_ENDPOINT: str = "https://api.smith.langchain.com"
+    LANGSMITH_ENDPOINT: str = ""
+    LANGCHAIN_TRACING_V2: str = "true"
+    LANGSMITH_TRACING: str = "true"
+
+    @model_validator(mode="after")
+    def sync_langsmith_tracing(self):
+        api_key = self.LANGSMITH_API_KEY or self.LANGCHAIN_API_KEY
+        if api_key:
+            os.environ["LANGCHAIN_API_KEY"] = api_key
+            os.environ["LANGSMITH_API_KEY"] = api_key
+            os.environ["LANGCHAIN_TRACING_V2"] = "true"
+            os.environ["LANGSMITH_TRACING"] = "true"
+
+            project = self.LANGSMITH_PROJECT or self.LANGCHAIN_PROJECT or "hrm-rag-chatbot"
+            os.environ["LANGCHAIN_PROJECT"] = project
+            os.environ["LANGSMITH_PROJECT"] = project
+
+            endpoint = self.LANGSMITH_ENDPOINT or self.LANGCHAIN_ENDPOINT or "https://api.smith.langchain.com"
+            os.environ["LANGCHAIN_ENDPOINT"] = endpoint
+            os.environ["LANGSMITH_ENDPOINT"] = endpoint
+        return self
+
     @field_validator("DATABASE_URL", "SYNC_DATABASE_URL", "JWT_SECRET_KEY", mode="before")
     @classmethod
     def require_security_configuration(cls, value):

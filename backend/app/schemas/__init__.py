@@ -39,8 +39,9 @@ from app.schemas.schemas import (
     PayrollOut,
     ProjectMemberOut,
     ProjectOut,
-    AICopilotQuery,
-    AICopilotResponse
+    AIChatbotQuery,
+    AIChatbotResponse,
+    AIChatbotConfirmActionRequest
 )
 
 __all__ = [
@@ -115,6 +116,6 @@ __all__ = [
     "PayrollOut",
     "ProjectMemberOut",
     "ProjectOut",
-    "AICopilotQuery",
-    "AICopilotResponse"
+    "AIChatbotQuery",
+    "AIChatbotResponse"
 ]

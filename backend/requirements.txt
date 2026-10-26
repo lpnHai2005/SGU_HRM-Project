@@ -19,3 +19,15 @@ Pillow>=10.0.0
 tzdata>=2024.1
 reportlab>=4.2.0
 
+# ==============================================================================
+# AI Chatbot Agentic RAG Stack (Mistral AI + LangGraph + LangSmith + Ragas)
+# ==============================================================================
+langchain>=1.4.0
+langchain-core>=1.7.0
+langchain-community>=0.4.0
+langchain-mistralai>=1.1.0
+langchain-text-splitters>=1.1.0
+langgraph>=1.2.0
+langsmith>=0.1.0
+pypdfium2>=5.0.0
+ragas>=0.4.0
