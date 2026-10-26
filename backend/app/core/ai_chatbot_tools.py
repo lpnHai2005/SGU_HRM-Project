@@ -387,11 +387,20 @@ async def get_leave_request_detail(args: Dict[str, Any], current_user: dict, db:
 async def create_leave_request(args: Dict[str, Any], current_user: dict, db: AsyncSession) -> Dict[str, Any]:
     """
     HITL Tool: KHÔNG ghi trực tiếp vào CSDL!
-    Xác thực điều kiện (số dư, loại đơn, minh chứng) và trả về Action Proposal để user xác nhận trên UI.
+    Xác thực toàn diện các ràng buộc (trạng thái nhân viên, số dư, trùng lịch, hạn mức, minh chứng)
+    và trả về Action Proposal để user xác nhận trên UI.
     """
     emp_id = current_user.get("employee_id")
     if not emp_id:
-        return {"error": "Tài khoản chưa được liên kết với nhân viên để tạo đơn."}
+        return {"error": "Tài khoản chưa được liên kết với hồ sơ nhân viên để tạo đơn."}
+
+    # 1. Kiểm tra trạng thái làm việc của nhân viên
+    emp_res = await db.execute(text("SELECT employee_id, full_name, store_id, employment_status FROM employees WHERE employee_id = :id"), {"id": emp_id})
+    emp_row = emp_res.mappings().first()
+    if not emp_row:
+        return {"error": "Không tìm thấy hồ sơ nhân viên trong hệ thống."}
+    if emp_row.get("employment_status") in ["RESIGNED", "TERMINATED"]:
+        return {"error": f"Nhân viên {emp_row['full_name']} đã thôi việc/nghỉ việc, không thể tạo đơn nghỉ phép."}
 
     leave_type_code = str(args.get("leave_type_code", "PHEP_NAM")).upper().strip()
     start_date_str = args.get("start_date")
@@ -408,33 +417,81 @@ async def create_leave_request(args: Dict[str, Any], current_user: dict, db: Asy
         return {"error": "Định dạng ngày không hợp lệ. Vui lòng nhập định dạng YYYY-MM-DD."}
 
     if start_d > end_d:
-        return {"error": "Ngày bắt đầu không được lớn hơn ngày kết thúc."}
+        return {"error": "Ngày bắt đầu nghỉ không được lớn hơn ngày kết thúc."}
+
+    # Không cho tạo đơn ngày trong quá khứ
+    today = date.today()
+    if start_d < today:
+        return {
+            "error": f"Không thể tạo đơn nghỉ phép cho ngày trong quá khứ (trước ngày {today.strftime('%d/%m/%Y')}). Vui lòng chọn ngày bắt đầu từ hôm nay trở đi."
+        }
 
     # Tính số ngày nghỉ (ước lượng sơ bộ, tính cả ngày bắt đầu và kết thúc)
     total_days = float((end_d - start_d).days + 1)
+    if total_days <= 0:
+        return {"error": "Số ngày xin nghỉ phải lớn hơn 0."}
 
-    # Check leave type
+    # 2. Kiểm tra trùng lặp thời gian với các đơn đã nộp (PENDING, STORE_APPROVED, HR_APPROVED)
+    overlap_res = await db.execute(text("""
+        SELECT request_id, start_date, end_date, status
+        FROM leave_requests
+        WHERE employee_id = :emp_id
+          AND status IN ('PENDING', 'STORE_APPROVED', 'HR_APPROVED')
+          AND start_date <= :end_date AND end_date >= :start_date
+        LIMIT 1
+    """), {
+        "emp_id": emp_id,
+        "start_date": start_d,
+        "end_date": end_d
+    })
+    overlap = overlap_res.mappings().first()
+    if overlap:
+        s_str = overlap['start_date'].strftime('%d/%m/%Y') if hasattr(overlap['start_date'], 'strftime') else str(overlap['start_date'])
+        e_str = overlap['end_date'].strftime('%d/%m/%Y') if hasattr(overlap['end_date'], 'strftime') else str(overlap['end_date'])
+        return {
+            "error": f"Bạn đã có đơn nghỉ phép (Mã #{overlap['request_id']}) trong khoảng thời gian {s_str} đến {e_str} đang chờ duyệt hoặc đã được phê duyệt. Hệ thống không cho phép tạo đơn trùng lịch."
+        }
+
+    # 3. Check leave type
     type_res = await db.execute(text("SELECT leave_type_id, type_code, type_name, max_days_allowed, requires_attachment FROM leave_types WHERE type_code = :tc"), {"tc": leave_type_code})
     lt = type_res.mappings().first()
     if not lt:
         return {"error": f"Loại phép '{leave_type_code}' không hợp lệ. Các loại hỗ trợ: PHEP_NAM, NGHI_OM, THAI_SAN, VIEC_RIENG, KHONG_LUONG, THOI_VIEC."}
 
-    # Kiểm tra số dư phép nếu là PHEP_NAM
+    # 4. Kiểm tra số dư phép khả dụng nếu là PHEP_NAM hoặc hạn mức tối đa của loại phép
+    available_limit = None
     if leave_type_code == "PHEP_NAM":
         bal = await get_my_leave_balance({}, current_user, db)
         rem = bal.get("annual_leave_remaining", 0)
-        if total_days > rem:
-            return {"error": f"Số ngày nghỉ yêu cầu ({total_days} ngày) vượt quá số dư phép năm còn lại của bạn ({rem} ngày). Bạn có thể chọn loại 'KHONG_LUONG' hoặc rút ngắn ngày."}
+        pend = bal.get("annual_leave_pending", 0)
+        avail = max(0.0, rem - pend)
+        available_limit = avail
+        if total_days > avail:
+            return {
+                "error": f"Số ngày nghỉ yêu cầu ({total_days} ngày) vượt quá số ngày phép năm còn lại khả dụng của bạn ({avail} ngày; đã dùng: {bal.get('annual_leave_used', 0)} ngày, đang chờ duyệt: {pend} ngày). Vui lòng điều chỉnh lại thời gian hoặc chọn loại nghỉ không lương (KHONG_LUONG)."
+            }
+    else:
+        max_days = lt.get("max_days_allowed")
+        if max_days and float(max_days) > 0:
+            available_limit = float(max_days)
+            if total_days > float(max_days):
+                return {
+                    "error": f"Loại nghỉ '{lt['type_name']}' chỉ được nghỉ tối đa {max_days} ngày theo quy định. Bạn đang đăng ký {total_days} ngày. Vui lòng điều chỉnh lại thời gian."
+                }
 
     requires_att = bool(lt["requires_attachment"])
-    hint = "Loại đơn này bắt buộc đính kèm minh chứng hợp lệ (giấy xác nhận khám chữa bệnh / viện phí / đơn thôi việc)." if requires_att else None
+    hint = "Loại đơn này bắt buộc đính kèm minh chứng hợp lệ (tệp giấy xác nhận khám chữa bệnh / viện phí / đơn thôi việc hoặc liên kết minh chứng)." if requires_att else None
+    display_reason = reason if reason else "Đăng ký qua Trợ lý AI Chatbot"
+
+    start_fmt = start_d.strftime("%d/%m/%Y")
+    end_fmt = end_d.strftime("%d/%m/%Y")
 
     return {
         "status": "PROPOSED",
         "action_proposal": {
             "action_type": "create_leave_request",
             "title": f"Tạo đơn {lt['type_name']}",
-            "description": f"Bạn có muốn xác nhận nộp đơn {lt['type_name']} từ ngày {start_date_str} đến {end_date_str} ({total_days} ngày) với lý do: '{reason}'?",
+            "description": f"Xác nhận nộp đơn {lt['type_name']} từ ngày {start_fmt} đến {end_fmt} ({total_days} ngày) với lý do: '{display_reason}'.",
             "requires_attachment": requires_att,
             "attachment_hint": hint,
             "payload": {
@@ -445,7 +502,9 @@ async def create_leave_request(args: Dict[str, Any], current_user: dict, db: Asy
                 "start_date": start_date_str,
                 "end_date": end_date_str,
                 "total_days": total_days,
-                "reason": reason
+                "available_days": available_limit,
+                "reason": display_reason,
+                "requires_attachment": requires_att
             }
         }
     }
@@ -454,39 +513,151 @@ async def create_leave_request(args: Dict[str, Any], current_user: dict, db: Asy
 async def cancel_leave_request(args: Dict[str, Any], current_user: dict, db: AsyncSession) -> Dict[str, Any]:
     """
     HITL Tool: Đề xuất hủy đơn nghỉ phép của chính mình khi đơn còn ở PENDING / STORE_APPROVED.
+    Hỗ trợ:
+    1. Hủy theo request_id cụ thể (e.g. #70) hoặc danh sách request_ids
+    2. Hủy tất cả đơn đang chờ duyệt (cancel_all=True)
+    3. Tự động đề xuất hủy nếu nhân viên chỉ có đúng 1 đơn đang chờ duyệt
+    4. Liệt kê danh sách đơn chờ duyệt nếu nhân viên có nhiều đơn và chưa chỉ rõ mã
     """
+    emp_id = current_user.get("employee_id")
+    if not emp_id:
+        return {"error": "Tài khoản chưa được liên kết với hồ sơ nhân viên."}
+
     req_id = args.get("request_id")
-    if not req_id:
-        return {"error": "Vui lòng cung cấp mã đơn cần hủy (request_id)."}
+    req_ids = args.get("request_ids") or []
+    cancel_all = bool(args.get("cancel_all", False))
 
-    res = await db.execute(text("SELECT request_id, employee_id, status, start_date, end_date FROM leave_requests WHERE request_id = :id"), {"id": int(req_id)})
-    row = res.mappings().first()
-    if not row:
-        return {"error": f"Không tìm thấy đơn #{req_id}."}
+    # Truy vấn danh sách các đơn đang ở trạng thái PENDING hoặc STORE_APPROVED của nhân viên
+    q_pending = text("""
+        SELECT lr.request_id, lr.start_date, lr.end_date, lr.total_days, lt.type_name, lr.status, lr.created_at
+        FROM leave_requests lr
+        JOIN leave_types lt ON lr.leave_type_id = lt.leave_type_id
+        WHERE lr.employee_id = :emp_id AND lr.status IN ('PENDING', 'STORE_APPROVED')
+        ORDER BY lr.created_at DESC
+    """)
+    res_pending = await db.execute(q_pending, {"emp_id": emp_id})
+    pending_rows = [dict(r) for r in res_pending.mappings().all()]
 
-    if row["employee_id"] != current_user.get("employee_id") and not is_hr_or_admin(current_user):
-        return {"error": "Truy cập bị từ chối: Bạn chỉ có thể hủy đơn nghỉ phép của chính mình."}
-
-    if row["status"] in ["CANCELLED", "REJECTED"]:
-        return {"error": f"Đơn #{req_id} đã ở trạng thái {row['status']}, không thể hủy tiếp."}
-
-    if row["status"] == "HR_APPROVED":
-        return {"error": f"Đơn #{req_id} đã được HR phê duyệt chính thức. Để hủy đơn này, vui lòng liên hệ trực tiếp phòng Nhân sự."}
-
-    reason = args.get("reason", "Nhân viên tự hủy qua AI Chatbot").strip()
-
-    return {
-        "status": "PROPOSED",
-        "action_proposal": {
-            "action_type": "cancel_leave_request",
-            "title": f"Hủy đơn nghỉ phép #{req_id}",
-            "description": f"Bạn có chắc chắn muốn hủy đơn nghỉ phép #{req_id} (từ {row['start_date']} đến {row['end_date']}) không?",
-            "requires_attachment": False,
-            "payload": {
-                "request_id": row["request_id"],
-                "reason": reason
+    # Trường hợp 1: Hủy danh sách cụ thể nhiều ID (request_ids)
+    if req_ids and len(req_ids) > 1:
+        target_rows = [r for r in pending_rows if r["request_id"] in req_ids]
+        if not target_rows:
+            return {"error": f"Không tìm thấy các đơn ({', '.join(f'#{i}' for i in req_ids)}) đang chờ duyệt để hủy."}
+        id_tags = ", ".join(f"#{r['request_id']}" for r in target_rows)
+        return {
+            "status": "PROPOSED",
+            "action_proposal": {
+                "action_type": "cancel_leave_request",
+                "title": f"Hủy {len(target_rows)} đơn nghỉ phép ({id_tags})",
+                "description": f"Bạn có chắc chắn muốn hủy {len(target_rows)} đơn nghỉ phép đang chờ duyệt ({id_tags}) không?",
+                "requires_attachment": False,
+                "payload": {
+                    "cancel_all": False,
+                    "request_ids": [r["request_id"] for r in target_rows],
+                    "reason": args.get("reason", "Nhân viên yêu cầu hủy đơn qua AI Chatbot")
+                }
             }
         }
+
+    # Trường hợp 2: Hủy tất cả đơn đang chờ duyệt (cancel_all=True)
+    if cancel_all:
+        if not pending_rows:
+            return {"error": "Bạn hiện không có đơn nghỉ phép nào đang ở trạng thái chờ duyệt (PENDING/STORE_APPROVED) để hủy."}
+
+        target_ids = [r["request_id"] for r in pending_rows]
+        id_tags = ", ".join(f"#{rid}" for rid in target_ids)
+        return {
+            "status": "PROPOSED",
+            "action_proposal": {
+                "action_type": "cancel_leave_request",
+                "title": f"Hủy tất cả ({len(pending_rows)}) đơn nghỉ phép đang chờ duyệt",
+                "description": f"Bạn có chắc chắn muốn hủy toàn bộ {len(pending_rows)} đơn nghỉ phép đang chờ duyệt ({id_tags}) không?",
+                "requires_attachment": False,
+                "payload": {
+                    "cancel_all": True,
+                    "request_ids": target_ids,
+                    "reason": args.get("reason", "Nhân viên yêu cầu hủy toàn bộ đơn chờ duyệt qua AI Chatbot")
+                }
+            }
+        }
+
+    # Trường hợp 3: Có chỉ định request_id cụ thể (hoặc req_ids có 1 phần tử)
+    single_target_id = req_id or (req_ids[0] if req_ids else None)
+    if single_target_id:
+        res = await db.execute(
+            text("""
+                SELECT lr.request_id, lr.employee_id, lr.status, lr.start_date, lr.end_date, lr.total_days, lt.type_name
+                FROM leave_requests lr
+                JOIN leave_types lt ON lr.leave_type_id = lt.leave_type_id
+                WHERE lr.request_id = :id
+            """),
+            {"id": int(single_target_id)}
+        )
+        row = res.mappings().first()
+        if not row:
+            return {"error": f"Không tìm thấy đơn nghỉ phép #{single_target_id} trong hệ thống."}
+
+        if row["employee_id"] != emp_id and not is_hr_or_admin(current_user):
+            return {"error": "Truy cập bị từ chối: Bạn chỉ có thể hủy đơn nghỉ phép của chính mình."}
+
+        if row["status"] in ["CANCELLED", "REJECTED"]:
+            return {"error": f"Đơn #{single_target_id} đã ở trạng thái {row['status']}, không thể hủy tiếp."}
+
+        if row["status"] == "HR_APPROVED":
+            return {"error": f"Đơn #{single_target_id} đã được HR phê duyệt chính thức. Để hủy đơn này, vui lòng liên hệ trực tiếp phòng Nhân sự."}
+
+        s_str = row['start_date'].strftime('%d/%m/%Y') if hasattr(row['start_date'], 'strftime') else str(row['start_date'])
+        e_str = row['end_date'].strftime('%d/%m/%Y') if hasattr(row['end_date'], 'strftime') else str(row['end_date'])
+
+        return {
+            "status": "PROPOSED",
+            "action_proposal": {
+                "action_type": "cancel_leave_request",
+                "title": f"Hủy đơn nghỉ phép #{row['request_id']}",
+                "description": f"Bạn có chắc chắn muốn hủy đơn {row['type_name']} #{row['request_id']} (từ ngày {s_str} đến {e_str}, {row['total_days']} ngày) không?",
+                "requires_attachment": False,
+                "payload": {
+                    "request_id": row["request_id"],
+                    "reason": args.get("reason", "Nhân viên tự hủy qua AI Chatbot")
+                }
+            }
+        }
+
+    # Trường hợp 4: Không truyền ID
+    if not pending_rows:
+        return {"error": "Bạn hiện không có đơn nghỉ phép nào đang ở trạng thái chờ duyệt (PENDING/STORE_APPROVED) để hủy."}
+
+    # Nếu chỉ có đúng 1 đơn đang chờ duyệt -> tự động đề xuất hủy đơn đó
+    if len(pending_rows) == 1:
+        single = pending_rows[0]
+        s_str = single['start_date'].strftime('%d/%m/%Y') if hasattr(single['start_date'], 'strftime') else str(single['start_date'])
+        e_str = single['end_date'].strftime('%d/%m/%Y') if hasattr(single['end_date'], 'strftime') else str(single['end_date'])
+        return {
+            "status": "PROPOSED",
+            "action_proposal": {
+                "action_type": "cancel_leave_request",
+                "title": f"Hủy đơn nghỉ phép #{single['request_id']}",
+                "description": f"Bạn có chắc chắn muốn hủy đơn {single['type_name']} #{single['request_id']} (từ ngày {s_str} đến {e_str}, {single['total_days']} ngày) không?",
+                "requires_attachment": False,
+                "payload": {
+                    "request_id": single["request_id"],
+                    "reason": args.get("reason", "Nhân viên tự hủy qua AI Chatbot")
+                }
+            }
+        }
+
+    # Nếu có nhiều hơn 1 đơn đang chờ duyệt -> trả về dữ liệu danh sách để AI trình bày rõ ràng
+    lines = [f"Bạn hiện có **{len(pending_rows)} đơn nghỉ phép** đang chờ duyệt:"]
+    for r in pending_rows:
+        s_str = r['start_date'].strftime('%d/%m/%Y') if hasattr(r['start_date'], 'strftime') else str(r['start_date'])
+        e_str = r['end_date'].strftime('%d/%m/%Y') if hasattr(r['end_date'], 'strftime') else str(r['end_date'])
+        lines.append(f"• **Đơn #{r['request_id']}**: {r['type_name']} (từ {s_str} đến {e_str}, {r['total_days']} ngày)")
+    lines.append(f"\n👉 Bạn muốn hủy đơn cụ thể nào (ví dụ: *'Hủy đơn #{pending_rows[0]['request_id']}'*) hay muốn hủy tất cả (*'Hủy tất cả đơn chờ duyệt'*?)")
+
+    return {
+        "status": "MULTIPLE_PENDING",
+        "message": "\n".join(lines),
+        "pending_count": len(pending_rows)
     }
 
 

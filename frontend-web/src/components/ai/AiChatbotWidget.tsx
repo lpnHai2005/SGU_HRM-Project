@@ -1,8 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { toast } from 'sonner';
-import { Sparkles, RotateCcw, X, Send, Paperclip, Check, AlertCircle } from 'lucide-react';
+import { Sparkles, RotateCcw, X, Send, Paperclip, Check, AlertCircle, Calendar, FileText, Link, Lock } from 'lucide-react';
 import { aiChatbotApi, leaveApi, type AIChatbotResponse } from '../../services/api';
 import './AiChatbotWidget.css';
 
@@ -22,6 +22,261 @@ interface AiChatbotWidgetProps {
   user: any;
 }
 
+interface ActionProposalCardProps {
+  msgId: string;
+  proposal: NonNullable<AIChatbotResponse['action_proposal']>;
+  onConfirm: (
+    msgId: string,
+    proposal: NonNullable<AIChatbotResponse['action_proposal']>,
+    confirmed: boolean,
+    customPayload?: Record<string, any>,
+    attachmentUrl?: string
+  ) => void;
+  confirmLoading: boolean;
+}
+
+export const ActionProposalCard: React.FC<ActionProposalCardProps> = ({
+  msgId,
+  proposal,
+  onConfirm,
+  confirmLoading,
+}) => {
+  const payload = proposal.payload || {};
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  const [startDate, setStartDate] = useState(
+    payload.start_date && payload.start_date >= todayStr ? payload.start_date : todayStr
+  );
+  const [endDate, setEndDate] = useState(
+    payload.end_date && payload.end_date >= startDate ? payload.end_date : startDate
+  );
+  const [reason, setReason] = useState(payload.reason || 'Đăng ký qua Trợ lý AI Chatbot');
+  const [proofLink, setProofLink] = useState('');
+  const [uploadedUrl, setUploadedUrl] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const isLeave = proposal.action_type === 'create_leave_request';
+  const availableDays = payload.available_days !== undefined ? Number(payload.available_days) : undefined;
+
+  const calculateDays = () => {
+    if (!startDate || !endDate) return 0;
+    const s = new Date(startDate);
+    const e = new Date(endDate);
+    if (isNaN(s.getTime()) || isNaN(e.getTime()) || e < s) return 0;
+    return Math.round((e.getTime() - s.getTime()) / (1000 * 3600 * 24)) + 1;
+  };
+
+  const totalDays = calculateDays();
+  const isPastDate = startDate < todayStr;
+  const isExceeded = availableDays !== undefined && totalDays > availableDays;
+
+  const handleUploadFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Dung lượng tệp minh chứng tối đa 5MB.');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const res = await leaveApi.uploadProof(file);
+      setUploadedUrl(res.proof_url);
+      toast.success('Đã tải lên tệp minh chứng thành công!');
+    } catch (err: any) {
+      toast.error(err?.message || 'Không thể tải lên tệp minh chứng.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleExecute = () => {
+    if (isLeave) {
+      if (startDate < todayStr) {
+        toast.error('Không thể tạo đơn nghỉ phép cho ngày trong quá khứ. Vui lòng chọn ngày từ hôm nay trở đi.');
+        return;
+      }
+      if (startDate > endDate || totalDays <= 0) {
+        toast.error('Ngày bắt đầu nghỉ không được lớn hơn ngày kết thúc.');
+        return;
+      }
+      if (isExceeded) {
+        toast.error(`Số ngày nghỉ (${totalDays} ngày) vượt quá số ngày phép còn lại (${availableDays} ngày). Vui lòng điều chỉnh lại.`);
+        return;
+      }
+      if (!reason.trim()) {
+        toast.warning('Vui lòng nhập lý do nghỉ phép.');
+        return;
+      }
+      if (proposal.requires_attachment && !uploadedUrl && !proofLink.trim()) {
+        toast.warning('Loại đơn này bắt buộc tải lên tệp hoặc dán link minh chứng trước khi xác nhận.');
+        return;
+      }
+    }
+
+    const finalAttachment = uploadedUrl || (proofLink.trim() ? proofLink.trim() : undefined);
+    const updatedPayload = {
+      ...payload,
+      start_date: startDate,
+      end_date: endDate,
+      total_days: totalDays,
+      reason: reason.trim(),
+      attachment_url: finalAttachment,
+    };
+
+    onConfirm(msgId, proposal, true, updatedPayload, finalAttachment);
+  };
+
+  return (
+    <div className="ai-action-card">
+      <div className="ai-action-card-header">
+        <AlertCircle size={14} />
+        <span>Yêu cầu xác nhận (HITL): {proposal.title}</span>
+      </div>
+
+      <div className="ai-action-card-desc">
+        {proposal.description}
+      </div>
+
+      {isLeave && (
+        <div className="ai-action-form">
+          {/* Thời gian nghỉ */}
+          <div className="ai-action-field">
+            <label className="ai-action-field-label">
+              <Calendar size={12} />
+              <span>Thời gian nghỉ phép:</span>
+              <span className={`ai-action-days-badge ${isExceeded ? 'ai-badge-danger' : ''}`}>
+                {totalDays} ngày công {availableDays !== undefined ? `(còn lại: ${availableDays} ngày)` : ''}
+              </span>
+            </label>
+            <div className="ai-action-date-row">
+              <input
+                type="date"
+                className={`ai-action-input ${isPastDate ? 'ai-input-error' : ''}`}
+                value={startDate}
+                min={todayStr}
+                onChange={e => {
+                  setStartDate(e.target.value);
+                  if (e.target.value > endDate) setEndDate(e.target.value);
+                }}
+                disabled={confirmLoading}
+              />
+              <span className="ai-action-date-separator">đến</span>
+              <input
+                type="date"
+                className="ai-action-input"
+                value={endDate}
+                min={startDate || todayStr}
+                onChange={e => setEndDate(e.target.value)}
+                disabled={confirmLoading}
+              />
+            </div>
+            {isPastDate && (
+              <span className="ai-field-error-text">⚠️ Không thể chọn ngày trong quá khứ (trước hôm nay).</span>
+            )}
+            {isExceeded && (
+              <span className="ai-field-error-text">⚠️ Số ngày nghỉ vượt quá số ngày phép còn lại ({availableDays} ngày).</span>
+            )}
+          </div>
+
+          {/* Lý do xin nghỉ */}
+          <div className="ai-action-field">
+            <label className="ai-action-field-label">
+              <FileText size={12} />
+              <span>Lý do xin nghỉ:</span>
+              <span className="ai-action-field-req">*</span>
+            </label>
+            <input
+              type="text"
+              className="ai-action-input"
+              placeholder="Nhập lý do xin nghỉ phép..."
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+              disabled={confirmLoading}
+            />
+          </div>
+
+          {/* Minh chứng (Tệp hoặc Link) */}
+          <div className="ai-action-field">
+            <label className="ai-action-field-label">
+              <Paperclip size={12} />
+              <span>Minh chứng (Tệp hoặc Liên kết):</span>
+              {proposal.requires_attachment && <span className="ai-action-field-req">* (Bắt buộc)</span>}
+            </label>
+
+            <div className="ai-action-proof-group">
+              <div className="ai-action-proof-top">
+                <span className="ai-proof-hint">
+                  {proposal.requires_attachment
+                    ? 'Yêu cầu giấy khám / viện phí / đơn'
+                    : 'Đính kèm tệp nếu có minh chứng'}
+                </span>
+
+                {uploadedUrl ? (
+                  <span className="ai-upload-success">
+                    <Check size={13} /> Đã đính kèm tệp
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    className="ai-btn-upload"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading || confirmLoading}
+                  >
+                    <Paperclip size={12} />
+                    {uploading ? 'Đang tải...' : 'Tải tệp lên'}
+                  </button>
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*,application/pdf"
+                  style={{ display: 'none' }}
+                  onChange={handleUploadFile}
+                />
+              </div>
+
+              <div className="ai-action-link-row">
+                <Link size={12} className="ai-link-icon" />
+                <input
+                  type="url"
+                  className="ai-action-link-input"
+                  placeholder="Hoặc dán link minh chứng (Drive, ảnh chứng từ)..."
+                  value={proofLink}
+                  onChange={e => setProofLink(e.target.value)}
+                  disabled={confirmLoading}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Buttons */}
+      <div className="ai-action-buttons">
+        <button
+          type="button"
+          className="ai-btn-cancel"
+          onClick={() => onConfirm(msgId, proposal, false)}
+          disabled={confirmLoading}
+        >
+          Bỏ qua
+        </button>
+        <button
+          type="button"
+          className="ai-btn-confirm"
+          onClick={handleExecute}
+          disabled={confirmLoading || (isLeave && (totalDays <= 0 || isPastDate || isExceeded))}
+        >
+          {confirmLoading ? 'Đang xử lý...' : 'Xác nhận thực thi'}
+        </button>
+      </div>
+    </div>
+  );
+};
+
 export const AiChatbotWidget: React.FC<AiChatbotWidgetProps> = ({ isOpen, onClose, user }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
@@ -31,12 +286,18 @@ export const AiChatbotWidget: React.FC<AiChatbotWidgetProps> = ({ isOpen, onClos
   const [uploadingProof, setUploadingProof] = useState(false);
   const [uploadedProofUrl, setUploadedProofUrl] = useState<string | null>(null);
 
+  // Khóa khung chat khi đang có yêu cầu xác nhận (HITL) chưa hoàn tất
+  const hasPendingHitl = useMemo(
+    () => messages.some(m => m.action_proposal && !m.actionConfirmed),
+    [messages]
+  );
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Lưu trữ thread_id vào localStorage để duy trì mạch hội thoại khi reload
+  // Khởi tạo phiên hội thoại mới cho mỗi lần tải lại trang (không duy trì thread cũ qua reload)
   const threadIdRef = useRef<string>(
-    localStorage.getItem('hrm_ai_thread_id') || `thread_user_${user?.user_id || 'guest'}_${Date.now()}`
+    `thread_user_${user?.user_id || 'guest'}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`
   );
 
   // Tải lịch sử trò chuyện chính thức từ Supabase PostgreSQL khi mở widget
@@ -45,6 +306,9 @@ export const AiChatbotWidget: React.FC<AiChatbotWidgetProps> = ({ isOpen, onClos
 
     async function loadChatHistory() {
       if (!isOpen) return;
+
+      // Nếu đã có tin nhắn trong phiên hiện tại (người dùng vừa đóng rồi mở lại), giữ nguyên không ghi đè
+      if (messages.length > 0) return;
 
       const currentThread = threadIdRef.current;
 
@@ -60,6 +324,8 @@ export const AiChatbotWidget: React.FC<AiChatbotWidgetProps> = ({ isOpen, onClos
             sources: m.sources,
             tools_used: m.tools_used,
             action_proposal: m.action_proposal,
+            // Các yêu cầu HITL cũ trong lịch sử thì luôn đánh dấu là đã hoàn tất/xác nhận, không hiện lại
+            actionConfirmed: true,
           }));
           setMessages(historyMsgs);
         } else if (messages.length === 0) {
@@ -105,7 +371,7 @@ export const AiChatbotWidget: React.FC<AiChatbotWidgetProps> = ({ isOpen, onClos
   const handleNewChat = () => {
     const newThread = `thread_user_${user?.user_id || 'guest'}_${Date.now()}`;
     threadIdRef.current = newThread;
-    localStorage.setItem('hrm_ai_thread_id', newThread);
+    // Thread id scoped to session
     setMessages([
       {
         id: 'welcome_new',
@@ -139,7 +405,7 @@ export const AiChatbotWidget: React.FC<AiChatbotWidgetProps> = ({ isOpen, onClos
         onStart: (data) => {
           if (data.thread_id) {
             threadIdRef.current = data.thread_id;
-            localStorage.setItem('hrm_ai_thread_id', data.thread_id);
+            // Thread id scoped to session
           }
         },
         onStatus: (statusMsg) => {
@@ -157,7 +423,7 @@ export const AiChatbotWidget: React.FC<AiChatbotWidgetProps> = ({ isOpen, onClos
           setStreamStatus('');
           if (data.thread_id) {
             threadIdRef.current = data.thread_id;
-            localStorage.setItem('hrm_ai_thread_id', data.thread_id);
+            // Thread id scoped to session
           }
           setMessages(prev =>
             prev.map(m =>
@@ -217,7 +483,13 @@ export const AiChatbotWidget: React.FC<AiChatbotWidgetProps> = ({ isOpen, onClos
     }
   };
 
-  const handleConfirmAction = async (msgId: string, proposal: NonNullable<AIChatbotResponse['action_proposal']>, confirmed: boolean) => {
+  const handleConfirmAction = async (
+    msgId: string,
+    proposal: NonNullable<AIChatbotResponse['action_proposal']>,
+    confirmed: boolean,
+    customPayload?: Record<string, any>,
+    attachmentUrl?: string
+  ) => {
     if (!confirmed) {
       setMessages(prev =>
         prev.map(m => m.id === msgId ? { ...m, actionConfirmed: true } : m)
@@ -226,18 +498,14 @@ export const AiChatbotWidget: React.FC<AiChatbotWidgetProps> = ({ isOpen, onClos
       return;
     }
 
-    if (proposal.requires_attachment && !uploadedProofUrl) {
-      toast.warning('Vui lòng tải lên tệp minh chứng (giấy viện phí / khám chữa bệnh) trước khi xác nhận.');
-      return;
-    }
-
     setConfirmLoading(true);
     try {
       const res = await aiChatbotApi.confirmAction({
         action_type: proposal.action_type,
-        payload: proposal.payload,
+        payload: customPayload || proposal.payload,
         confirmed: true,
-        attachment_url: uploadedProofUrl || undefined,
+        attachment_url: attachmentUrl || uploadedProofUrl || undefined,
+        thread_id: threadIdRef.current,
       });
 
       setMessages(prev => [
@@ -333,62 +601,12 @@ export const AiChatbotWidget: React.FC<AiChatbotWidgetProps> = ({ isOpen, onClos
 
                 {/* Action Proposal Card (HITL) */}
                 {msg.action_proposal && !msg.actionConfirmed && (
-                  <div className="ai-action-card">
-                    <div className="ai-action-card-header">
-                      <AlertCircle size={14} />
-                      <span>Yêu cầu xác nhận (HITL): {msg.action_proposal.title}</span>
-                    </div>
-                    <div className="ai-action-card-desc">
-                      {msg.action_proposal.description}
-                    </div>
-
-                    {msg.action_proposal.requires_attachment && (
-                      <div className="ai-action-upload">
-                        <span>Minh chứng y tế / đơn từ:</span>
-                        {uploadedProofUrl ? (
-                          <span className="ai-upload-success">
-                            <Check size={13} /> Đã đính kèm tệp
-                          </span>
-                        ) : (
-                          <button
-                            type="button"
-                            className="ai-btn-upload"
-                            onClick={() => fileInputRef.current?.click()}
-                            disabled={uploadingProof}
-                          >
-                            <Paperclip size={13} />
-                            {uploadingProof ? 'Đang tải lên...' : 'Đính kèm tệp'}
-                          </button>
-                        )}
-                        <input
-                          ref={fileInputRef}
-                          type="file"
-                          accept="image/*,application/pdf"
-                          style={{ display: 'none' }}
-                          onChange={handleUploadProof}
-                        />
-                      </div>
-                    )}
-
-                    <div className="ai-action-buttons">
-                      <button
-                        type="button"
-                        className="ai-btn-cancel"
-                        onClick={() => handleConfirmAction(msg.id, msg.action_proposal!, false)}
-                        disabled={confirmLoading}
-                      >
-                        Bỏ qua
-                      </button>
-                      <button
-                        type="button"
-                        className="ai-btn-confirm"
-                        onClick={() => handleConfirmAction(msg.id, msg.action_proposal!, true)}
-                        disabled={confirmLoading}
-                      >
-                        {confirmLoading ? 'Đang xử lý...' : 'Xác nhận thực thi'}
-                      </button>
-                    </div>
-                  </div>
+                  <ActionProposalCard
+                    msgId={msg.id}
+                    proposal={msg.action_proposal}
+                    onConfirm={handleConfirmAction}
+                    confirmLoading={confirmLoading}
+                  />
                 )}
               </div>
             </div>
@@ -407,28 +625,28 @@ export const AiChatbotWidget: React.FC<AiChatbotWidgetProps> = ({ isOpen, onClos
             <div className="ai-quick-prompts">
               <span className="ai-quick-prompts-label">Gợi ý câu hỏi nhanh:</span>
               <button
-                className="ai-quick-btn"
+                className="ai-quick-btn" disabled={hasPendingHitl}
                 onClick={() => handleSend('Xem bảng lương tháng này của tôi')}
               >
                 <Sparkles size={13} className="ai-quick-icon" />
                 <span>Bảng lương & phụ cấp dự án tháng này của tôi</span>
               </button>
               <button
-                className="ai-quick-btn"
+                className="ai-quick-btn" disabled={hasPendingHitl}
                 onClick={() => handleSend('Tôi còn bao nhiêu ngày phép năm?')}
               >
                 <Sparkles size={13} className="ai-quick-icon" />
                 <span>Số dư ngày phép năm còn lại của tôi</span>
               </button>
               <button
-                className="ai-quick-btn"
+                className="ai-quick-btn" disabled={hasPendingHitl}
                 onClick={() => handleSend('Quy định xử lý nhân viên đi trễ trên 15 phút như thế nào?')}
               >
                 <Sparkles size={13} className="ai-quick-icon" />
                 <span>Quy định phạt đi trễ trên 15 phút tại chuỗi cửa hàng</span>
               </button>
               <button
-                className="ai-quick-btn"
+                className="ai-quick-btn" disabled={hasPendingHitl}
                 onClick={() => handleSend('Các dự án và mức phụ cấp tôi đang tham gia')}
               >
                 <Sparkles size={13} className="ai-quick-icon" />
@@ -452,24 +670,36 @@ export const AiChatbotWidget: React.FC<AiChatbotWidgetProps> = ({ isOpen, onClos
           <div ref={messagesEndRef} />
         </div>
 
+        {/* HITL Pending Lock Banner */}
+        {hasPendingHitl && (
+          <div className="ai-hitl-lock-banner">
+            <Lock size={13} className="ai-lock-icon" />
+            <span>Đang chờ bạn phản hồi yêu cầu (HITL). Vui lòng <strong>Xác nhận</strong> hoặc <strong>Bỏ qua</strong> phía trên để tiếp tục trò chuyện.</span>
+          </div>
+        )}
+
         {/* Input Bar */}
         <div className="ai-input-bar">
           <input
             type="text"
             className="ai-input-field"
-            placeholder="Hỏi về quy chế, dự án, lương, phép năm..."
+            placeholder={
+              hasPendingHitl
+                ? "Vui lòng 'Xác nhận' hoặc 'Bỏ qua' yêu cầu phía trên để tiếp tục..."
+                : "Hỏi về quy chế, dự án, lương, phép năm..."
+            }
             value={inputText}
             onChange={e => setInputText(e.target.value)}
             onKeyDown={e => {
-              if (e.key === 'Enter') handleSend();
+              if (e.key === 'Enter' && !hasPendingHitl) handleSend();
             }}
-            disabled={loading}
+            disabled={loading || hasPendingHitl}
           />
           <button
             className="ai-send-btn"
             onClick={() => handleSend()}
-            disabled={!inputText.trim() || loading}
-            title="Gửi câu hỏi"
+            disabled={!inputText.trim() || loading || hasPendingHitl}
+            title={hasPendingHitl ? "Vui lòng xác nhận hoặc bỏ qua yêu cầu phía trên" : "Gửi câu hỏi"}
             aria-label="Gửi câu hỏi"
           >
             <Send size={15} />

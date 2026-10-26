@@ -1209,6 +1209,7 @@ export const aiChatbotApi = {
     payload: any;
     confirmed: boolean;
     attachment_url?: string;
+    thread_id?: string;
   }): Promise<any> => {
     return api.post<any>('/ai-chatbot/confirm-action', data);
   },
