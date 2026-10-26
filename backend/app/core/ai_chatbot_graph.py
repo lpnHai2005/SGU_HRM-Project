@@ -126,7 +126,13 @@ OUT_OF_SCOPE_KEYWORDS = [
 POLICY_KEYWORDS = [
     "quy chế", "nội quy", "chính sách", "quy định", "hướng dẫn", "tiền lương",
     "phạt", "kỷ luật", "thâm niên", "bảo hiểm", "thai sản", "nghỉ ốm", "tăng ca", "ot",
-    "geofence", "gps", "hợp đồng", "thử việc", "đổi ca", "phụ cấp dự án", "tiêu chuẩn 26 công"
+    "geofence", "gps", "hợp đồng", "thử việc", "đổi ca", "phụ cấp dự án", "tiêu chuẩn 26 công",
+    # Thời gian làm việc, đi trễ, về sớm, chấm công, chế tài kỷ luật
+    "đi trễ", "vào trễ", "về sớm", "đi muộn", "vào muộn", "trễ", "muộn", "ân hạn", "grace period",
+    "bị gì không", "bị sao không", "bị phạt", "bị trừ", "chế tài", "xử phạt", "khấu trừ",
+    "quên chấm công", "quên check-in", "quên check-out", "chấm công lỗi", "giờ công", "thiếu ca",
+    "đồng phục", "trang phục", "tác phong", "bàn giao ca", "kiểm quỹ", "két tiền", "thời gian làm việc",
+    "nghỉ việc", "bỏ việc", "sa thải", "khiển trách", "cảnh cáo", "đền bù"
 ]
 
 PERSONAL_DATA_KEYWORDS = [
@@ -141,7 +147,8 @@ TECHZONE_HR_KEYWORDS = [
     "kỷ luật", "thưởng", "phụ cấp", "bảo hiểm", "thai sản", "ốm", "chấm công", "check-in",
     "check-out", "geofence", "gps", "tài khoản", "mật khẩu", "đăng nhập", "hồ sơ", "đơn",
     "nội quy", "quy chế", "quy định", "chính sách", "quy trình", "giờ làm", "tăng ca", "ot",
-    "làm việc", "công việc", "phòng ban", "bộ phận", "trợ cấp", "chế độ"
+    "làm việc", "công việc", "phòng ban", "bộ phận", "trợ cấp", "chế độ",
+    "trễ", "muộn", "sớm", "phạt", "bị gì", "bị sao", "ân hạn", "chế tài", "khấu trừ", "đồng phục"
 ]
 
 GREETING_KEYWORDS = [
@@ -298,12 +305,9 @@ async def router_node(state: AgentState) -> Dict[str, Any]:
     elif has_policy:
         intent = "POLICY"
     else:
-        # Nếu câu hỏi có từ khóa nghiệp vụ TechZone/HR -> POLICY, ngược lại -> OUT_OF_SCOPE
-        has_hr_topic = any(k in q for k in TECHZONE_HR_KEYWORDS)
-        if has_hr_topic:
-            intent = "POLICY"
-        else:
-            intent = "OUT_OF_SCOPE"
+        # Nếu câu hỏi chứa từ khóa HR hoặc không thuộc danh sách OUT_OF_SCOPE:
+        # Mặc định chuyển sang POLICY để Vector RAG tra cứu tài liệu quy chế công ty
+        intent = "POLICY"
 
     return {"intent": intent}
 
