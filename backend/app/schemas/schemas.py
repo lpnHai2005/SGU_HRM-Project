@@ -915,6 +915,7 @@ class AIChatbotConfirmActionRequest(BaseModel):
     payload: Dict[str, Any]
     confirmed: bool = True
     attachment_url: Optional[str] = None
+    thread_id: Optional[str] = None
 
 
 class AIChatbotResponse(BaseModel):

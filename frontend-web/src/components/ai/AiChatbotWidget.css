@@ -382,6 +382,167 @@
   border-color: var(--border-strong);
 }
 
+/* HITL Lock Banner */
+.ai-hitl-lock-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(245, 158, 11, 0.12);
+  border-top: 1px solid var(--status-warning-border, rgba(245, 158, 11, 0.3));
+  border-bottom: 1px solid var(--status-warning-border, rgba(245, 158, 11, 0.3));
+  color: var(--status-warning, #d97706);
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+[data-theme="dark"] .ai-hitl-lock-banner {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+}
+
+.ai-lock-icon {
+  flex-shrink: 0;
+  color: var(--status-warning, #d97706);
+}
+
+/* Action Proposal Card Form Fields */
+.ai-action-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  margin-bottom: 12px;
+}
+
+.ai-action-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ai-action-field-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.ai-action-field-req {
+  color: var(--status-danger, #ef4444);
+  font-size: 10px;
+}
+
+.ai-action-input {
+  width: 100%;
+  padding: 6px 9px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs, 4px);
+  color: var(--text-primary);
+  font-size: 11.5px;
+  font-family: inherit;
+  box-sizing: border-box;
+  transition: border-color var(--duration-fast);
+}
+
+.ai-action-input:focus {
+  outline: none;
+  border-color: var(--action-primary);
+}
+
+.ai-action-date-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ai-action-date-separator {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.ai-action-days-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--status-success, #059669);
+  border-radius: var(--radius-xs, 4px);
+  margin-left: auto;
+}
+
+.ai-action-days-badge.ai-badge-danger {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--status-danger, #ef4444);
+}
+
+.ai-action-input.ai-input-error {
+  border-color: var(--status-danger, #ef4444);
+}
+
+.ai-field-error-text {
+  font-size: 10.5px;
+  color: var(--status-danger, #ef4444);
+  font-weight: 500;
+  margin-top: 2px;
+}
+
+.ai-action-proof-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--surface-subtle);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-xs, 4px);
+  padding: 8px 10px;
+}
+
+.ai-action-proof-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ai-proof-hint {
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+}
+
+.ai-action-link-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs, 4px);
+  padding: 2px 8px;
+}
+
+.ai-link-icon {
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.ai-action-link-input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 11px;
+  font-family: inherit;
+  padding: 4px 0;
+}
+
+.ai-action-link-input:focus {
+  outline: none;
+}
+
 /* Quick Prompts Suggestions */
 .ai-quick-prompts {
   display: flex;

@@ -122,26 +122,101 @@ async def confirm_chatbot_action(
     if not emp_id:
         raise HTTPException(status_code=400, detail="Tài khoản chưa được liên kết với nhân viên.")
 
+    # Đánh dấu action_proposal trong tin nhắn của thread là đã được xác nhận (không hiện lại khi mở lại chat)
+    if req.thread_id:
+        try:
+            await db.execute(text("""
+                UPDATE ai_chat_messages
+                SET action_proposal = jsonb_set(COALESCE(action_proposal, '{}'::jsonb), '{confirmed}', 'true')
+                WHERE thread_id = :tid AND action_proposal IS NOT NULL
+            """), {"tid": str(req.thread_id).strip()})
+        except Exception:
+            pass
+
     action_type = req.action_type
     payload = req.payload or {}
 
-    # 1. Thực thi Tạo đơn nghỉ phép
+    # 1. Thực thi Tạo đơn nghỉ phép (Kiểm tra toàn bộ ràng buộc nghiệp vụ)
     if action_type == "create_leave_request":
         leave_type_id = payload.get("leave_type_id")
         start_date = payload.get("start_date")
         end_date = payload.get("end_date")
-        total_days = payload.get("total_days")
-        reason = payload.get("reason", "Tạo qua Trợ lý AI Chatbot")
+        reason = (payload.get("reason") or "Đăng ký qua Trợ lý AI Chatbot").strip()
         attachment_url = req.attachment_url or payload.get("attachment_url")
 
-        # Kiểm tra loại nghỉ có yêu cầu minh chứng
-        lt_res = await db.execute(text("SELECT requires_attachment, type_name FROM leave_types WHERE leave_type_id = :id"), {"id": leave_type_id})
-        lt = lt_res.mappings().first()
-        if lt and lt["requires_attachment"] and not attachment_url:
+        s_date_obj = date.fromisoformat(start_date) if isinstance(start_date, str) else (start_date or date.today())
+        e_date_obj = date.fromisoformat(end_date) if isinstance(end_date, str) else (end_date or s_date_obj)
+
+        today = date.today()
+        if s_date_obj < today:
             raise HTTPException(
                 status_code=400,
-                detail=f"Loại đơn '{lt['type_name']}' bắt buộc phải tải lên tệp minh chứng trước khi xác nhận!"
+                detail=f"Không thể tạo đơn nghỉ phép cho ngày trong quá khứ (trước ngày {today.strftime('%d/%m/%Y')}). Vui lòng chọn ngày bắt đầu từ hôm nay trở đi."
             )
+
+        if s_date_obj > e_date_obj:
+            raise HTTPException(status_code=400, detail="Ngày bắt đầu nghỉ không được lớn hơn ngày kết thúc.")
+
+        total_days = float((e_date_obj - s_date_obj).days + 1)
+        if total_days <= 0:
+            raise HTTPException(status_code=400, detail="Số ngày xin nghỉ phải lớn hơn 0.")
+
+        # Kiểm tra loại nghỉ
+        lt_res = await db.execute(
+            text("SELECT leave_type_id, type_code, type_name, max_days_allowed, requires_attachment FROM leave_types WHERE leave_type_id = :id"),
+            {"id": leave_type_id}
+        )
+        lt = lt_res.mappings().first()
+        if not lt:
+            raise HTTPException(status_code=404, detail="Loại đơn nghỉ phép không tồn tại.")
+
+        if lt["requires_attachment"] and not attachment_url:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Loại đơn '{lt['type_name']}' bắt buộc phải cung cấp tệp hoặc liên kết minh chứng trước khi xác nhận!"
+            )
+
+        # Kiểm tra trùng lặp thời gian với các đơn đã nộp (PENDING, STORE_APPROVED, HR_APPROVED)
+        overlap_res = await db.execute(text("""
+            SELECT request_id, start_date, end_date, status
+            FROM leave_requests
+            WHERE employee_id = :emp_id
+              AND status IN ('PENDING', 'STORE_APPROVED', 'HR_APPROVED')
+              AND start_date <= :end_date AND end_date >= :start_date
+            LIMIT 1
+        """), {
+            "emp_id": emp_id,
+            "start_date": s_date_obj,
+            "end_date": e_date_obj
+        })
+        overlap = overlap_res.mappings().first()
+        if overlap:
+            s_str = overlap['start_date'].strftime('%d/%m/%Y') if hasattr(overlap['start_date'], 'strftime') else str(overlap['start_date'])
+            e_str = overlap['end_date'].strftime('%d/%m/%Y') if hasattr(overlap['end_date'], 'strftime') else str(overlap['end_date'])
+            raise HTTPException(
+                status_code=400,
+                detail=f"Bạn đã có đơn nghỉ phép (Mã #{overlap['request_id']}) trong khoảng thời gian {s_str} đến {e_str} đang chờ duyệt hoặc đã được phê duyệt. Không thể tạo đơn trùng lịch."
+            )
+
+        # Kiểm tra hạn mức phép năm nếu là PHEP_NAM hoặc hạn mức tối đa của loại đơn
+        if lt["type_code"] == "PHEP_NAM":
+            from app.core.ai_chatbot_tools import get_my_leave_balance
+            bal = await get_my_leave_balance({}, current_user, db)
+            rem = bal.get("annual_leave_remaining", 0)
+            pend = bal.get("annual_leave_pending", 0)
+            avail = max(0.0, rem - pend)
+            if total_days > avail:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Số ngày nghỉ yêu cầu ({total_days} ngày) vượt quá số ngày phép năm còn lại khả dụng của bạn ({avail} ngày; đã duyệt: {bal.get('annual_leave_used', 0)} ngày, đang chờ duyệt: {pend} ngày). Vui lòng chọn loại nghỉ không lương hoặc điều chỉnh lại thời gian."
+                )
+        else:
+            max_days = lt.get("max_days_allowed")
+            if max_days and float(max_days) > 0 and total_days > float(max_days):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Loại nghỉ '{lt['type_name']}' chỉ được nghỉ tối đa {max_days} ngày theo quy định. Bạn đang đăng ký {total_days} ngày."
+                )
 
         insert_q = text("""
             INSERT INTO leave_requests (
@@ -157,8 +232,8 @@ async def confirm_chatbot_action(
         ins_res = await db.execute(insert_q, {
             "emp_id": emp_id,
             "lt_id": leave_type_id,
-            "s_date": start_date,
-            "e_date": end_date,
+            "s_date": s_date_obj,
+            "e_date": e_date_obj,
             "days": total_days,
             "reason": reason,
             "att": attachment_url
@@ -174,30 +249,68 @@ async def confirm_chatbot_action(
             "created_at": new_row["created_at"].isoformat() if new_row.get("created_at") else None
         }
 
-    # 2. Thực thi Hủy đơn nghỉ phép
+    # 2. Thực thi Hủy đơn nghỉ phép (Hỗ trợ đơn lẻ, danh sách hoặc toàn bộ)
     elif action_type == "cancel_leave_request":
         req_id = payload.get("request_id")
-        if not req_id:
-            raise HTTPException(status_code=400, detail="Thiếu mã đơn cần hủy.")
+        req_ids = payload.get("request_ids")
+        cancel_all = payload.get("cancel_all", False)
 
-        upd_q = text("""
-            UPDATE leave_requests
-            SET status = 'CANCELLED', updated_at = NOW()
-            WHERE request_id = :id AND employee_id = :emp_id AND status IN ('PENDING', 'STORE_APPROVED')
-            RETURNING request_id, status
-        """)
-        upd_res = await db.execute(upd_q, {"id": int(req_id), "emp_id": emp_id})
-        row = upd_res.mappings().first()
-        if not row:
-            raise HTTPException(status_code=400, detail="Không tìm thấy đơn hoặc đơn đã được phê duyệt chính thức/đã hủy.")
+        if cancel_all or req_ids:
+            if req_ids and isinstance(req_ids, list):
+                target_ids = [int(i) for i in req_ids]
+            else:
+                target_ids = []
 
-        await db.commit()
-        return {
-            "status": "SUCCESS",
-            "message": f"Đã hủy thành công đơn nghỉ phép #{req_id}.",
-            "request_id": row["request_id"],
-            "leave_status": row["status"]
-        }
+            if target_ids:
+                upd_q = text("""
+                    UPDATE leave_requests
+                    SET status = 'CANCELLED', updated_at = NOW()
+                    WHERE request_id = ANY(:ids) AND employee_id = :emp_id AND status IN ('PENDING', 'STORE_APPROVED')
+                    RETURNING request_id, status
+                """)
+                upd_res = await db.execute(upd_q, {"ids": target_ids, "emp_id": emp_id})
+            else:
+                upd_q = text("""
+                    UPDATE leave_requests
+                    SET status = 'CANCELLED', updated_at = NOW()
+                    WHERE employee_id = :emp_id AND status IN ('PENDING', 'STORE_APPROVED')
+                    RETURNING request_id, status
+                """)
+                upd_res = await db.execute(upd_q, {"emp_id": emp_id})
+
+            cancelled_rows = upd_res.mappings().all()
+            if not cancelled_rows:
+                raise HTTPException(status_code=400, detail="Không có đơn nghỉ phép nào đang chờ duyệt để hủy.")
+
+            await db.commit()
+            id_list_str = ", ".join(f"#{r['request_id']}" for r in cancelled_rows)
+            return {
+                "status": "SUCCESS",
+                "message": f"Đã hủy thành công {len(cancelled_rows)} đơn nghỉ phép đang chờ duyệt ({id_list_str}).",
+                "cancelled_count": len(cancelled_rows)
+            }
+        else:
+            if not req_id:
+                raise HTTPException(status_code=400, detail="Thiếu mã đơn cần hủy.")
+
+            upd_q = text("""
+                UPDATE leave_requests
+                SET status = 'CANCELLED', updated_at = NOW()
+                WHERE request_id = :id AND employee_id = :emp_id AND status IN ('PENDING', 'STORE_APPROVED')
+                RETURNING request_id, status
+            """)
+            upd_res = await db.execute(upd_q, {"id": int(req_id), "emp_id": emp_id})
+            row = upd_res.mappings().first()
+            if not row:
+                raise HTTPException(status_code=400, detail="Không tìm thấy đơn hoặc đơn đã được phê duyệt chính thức/đã hủy.")
+
+            await db.commit()
+            return {
+                "status": "SUCCESS",
+                "message": f"Đã hủy thành công đơn nghỉ phép #{req_id}.",
+                "request_id": row["request_id"],
+                "leave_status": row["status"]
+            }
 
     else:
         raise HTTPException(status_code=400, detail=f"Hành động '{action_type}' không được hỗ trợ.")
