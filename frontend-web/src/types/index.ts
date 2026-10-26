@@ -414,11 +414,53 @@ export type OvertimeRequestStatus =
 export type OvertimeReconciliationStatus =
   | 'PENDING_RECONCILIATION' | 'NEEDS_REVIEW' | 'VERIFIED' | 'REJECTED'
 
+export type OvertimeExecutionStatus =
+  | 'NOT_STARTED' | 'IN_PROGRESS' | 'ENDED' | 'ATTENDANCE_INCOMPLETE'
+
+export type OvertimeReconciliationCaseType = 'EXPLANATION' | 'REVIEW_REQUEST'
+export type OvertimeReconciliationCaseStatus = 'OPEN' | 'RESPONDED' | 'CLOSED' | 'ACCEPTED' | 'DECLINED'
+
+export interface OvertimeReconciliationCaseEvent {
+  case_event_id: number
+  actor_id: number
+  action: string
+  from_status: OvertimeReconciliationCaseStatus | null
+  to_status: OvertimeReconciliationCaseStatus
+  version: number
+  reason?: string | null
+  details: Record<string, unknown>
+  created_at: string
+}
+
+export interface OvertimeReconciliationCase {
+  case_id: number
+  request_id: number
+  reconciliation_version: number
+  case_type: OvertimeReconciliationCaseType
+  status: OvertimeReconciliationCaseStatus
+  version: number
+  opened_by: number
+  reason: string
+  employee_response?: string | null
+  responded_by?: number | null
+  responded_at?: string | null
+  resolved_by?: number | null
+  resolved_at?: string | null
+  resolution_reason?: string | null
+  created_at: string
+  updated_at: string
+  events: OvertimeReconciliationCaseEvent[]
+}
+
 export interface OvertimeReconciliation {
   request_id: number
   request_status: OvertimeRequestStatus
+  request_eligible?: boolean
   status: OvertimeReconciliationStatus
   effective_status: OvertimeReconciliationStatus
+  display_status?: OvertimeReconciliationStatus
+  execution_status?: OvertimeExecutionStatus
+  reconciliation_window_open?: boolean
   version: number
   proposed_microseconds: number
   verified_microseconds: number | null
@@ -454,6 +496,8 @@ export interface OvertimeReconciliation {
     new_values: Record<string, unknown>
     created_at: string
   }>
+  exception_workflow_available?: boolean
+  exception_cases?: OvertimeReconciliationCase[]
 }
 
 export interface OvertimeRequest {
@@ -764,3 +808,182 @@ export interface AuditLog {
   ip_address?: string | null;
   created_at: string;
 }
+
+// ============================================
+// Report & Dashboard Types
+// ============================================
+
+export interface DemographicsGroupItem {
+  [key: string]: string | number;
+  total: number;
+}
+
+export interface DemographicsReportData {
+  total_employees?: number;
+  education: Array<{ education_level: string; total: number }>;
+  salary_range: Array<{ salary_range: string; total: number }>;
+  seniority: Array<{ seniority_group: string; total: number }>;
+  gender?: Array<{ gender: string; total: number }>;
+  age_group?: Array<{ age_group: string; total: number }>;
+  details?: any[];
+}
+
+export interface HeadcountTrendPoint {
+  month: string;
+  hired: number;
+  resigned: number;
+  active_total: number;
+}
+
+export interface PayrollTrendPoint {
+  period: string;
+  employee_count: number;
+  gross_total: number;
+  net_total: number;
+  insurance_total: number;
+  bonus_total: number;
+}
+
+export interface AttendanceSummaryData {
+  period: string;
+  total_records: number;
+  by_status: Array<{
+    status: string;
+    label: string;
+    count: number;
+    rate: number;
+  }>;
+  total_working_hours: number;
+  total_ot_hours: number;
+  total_late_minutes: number;
+  on_time_rate: number;
+  details?: any[];
+}
+
+export interface LeaveSummaryData {
+  period: string;
+  total_requests: number;
+  by_type: Array<{
+    type_name: string;
+    count: number;
+    days: number;
+  }>;
+  by_status: Array<{
+    status: string;
+    label: string;
+    count: number;
+  }>;
+  details?: any[];
+}
+
+export interface SalesPerformanceReportData {
+  records: Array<{
+    employee_id: number;
+    employee_code?: string;
+    employee_name: string;
+    store_name?: string;
+    salary_period: string;
+    phone_revenue: number;
+    laptop_revenue: number;
+    accessory_revenue: number;
+    total_revenue: number;
+    target_kpi: number;
+    kpi_completion_rate: number;
+    commission_amount: number;
+  }>;
+  summary: {
+    total_sales_employees: number;
+    total_phone_revenue: number;
+    total_laptop_revenue: number;
+    total_accessory_revenue: number;
+    grand_total_revenue: number;
+    total_target_kpi: number;
+    avg_kpi_completion_rate: number;
+    total_commission_paid: number;
+  };
+}
+
+export interface HRStatusReportData {
+  store_id: number;
+  store_name: string;
+  total_staff: number;
+  active_staff: number;
+  probation_staff: number;
+  resigned_staff: number;
+  total_contract_salary: number;
+}
+
+export interface ProjectRole {
+  role_code: string;
+  role_name: string;
+  description?: string | null;
+  display_order?: number;
+  is_active?: boolean;
+  created_at?: string;
+}
+
+export interface ProjectRoleAllowance {
+  id?: number;
+  project_id: number;
+  role_code: string;
+  role_name?: string | null;
+  allowance_amount: number;
+  notes?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ProjectMember {
+  project_member_id: number;
+  project_id: number;
+  employee_id: number;
+  employee_code?: string;
+  employee_name: string;
+  position_name?: string;
+  project_role: string;
+  project_allowance: number;
+  joined_date: string;
+  left_date?: string | null;
+  is_active: boolean;
+}
+
+export interface Project {
+  project_id: number;
+  project_code: string;
+  project_name: string;
+  description?: string | null;
+  start_date: string;
+  end_date?: string | null;
+  status: string;
+  budget?: number | null;
+  role_allowances?: ProjectRoleAllowance[];
+  members: ProjectMember[];
+}
+
+export interface PayrollPolicySetting {
+  setting_id: number;
+  setting_key: string;
+  setting_name: string;
+  setting_group: string;
+  numeric_value: number;
+  unit?: string;
+  description?: string | null;
+  is_active: boolean;
+  updated_at?: string;
+}
+
+export interface PayrollPeriodBonus {
+  bonus_id: number;
+  salary_period: string;
+  bonus_code: string;
+  bonus_name: string;
+  calculation_type: 'FIXED_AMOUNT' | 'COEFFICIENT' | 'CONTRACT_SALARY' | string;
+  base_amount: number;
+  applies_to?: string;
+  is_recurring?: boolean;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+

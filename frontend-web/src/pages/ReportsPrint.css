@@ -1,0 +1,278 @@
+/* ===============================================================================
+ * TECHZONE HRM - REPORTS A4 PRINT & PREVIEW STYLES
+ * Chuẩn thể thức văn bản hành chính doanh nghiệp
+ * Tối ưu vừa vặn trong DUY NHẤT 1 TRANG A4 khi in (Ctrl+P / window.print)
+ * =============================================================================== */
+
+.report-a4-preview-backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(4px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.report-a4-paper {
+  background: #ffffff;
+  color: #0f172a;
+  width: 100%;
+  max-width: 820px;
+  min-height: 1100px;
+  padding: 32px 40px;
+  border-radius: 4px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+  font-family: 'Times New Roman', Times, 'Liberation Serif', Georgia, serif;
+  font-size: 13px;
+  line-height: 1.45;
+  box-sizing: border-box;
+  position: relative;
+}
+
+/* Header Quốc hiệu / Pháp nhân */
+.report-a4-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  border-bottom: 2px solid #0f172a;
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+}
+
+.report-a4-company-name {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #1e3a8a;
+  letter-spacing: 0.5px;
+}
+
+.report-a4-company-sub {
+  font-size: 11px;
+  color: #475569;
+  margin-top: 2px;
+}
+
+.report-a4-meta {
+  text-align: right;
+  font-size: 11.5px;
+  color: #334155;
+}
+
+.report-a4-meta-code {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+/* Tiêu đề báo cáo */
+.report-a4-title-block {
+  text-align: center;
+  margin: 18px 0 20px 0;
+}
+
+.report-a4-main-title {
+  font-size: 18px;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: #0f172a;
+  margin-bottom: 4px;
+  letter-spacing: 0.5px;
+}
+
+.report-a4-subtitle {
+  font-size: 12px;
+  font-style: italic;
+  color: #475569;
+}
+
+/* 4 Hộp số liệu KPI trên bản in */
+.report-a4-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.report-a4-kpi-box {
+  border: 1px solid #cbd5e1;
+  background-color: #f8fafc;
+  padding: 8px 10px;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.report-a4-kpi-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.report-a4-kpi-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1e3a8a;
+  margin-top: 2px;
+}
+
+/* Bảng số liệu trên bản in */
+.report-a4-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #1e3a8a;
+  border-bottom: 1px solid #cbd5e1;
+  padding-bottom: 4px;
+  margin-top: 16px;
+  margin-bottom: 8px;
+}
+
+.report-a4-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+  margin-bottom: 14px;
+}
+
+.report-a4-table th,
+.report-a4-table td {
+  border: 1px solid #94a3b8;
+  padding: 5px 8px;
+  text-align: left;
+}
+
+.report-a4-table th {
+  background-color: #f1f5f9;
+  font-weight: 700;
+  text-align: center;
+  color: #0f172a;
+}
+
+.report-a4-table .text-center {
+  text-align: center;
+}
+
+.report-a4-table .text-right {
+  text-align: right;
+  font-family: 'Courier New', Courier, monospace;
+  font-weight: 600;
+}
+
+.report-a4-table tr.total-row {
+  background-color: #f8fafc;
+  font-weight: 700;
+}
+
+/* Khung 3 chữ ký cuối trang */
+.report-a4-signatures {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-top: 32px;
+  page-break-inside: avoid;
+}
+
+.report-a4-sign-box {
+  text-align: center;
+}
+
+.report-a4-sign-title {
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 12px;
+  color: #0f172a;
+}
+
+.report-a4-sign-note {
+  font-size: 11px;
+  font-style: italic;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+.report-a4-sign-space {
+  height: 64px;
+}
+
+.report-a4-sign-name {
+  font-weight: 700;
+  font-size: 12.5px;
+  color: #0f172a;
+}
+
+/* Thanh điều khiển khi xem trước trong modal */
+.report-preview-actions {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  gap: 8px;
+  z-index: 10;
+}
+
+/* ===============================================================================
+ * @media print: In ra giấy hoặc Lưu PDF sạch sẽ
+ * =============================================================================== */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 10mm 15mm 15mm 15mm;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Ẩn giao diện thông thường bên trong #root khi có modal bản in portal đang hiển thị */
+  body:has(.report-a4-preview-backdrop) #root,
+  body:has(.print-active-overlay) #root,
+  .app-shell,
+  .sidebar,
+  .header,
+  .no-print,
+  .report-preview-actions {
+    display: none !important;
+  }
+
+  /* Hiển thị duy nhất bản in A4 đã được Portal ra body */
+  .report-a4-preview-backdrop {
+    position: static !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    overflow: visible !important;
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    visibility: visible !important;
+  }
+
+  .report-a4-paper {
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: auto !important;
+    border: none !important;
+    display: block !important;
+    visibility: visible !important;
+  }
+
+  .report-a4-paper * {
+    visibility: visible !important;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}

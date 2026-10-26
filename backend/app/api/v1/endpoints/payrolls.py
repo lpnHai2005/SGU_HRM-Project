@@ -17,14 +17,20 @@ from app.core.ot_registration_policy import (
 from app.api.deps import get_current_user, require_roles
 from app.core.vietnamese_number import currency_to_vietnamese_words
 from app.core.excel_exporter import create_styled_excel
+import logging
 from app.schemas.schemas import (
     PayrollOut, PayrollDetailOut, CalculatePayrollRequest,
     SalesRecordCreate, SalesRecordOut, SalesRecordUpdate,
     CommissionOut, PayrollStatusUpdate, BatchPayrollStatusRequest,
     ProjectCreate, ProjectUpdate, ProjectMemberCreate, ProjectMemberUpdate,
-    ProjectOut, ProjectMemberOut, PayrollPeriodReopenRequest
+    ProjectOut, ProjectMemberOut, PayrollPeriodReopenRequest,
+    ProjectRoleOut, ProjectRoleCreate,
+    ProjectRoleAllowanceCreate, ProjectRoleAllowanceOut,
+    PayrollPolicySettingOut, PayrollPolicySettingUpdate,
+    PayrollPeriodBonusCreate, PayrollPeriodBonusUpdate, PayrollPeriodBonusOut
 )
 
+logger = logging.getLogger("techzone_hrm.payrolls")
 router = APIRouter()
 
 async def lock_payroll_period(db, period):
@@ -98,9 +104,11 @@ def populate_payroll_breakdown_from_details(pr_dict: dict, details_list: list):
     pr_dict["project_allowance"] = det_map.get("PROJECT_ALLOWANCE", 0.0)
     pr_dict["meal_transport_allowance"] = det_map.get("MEAL_ALLOWANCE", 0.0)
     pr_dict["commission_amount"] = det_map.get("COMMISSION", 0.0)
-    pr_dict["holiday_bonus"] = det_map.get("HOLIDAY_BONUS", 0.0)
+    pr_dict["holiday_bonus"] = det_map.get("HOLIDAY_BONUS", det_map.get("TET_BONUS", 0.0))
     pr_dict["productivity_bonus"] = det_map.get("PRODUCTIVITY_BONUS", 0.0)
-    pr_dict["bonus_amount"] = pr_dict["holiday_bonus"] + pr_dict["productivity_bonus"]
+    # Tổng hợp toàn bộ các khoản bonus (kể cả TET_BONUS, HOLIDAY_BONUS, KPI,...)
+    total_bonus_val = sum(float(d.get("amount") or 0) for d in details_list if d.get("item_type") == "BONUS")
+    pr_dict["bonus_amount"] = total_bonus_val
     pr_dict["penalty_deduction"] = det_map.get("PENALTY", 0.0)
     pr_dict["personal_income_tax"] = det_map.get("PIT", 0.0)
     tot_ins = float(pr_dict.get("total_insurance") or 0.0)
@@ -243,8 +251,12 @@ async def list_payrolls(
                s.store_name, pos.position_name, p.salary_period,
                p.standard_working_days, p.actual_working_days, p.paid_leave_days, p.unpaid_leave_days,
                p.unworked_hours,
-               p.contract_salary, p.total_earnings, p.total_allowances, p.total_bonuses,
-               p.total_insurance, p.total_deductions,
+               p.contract_salary,
+               COALESCE(p.total_earnings, p.gross_income) AS total_earnings,
+               COALESCE(p.total_allowances, 0) AS total_allowances,
+               COALESCE(p.total_bonuses, 0) AS total_bonuses,
+               COALESCE(p.total_insurance, 0) AS total_insurance,
+               COALESCE(p.total_deductions, 0) AS total_deductions,
                p.gross_income, p.net_salary, p.payment_status, p.payment_date,
                COALESCE(att.attendance_actual_days,0) AS attendance_actual_days,
                COALESCE(att.attendance_hours,0) AS attendance_hours,
@@ -556,8 +568,12 @@ async def get_annual_salary(
     monthly_res = await db.execute(text("""
         SELECT payroll_id, employee_id, salary_period,
                standard_working_days, actual_working_days, paid_leave_days, unpaid_leave_days,
-               contract_salary, total_earnings, total_allowances, total_bonuses,
-               total_insurance, total_deductions,
+               contract_salary,
+               COALESCE(total_earnings, gross_income) AS total_earnings,
+               COALESCE(total_allowances, 0) AS total_allowances,
+               COALESCE(total_bonuses, 0) AS total_bonuses,
+               COALESCE(total_insurance, 0) AS total_insurance,
+               COALESCE(total_deductions, 0) AS total_deductions,
                gross_income, net_salary, payment_status, payment_date
         FROM payrolls
         WHERE employee_id = :eid AND salary_period LIKE :year_prefix
@@ -578,11 +594,18 @@ async def get_annual_salary(
         monthly_list.append(m)
 
     # Lấy dữ liệu tổng hợp năm từ View
-    res = await db.execute(text("""
-        SELECT * FROM v_annual_salary_summary
-        WHERE employee_id = :eid AND salary_year = :year
-    """), {"eid": employee_id, "year": year})
-    row = res.mappings().first()
+    row = None
+    try:
+        res = await db.execute(text("""
+            SELECT * FROM v_annual_salary_summary
+            WHERE employee_id = :eid AND salary_year = :year
+        """), {"eid": employee_id, "year": year})
+        row = res.mappings().first()
+    except Exception as e:
+        logger.warning(f"Không thể đọc view v_annual_salary_summary: {e}")
+        await db.rollback()
+        row = None
+
     if not set(roles) & {'ADMIN', 'HR_MANAGER', 'DIRECTOR'}:
         row = None  # The legacy view includes drafts; self-service uses released rows only.
 
@@ -882,6 +905,16 @@ async def list_projects_with_allowances(
         p_dict = dict(p)
         if not any(role in roles for role in ("ADMIN", "HR_MANAGER", "DIRECTOR")):
             p_dict["budget"] = None
+        # Lấy định mức phụ cấp vai trò của dự án
+        res_roles = await db.execute(text("""
+            SELECT pra.id, pra.project_id, pra.role_code, pr.role_name, pra.allowance_amount, pra.notes, pra.created_at, pra.updated_at
+            FROM project_role_allowances pra
+            JOIN project_roles pr ON pra.role_code = pr.role_code
+            WHERE pra.project_id = :pid
+            ORDER BY pr.display_order ASC, pra.id ASC
+        """), {"pid": p["project_id"]})
+        p_dict["role_allowances"] = res_roles.mappings().all()
+
         res_mem = await db.execute(text("""
             SELECT pm.project_member_id, pm.project_id, pm.employee_id, pm.project_role,
                    pm.project_allowance, pm.joined_date, pm.left_date, pm.is_active,
@@ -896,6 +929,81 @@ async def list_projects_with_allowances(
         p_dict["members"] = res_mem.mappings().all()
         result.append(p_dict)
     return result
+
+
+@router.get("/projects/roles", response_model=List[ProjectRoleOut], summary="Danh mục các vai trò nội bộ dự án")
+async def list_project_roles(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    res = await db.execute(text("SELECT role_code, role_name, description, display_order, is_active, created_at FROM project_roles WHERE is_active = TRUE ORDER BY display_order ASC, role_code ASC"))
+    return res.mappings().all()
+
+
+@router.post("/projects/roles", response_model=ProjectRoleOut, summary="Tạo vai trò dự án mới (Admin / HR / Director)")
+async def create_project_role(
+    req: ProjectRoleCreate,
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        res = await db.execute(text("""
+            INSERT INTO project_roles (role_code, role_name, description, display_order)
+            VALUES (:code, :name, :desc, :disp)
+            RETURNING role_code, role_name, description, display_order, is_active, created_at
+        """), {"code": req.role_code.upper().strip(), "name": req.role_name.strip(), "desc": req.description, "disp": req.display_order or 1})
+        row = res.mappings().first()
+        await db.commit()
+        return dict(row)
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail=f"Lỗi tạo vai trò dự án: {str(e)}")
+
+
+@router.get("/projects/{project_id}/role-allowances", response_model=List[ProjectRoleAllowanceOut], summary="Xem định mức phụ cấp vai trò của dự án")
+async def get_project_role_allowances(
+    project_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    res = await db.execute(text("""
+        SELECT pra.id, pra.project_id, pra.role_code, pr.role_name, pra.allowance_amount, pra.notes, pra.created_at, pra.updated_at
+        FROM project_role_allowances pra
+        JOIN project_roles pr ON pra.role_code = pr.role_code
+        WHERE pra.project_id = :pid
+        ORDER BY pr.display_order ASC, pra.id ASC
+    """), {"pid": project_id})
+    return res.mappings().all()
+
+
+@router.post("/projects/{project_id}/role-allowances", response_model=ProjectRoleAllowanceOut, summary="Thiết lập/cập nhật định mức phụ cấp vai trò trong dự án")
+async def set_project_role_allowance(
+    project_id: int,
+    req: ProjectRoleAllowanceCreate,
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        res = await db.execute(text("""
+            INSERT INTO project_role_allowances (project_id, role_code, allowance_amount, notes, updated_at)
+            VALUES (:pid, :role, :amount, :notes, CURRENT_TIMESTAMP)
+            ON CONFLICT (project_id, role_code) DO UPDATE SET
+                allowance_amount = EXCLUDED.allowance_amount,
+                notes = EXCLUDED.notes,
+                updated_at = CURRENT_TIMESTAMP
+            RETURNING id, project_id, role_code, allowance_amount, notes, created_at, updated_at
+        """), {"pid": project_id, "role": req.role_code, "amount": req.allowance_amount, "notes": req.notes})
+        row = res.mappings().first()
+        await db.commit()
+        
+        role_res = await db.execute(text("SELECT role_name FROM project_roles WHERE role_code = :rc"), {"rc": req.role_code})
+        r_name = role_res.scalar()
+        res_dict = dict(row)
+        res_dict["role_name"] = r_name
+        return res_dict
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail=f"Lỗi thiết lập định mức vai trò: {str(e)}")
 
 
 @router.post("/projects", summary="Tạo dự án mới (Admin / HR / Director)")
@@ -1032,10 +1140,22 @@ async def add_project_member(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Thêm nhân viên vào dự án với mức phụ cấp project_allowance (VD: 1.000.000đ - 2.500.000đ/tháng).
-    Mức phụ cấp này được cộng tự động vào lương hàng tháng khi chạy chốt lương.
+    Thêm nhân viên vào dự án. Nếu project_allowance không truyền (hoặc <= 0),
+    hệ thống tự động tra cứu mức phụ cấp định mức từ project_role_allowances theo vai trò.
     """
     try:
+        final_allowance = req.project_allowance
+        if final_allowance is None or final_allowance <= 0:
+            allowance_query = await db.execute(text("""
+                SELECT allowance_amount FROM project_role_allowances
+                WHERE project_id = :pid AND role_code = :role
+            """), {"pid": project_id, "role": req.project_role or "MEMBER"})
+            role_amount = allowance_query.scalar()
+            if role_amount is not None:
+                final_allowance = float(role_amount)
+            else:
+                final_allowance = 0.0
+
         res = await db.execute(text("""
             INSERT INTO project_members (project_id, employee_id, project_role, project_allowance, joined_date, left_date, is_active)
             VALUES (:pid, :eid, :role, :allowance, :j_date, :l_date, :active)
@@ -1047,7 +1167,7 @@ async def add_project_member(
             RETURNING *
         """), {
             "pid": project_id, "eid": req.employee_id, "role": req.project_role or "MEMBER",
-            "allowance": req.project_allowance or 0, "j_date": req.joined_date,
+            "allowance": final_allowance, "j_date": req.joined_date,
             "l_date": req.left_date, "active": req.is_active if req.is_active is not None else True
         })
         row = res.mappings().first()
@@ -1056,6 +1176,169 @@ async def add_project_member(
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=400, detail=f"Lỗi gán thành viên dự án: {str(e)}")
+
+
+# ===================================================================================
+# 4.1. SALARY POLICY SETTINGS & PERIOD BONUSES (QUẢN TRỊ QUY CHẾ LƯƠNG & THƯỞNG LỄ/TẾT)
+# ===================================================================================
+
+@router.get("/policies/settings", response_model=List[PayrollPolicySettingOut], summary="Danh sách cấu hình quy chế lương doanh nghiệp")
+async def list_payroll_policy_settings(
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
+    db: AsyncSession = Depends(get_db)
+):
+    res = await db.execute(text("""
+        SELECT setting_id, setting_key, setting_name, setting_group, numeric_value, unit, description, is_active, updated_at
+        FROM payroll_policy_settings
+        ORDER BY setting_group ASC, setting_id ASC
+    """))
+    return res.mappings().all()
+
+
+@router.put("/policies/settings/{setting_key}", response_model=PayrollPolicySettingOut, summary="Cập nhật tham số quy chế lương (Phạt trễ, cơm xe, ngày công...)")
+async def update_payroll_policy_setting(
+    setting_key: str,
+    req: PayrollPolicySettingUpdate,
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
+    db: AsyncSession = Depends(get_db)
+):
+    setting_res = await db.execute(text("SELECT * FROM payroll_policy_settings WHERE setting_key = :key"), {"key": setting_key})
+    current_setting = setting_res.mappings().first()
+    if not current_setting:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy tham số cài đặt '{setting_key}'")
+
+    old_val = float(current_setting["numeric_value"])
+    desc_to_set = req.description if req.description is not None else current_setting["description"]
+
+    res = await db.execute(text("""
+        UPDATE payroll_policy_settings
+        SET numeric_value = :val, description = :desc, updated_at = CURRENT_TIMESTAMP, updated_by = :uid
+        WHERE setting_key = :key
+        RETURNING setting_id, setting_key, setting_name, setting_group, numeric_value, unit, description, is_active, updated_at
+    """), {"val": req.numeric_value, "desc": desc_to_set, "uid": current_user["user_id"], "key": setting_key})
+    row = res.mappings().first()
+
+    import json
+    await db.execute(text("""
+        INSERT INTO audit_logs (user_id, action, entity_name, entity_id, old_values, new_values)
+        VALUES (:uid, 'UPDATE_PAYROLL_POLICY', 'payroll_policy_settings', :eid, CAST(:old AS jsonb), CAST(:new AS jsonb))
+    """), {
+        "uid": current_user["user_id"],
+        "eid": setting_key,
+        "old": json.dumps({"numeric_value": old_val, "description": current_setting["description"]}),
+        "new": json.dumps({"numeric_value": req.numeric_value, "description": desc_to_set})
+    })
+
+    await db.commit()
+    return dict(row)
+
+
+@router.get("/policies/period-bonuses", response_model=List[PayrollPeriodBonusOut], summary="Danh sách các khoản thưởng Lễ, Tết & Sự kiện theo kỳ")
+async def list_payroll_period_bonuses(
+    period: Optional[str] = Query(None, pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$"),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    filter_sql = "WHERE salary_period = :period" if period else ""
+    params = {"period": period} if period else {}
+    res = await db.execute(text(f"""
+        SELECT bonus_id, salary_period, bonus_code, bonus_name, calculation_type, base_amount, applies_to, is_recurring, is_active, created_at, updated_at
+        FROM payroll_period_bonuses
+        {filter_sql}
+        ORDER BY salary_period DESC, bonus_id ASC
+    """), params)
+    return res.mappings().all()
+
+
+@router.post("/policies/period-bonuses", response_model=PayrollPeriodBonusOut, summary="Thiết lập khoản thưởng Tết / Lễ cho kỳ lương")
+async def create_payroll_period_bonus(
+    req: PayrollPeriodBonusCreate,
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        res = await db.execute(text("""
+            INSERT INTO payroll_period_bonuses (salary_period, bonus_code, bonus_name, calculation_type, base_amount, applies_to, is_recurring, created_by)
+            VALUES (:period, :code, :name, :ctype, :base, :applies, :recurring, :uid)
+            ON CONFLICT (salary_period, bonus_code) DO UPDATE SET
+                bonus_name = EXCLUDED.bonus_name,
+                calculation_type = EXCLUDED.calculation_type,
+                base_amount = EXCLUDED.base_amount,
+                applies_to = EXCLUDED.applies_to,
+                is_recurring = EXCLUDED.is_recurring,
+                is_active = TRUE,
+                updated_at = CURRENT_TIMESTAMP
+            RETURNING bonus_id, salary_period, bonus_code, bonus_name, calculation_type, base_amount, applies_to, is_recurring, is_active, created_at, updated_at
+        """), {
+            "period": req.salary_period, "code": req.bonus_code.upper().strip(), "name": req.bonus_name.strip(),
+            "ctype": req.calculation_type, "base": req.base_amount, "applies": req.applies_to or "ALL",
+            "recurring": req.is_recurring or False,
+            "uid": current_user["user_id"]
+        })
+        row = res.mappings().first()
+        await db.commit()
+        return dict(row)
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail=f"Lỗi tạo khoản thưởng kỳ: {str(e)}")
+
+
+@router.put("/policies/period-bonuses/{bonus_id}", response_model=PayrollPeriodBonusOut, summary="Cập nhật khoản thưởng kỳ")
+async def update_payroll_period_bonus(
+    bonus_id: int,
+    req: PayrollPeriodBonusUpdate,
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
+    db: AsyncSession = Depends(get_db)
+):
+    updates = []
+    params = {"bid": bonus_id}
+    if req.bonus_name is not None:
+        updates.append("bonus_name = :b_name")
+        params["b_name"] = req.bonus_name.strip()
+    if req.calculation_type is not None:
+        updates.append("calculation_type = :ctype")
+        params["ctype"] = req.calculation_type
+    if req.base_amount is not None:
+        updates.append("base_amount = :base")
+        params["base"] = req.base_amount
+    if req.applies_to is not None:
+        updates.append("applies_to = :applies")
+        params["applies"] = req.applies_to
+    if req.is_recurring is not None:
+        updates.append("is_recurring = :recurring")
+        params["recurring"] = req.is_recurring
+    if req.is_active is not None:
+        updates.append("is_active = :active")
+        params["active"] = req.is_active
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="Không có thông tin cần cập nhật")
+
+    updates.append("updated_at = CURRENT_TIMESTAMP")
+    res = await db.execute(text(f"""
+        UPDATE payroll_period_bonuses SET {', '.join(updates)}
+        WHERE bonus_id = :bid
+        RETURNING bonus_id, salary_period, bonus_code, bonus_name, calculation_type, base_amount, applies_to, is_recurring, is_active, created_at, updated_at
+    """), params)
+    row = res.mappings().first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Không tìm thấy khoản thưởng kỳ")
+    await db.commit()
+    return dict(row)
+
+
+@router.delete("/policies/period-bonuses/{bonus_id}", summary="Xóa khoản thưởng kỳ")
+async def delete_payroll_period_bonus(
+    bonus_id: int,
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
+    db: AsyncSession = Depends(get_db)
+):
+    res = await db.execute(text("DELETE FROM payroll_period_bonuses WHERE bonus_id = :bid RETURNING bonus_id"), {"bid": bonus_id})
+    row = res.first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Không tìm thấy bản ghi")
+    await db.commit()
+    return {"message": f"Đã xóa khoản thưởng #{bonus_id} thành công!"}
 
 
 # ===================================================================================
@@ -1402,8 +1685,12 @@ async def get_payroll_detail(
                s.store_name, pos.position_name, p.salary_period,
                p.standard_working_days, p.actual_working_days, p.paid_leave_days, p.unpaid_leave_days,
                p.unworked_hours,
-               p.contract_salary, p.total_earnings, p.total_allowances, p.total_bonuses,
-               p.total_insurance, p.total_deductions,
+               p.contract_salary,
+               COALESCE(p.total_earnings, p.gross_income) AS total_earnings,
+               COALESCE(p.total_allowances, 0) AS total_allowances,
+               COALESCE(p.total_bonuses, 0) AS total_bonuses,
+               COALESCE(p.total_insurance, 0) AS total_insurance,
+               COALESCE(p.total_deductions, 0) AS total_deductions,
                p.gross_income, p.net_salary, p.payment_status, p.payment_date
         FROM payrolls p
         JOIN employees e ON p.employee_id = e.employee_id

@@ -387,6 +387,7 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
     try {
       const { employeeApi } = await import('../services/api')
       const cleanedData: any = { ...formData }
+      delete cleanedData.basic_salary
       if (!cleanedData.dob) delete cleanedData.dob
       if (!cleanedData.join_date) delete cleanedData.join_date
       if (!cleanedData.store_id) delete cleanedData.store_id

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
+import { Link } from 'react-router-dom'
 import { api } from '../services/api'
 import { Icons } from '../components/common/Icons'
 import { useAuth } from '../contexts/AuthContext'
@@ -19,18 +20,21 @@ type OvertimeRow = {
   actual_overtime_label: string
 }
 
-export function PayrollOvertimePanel({ period }: { period: string }) {
+export function PayrollOvertimePanel({ period, mode = 'legacy' }: { period: string; mode?: 'legacy' | 'history' }) {
   const { user } = useAuth()
   const [rows, setRows] = useState<OvertimeRow[]>([])
   const [drafts, setDrafts] = useState<Record<number, { hours: string; reason: string }>>({})
   const [error, setError] = useState('')
   const [busy, setBusy] = useState<number | null>(null)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [historyLoaded, setHistoryLoaded] = useState(false)
 
   const load = useCallback(async () => {
     try {
       const data = await api.get<OvertimeRow[]>('/payrolls/overtime-approvals', { period })
       setRows(data)
       setError('')
+      setHistoryLoaded(true)
       setDrafts(
         Object.fromEntries(
           data.map(r => [
@@ -45,8 +49,8 @@ export function PayrollOvertimePanel({ period }: { period: string }) {
   }, [period])
 
   useEffect(() => {
-    void load()
-  }, [load])
+    if (mode === 'legacy') void load()
+  }, [load, mode])
 
   const decide = async (row: OvertimeRow, decision: 'APPROVED' | 'REJECTED') => {
     if (row.legacy_decision_locked) return
@@ -73,6 +77,53 @@ export function PayrollOvertimePanel({ period }: { period: string }) {
     } finally {
       setBusy(null)
     }
+  }
+
+  if (mode === 'history') {
+    return (
+      <section className="card payroll-ot-history-entry" style={{ padding: 20 }} aria-label="Quy trình OT mới và lịch sử OT cũ">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+          <div>
+            <h2 style={{ margin: 0 }}>Đăng ký &amp; đối soát OT</h2>
+            <p style={{ margin: '6px 0 0', color: 'var(--text-secondary)' }}>
+              Phê duyệt và xác minh giờ OT được thực hiện trong quy trình OT riêng. Quyết định OT cũ bên dưới chỉ để tra cứu.
+            </p>
+          </div>
+          <Link className="btn btn-primary" to="/overtime?tab=reconciliation">Mở đối soát OT</Link>
+        </div>
+
+        <div style={{ marginTop: 14, borderTop: '1px solid var(--border-default)', paddingTop: 12 }}>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            aria-expanded={historyOpen}
+            onClick={() => {
+              const nextOpen = !historyOpen
+              setHistoryOpen(nextOpen)
+              if (nextOpen && !historyLoaded) void load()
+            }}
+          >
+            {historyOpen ? 'Ẩn lịch sử quyết định OT cũ' : 'Xem lịch sử quyết định OT cũ'}
+          </button>
+          {historyOpen && (
+            <div style={{ marginTop: 12 }}>
+              {error && <p role="alert">{error}</p>}
+              {!rows.length && !error && <p>Không có quyết định OT cũ trong kỳ {period}.</p>}
+              {!!rows.length && <div className="table-container"><table className="data-table">
+                <thead><tr><th>Nhân viên</th><th>Ngày</th><th>OT thực tế</th><th>OT đã duyệt</th><th>Trạng thái lịch sử</th></tr></thead>
+                <tbody>{rows.map(row => <tr key={row.attendance_id}>
+                  <td><strong>{row.full_name}</strong><div>{row.employee_code} · Phiên #{row.attendance_id}</div></td>
+                  <td>{new Date(`${row.work_date}T00:00:00`).toLocaleDateString('vi-VN')}</td>
+                  <td>{row.actual_overtime_hours}</td>
+                  <td>{row.approved_hours ?? '—'}</td>
+                  <td>{row.decision === 'APPROVED' ? `Đã duyệt ${row.approved_hours} giờ` : row.decision === 'REJECTED' ? 'Đã từ chối' : 'Chưa có quyết định'}<small style={{ display: 'block' }}>{row.actual_overtime_label}</small></td>
+                </tr>)}</tbody>
+              </table></div>}
+            </div>
+          )}
+        </div>
+      </section>
+    )
   }
 
   return (

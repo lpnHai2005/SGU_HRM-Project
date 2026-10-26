@@ -1,5 +1,6 @@
 import io
 import csv
+import calendar
 from datetime import date, datetime
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -9,8 +10,8 @@ from sqlalchemy import text
 
 from app.core.database import get_db
 from app.core.attendance import local_now
-from app.api.deps import require_roles, get_current_user
-from app.core.excel_exporter import create_styled_excel
+from app.api.deps import require_roles, require_strict_roles, get_current_user
+from app.core.excel_exporter import create_styled_excel, create_multisheet_excel
 
 router = APIRouter()
 
@@ -49,7 +50,7 @@ async def _dashboard_kpis(db: AsyncSession, current_user: dict, today: date) -> 
 
 @router.get("/dashboard-kpis", summary="Bốn chỉ số nhân sự Dashboard, không phụ thuộc Payroll/Sales")
 async def get_dashboard_kpis(
-    current_user: dict = Depends(require_roles(["ADMIN", "DIRECTOR", "HR_MANAGER", "STORE_MANAGER"])),
+    current_user: dict = Depends(require_strict_roles(["DIRECTOR", "HR_MANAGER"])),
     db: AsyncSession = Depends(get_db),
 ):
     return await _dashboard_kpis(db, current_user, local_now().date())
@@ -61,53 +62,100 @@ async def get_dashboard_kpis(
 @router.get("/dashboard-stats", summary="Số liệu tổng quan hiển thị trên thẻ Dashboard (Executive KPI Cards)")
 async def get_dashboard_stats(
     period: Optional[str] = Query(None, description="Kỳ thống kê (YYYY-MM)"),
-    current_user: dict = Depends(require_roles(["ADMIN", "DIRECTOR", "HR_MANAGER", "STORE_MANAGER"])),
+    store_id: Optional[int] = Query(None, description="Lọc theo cửa hàng"),
+    current_user: dict = Depends(require_strict_roles(["DIRECTOR", "HR_MANAGER"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Số liệu KPI tổng hợp cho trang chủ Quản trị & Quản lý chi nhánh:
-    - Tổng nhân sự đang làm việc (ACTIVE, PROBATION)
-    - Tổng số cửa hàng đang hoạt động
-    - Số đơn nghỉ phép đang chờ duyệt (PENDING, STORE_APPROVED)
-    - Quỹ lương Net của kỳ hiện tại
-    - Tổng doanh số chuỗi trong kỳ
-    - Tình hình chấm công hôm nay (Đã check-in, Đi muộn)
+    - Tổng nhân sự đang làm việc tính theo mốc kỳ thống kê (Point-in-time headcount)
+    - Số nhân sự thôi việc hoặc tuyển mới trong kỳ
+    - Quỹ lương Net của kỳ
+    - Tình hình chấm công
     """
     roles = current_user.get("roles", [])
-    store_filter = ""
     today = local_now().date()
     period = period or today.strftime('%Y-%m')
     params = {"period": period}
-    kpis = await _dashboard_kpis(db, current_user, today)
 
+    filter_store_id = store_id
     store_manager_scope = "STORE_MANAGER" in roles and "ADMIN" not in roles and "HR_MANAGER" not in roles and "DIRECTOR" not in roles
     if store_manager_scope:
         user_store_id = current_user.get("store_id")
         if not user_store_id:
             raise HTTPException(403, 'Tài khoản chưa được gán cửa hàng.')
-        if user_store_id:
-            store_filter = " AND store_id = :store_id"
-            params["store_id"] = user_store_id
+        filter_store_id = user_store_id
 
-    # 1. Cửa hàng đang hoạt động
+    emp_store_filter = ""
+    sales_store_filter = ""
+    if filter_store_id:
+        params["store_id"] = filter_store_id
+        emp_store_filter = " AND e.store_id = :store_id"
+        sales_store_filter = " AND store_id = :store_id"
+
+    # Tính toán mốc thời gian của kỳ period (YYYY-MM) để chốt quân số lịch sử chính xác
+    try:
+        y, m = map(int, period.split("-"))
+        _, last_day = calendar.monthrange(y, m)
+        period_start = date(y, m, 1)
+        period_end = date(y, m, last_day)
+    except Exception:
+        period_start = today.replace(day=1)
+        period_end = today
+
+    params["m_start"] = period_start
+    params["m_end"] = period_end
+
+    # 1. Số nhân sự thực tế công tác tại kỳ đó (Đã gia nhập và chưa thôi việc trước kỳ)
+    active_emp_query = f"""
+        SELECT COUNT(*) FROM employees e
+        WHERE e.join_date <= :m_end 
+          AND (e.resignation_date IS NULL OR e.resignation_date >= :m_start)
+          {emp_store_filter}
+    """
+    period_active_employees = (await db.execute(text(active_emp_query), params)).scalar() or 0
+
+    # 2. Tuyển mới trong kỳ
+    hires_query = f"""
+        SELECT COUNT(*) FROM employees e
+        WHERE e.join_date BETWEEN :m_start AND :m_end {emp_store_filter}
+    """
+    new_hires = (await db.execute(text(hires_query), params)).scalar() or 0
+
+    # 3. Thôi việc trong kỳ
+    resigned_query = f"""
+        SELECT COUNT(*) FROM employees e
+        WHERE e.resignation_date BETWEEN :m_start AND :m_end {emp_store_filter}
+    """
+    resigned_employees = (await db.execute(text(resigned_query), params)).scalar() or 0
+
+    # 4. Cửa hàng đang hoạt động
     total_stores = (await db.execute(text("SELECT count(*) FROM stores WHERE is_active = TRUE"))).scalar() or 0
 
-    # 3. Quỹ lương kỳ
-    pr_query = "SELECT COALESCE(SUM(p.net_salary), 0), COALESCE(SUM(p.gross_income), 0) FROM payrolls p JOIN employees e ON p.employee_id = e.employee_id WHERE p.salary_period = :period"
-    if store_filter:
-        pr_query += " AND e.store_id = :store_id"
+    # 5. Quỹ lương kỳ
+    pr_query = f"""
+        SELECT COALESCE(SUM(p.net_salary), 0), COALESCE(SUM(p.gross_income), 0)
+        FROM payrolls p 
+        JOIN employees e ON p.employee_id = e.employee_id 
+        WHERE p.salary_period = :period {emp_store_filter}
+    """
     pr_res = (await db.execute(text(pr_query), params)).first()
     monthly_net_fund = float(pr_res[0] or 0)
     monthly_gross_fund = float(pr_res[1] or 0)
 
-    # 4. Doanh số toàn chuỗi trong kỳ
-    sales_query = "SELECT COALESCE(SUM(total_revenue), 0) FROM employee_sales WHERE salary_period = :period"
-    if store_filter:
-        sales_query += " AND store_id = :store_id"
+    # 6. Doanh số toàn chuỗi trong kỳ
+    sales_query = f"SELECT COALESCE(SUM(total_revenue), 0) FROM employee_sales WHERE salary_period = :period {sales_store_filter}"
     total_sales = float((await db.execute(text(sales_query), params)).scalar() or 0)
+
+    # Chỉ số chấm công / nghỉ phép
+    kpis = await _dashboard_kpis(db, current_user, today)
 
     return {
         **kpis,
+        "total_employees": period_active_employees,
+        "active_employees": period_active_employees,
+        "new_hires": new_hires,
+        "resigned_employees": resigned_employees,
         "total_stores": total_stores,
         "monthly_net_payroll_fund": monthly_net_fund,
         "monthly_gross_payroll_fund": monthly_gross_fund,
@@ -123,7 +171,7 @@ async def get_dashboard_stats(
 
 @router.get("/monthly-status", summary="Báo cáo tình hình nhân sự tháng: Đang làm, Nghỉ phép, Thôi việc (Rubric III.3.1.4)")
 async def get_monthly_status_report(
-    current_user: dict = Depends(require_roles(["ADMIN", "DIRECTOR", "HR_MANAGER"])),
+    current_user: dict = Depends(require_strict_roles(["DIRECTOR", "HR_MANAGER"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -155,9 +203,28 @@ async def get_monthly_status_report(
         GROUP BY TO_CHAR(join_date, 'YYYY-MM')
         ORDER BY month ASC
     """))
-    data["recent_join_trends"] = trend_res.mappings().all()
+    data["recent_join_trends"] = [dict(t) for t in trend_res.mappings().all()]
+
+    # Thống kê phân bổ nhân sự theo từng cơ sở (Cửa hàng / Phòng ban)
+    store_res = await db.execute(text("""
+        SELECT 
+            s.store_id,
+            COALESCE(s.store_name, 'Văn phòng chính') as store_name,
+            COUNT(e.employee_id) as total_staff,
+            COUNT(CASE WHEN e.employment_status = 'ACTIVE' THEN 1 END) as active_staff,
+            COUNT(CASE WHEN e.employment_status = 'PROBATION' THEN 1 END) as probation_staff,
+            COUNT(CASE WHEN e.employment_status IN ('RESIGNED', 'TERMINATED') THEN 1 END) as resigned_staff,
+            COALESCE(SUM(c.basic_salary), 0) as total_contract_salary
+        FROM stores s
+        LEFT JOIN employees e ON s.store_id = e.store_id
+        LEFT JOIN contracts c ON e.employee_id = c.employee_id AND c.status = 'ACTIVE'
+        GROUP BY s.store_id, s.store_name
+        ORDER BY s.store_name ASC
+    """))
+    data["by_store"] = [dict(r) for r in store_res.mappings().all()]
 
     return data
+
 
 
 # ===================================================================================
@@ -167,26 +234,30 @@ async def get_monthly_status_report(
 @router.get("/demographics", summary="Báo cáo học vấn, thâm niên và khung bậc lương toàn chuỗi (Rubric III.3.1.5)")
 async def get_demographics_report(
     store_id: Optional[int] = Query(None, description="Lọc theo cửa hàng"),
-    current_user: dict = Depends(require_roles(["ADMIN", "DIRECTOR", "HR_MANAGER", "STORE_MANAGER"])),
+    include_resigned: bool = Query(False, description="Bao gồm cả nhân sự đã thôi việc"),
+    current_user: dict = Depends(require_strict_roles(["DIRECTOR", "HR_MANAGER"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Truy vấn View v_hr_demographics_report kết hợp gom nhóm đa chiều phục vụ biểu đồ Recharts:
     1. Trình độ học vấn (education_distribution): Đại học, Cao đẳng, Trung cấp, THPT
     2. Nhóm thâm niên (seniority_distribution): Dưới 1 năm, 1-3 năm, 3-5 năm, Trên 5 năm
-    3. Phân khúc mức lương (salary_distribution): <7M, 7-12M, 12-20M, >20M
+    3. Phân khúc mức lương (salary_distribution): Chưa có hợp đồng, <7M, 7-12M, 12-20M, >20M
     4. Chi tiết từng nhân sự (details)
     """
-    roles = current_user.get("roles", [])
-    filter_store_id = store_id
-    if "STORE_MANAGER" in roles and "ADMIN" not in roles and "HR_MANAGER" not in roles and "DIRECTOR" not in roles:
-        filter_store_id = current_user.get("store_id")
-
-    where_clause = ""
+    filter_store_id = store_id if isinstance(store_id, int) else None
+    is_include_resigned = include_resigned if isinstance(include_resigned, bool) else False
+    where_conditions = []
     params = {}
+
     if filter_store_id:
-        where_clause = " WHERE e.store_id = :sid"
+        where_conditions.append("e.store_id = :sid")
         params["sid"] = filter_store_id
+
+    if not is_include_resigned:
+        where_conditions.append("e.employment_status IN ('ACTIVE', 'PROBATION', 'ON_LEAVE')")
+
+    where_clause = f" WHERE {' AND '.join(where_conditions)}" if where_conditions else ""
 
     # 1. Danh sách chi tiết nhân viên
     details_query = f"""
@@ -210,10 +281,11 @@ async def get_demographics_report(
     """
     edu_stats = (await db.execute(text(edu_query), params)).mappings().all()
 
-    # 3. Phân bổ khung mức lương
+    # 3. Phân bổ khung mức lương (Chuẩn hóa: basic_salary IS NULL xếp vào 'Chưa có hợp đồng')
     salary_query = f"""
         SELECT 
             CASE 
+                WHEN c.basic_salary IS NULL THEN 'Chưa có hợp đồng'
                 WHEN c.basic_salary < 7000000 THEN 'Dưới 7 triệu'
                 WHEN c.basic_salary BETWEEN 7000000 AND 12000000 THEN 'Từ 7 - 12 triệu'
                 WHEN c.basic_salary BETWEEN 12000001 AND 20000000 THEN 'Từ 12 - 20 triệu'
@@ -224,6 +296,38 @@ async def get_demographics_report(
         LEFT JOIN contracts c ON e.employee_id = c.employee_id AND c.status = 'ACTIVE'
         {where_clause}
         GROUP BY salary_bracket
+        ORDER BY 
+            CASE 
+                WHEN CASE 
+                    WHEN c.basic_salary IS NULL THEN 'Chưa có hợp đồng'
+                    WHEN c.basic_salary < 7000000 THEN 'Dưới 7 triệu'
+                    WHEN c.basic_salary BETWEEN 7000000 AND 12000000 THEN 'Từ 7 - 12 triệu'
+                    WHEN c.basic_salary BETWEEN 12000001 AND 20000000 THEN 'Từ 12 - 20 triệu'
+                    ELSE 'Trên 20 triệu'
+                END = 'Chưa có hợp đồng' THEN 0
+                WHEN CASE 
+                    WHEN c.basic_salary IS NULL THEN 'Chưa có hợp đồng'
+                    WHEN c.basic_salary < 7000000 THEN 'Dưới 7 triệu'
+                    WHEN c.basic_salary BETWEEN 7000000 AND 12000000 THEN 'Từ 7 - 12 triệu'
+                    WHEN c.basic_salary BETWEEN 12000001 AND 20000000 THEN 'Từ 12 - 20 triệu'
+                    ELSE 'Trên 20 triệu'
+                END = 'Dưới 7 triệu' THEN 1
+                WHEN CASE 
+                    WHEN c.basic_salary IS NULL THEN 'Chưa có hợp đồng'
+                    WHEN c.basic_salary < 7000000 THEN 'Dưới 7 triệu'
+                    WHEN c.basic_salary BETWEEN 7000000 AND 12000000 THEN 'Từ 7 - 12 triệu'
+                    WHEN c.basic_salary BETWEEN 12000001 AND 20000000 THEN 'Từ 12 - 20 triệu'
+                    ELSE 'Trên 20 triệu'
+                END = 'Từ 7 - 12 triệu' THEN 2
+                WHEN CASE 
+                    WHEN c.basic_salary IS NULL THEN 'Chưa có hợp đồng'
+                    WHEN c.basic_salary < 7000000 THEN 'Dưới 7 triệu'
+                    WHEN c.basic_salary BETWEEN 7000000 AND 12000000 THEN 'Từ 7 - 12 triệu'
+                    WHEN c.basic_salary BETWEEN 12000001 AND 20000000 THEN 'Từ 12 - 20 triệu'
+                    ELSE 'Trên 20 triệu'
+                END = 'Từ 12 - 20 triệu' THEN 3
+                ELSE 4
+            END ASC
     """
     salary_stats = (await db.execute(text(salary_query), params)).mappings().all()
 
@@ -243,12 +347,28 @@ async def get_demographics_report(
     """
     seniority_stats = (await db.execute(text(seniority_query), params)).mappings().all()
 
+    formatted_edu = [
+        {"education_level": r["level_name"], "level_name": r["level_name"], "total": r["count"], "count": r["count"]}
+        for r in edu_stats
+    ]
+    formatted_salary = [
+        {"salary_range": r["salary_bracket"], "salary_bracket": r["salary_bracket"], "total": r["count"], "count": r["count"]}
+        for r in salary_stats
+    ]
+    formatted_seniority = [
+        {"seniority_group": r["seniority_group"], "total": r["count"], "count": r["count"]}
+        for r in seniority_stats
+    ]
+
     return {
         "store_id": filter_store_id,
         "total_employees": len(rows),
-        "education_distribution": edu_stats,
-        "salary_distribution": salary_stats,
-        "seniority_distribution": seniority_stats,
+        "education": formatted_edu,
+        "education_distribution": formatted_edu,
+        "salary_range": formatted_salary,
+        "salary_distribution": formatted_salary,
+        "seniority": formatted_seniority,
+        "seniority_distribution": formatted_seniority,
         "details": rows
     }
 
@@ -260,7 +380,8 @@ async def get_demographics_report(
 @router.get("/payroll-fund", summary="Báo cáo tổng hợp chi phí tiền lương theo chi nhánh & phòng ban")
 async def get_payroll_fund_summary(
     period: Optional[str] = Query("2026-09", description="Kỳ lương (YYYY-MM)"),
-    current_user: dict = Depends(require_roles(["ADMIN", "DIRECTOR", "HR_MANAGER", "STORE_MANAGER"])),
+    store_id: Optional[int] = Query(None, description="Lọc theo cửa hàng"),
+    current_user: dict = Depends(require_strict_roles(["DIRECTOR", "HR_MANAGER"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -268,16 +389,13 @@ async def get_payroll_fund_summary(
     Tổng lương cơ bản, Tổng làm thêm OT, Tổng hoa hồng, Tổng các loại phụ cấp,
     Tổng trích nộp bảo hiểm 10.5% và Tổng ngân sách lương thực chi.
     """
-    roles = current_user.get("roles", [])
-    branch_only = "STORE_MANAGER" in roles and not any(role in roles for role in ("ADMIN", "HR_MANAGER", "DIRECTOR"))
-    assigned_store_id = current_user.get("store_id") if branch_only else None
-    if branch_only and not assigned_store_id:
-        raise HTTPException(status_code=403, detail="Tài khoản chưa được gán cửa hàng")
-    scope_params = {"period": period}
+    period_str = period if isinstance(period, str) and period else local_now().date().strftime('%Y-%m')
+    scope_params = {"period": period_str}
     scope_sql = ""
-    if branch_only:
-        scope_params["store_id"] = assigned_store_id
+    if store_id and isinstance(store_id, int):
+        scope_params["store_id"] = store_id
         scope_sql = " AND e.store_id = :store_id"
+
     store_stats = (await db.execute(text(f"""
         SELECT 
             COALESCE(s.store_name, d.department_name, 'Khác') as unit_name,
@@ -329,10 +447,26 @@ async def get_payroll_fund_summary(
         WHERE p.salary_period = :period {scope_sql}
     """), scope_params)).mappings().first()
 
+    totals_dict = dict(total_res) if total_res else {}
+    net_fund = float(totals_dict.get("total_net_fund", 0) or 0)
+    gross_fund = float(totals_dict.get("total_gross_fund", 0) or 0)
+    ins_fund = float(totals_dict.get("total_insurance_fund", 0) or 0)
+    comm_fund = float(totals_dict.get("total_commission_fund", 0) or 0)
+
+    allowance_total = sum(float(u.get("total_allowances", 0) or 0) for u in store_stats)
+    bonus_total = sum(float(u.get("total_bonuses", 0) or 0) for u in store_stats)
+
     return {
-        "salary_period": period,
-        "company_totals": dict(total_res) if total_res else {},
-        "by_unit": store_stats
+        "salary_period": period_str,
+        "company_totals": totals_dict,
+        "by_unit": [dict(u) for u in store_stats],
+        "total_net_salary": net_fund,
+        "total_gross_income": gross_fund,
+        "total_insurance_deducted": ins_fund,
+        "total_commission_fund": comm_fund,
+        "total_allowances": allowance_total,
+        "total_bonuses": bonus_total,
+        "total_tax_deducted": max(0.0, gross_fund - net_fund - ins_fund)
     }
 
 
@@ -344,25 +478,21 @@ async def get_payroll_fund_summary(
 async def get_sales_performance_report(
     period: Optional[str] = Query("2026-09", description="Kỳ doanh số (YYYY-MM)"),
     store_id: Optional[int] = Query(None, description="Lọc theo cửa hàng"),
-    current_user: dict = Depends(require_roles(["ADMIN", "DIRECTOR", "HR_MANAGER", "STORE_MANAGER"])),
+    current_user: dict = Depends(require_strict_roles(["DIRECTOR", "HR_MANAGER"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Báo cáo phân tích doanh thu 3 nhóm sản phẩm: Điện thoại, Laptop, Phụ kiện,
     tỷ lệ đạt chỉ tiêu KPI và tiền thưởng nóng KPI của từng nhân viên và cửa hàng.
     """
-    params = {"period": period}
+    period_str = period if isinstance(period, str) and period else local_now().date().strftime('%Y-%m')
+    filter_store_id = store_id if isinstance(store_id, int) else None
+    params = {"period": period_str}
     where_extra = ""
-    roles = current_user.get("roles", [])
 
-    if "STORE_MANAGER" in roles and "ADMIN" not in roles and "HR_MANAGER" not in roles and "DIRECTOR" not in roles:
-        mgr_store = current_user.get("store_id")
-        if mgr_store:
-            where_extra = " AND es.store_id = :sid"
-            params["sid"] = mgr_store
-    elif store_id:
+    if filter_store_id:
         where_extra = " AND es.store_id = :sid"
-        params["sid"] = store_id
+        params["sid"] = filter_store_id
 
     # 1. Chi tiết theo từng nhân viên
     emp_res = (await db.execute(text(f"""
@@ -393,10 +523,41 @@ async def get_sales_performance_report(
         WHERE es.salary_period = :period {where_extra}
     """), params)).mappings().first()
 
+    tot_dict = dict(totals_res) if totals_res else {}
+    grand_total = float(tot_dict.get("grand_total_revenue", 0) or 0)
+    target_total = float(tot_dict.get("total_target_kpi", 0) or 0)
+    avg_kpi_rate = round((grand_total / target_total * 100), 1) if target_total > 0 else 0.0
+
+    records_list = [
+        {
+            **dict(r),
+            "phone_revenue": float(r.get("phone_revenue", 0) or 0),
+            "laptop_revenue": float(r.get("laptop_revenue", 0) or 0),
+            "accessory_revenue": float(r.get("accessory_revenue", 0) or 0),
+            "total_revenue": float(r.get("total_revenue", 0) or 0),
+            "target_kpi": float(r.get("target_kpi", 0) or 0),
+            "kpi_completion_rate": float(r.get("kpi_achievement_rate", 0) or 0),
+            "commission_amount": float(r.get("commission_amount", 0) or 0),
+            "kpi_bonus_amount": float(r.get("kpi_bonus_amount", 0) or 0),
+        }
+        for r in emp_res
+    ]
+
+    summary_obj = {
+        **tot_dict,
+        "grand_total_revenue": grand_total,
+        "total_target_kpi": target_total,
+        "avg_kpi_completion_rate": avg_kpi_rate,
+        "total_sales_employees": len(records_list),
+        "total_commission_paid": sum(float(r.get("commission_amount", 0) or 0) for r in records_list)
+    }
+
     return {
-        "salary_period": period,
-        "revenue_breakdown": dict(totals_res) if totals_res else {},
-        "sales_staff_details": emp_res
+        "salary_period": period_str,
+        "revenue_breakdown": tot_dict,
+        "sales_staff_details": [dict(r) for r in emp_res],
+        "summary": summary_obj,
+        "records": records_list
     }
 
 
@@ -434,7 +595,7 @@ async def get_audit_logs(
 @router.get("/export/demographics/excel", summary="Xuất báo cáo nhân sự & học vấn ra file Excel (.xlsx) chuẩn TechZone (Rubric III.3.1.5)")
 async def export_demographics_excel(
     store_id: Optional[int] = Query(None, description="Lọc theo cửa hàng"),
-    current_user: dict = Depends(require_roles(["ADMIN", "DIRECTOR", "HR_MANAGER"])),
+    current_user: dict = Depends(require_strict_roles(["DIRECTOR", "HR_MANAGER"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -478,7 +639,7 @@ async def export_demographics_excel(
 @router.get("/export/demographics/csv", summary="Xuất báo cáo nhân sự ra file CSV (UTF-8 BOM)")
 async def export_demographics_csv(
     store_id: Optional[int] = Query(None, description="Lọc theo cửa hàng"),
-    current_user: dict = Depends(require_roles(["ADMIN", "DIRECTOR", "HR_MANAGER"])),
+    current_user: dict = Depends(require_strict_roles(["DIRECTOR", "HR_MANAGER"])),
     db: AsyncSession = Depends(get_db)
 ):
     data = await get_demographics_report(store_id=store_id, current_user=current_user, db=db)
@@ -515,7 +676,7 @@ async def export_demographics_csv(
 @router.get("/export/payroll-summary/excel", summary="Xuất báo cáo quỹ lương theo chi nhánh ra file Excel (.xlsx)")
 async def export_payroll_fund_excel(
     period: Optional[str] = Query("2026-09", description="Kỳ lương (YYYY-MM)"),
-    current_user: dict = Depends(require_roles(["ADMIN", "DIRECTOR", "HR_MANAGER"])),
+    current_user: dict = Depends(require_strict_roles(["DIRECTOR", "HR_MANAGER"])),
     db: AsyncSession = Depends(get_db)
 ):
     fund_data = await get_payroll_fund_summary(period=period, current_user=current_user, db=db)
@@ -557,3 +718,527 @@ async def export_payroll_fund_excel(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
+
+
+# ===================================================================================
+# 8. CÁC ENDPOINT XU HƯỚNG PHỤC VỤ BIỂU ĐỒ RECHARTS (DASHBOARD CHARTS)
+# ===================================================================================
+
+@router.get("/headcount-trend", summary="Xu hướng biến động quân số và tuyển dụng theo tháng")
+async def get_headcount_trend(
+    months: int = Query(6, ge=3, le=24, description="Số tháng thống kê gần nhất"),
+    current_user: dict = Depends(require_strict_roles(["DIRECTOR", "HR_MANAGER"])),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Thống kê xu hướng biến động nhân sự:
+    - Tuyển mới (hired / new_hires)
+    - Nghỉ việc (resigned)
+    - Tổng nhân sự cuối kỳ (active_total / active_count)
+    """
+    num_months = months if isinstance(months, int) else 6
+    # 1. Sinh danh sách các tháng từ hiện tại trở về trước
+    query_months = text("""
+        WITH RECURSIVE month_series AS (
+            SELECT DATE_TRUNC('month', CURRENT_DATE) AS m, 1 AS step
+            UNION ALL
+            SELECT (m - INTERVAL '1 month')::DATE, step + 1
+            FROM month_series
+            WHERE step < :months
+        )
+        SELECT TO_CHAR(m, 'YYYY-MM') as period,
+               (m + INTERVAL '1 month - 1 day')::DATE as month_end
+        FROM month_series
+        ORDER BY period ASC;
+    """)
+    m_rows = (await db.execute(query_months, {"months": num_months})).mappings().all()
+
+    # 2. Thống kê theo từng tháng
+    result = []
+    for row in m_rows:
+        period = row["period"]
+        m_end = row["month_end"]
+
+        # Số tuyển mới trong tháng
+        new_hires_res = await db.execute(text("""
+            SELECT COUNT(*) FROM employees 
+            WHERE TO_CHAR(join_date, 'YYYY-MM') = :period
+        """), {"period": period})
+        new_hires = new_hires_res.scalar() or 0
+
+        # Số thôi việc trong tháng
+        resigned_res = await db.execute(text("""
+            SELECT COUNT(*) FROM employees 
+            WHERE TO_CHAR(resignation_date, 'YYYY-MM') = :period
+        """), {"period": period})
+        resigned = resigned_res.scalar() or 0
+
+        # Tổng quân số đang làm việc tính đến cuối tháng
+        active_res = await db.execute(text("""
+            SELECT COUNT(*) FROM employees 
+            WHERE join_date <= :m_end 
+              AND (resignation_date IS NULL OR resignation_date > :m_end)
+              AND employment_status IN ('ACTIVE', 'PROBATION', 'ON_LEAVE')
+        """), {"m_end": m_end})
+        active_count = active_res.scalar() or 0
+
+        final_active = max(active_count, new_hires)
+        result.append({
+            "period": period,
+            "month": period,
+            "new_hires": new_hires,
+            "hired": new_hires,
+            "resigned": resigned,
+            "active_count": final_active,
+            "active_total": final_active
+        })
+
+    return result
+
+
+@router.get("/payroll-trend", summary="Xu hướng tổng quỹ lương các kỳ gần nhất")
+async def get_payroll_trend(
+    limit: int = Query(6, ge=2, le=12, description="Số kỳ lương gần nhất"),
+    current_user: dict = Depends(require_strict_roles(["DIRECTOR", "HR_MANAGER"])),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Thống kê biến động quỹ lương:
+    - Tổng lương gộp (Gross)
+    - Tổng lương thực nhận (Net)
+    - Tổng trích nộp bảo hiểm (Insurance)
+    - Số lượng nhân sự nhận lương
+    """
+    num_limit = limit if isinstance(limit, int) else 6
+    query = text("""
+        SELECT 
+            salary_period,
+            COUNT(payroll_id) as employee_count,
+            COALESCE(SUM(gross_income), 0) as total_gross,
+            COALESCE(SUM(net_salary), 0) as total_net,
+            COALESCE(SUM(total_insurance), 0) as total_insurance,
+            COALESCE(SUM(total_allowances), 0) as total_allowances,
+            COALESCE(SUM(total_bonuses), 0) as total_bonuses
+        FROM payrolls
+        GROUP BY salary_period
+        ORDER BY salary_period DESC
+        LIMIT :limit
+    """)
+    res = await db.execute(query, {"limit": num_limit})
+    rows = res.mappings().all()
+    # Sắp xếp theo chiều thời gian tăng dần để vẽ biểu đồ
+    sorted_rows = sorted(rows, key=lambda x: x["salary_period"])
+    return [
+        {
+            "salary_period": r["salary_period"],
+            "period": r["salary_period"],
+            "employee_count": int(r["employee_count"] or 0),
+            "total_gross": float(r["total_gross"] or 0),
+            "gross_total": float(r["total_gross"] or 0),
+            "total_net": float(r["total_net"] or 0),
+            "net_total": float(r["total_net"] or 0),
+            "total_insurance": float(r["total_insurance"] or 0),
+            "insurance_total": float(r["total_insurance"] or 0),
+            "total_allowances": float(r["total_allowances"] or 0),
+            "total_bonuses": float(r["total_bonuses"] or 0),
+            "bonus_total": float(r["total_bonuses"] or 0),
+        }
+        for r in sorted_rows
+    ]
+
+
+@router.get("/attendance-summary", summary="Thống kê chuyên cần và làm thêm giờ trong kỳ")
+async def get_attendance_summary(
+    period: Optional[str] = Query(None, description="Kỳ thống kê (YYYY-MM)"),
+    store_id: Optional[int] = Query(None, description="Lọc theo cửa hàng"),
+    current_user: dict = Depends(require_strict_roles(["DIRECTOR", "HR_MANAGER"])),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Thống kê tình hình chấm công trong tháng:
+    - Tỷ lệ các trạng thái (Đúng giờ, Đi muộn, Về sớm, Nghỉ phép)
+    - Tổng giờ làm việc thực tế và OT
+    - Tỷ lệ đúng giờ (On-time Rate)
+    """
+    today = local_now().date()
+    period_str = period if isinstance(period, str) and period else today.strftime('%Y-%m')
+    params = {"period": period_str}
+    store_filter = ""
+    details_store_filter = ""
+    if store_id and isinstance(store_id, int):
+        params["sid"] = store_id
+        store_filter = " AND store_id = :sid"
+        details_store_filter = " AND (a.store_id = :sid OR e.store_id = :sid)"
+
+    # 1. Phân bổ theo trạng thái chấm công
+    status_query = text(f"""
+        SELECT 
+            status,
+            COUNT(*) as count
+        FROM attendances
+        WHERE TO_CHAR(work_date, 'YYYY-MM') = :period {store_filter}
+        GROUP BY status
+    """)
+    status_rows = (await db.execute(status_query, params)).mappings().all()
+
+    # 2. Tổng giờ làm, giờ OT và số lượt chấm công
+    totals_query = text(f"""
+        SELECT 
+            COUNT(*) as total_records,
+            COALESCE(SUM(actual_work_hours), 0) as total_working_hours,
+            COALESCE(SUM(overtime_hours), 0) as total_ot_hours,
+            COALESCE(SUM(late_minutes), 0) as total_late_minutes,
+            COUNT(*) FILTER (WHERE status = 'NORMAL') as on_time_count,
+            COUNT(*) FILTER (WHERE status IN ('LATE', 'LATE_AND_EARLY')) as late_count
+        FROM attendances
+        WHERE TO_CHAR(work_date, 'YYYY-MM') = :period {store_filter}
+    """)
+    totals = (await db.execute(totals_query, params)).mappings().first()
+
+    total_records = totals["total_records"] if totals else 0
+    on_time_count = totals["on_time_count"] if totals else 0
+    ontime_rate = round((on_time_count / total_records * 100), 1) if total_records > 0 else 100.0
+
+    status_label_map = {
+        "NORMAL": "Đúng giờ",
+        "LATE": "Đi muộn",
+        "EARLY": "Về sớm",
+        "LATE_AND_EARLY": "Đi muộn & Về sớm",
+        "ABSENT": "Vắng mặt",
+        "ON_LEAVE": "Nghỉ phép",
+        "ANNUAL_LEAVE": "Nghỉ phép năm",
+        "MATERNITY_LEAVE": "Nghỉ thai sản",
+        "SICK_LEAVE": "Nghỉ ốm đau",
+        "UNPAID_LEAVE": "Nghỉ không lương"
+    }
+    by_status = [
+        {
+            "status": r["status"],
+            "label": status_label_map.get(r["status"], r["status"]),
+            "count": int(r["count"]),
+            "rate": round((r["count"] / max(total_records, 1)) * 100, 1)
+        }
+        for r in status_rows
+    ]
+
+    # 3. Giờ OT theo từng ngày trong kỳ (Top ngày có OT)
+    ot_daily_query = text(f"""
+        SELECT 
+            TO_CHAR(work_date, 'DD/MM') as day,
+            COALESCE(SUM(overtime_hours), 0) as ot_hours
+        FROM attendances
+        WHERE TO_CHAR(work_date, 'YYYY-MM') = :period AND overtime_hours > 0 {store_filter}
+        GROUP BY work_date
+        ORDER BY work_date ASC
+        LIMIT 15
+    """)
+    daily_ot = (await db.execute(ot_daily_query, params)).mappings().all()
+
+    # 4. Chi tiết các lượt chấm công trong kỳ phục vụ drill-down
+    att_details_query = text(f"""
+        SELECT 
+            a.attendance_id,
+            e.employee_code,
+            e.full_name as employee_name,
+            COALESCE(s.store_name, 'Văn phòng chính') as store_name,
+            TO_CHAR(a.work_date, 'DD/MM/YYYY') as work_date,
+            TO_CHAR(a.check_in_time, 'HH24:MI') as check_in_time,
+            TO_CHAR(a.check_out_time, 'HH24:MI') as check_out_time,
+            COALESCE(a.actual_work_hours, 0) as actual_work_hours,
+            COALESCE(a.overtime_hours, 0) as overtime_hours,
+            COALESCE(a.late_minutes, 0) as late_minutes,
+            a.status,
+            CASE 
+                WHEN a.status = 'NORMAL' THEN 'Đúng giờ'
+                WHEN a.status = 'LATE' THEN 'Đi muộn'
+                WHEN a.status = 'EARLY' THEN 'Về sớm'
+                WHEN a.status = 'LATE_AND_EARLY' THEN 'Đi muộn & Về sớm'
+                WHEN a.status = 'ABSENT' THEN 'Vắng mặt'
+                WHEN a.status = 'ON_LEAVE' THEN 'Nghỉ phép'
+                WHEN a.status = 'ANNUAL_LEAVE' THEN 'Nghỉ phép năm'
+                WHEN a.status = 'MATERNITY_LEAVE' THEN 'Nghỉ thai sản'
+                WHEN a.status = 'SICK_LEAVE' THEN 'Nghỉ ốm đau'
+                WHEN a.status = 'UNPAID_LEAVE' THEN 'Nghỉ không lương'
+                ELSE a.status
+            END as status_label
+        FROM attendances a
+        JOIN employees e ON a.employee_id = e.employee_id
+        LEFT JOIN stores s ON e.store_id = s.store_id
+        WHERE TO_CHAR(a.work_date, 'YYYY-MM') = :period {details_store_filter}
+        ORDER BY a.work_date DESC, a.check_in_time ASC
+    """)
+    att_details = (await db.execute(att_details_query, params)).mappings().all()
+
+    return {
+        "period": period_str,
+        "total_records": total_records,
+        "total_working_hours": float(totals["total_working_hours"]) if totals else 0.0,
+        "total_ot_hours": float(totals["total_ot_hours"]) if totals else 0.0,
+        "total_late_minutes": int(totals["total_late_minutes"]) if totals else 0,
+        "on_time_rate": ontime_rate,
+        "ontime_rate": ontime_rate,
+        "on_time_count": on_time_count,
+        "late_count": totals["late_count"] if totals else 0,
+        "by_status": by_status,
+        "status_distribution": [dict(r) for r in status_rows],
+        "daily_ot": [dict(r) for r in daily_ot],
+        "details": [dict(r) for r in att_details]
+    }
+
+
+@router.get("/leave-summary", summary="Thống kê cơ cấu đơn nghỉ phép và tỷ lệ phê duyệt")
+async def get_leave_summary(
+    period: Optional[str] = Query(None, description="Kỳ thống kê (YYYY-MM)"),
+    store_id: Optional[int] = Query(None, description="Lọc theo cửa hàng"),
+    current_user: dict = Depends(require_strict_roles(["DIRECTOR", "HR_MANAGER"])),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Thống kê cơ cấu đơn xin nghỉ phép:
+    - Số đơn theo loại nghỉ phép (Phép năm, Ốm đau, Thai sản, Việc riêng, Không lương)
+    - Tình hình xử lý (Chờ duyệt, Đã duyệt, Từ chối)
+    """
+    today = local_now().date()
+    period_str = period if isinstance(period, str) and period else today.strftime('%Y-%m')
+    params = {"period": period_str}
+    store_join = ""
+    store_filter = ""
+    if store_id and isinstance(store_id, int):
+        params["sid"] = store_id
+        store_join = " JOIN employees e ON lr.employee_id = e.employee_id"
+        store_filter = " AND e.store_id = :sid"
+
+    # 1. Phân bổ theo loại đơn nghỉ
+    types_query = text(f"""
+        SELECT 
+            COALESCE(lt.type_name, 'Khác') as type_name,
+            COUNT(lr.request_id) as count,
+            COALESCE(SUM(lr.total_days), 0) as total_days
+        FROM leave_requests lr
+        {store_join}
+        LEFT JOIN leave_types lt ON lr.leave_type_id = lt.leave_type_id
+        WHERE TO_CHAR(lr.start_date, 'YYYY-MM') = :period {store_filter}
+        GROUP BY lt.type_name
+        ORDER BY count DESC
+    """)
+    type_rows = (await db.execute(types_query, params)).mappings().all()
+
+    # 2. Phân bổ theo trạng thái phê duyệt
+    status_query = text(f"""
+        SELECT 
+            lr.status,
+            COUNT(*) as count
+        FROM leave_requests lr
+        {store_join}
+        WHERE TO_CHAR(lr.start_date, 'YYYY-MM') = :period {store_filter}
+        GROUP BY lr.status
+    """)
+    status_rows = (await db.execute(status_query, params)).mappings().all()
+
+    total_requests = sum(r["count"] for r in status_rows)
+    approved_count = sum(r["count"] for r in status_rows if r["status"] == "HR_APPROVED")
+    pending_count = sum(r["count"] for r in status_rows if r["status"] in ("PENDING", "STORE_APPROVED"))
+
+    status_label_map = {
+        "PENDING": "Chờ duyệt",
+        "STORE_APPROVED": "Cửa hàng đã duyệt",
+        "HR_APPROVED": "Đã duyệt",
+        "REJECTED": "Từ chối",
+        "CANCELLED": "Đã hủy"
+    }
+    by_status = [
+        {
+            "status": r["status"],
+            "label": status_label_map.get(r["status"], r["status"]),
+            "count": int(r["count"])
+        }
+        for r in status_rows
+    ]
+
+    by_type = [
+        {
+            "type_name": r["type_name"],
+            "count": int(r["count"]),
+            "days": float(r["total_days"]),
+            "total_days": float(r["total_days"])
+        }
+        for r in type_rows
+    ]
+
+    # 3. Danh sách chi tiết các đơn xin nghỉ trong kỳ phục vụ drill-down
+    leave_details_query = text(f"""
+        SELECT 
+            lr.request_id,
+            e.employee_code,
+            e.full_name as employee_name,
+            COALESCE(s.store_name, 'Văn phòng chính') as store_name,
+            COALESCE(lt.type_name, 'Khác') as type_name,
+            TO_CHAR(lr.start_date, 'DD/MM/YYYY') as start_date,
+            TO_CHAR(lr.end_date, 'DD/MM/YYYY') as end_date,
+            lr.total_days,
+            lr.reason,
+            lr.status,
+            CASE 
+                WHEN lr.status = 'HR_APPROVED' THEN 'Đã duyệt'
+                WHEN lr.status = 'STORE_APPROVED' THEN 'Cửa hàng đã duyệt'
+                WHEN lr.status = 'PENDING' THEN 'Chờ duyệt'
+                WHEN lr.status = 'REJECTED' THEN 'Từ chối'
+                WHEN lr.status = 'CANCELLED' THEN 'Đã hủy'
+                ELSE lr.status
+            END as status_label
+        FROM leave_requests lr
+        JOIN employees e ON lr.employee_id = e.employee_id
+        LEFT JOIN stores s ON e.store_id = s.store_id
+        LEFT JOIN leave_types lt ON lr.leave_type_id = lt.leave_type_id
+        WHERE TO_CHAR(lr.start_date, 'YYYY-MM') = :period {store_filter}
+        ORDER BY lr.start_date DESC
+    """)
+    leave_details = (await db.execute(leave_details_query, params)).mappings().all()
+
+    return {
+        "period": period_str,
+        "total_requests": total_requests,
+        "approved_count": approved_count,
+        "pending_count": pending_count,
+        "by_type": by_type,
+        "by_status": by_status,
+        "details": [dict(r) for r in leave_details]
+    }
+
+
+# ===================================================================================
+# 9. XUẤT BÁO CÁO TỔNG QUAN ĐA SHEET EXCEL (MULTI-SHEET WORKBOOK)
+# ===================================================================================
+
+@router.get("/export/overview/excel", summary="Xuất báo cáo tổng quan đa trang (Workbook) chuẩn TechZone")
+async def export_overview_excel(
+    period: Optional[str] = Query(None, description="Kỳ báo cáo (YYYY-MM)"),
+    store_id: Optional[int] = Query(None, description="Lọc theo cửa hàng"),
+    current_user: dict = Depends(require_strict_roles(["DIRECTOR", "HR_MANAGER"])),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Xuất file Excel tích hợp 3 Sheet dữ liệu quản trị chuẩn:
+    - Sheet 1: Cơ cấu nhân sự & Học vấn
+    - Sheet 2: Tổng hợp chi phí quỹ lương
+    - Sheet 3: Báo cáo hiệu suất bán lẻ
+    """
+    today = local_now().date()
+    period_str = period if isinstance(period, str) and period else today.strftime('%Y-%m')
+
+    # 1. Dữ liệu Cơ cấu nhân sự
+    demo_data = await get_demographics_report(store_id=store_id, current_user=current_user, db=db)
+    demo_rows = [dict(d) for d in demo_data.get("details", [])]
+
+    demo_columns = [
+        {"key": "employee_code", "title": "Mã NV", "width": 12, "align": "center"},
+        {"key": "full_name", "title": "Họ và Tên", "width": 24},
+        {"key": "store_name", "title": "Cửa hàng Chi nhánh", "width": 22},
+        {"key": "department_name", "title": "Phòng ban", "width": 20},
+        {"key": "position_name", "title": "Chức vụ", "width": 18},
+        {"key": "education_level", "title": "Trình độ học vấn", "width": 18, "align": "center"},
+        {"key": "basic_salary", "title": "Lương HĐ", "width": 16, "format": "currency"},
+        {"key": "salary_bracket", "title": "Khung bậc lương", "width": 18},
+        {"key": "seniority_years", "title": "Thâm niên (năm)", "width": 16, "format": "number"},
+        {"key": "seniority_group", "title": "Nhóm thâm niên", "width": 16},
+        {"key": "employment_status", "title": "Trạng thái", "width": 14, "align": "center"}
+    ]
+
+    # 2. Dữ liệu Quỹ lương
+    fund_data = await get_payroll_fund_summary(period=period_str, store_id=store_id, current_user=current_user, db=db)
+    fund_rows = [dict(u) for u in fund_data.get("by_unit", [])]
+
+    fund_columns = [
+        {"key": "unit_name", "title": "Chi nhánh / Phòng ban", "width": 26},
+        {"key": "employee_count", "title": "Số lượng NV", "width": 14, "format": "number"},
+        {"key": "total_base_salary", "title": "Tổng lương CB", "width": 18, "format": "currency"},
+        {"key": "total_overtime", "title": "Tổng tăng ca OT", "width": 16, "format": "currency"},
+        {"key": "total_allowances", "title": "Tổng phụ cấp", "width": 16, "format": "currency"},
+        {"key": "total_commissions", "title": "Tổng hoa hồng", "width": 16, "format": "currency"},
+        {"key": "total_bonuses", "title": "Tổng tiền thưởng", "width": 16, "format": "currency"},
+        {"key": "total_gross", "title": "Tổng chi phí Gross", "width": 20, "format": "currency"},
+        {"key": "total_insurance", "title": "Trích nộp BHXH", "width": 16, "format": "currency"},
+        {"key": "total_net", "title": "Tổng thực lĩnh (Net)", "width": 20, "format": "currency"}
+    ]
+
+    # 3. Dữ liệu Chấm công chi tiết
+    att_data = await get_attendance_summary(period=period_str, store_id=store_id, current_user=current_user, db=db)
+    att_rows = [dict(a) for a in att_data.get("details", [])]
+    att_columns = [
+        {"key": "employee_code", "title": "Mã NV", "width": 12, "align": "center"},
+        {"key": "employee_name", "title": "Họ và Tên", "width": 24},
+        {"key": "store_name", "title": "Cơ sở / Chi nhánh", "width": 24},
+        {"key": "work_date", "title": "Ngày làm việc", "width": 14, "align": "center"},
+        {"key": "check_in_time", "title": "Giờ vào", "width": 12, "align": "center"},
+        {"key": "check_out_time", "title": "Giờ ra", "width": 12, "align": "center"},
+        {"key": "actual_work_hours", "title": "Giờ làm thực", "width": 14, "format": "number"},
+        {"key": "overtime_hours", "title": "Tăng ca (OT)", "width": 14, "format": "number"},
+        {"key": "late_minutes", "title": "Đi muộn (phút)", "width": 15, "format": "number"},
+        {"key": "status_label", "title": "Trạng thái chuyên cần", "width": 22, "align": "center"}
+    ]
+
+    # 4. Dữ liệu Nghỉ phép chi tiết
+    leave_data = await get_leave_summary(period=period_str, store_id=store_id, current_user=current_user, db=db)
+    leave_rows = [dict(l) for l in leave_data.get("details", [])]
+    leave_columns = [
+        {"key": "employee_code", "title": "Mã NV", "width": 12, "align": "center"},
+        {"key": "employee_name", "title": "Họ và Tên", "width": 24},
+        {"key": "store_name", "title": "Chi nhánh", "width": 22},
+        {"key": "type_name", "title": "Loại hình nghỉ phép", "width": 28},
+        {"key": "start_date", "title": "Từ ngày", "width": 14, "align": "center"},
+        {"key": "end_date", "title": "Đến ngày", "width": 14, "align": "center"},
+        {"key": "total_days", "title": "Số ngày nghỉ", "width": 14, "format": "number"},
+        {"key": "reason", "title": "Lý do xin nghỉ", "width": 36},
+        {"key": "status_label", "title": "Trạng thái phê duyệt", "width": 20, "align": "center"}
+    ]
+
+    sheets = [
+        {
+            "sheet_name": "CƠ CẤU NHÂN SỰ",
+            "title": "BÁO CÁO CƠ CẤU NHÂN SỰ TOÀN CHUỖI TECHZONE",
+            "subtitle": f"Ngày xuất: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')} - Tổng cộng: {len(demo_rows)} nhân sự",
+            "columns": demo_columns,
+            "data": demo_rows,
+            "include_totals": False
+        },
+        {
+            "sheet_name": "QUỸ LƯƠNG ĐƠN VỊ",
+            "title": f"BÁO CÁO TỔNG HỢP QUỸ LƯƠNG THEO ĐƠN VỊ - KỲ {period_str}",
+            "subtitle": f"Ngày xuất: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')} - Chuỗi bán lẻ TechZone",
+            "columns": fund_columns,
+            "data": fund_rows,
+            "include_totals": True,
+            "total_keys": [
+                "employee_count", "total_base_salary", "total_overtime",
+                "total_allowances", "total_commissions", "total_bonuses",
+                "total_gross", "total_insurance", "total_net"
+            ]
+        },
+        {
+            "sheet_name": "CHẤM CÔNG CHUYÊN CẦN",
+            "title": f"BẢNG KÊ CHẤM CÔNG VÀ CHUYÊN CẦN CHI TIẾT - KỲ {period_str}",
+            "subtitle": f"Ngày xuất: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')} - Tổng cộng: {len(att_rows)} lượt ca",
+            "columns": att_columns,
+            "data": att_rows,
+            "include_totals": True,
+            "total_keys": ["actual_work_hours", "overtime_hours", "late_minutes"]
+        },
+        {
+            "sheet_name": "THEO DÕI NGHỈ PHÉP",
+            "title": f"SỔ THEO DÕI ĐƠN NGHỈ PHÉP TOÀN HỆ THỐNG - KỲ {period_str}",
+            "subtitle": f"Ngày xuất: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')} - Tổng cộng: {len(leave_rows)} đơn nghỉ phép",
+            "columns": leave_columns,
+            "data": leave_rows,
+            "include_totals": True,
+            "total_keys": ["total_days"]
+        }
+    ]
+
+    file_stream = create_multisheet_excel(sheets)
+    filename = f"Bao_Cao_Tong_Hop_TechZone_{period}.xlsx"
+    return StreamingResponse(
+        file_stream,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+

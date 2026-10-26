@@ -3,6 +3,14 @@
 .env.*
 !.env.example
 
+# Personal DB selectors and local switch helper (never commit)
+.env.backup
+.env.local
+.env.supabase
+.env.previous
+.env.previous.*
+switch-env.ps1
+
 # Python
 __pycache__/
 *.py[cod]

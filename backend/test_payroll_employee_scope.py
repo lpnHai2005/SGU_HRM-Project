@@ -6,7 +6,7 @@ from fastapi import HTTPException
 
 from app.api.v1.endpoints.payrolls import list_projects_with_allowances, list_sales_records, record_sales
 from app.api.v1.endpoints.reports import get_payroll_fund_summary
-from app.api.v1.endpoints.employees import list_contracts
+from app.api.v1.endpoints.contracts import list_contracts
 from app.schemas.schemas import SalesRecordCreate
 
 
@@ -38,6 +38,10 @@ class ScopedDb:
         self.queries.append((query, params))
         if 'SELECT * FROM projects' in query:
             return Result([{'project_id': 7, 'budget': 500000}])
+        if 'SELECT COUNT(*)' in query:
+            return Result([{'count': 1}])
+        if 'FROM contracts c' in query:
+            return Result([{'contract_id': 3, 'employee_id': 12}])
         return Result([{'project_member_id': 9, 'employee_id': 12}])
 
 
@@ -57,9 +61,16 @@ class Mission6ScopeTests(unittest.TestCase):
 
     def test_staff_contracts_are_limited_to_self(self):
         db = ScopedDb()
-        asyncio.run(list_contracts(employee_id=None, current_user={'roles': ['EMPLOYEE'], 'employee_id': 12}, db=db))
-        self.assertIn('c.employee_id = :self_employee_id', db.queries[0][0])
-        self.assertEqual(db.queries[0][1]['self_employee_id'], 12)
+        contracts = asyncio.run(list_contracts(
+            status=None, contract_type=None, employee_id=None, store_id=None,
+            department_id=None, position_id=None, expiring_days=None, expired=False,
+            search=None, page=1, page_size=20,
+            current_user={'roles': ['EMPLOYEE'], 'employee_id': 12}, db=db))
+        self.assertEqual(len(db.queries), 2)
+        for query, params in db.queries:
+            self.assertIn('c.employee_id = :user_employee_id', query)
+            self.assertEqual(params['user_employee_id'], 12)
+        self.assertEqual(contracts['data'], [{'contract_id': 3, 'employee_id': 12}])
 
     def test_staff_project_queries_are_scoped_and_budget_hidden(self):
         db = ScopedDb()

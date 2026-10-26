@@ -132,11 +132,49 @@ async def notifications(user=Depends(get_current_user),db:AsyncSession=Depends(g
             'overtime_status':row['to_status'],
             'tone':'success' if row['to_status'] in {'APPROVED','REVOKED','REPLACED'} else 'error' if row['to_status'] in {'REJECTED','EMPLOYEE_DECLINED','REVOKE_REJECTED'} else 'warning' if row['to_status'] in {'PENDING_EMPLOYEE_CONFIRMATION','PENDING_HR','REVOKE_PENDING'} else 'info',
             'created_at':row['created_at'].isoformat() if row['created_at'] else None})
+    if (await db.execute(text("""SELECT
+            to_regclass('public.overtime_reconciliation_cases') IS NOT NULL AND
+            to_regclass('public.overtime_reconciliation_case_events') IS NOT NULL"""))).scalar_one():
+        case_params={'case_viewer':user['user_id']}
+        case_recipients=['o.created_by=:case_viewer']
+        if user.get('employee_id'):
+            case_params['case_employee']=user['employee_id']
+            case_recipients.append('o.employee_id=:case_employee')
+        if roles & {'HR_MANAGER','ADMIN'}:
+            case_recipients.append('TRUE')
+        if case_recipients:
+            case_rows=(await db.execute(text('''SELECT ce.case_event_id,ce.action,ce.to_status,ce.created_at,
+                    c.case_id,c.case_type,o.request_id,e.full_name
+                FROM public.overtime_reconciliation_case_events ce
+                JOIN public.overtime_reconciliation_cases c USING(case_id)
+                JOIN public.overtime_requests o ON o.request_id=c.request_id
+                JOIN public.employees e ON e.employee_id=o.employee_id
+                WHERE ce.actor_id<>:case_viewer AND ('''+ ' OR '.join(case_recipients) + ''')
+                ORDER BY ce.created_at DESC,ce.case_event_id DESC LIMIT 50'''),case_params)).mappings().all()
+        case_labels={
+            'EXPLANATION_REQUESTED':'cần bạn giải trình giờ OT',
+            'EXPLANATION_SUBMITTED':'đã gửi giải trình OT',
+            'EXPLANATION_CLOSED':'đã xử lý yêu cầu giải trình OT',
+            'REVIEW_REQUESTED':'đã yêu cầu xem xét lại đối soát OT',
+            'REVIEW_ACCEPTED':'đã mở phiên đối soát OT mới',
+            'REVIEW_DECLINED':'đã từ chối yêu cầu xem xét OT',
+        }
+        for row in case_rows:
+            tone=('success' if row['action']=='REVIEW_ACCEPTED' else
+                  'error' if row['action']=='REVIEW_DECLINED' else
+                  'warning' if row['action'] in {'EXPLANATION_REQUESTED','REVIEW_REQUESTED'} else 'info')
+            result.append({'id':f"overtime-reconciliation-case-{row['case_event_id']}",
+                'title':f"{row['full_name']} · OT #{row['request_id']}: {case_labels.get(row['action'],'đã cập nhật hồ sơ ngoại lệ')}",
+                'href':f"/leave?tab=overtime&request_id={row['request_id']}&case_id={row['case_id']}",
+                'category':'Ngoại lệ đối soát OT','overtime_case_id':row['case_id'],
+                'overtime_case_type':row['case_type'],'tone':tone,
+                'created_at':row['created_at'].isoformat() if row['created_at'] else None})
     attendance_params={}
     attendance_scope=scope(user,attendance_params,'e')
     attendance_rows=(await db.execute(text('''SELECT a.attendance_id,a.check_in_time,a.check_out_time,a.late_minutes,e.full_name
         FROM attendances a JOIN employees e ON e.employee_id=a.employee_id
-        WHERE a.check_in_time >= now() - interval '7 days' '''+attendance_scope+'''
+        WHERE a.check_in_time >= now() - interval '7 days'
+          AND a.check_in_time <= now() '''+attendance_scope+'''
         ORDER BY a.check_in_time DESC,a.attendance_id DESC LIMIT 30'''),attendance_params)).mappings().all()
     for row in attendance_rows:
         base={'category':'Chấm công','href':'/activity'}

@@ -175,7 +175,7 @@ export function ActivityPage({ user, personal = false }: { user: any; personal?:
       }}>Đặt lại</button>
     </div>
     {error && <p role="alert">{error}</p>}
-    <div className="stat-grid-4">
+    <div className="stat-grid-4 kpi-hover-grid">
       {Object.entries(summaryLabels).map(([key, label]) => <div className="card" style={{ padding: 16 }} key={key}>
         <span>{label}</span><h2>{data?.summary[key] ?? '—'}</h2>
       </div>)}

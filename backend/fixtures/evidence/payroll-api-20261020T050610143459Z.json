@@ -1,0 +1,35 @@
+{
+  "suite": "Payroll API Contract & Integration Candidate",
+  "recorded_at_utc": "2026-10-20T05:06:10.141431+00:00",
+  "database": {
+    "name": "ot_ledger_synthetic_20261020",
+    "host": "127.0.0.1",
+    "port": 5432,
+    "user": "postgres",
+    "marker": "TECHZONE_SYNTHETIC_OT_LEDGER_20261020",
+    "source_schema": "mission9_synthetic",
+    "source_mode": "READ_ONLY schema-only clone; synthetic rows only",
+    "postgres_version": "17.11"
+  },
+  "baseline_procedure_sha256": "c4b02a2a3cf126f92c5418286bd6e5b6d43583eb02b25cc0255cfc3ba12a5d28",
+  "candidate_api_sha256": "1ebc5bc5417c818e5e6b97d407f16606a9f8d0777350a160a3220bfd2a650d1b",
+  "candidate_guard_sql_sha256": "62ddfc2aa318b473cb39b085c861c95bf4782e6c30ff09edac36d2264f79e90c",
+  "test_script_sha256": "6aa10f80b5b982b8e7b6e9b90774190fc4369b8e4ee26f2a88198f64aa24ca95",
+  "test_cases": 6,
+  "test_names": [
+    "test_01_database_roles_jwt_and_mapping_are_authoritative",
+    "test_02_calculate_alias_retry_and_user_employee_mapping",
+    "test_03_stale_source_holds_calculate_and_confirm_without_writes",
+    "test_04_self_approval_denied_and_two_hr_confirm_requests_serialize",
+    "test_05_paid_and_confirmed_history_are_protected_and_no_new_paid_path",
+    "test_06_source_locks_hold_attendance_writer_until_confirmation_commits"
+  ],
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "successful": true,
+  "fixture_guard_installed": true,
+  "synthetic_paid_fixture_id": 1,
+  "database_removed": true,
+  "error": null
+}

@@ -549,6 +549,36 @@ svg:not([width]) {
   border-color: var(--border-strong);
 }
 
+/* Shared KPI hover treatment, based on the Store Management KPI cards. */
+.kpi-hover-grid > *,
+.kpi-hover-card {
+  transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+
+.kpi-hover-card:hover,
+.kpi-hover-card:focus-visible,
+.page-container .stat-grid-4.kpi-hover-grid > *:hover,
+.operations-page .stat-grid-4.kpi-hover-grid > *:hover {
+  transform: translateY(-2px);
+  border-color: var(--primary-color);
+  box-shadow: var(--shadow-md);
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kpi-hover-grid > *,
+  .kpi-hover-card {
+    transition: none;
+  }
+
+  .kpi-hover-card:hover,
+  .kpi-hover-card:focus-visible,
+  .page-container .stat-grid-4.kpi-hover-grid > *:hover,
+  .operations-page .stat-grid-4.kpi-hover-grid > *:hover {
+    transform: none;
+  }
+}
+
 .stat-card-header {
   display: flex;
   align-items: center;

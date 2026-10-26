@@ -23,11 +23,20 @@ async def get_current_user(
     Trích xuất và kiểm tra tính hợp lệ của token JWT.
     Hỗ trợ đọc từ Header Authorization: Bearer <token>.
     """
-    # Fallback kiểm tra header thủ công nếu OAuth2PasswordBearer bỏ qua
-    if not token:
+    # 1. Fallback nếu token rỗng hoặc mang giá trị chuỗi không hợp lệ ("null", "undefined")
+    if not token or (isinstance(token, str) and token.strip() in ("null", "undefined", "")):
+        token = None
         auth_header = request.headers.get("Authorization")
         if auth_header and auth_header.startswith("Bearer "):
-            token = auth_header.split(" ")[1]
+            parts = auth_header.split(" ")
+            if len(parts) > 1 and parts[1].strip() not in ("null", "undefined", ""):
+                token = parts[1].strip()
+
+    # 2. Hỗ trợ đọc token từ Query parameter (?token=...) khi tải file/báo cáo
+    if not token or (isinstance(token, str) and token.strip() in ("null", "undefined", "")):
+        query_token = request.query_params.get("token")
+        if query_token and query_token.strip() not in ("null", "undefined", ""):
+            token = query_token.strip()
 
     if not token:
         raise HTTPException(
@@ -129,6 +138,24 @@ def require_roles(allowed_roles: List[str]):
             )
         return current_user
     return role_checker
+
+
+def require_strict_roles(allowed_roles: List[str]):
+    """
+    Dependency kiểm tra vai trò NGHIÊM NGẶT (Strict RBAC).
+    Chỉ cho phép chính xác các roles được chỉ định (KHÔNG tự động bypass cho ADMIN).
+    Dành cho các phân hệ bảo mật nhạy cảm (như Báo cáo quản trị chỉ Giám đốc & HR được xem).
+    """
+    def role_checker(current_user: dict = Depends(get_current_user)):
+        user_roles = current_user.get("roles", [])
+        if not any(role in allowed_roles for role in user_roles):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Truy cập bị từ chối. Chức năng yêu cầu một trong các vai trò: {', '.join(allowed_roles)}"
+            )
+        return current_user
+    return role_checker
+
 
 
 def require_permissions(allowed_permissions: List[str]):

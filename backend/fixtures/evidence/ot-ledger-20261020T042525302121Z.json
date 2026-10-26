@@ -1,0 +1,29 @@
+{
+  "database": "ot_ledger_synthetic_20261020",
+  "host": "127.0.0.1",
+  "port": 5432,
+  "user": "postgres",
+  "source_schema_only": "mission9_synthetic",
+  "simulated_cutoff": "2030-01-01",
+  "actual_cutoff": "NOT_SET",
+  "policy": "DISABLED",
+  "api_browser_staging": "NOT_RUN",
+  "tests_run": 17,
+  "failures": [
+    "__main__.LedgerTests.test_11_forgery_and_prepared_mutation_are_rejected",
+    "__main__.LedgerTests.test_12_cross_month_attendance_change_invalidates_both_runs",
+    "__main__.LedgerTests.test_15_concurrent_period_prepare_one_winner"
+  ],
+  "errors": [
+    "__main__.LedgerTests.test_13_revocation_and_version_change_invalidate",
+    "__main__.LedgerTests.test_16_concurrent_same_run_retry_one_transition",
+    "__main__.LedgerTests.test_17_source_writer_waits_for_prepare_then_gate_stales"
+  ],
+  "skips": [],
+  "pass": 11,
+  "database_removed": true,
+  "sha256": {
+    "payroll_ot_segment_ledger_candidate.sql": "48700136bb820c05a20beec026c63a5adcbcc02ce3a9f5e9bacd39570977d36e",
+    "test_ot_segment_ledger_candidate.py": "7e7d8e60a2607c758e7b380eac65da4c28b23438e084d5cee3272d86a22b74e7"
+  }
+}

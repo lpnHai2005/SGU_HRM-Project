@@ -2,7 +2,13 @@
 // API Configuration
 // ============================================
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
+import { resolveApiBaseUrl } from './apiBaseUrl';
+
+const API_BASE_URL = resolveApiBaseUrl(
+  import.meta.env.VITE_API_URL,
+  typeof window === 'undefined' ? 'localhost' : window.location.hostname,
+  import.meta.env.DEV,
+);
 
 // ============================================
 // Token Management
@@ -15,6 +21,7 @@ const friendlyApiMessages: Record<string, string> = {
   OT_RECONCILIATION_SCHEMA_NOT_INSTALLED: 'Máy chủ chưa cài schema đối soát OT. Liên hệ quản trị viên; không thử xác nhận lại.',
   OT_RECONCILIATION_STALE: 'Dữ liệu đơn OT hoặc chấm công đã thay đổi. Hãy tải lại kết quả đối soát.',
   OT_RECONCILIATION_NEEDS_REVIEW: 'Dữ liệu chấm công cần rà soát trước khi xác nhận giờ OT.',
+  OT_RECONCILIATION_NOT_READY: 'Chưa đến thời điểm đối soát. Có thể xem trước hoặc quyết định sau khi khung giờ OT kết thúc.',
   OT_VERIFIED_INTERVAL_CONFLICT: 'Nhân viên đã có giờ OT xác nhận trong khung giờ giao nhau. Hãy kiểm tra đơn liên quan.',
   SCHEDULE_CONFLICT: 'Nhân viên đã có ca làm việc trùng thời gian. Hãy chọn ca khác hoặc điều chỉnh lịch đang xung đột.',
   SCHEDULE_AMBIGUOUS: 'Có nhiều lịch phù hợp với thao tác này. Hãy chọn đúng ca được phân công rồi thử lại.',
@@ -129,7 +136,7 @@ class ApiClient {
     }
 
     const token = tokenService.get();
-    if (token) {
+    if (token && token !== 'null' && token !== 'undefined') {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
@@ -408,9 +415,11 @@ export const workScheduleApi = {
     api.post(`/fixed-schedules/${ruleId}/stop`, { reason, effective_date }),
 };
 
-import type { OvertimeReconciliation, OvertimeRequest } from '../types';
+import type { OvertimeReconciliation, OvertimeReconciliationCase, OvertimeRequest } from '../types';
 
 export const overtimeReconciliationApi = {
+  list: (params: { status?: string; date_from?: string; date_to?: string; store_id?: number; limit?: number } = {}): Promise<OvertimeReconciliation[]> =>
+    api.get('/overtime-reconciliations', params),
   detail: (requestId: number): Promise<OvertimeReconciliation> =>
     api.get(`/overtime-reconciliations/${requestId}`),
   preview: (requestId: number): Promise<OvertimeReconciliation> =>
@@ -419,6 +428,21 @@ export const overtimeReconciliationApi = {
     api.post(`/overtime-reconciliations/${requestId}/verify`, { expected_version, reason }),
   reject: (requestId: number, expected_version: number, reason: string): Promise<OvertimeReconciliation> =>
     api.post(`/overtime-reconciliations/${requestId}/reject`, { expected_version, reason }),
+  requestExplanation: (requestId: number, expected_version: number, reason: string): Promise<OvertimeReconciliationCase> =>
+    api.post(`/overtime-reconciliations/${requestId}/explanation-requests`, { expected_version, reason }),
+  respondToExplanation: (requestId: number, caseId: number, expected_case_version: number, response: string): Promise<OvertimeReconciliationCase> =>
+    api.post(`/overtime-reconciliations/${requestId}/explanation-cases/${caseId}/respond`, { expected_case_version, response }),
+  closeExplanation: (requestId: number, caseId: number, expected_case_version: number, reason: string): Promise<OvertimeReconciliationCase> =>
+    api.post(`/overtime-reconciliations/${requestId}/explanation-cases/${caseId}/close`, { expected_case_version, reason }),
+  requestReview: (requestId: number, expected_reconciliation_version: number, reason: string): Promise<OvertimeReconciliationCase> =>
+    api.post(`/overtime-reconciliations/${requestId}/review-requests`, { expected_reconciliation_version, reason }),
+  decideReview: (requestId: number, caseId: number, expected_case_version: number,
+    expected_reconciliation_version: number, decision: 'ACCEPT' | 'REJECT', reason: string): Promise<{
+      case: OvertimeReconciliationCase
+      reconciliation: OvertimeReconciliation
+    }> => api.post(`/overtime-reconciliations/${requestId}/review-requests/${caseId}/decision`, {
+      expected_case_version, expected_reconciliation_version, decision, reason,
+    }),
 };
 
 export const overtimeRequestApi = {
@@ -647,6 +671,11 @@ export const leaveApi = {
 import type {
   Payroll,
   SalesRecordCreate,
+  Project,
+  ProjectRole,
+  ProjectRoleAllowance,
+  PayrollPolicySetting,
+  PayrollPeriodBonus,
 } from '../types';
 
 export const payrollApi = {
@@ -696,8 +725,72 @@ export const payrollApi = {
     return api.get(`/payrolls/commissions/calculate/${month}`);
   },
 
-  getProjects: async (): Promise<any[]> => {
-    return api.get('/payrolls/projects/list');
+  getProjects: async (): Promise<Project[]> => {
+    return api.get<Project[]>('/payrolls/projects/list');
+  },
+
+  createProject: async (data: {
+    project_code: string;
+    project_name: string;
+    description?: string;
+    start_date: string;
+    end_date?: string;
+    status?: string;
+    budget?: number;
+  }): Promise<{ message: string; project: Project }> => {
+    return api.post('/payrolls/projects', data);
+  },
+
+  getProjectRoles: async (): Promise<ProjectRole[]> => {
+    return api.get<ProjectRole[]>('/payrolls/projects/roles');
+  },
+
+  createProjectRole: async (data: { role_code: string; role_name: string; description?: string; display_order?: number }): Promise<ProjectRole> => {
+    return api.post<ProjectRole>('/payrolls/projects/roles', data);
+  },
+
+  getProjectRoleAllowances: async (projectId: number): Promise<ProjectRoleAllowance[]> => {
+    return api.get<ProjectRoleAllowance[]>(`/payrolls/projects/${projectId}/role-allowances`);
+  },
+
+  setProjectRoleAllowance: async (projectId: number, data: { role_code: string; allowance_amount: number; notes?: string }): Promise<ProjectRoleAllowance> => {
+    return api.post<ProjectRoleAllowance>(`/payrolls/projects/${projectId}/role-allowances`, data);
+  },
+
+  addProjectMember: async (projectId: number, data: { employee_id: number; project_role?: string; project_allowance?: number; joined_date: string; left_date?: string }): Promise<any> => {
+    return api.post(`/payrolls/projects/${projectId}/members`, data);
+  },
+
+  updateProjectMember: async (memberId: number, data: { project_role?: string; project_allowance?: number; is_active?: boolean }): Promise<any> => {
+    return api.put(`/payrolls/projects/members/${memberId}`, data);
+  },
+
+  removeProjectMember: async (memberId: number): Promise<any> => {
+    return api.delete(`/payrolls/projects/members/${memberId}`);
+  },
+
+  getPolicySettings: async (): Promise<PayrollPolicySetting[]> => {
+    return api.get<PayrollPolicySetting[]>('/payrolls/policies/settings');
+  },
+
+  updatePolicySetting: async (key: string, data: { numeric_value: number; description?: string }): Promise<PayrollPolicySetting> => {
+    return api.put<PayrollPolicySetting>(`/payrolls/policies/settings/${key}`, data);
+  },
+
+  getPeriodBonuses: async (period?: string): Promise<PayrollPeriodBonus[]> => {
+    return api.get<PayrollPeriodBonus[]>('/payrolls/policies/period-bonuses', period ? { period } : undefined);
+  },
+
+  createPeriodBonus: async (data: { salary_period: string; bonus_code: string; bonus_name: string; calculation_type: string; base_amount: number; applies_to?: string; is_recurring?: boolean }): Promise<PayrollPeriodBonus> => {
+    return api.post<PayrollPeriodBonus>('/payrolls/policies/period-bonuses', data);
+  },
+
+  updatePeriodBonus: async (bonusId: number, data: Partial<PayrollPeriodBonus>): Promise<PayrollPeriodBonus> => {
+    return api.put<PayrollPeriodBonus>(`/payrolls/policies/period-bonuses/${bonusId}`, data);
+  },
+
+  deletePeriodBonus: async (bonusId: number): Promise<{ message: string }> => {
+    return api.delete(`/payrolls/policies/period-bonuses/${bonusId}`);
   },
 
   getPayslip: async (payrollId: number): Promise<any> => {
@@ -774,20 +867,51 @@ export const payrollApi = {
 // ============================================
 
 export const reportApi = {
-  getDashboardStats: async (period?: string): Promise<any> => {
-    return api.get('/reports/dashboard-stats', period ? { period } : undefined);
+  getDashboardStats: async (period?: string, storeId?: number): Promise<any> => {
+    const params: Record<string, any> = {};
+    if (period) params.period = period;
+    if (storeId) params.store_id = storeId;
+    return api.get('/reports/dashboard-stats', Object.keys(params).length ? params : undefined);
   },
 
   getMonthlyStatus: async (): Promise<any> => {
     return api.get('/reports/monthly-status');
   },
 
-  getDemographics: async (storeId?: number): Promise<any> => {
-    return api.get('/reports/demographics', storeId ? { store_id: storeId } : undefined);
+  getDemographics: async (storeId?: number, includeResigned: boolean = false): Promise<any> => {
+    const params: Record<string, any> = {};
+    if (storeId) params.store_id = storeId;
+    if (includeResigned) params.include_resigned = true;
+    return api.get('/reports/demographics', Object.keys(params).length ? params : undefined);
   },
 
-  getPayrollFund: async (period?: string): Promise<any> => {
-    return api.get('/reports/payroll-fund', period ? { period } : undefined);
+  getHeadcountTrend: async (months: number = 6): Promise<any> => {
+    return api.get('/reports/headcount-trend', { months });
+  },
+
+  getPayrollTrend: async (limit: number = 6): Promise<any> => {
+    return api.get('/reports/payroll-trend', { limit });
+  },
+
+  getAttendanceSummary: async (period?: string, storeId?: number): Promise<any> => {
+    const params: Record<string, any> = {};
+    if (period) params.period = period;
+    if (storeId) params.store_id = storeId;
+    return api.get('/reports/attendance-summary', Object.keys(params).length ? params : undefined);
+  },
+
+  getLeaveSummary: async (period?: string, storeId?: number): Promise<any> => {
+    const params: Record<string, any> = {};
+    if (period) params.period = period;
+    if (storeId) params.store_id = storeId;
+    return api.get('/reports/leave-summary', Object.keys(params).length ? params : undefined);
+  },
+
+  getPayrollFund: async (period?: string, storeId?: number): Promise<any> => {
+    const params: Record<string, any> = {};
+    if (period) params.period = period;
+    if (storeId) params.store_id = storeId;
+    return api.get('/reports/payroll-fund', Object.keys(params).length ? params : undefined);
   },
 
   getSalesPerformance: async (params?: { period?: string; store_id?: number }): Promise<any> => {
@@ -796,6 +920,34 @@ export const reportApi = {
 
   getAuditLogs: async (limit?: number, action?: string): Promise<any[]> => {
     return api.get<any[]>('/reports/audit-logs', { limit: limit || 50, action });
+  },
+
+  exportOverviewExcel: async (period?: string, storeId?: number): Promise<Blob> => {
+    const token = tokenService.get();
+    const params: Record<string, any> = {};
+    if (period) params.period = period;
+    if (storeId) params.store_id = storeId;
+    if (token && token !== 'null' && token !== 'undefined') params.token = token;
+    
+    return api.getBlob('/reports/export/overview/excel', params);
+  },
+
+  exportDemographicsExcel: async (storeId?: number): Promise<Blob> => {
+    const token = tokenService.get();
+    const params: Record<string, any> = {};
+    if (storeId) params.store_id = storeId;
+    if (token && token !== 'null' && token !== 'undefined') params.token = token;
+    
+    return api.getBlob('/reports/export/demographics/excel', params);
+  },
+
+  exportPayrollSummaryExcel: async (period?: string): Promise<Blob> => {
+    const token = tokenService.get();
+    const params: Record<string, any> = {};
+    if (period) params.period = period;
+    if (token && token !== 'null' && token !== 'undefined') params.token = token;
+    
+    return api.getBlob('/reports/export/payroll-summary/excel', params);
   },
 
   getExportDemographicsExcelUrl: (storeId?: number): string => {
@@ -808,6 +960,13 @@ export const reportApi = {
     return `${API_BASE_URL}/reports/export/payroll-summary/excel${params}`;
   },
 };
+
+export const storeApi = {
+  getAll: async (): Promise<any[]> => {
+    return api.get<any[]>('/stores');
+  },
+};
+
 
 
 // ============================================
