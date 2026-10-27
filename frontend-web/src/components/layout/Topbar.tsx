@@ -96,8 +96,12 @@ export function Topbar({
           + Thêm mới
         </button>
         <div className="topbar-divider"></div>
-        <NotificationBell user={user} /><div className="topbar-user" role="button" tabIndex={0} onClick={() => navigate('/account')} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') navigate('/account') }}>
-          <div className="user-avatar">{getInitials(user?.full_name || user?.username)}</div>
+        <NotificationBell user={user} /><div className="topbar-user" role="button" tabIndex={0} onClick={() => navigate('/account')} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') navigate('/account') }} title="Trang tài khoản cá nhân">
+          {user?.avatar_url ? (
+            <img src={user.avatar_url} alt="" className="user-avatar-img" />
+          ) : (
+            <div className="user-avatar">{getInitials(user?.full_name || user?.username)}</div>
+          )}
           <div className="user-info">
             <span className="user-name">{user?.full_name || user?.username || 'User'}</span>
             <span className="user-role">

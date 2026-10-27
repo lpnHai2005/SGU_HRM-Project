@@ -218,7 +218,11 @@ export function Sidebar({
 
         <div className="sidebar-footer">
           <div className="sidebar-user-card" role="button" tabIndex={0} onClick={() => handleNavigate('/account')} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') handleNavigate('/account') }} title={user?.full_name || user?.username}>
-            <div className="sidebar-user-avatar">{getInitials(user?.full_name || user?.username)}</div>
+            {user?.avatar_url ? (
+              <img src={user.avatar_url} alt="" className="sidebar-user-avatar-img" />
+            ) : (
+              <div className="sidebar-user-avatar">{getInitials(user?.full_name || user?.username)}</div>
+            )}
             {!collapsed && (
               <>
                 <div className="sidebar-user-info">

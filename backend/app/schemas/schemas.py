@@ -29,6 +29,7 @@ class TokenResponse(BaseModel):
     employee_id: Optional[int] = None
     store_id: Optional[int] = None
     store_name: Optional[str] = None
+    avatar_url: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -38,6 +39,7 @@ class UserProfile(BaseModel):
     username: str
     email: str
     phone: Optional[str] = None
+    avatar_url: Optional[str] = None
     is_active: bool = True
     roles: List[str] = Field(default_factory=list)
     permissions: List[str] = Field(default_factory=list)
@@ -50,6 +52,10 @@ class UserProfile(BaseModel):
     store_id: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class AvatarUploadRequest(BaseModel):
+    avatar_base64: str = Field(..., description="Chuỗi base64 của ảnh (hỗ trợ cả Data URL: data:image/png;base64,...)")
 
 
 class TestAccountResponse(BaseModel):
@@ -94,6 +100,7 @@ class UserResponse(BaseModel):
     username: str
     email: str
     phone: Optional[str] = None
+    avatar_url: Optional[str] = None
     is_active: bool
     last_login: Optional[datetime] = None
     employee_id: Optional[int] = None

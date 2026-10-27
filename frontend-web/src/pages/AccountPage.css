@@ -1,0 +1,459 @@
+/* ==========================================================================
+   AccountPage.css - TechZone HRM Personal Account & Profile Page
+   Dual-Theme (Obsidian Charcoal Dark & Paper Crisp Light)
+   ========================================================================== */
+
+.account-page-container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 0 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* 1. HERO HEADER PROFILE CARD */
+.account-hero-card {
+  position: relative;
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: 16px;
+  padding: 28px;
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.account-hero-backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 90px;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.12) 0%, rgba(16, 185, 129, 0.08) 100%);
+  border-bottom: 1px solid var(--border-subtle);
+  pointer-events: none;
+}
+
+.account-hero-content {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  padding-top: 24px;
+}
+
+.account-hero-left {
+  display: flex;
+  align-items: flex-end;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+/* Large Avatar with Camera Overlay */
+.account-avatar-wrapper {
+  position: relative;
+  width: 104px;
+  height: 104px;
+  border-radius: 50%;
+  border: 4px solid var(--surface-card);
+  background: var(--surface-subtle);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  flex-shrink: 0;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.account-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  display: block;
+}
+
+.account-avatar-initials {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36px;
+  font-weight: 700;
+  color: #ffffff;
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  text-transform: uppercase;
+  font-family: var(--font-mono, monospace);
+}
+
+.account-avatar-overlay-btn {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 34px;
+  background: rgba(0, 0, 0, 0.65);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  backdrop-filter: blur(2px);
+}
+
+.account-avatar-wrapper:hover .account-avatar-overlay-btn,
+.account-avatar-wrapper:focus-within .account-avatar-overlay-btn {
+  opacity: 1;
+}
+
+/* User Hero Details */
+.account-hero-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.account-hero-name {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--text-primary);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.account-hero-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.account-pill-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.account-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.35);
+}
+
+.account-code-pill {
+  padding: 3px 9px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: var(--font-mono, monospace);
+  font-weight: 600;
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+}
+
+.account-hero-quickinfo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.account-quickinfo-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 2. TAB NAVIGATION BAR */
+.account-nav-tabs {
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid var(--border-default);
+  padding-bottom: 4px;
+  overflow-x: auto;
+}
+
+.account-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  white-space: nowrap;
+}
+
+.account-tab-btn:hover {
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+}
+
+.account-tab-btn.active {
+  background: var(--surface-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border-default);
+  box-shadow: var(--shadow-sm);
+}
+
+/* 3. SECTION CARDS & FORMS */
+.account-card {
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: 14px;
+  padding: 24px;
+  box-shadow: var(--shadow-card);
+}
+
+.account-card-header {
+  margin-bottom: 20px;
+}
+
+.account-card-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+.account-card-desc {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* Avatar Upload Tab Specifics */
+.avatar-upload-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+@media (max-width: 768px) {
+  .avatar-upload-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.avatar-dropzone {
+  border: 2px dashed var(--border-default);
+  border-radius: 14px;
+  padding: 32px 20px;
+  text-align: center;
+  background: var(--surface-ground);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 220px;
+}
+
+.avatar-dropzone:hover,
+.avatar-dropzone.drag-active {
+  border-color: var(--primary-color);
+  background: rgba(37, 99, 235, 0.04);
+}
+
+.avatar-dropzone-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--surface-card);
+  color: var(--primary-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow-sm);
+}
+
+.avatar-preview-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-ground);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  padding: 24px;
+  min-height: 220px;
+  text-align: center;
+}
+
+.avatar-preview-frame {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 4px solid var(--surface-card);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+  margin-bottom: 14px;
+  background: var(--surface-subtle);
+}
+
+.avatar-preview-frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Security / Change Password Tab */
+.account-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 520px;
+}
+
+.account-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.account-form-group label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.password-input-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.password-input-container input {
+  width: 100%;
+  padding: 10px 42px 10px 14px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  font-size: 14px;
+  background: var(--surface-card);
+  color: var(--text-primary);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.password-input-container input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.password-toggle-btn {
+  position: absolute;
+  right: 10px;
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.password-toggle-btn:hover {
+  color: var(--text-primary);
+}
+
+/* Password Strength Bar */
+.password-strength-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.password-strength-track {
+  width: 100%;
+  height: 5px;
+  background: var(--surface-subtle);
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+.password-strength-fill {
+  height: 100%;
+  border-radius: 9999px;
+  transition: width 0.3s ease, background-color 0.3s ease;
+}
+
+.password-strength-text {
+  font-size: 11px;
+  font-weight: 600;
+  display: flex;
+  justify-content: space-between;
+}
+
+/* Info Grid Layout */
+.account-fields-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.account-field-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px;
+  background: var(--surface-ground);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+}
+
+.account-field-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.account-field-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+/* Topbar & Sidebar Mini Avatar Image Helper */
+.user-avatar-img,
+.sidebar-user-avatar-img {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--border-strong);
+  flex-shrink: 0;
+  display: block;
+}

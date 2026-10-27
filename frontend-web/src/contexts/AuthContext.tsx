@@ -10,6 +10,7 @@ interface AuthUser {
   user_id: number;
   username: string;
   full_name?: string | null;
+  avatar_url?: string | null;
   roles: string[];
   permissions: string[];
   employee_id?: number | null;
@@ -50,6 +51,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             user_id: profile.user_id,
             username: profile.username,
             full_name: profile.full_name,
+            avatar_url: profile.avatar_url,
             roles: profile.roles,
             permissions: profile.permissions,
             employee_id: profile.employee_id,
@@ -60,6 +62,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             user_id: profile.user_id,
             username: profile.username,
             full_name: profile.full_name,
+            avatar_url: profile.avatar_url,
             roles: profile.roles,
             permissions: profile.permissions,
             employee_id: profile.employee_id,
@@ -87,6 +90,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         user_id: response.user_id,
         username: response.username,
         full_name: response.full_name,
+        avatar_url: response.avatar_url,
         roles: response.roles,
         permissions: response.permissions,
         employee_id: response.employee_id,
@@ -130,6 +134,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         user_id: profile.user_id,
         username: profile.username,
         full_name: profile.full_name,
+        avatar_url: profile.avatar_url,
         roles: profile.roles,
         permissions: profile.permissions,
         employee_id: profile.employee_id,

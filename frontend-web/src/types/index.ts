@@ -9,6 +9,7 @@ export interface UserProfile {
   username: string;
   email: string;
   phone?: string | null;
+  avatar_url?: string | null;
   is_active: boolean;
   roles: string[];
   permissions: string[];
@@ -32,6 +33,7 @@ export interface TokenResponse {
   user_id: number;
   username: string;
   full_name?: string | null;
+  avatar_url?: string | null;
   roles: string[];
   permissions: string[];
   employee_id?: number | null;
@@ -765,6 +767,7 @@ export interface User {
   username: string;
   email: string;
   phone?: string | null;
+  avatar_url?: string | null;
   is_active: boolean;
   last_login?: string | null;
   employee_id?: number | null;
