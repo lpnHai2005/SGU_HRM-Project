@@ -289,6 +289,7 @@ export const authApi = {
       employee_id: response.employee_id,
       store_id: response.store_id,
       store_name: response.store_name,
+      avatar_url: response.avatar_url,
     });
 
     return response;
@@ -296,6 +297,23 @@ export const authApi = {
 
   getMe: async (): Promise<UserProfile> => {
     return api.get<UserProfile>('/auth/me');
+  },
+
+  changePassword: async (currentPassword: string, newPassword: string): Promise<{ message: string }> => {
+    return api.post<{ message: string }>('/auth/change-password', {
+      current_password: currentPassword,
+      new_password: newPassword,
+    });
+  },
+
+  uploadAvatar: async (payload: { avatar_base64: string }): Promise<{ message: string; avatar_url: string }> => {
+    return api.post<{ message: string; avatar_url: string }>('/auth/avatar', payload);
+  },
+
+  uploadAvatarFile: async (file: File): Promise<{ message: string; avatar_url: string }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.upload<{ message: string; avatar_url: string }>('/auth/avatar/file', formData);
   },
 
   logout: async (): Promise<void> => {

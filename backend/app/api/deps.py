@@ -63,7 +63,8 @@ async def get_current_user(
 
     # 1. Truy vấn thông tin người dùng từ CSDL Supabase
     query = text("""
-        SELECT u.user_id, u.username, u.email, u.phone, u.is_active, u.employee_id,
+        SELECT u.user_id, u.username, u.email, u.phone, COALESCE(u.avatar_url, e.avatar) AS avatar_url,
+               u.is_active, u.employee_id,
                e.employee_code, e.full_name, e.store_id, s.store_name, d.department_name, pos.position_name
         FROM users u
         LEFT JOIN employees e ON u.employee_id = e.employee_id
