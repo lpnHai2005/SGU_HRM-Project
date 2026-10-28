@@ -334,7 +334,7 @@ export const AiChatbotWidget: React.FC<AiChatbotWidgetProps> = ({ isOpen, onClos
             {
               id: 'welcome',
               sender: 'assistant',
-              text: `Xin chào **${user?.full_name || user?.username || 'bạn'}**! 👋\n\nTôi là **Trợ lý AI Nhân sự TechZone HRM** (Agentic RAG Mistral AI). Tôi có thể hỗ trợ bạn:\n\n• Tra cứu **Quy chế & Chính sách** (PDF trích dẫn chính thức)\n• Kiểm tra **Bảng lương & Phụ cấp dự án**\n• Xem **Số dư phép năm & Lịch làm việc**\n• **Tạo đơn xin nghỉ phép** hoặc **Hủy đơn** nhanh chóng có xác nhận (HITL).\n\nBạn có thể hỏi tôi câu hỏi bất kỳ bên dưới!`,
+              text: `Xin chào **${user?.full_name || user?.username || 'bạn'}**! 👋\n\nTôi là **Trợ lý AI Nhân sự TechZone HRM** (Agentic RAG Mistral AI). Tôi có thể hỗ trợ bạn:\n\n• Tra cứu **Quy chế & Chính sách** (PDF trích dẫn chính thức)\n\n• Kiểm tra **Bảng lương & Phụ cấp dự án**\n• Xem **Số dư phép năm & Lịch làm việc**\n\n• **Tạo đơn xin nghỉ phép** hoặc **Hủy đơn** nhanh chóng có xác nhận (HITL).\n\n⚠️ *Chú ý: Lịch sử cuộc trò chuyện của bạn sẽ được hệ thống lưu lại.*\n\nBạn có thể hỏi tôi câu hỏi bất kỳ bên dưới!`,
             },
           ]);
         }
@@ -345,7 +345,7 @@ export const AiChatbotWidget: React.FC<AiChatbotWidgetProps> = ({ isOpen, onClos
             {
               id: 'welcome',
               sender: 'assistant',
-              text: `Xin chào **${user?.full_name || user?.username || 'bạn'}**! 👋\n\nTôi là **Trợ lý AI Nhân sự TechZone HRM** (Agentic RAG Mistral AI). Bạn cần tra cứu thông tin hay chính sách nào hôm nay?`,
+              text: `Xin chào **${user?.full_name || user?.username || 'bạn'}**! 👋\n\nTôi là **Trợ lý AI Nhân sự TechZone HRM** (Agentic RAG Mistral AI). Bạn cần tra cứu thông tin hay chính sách nào hôm nay?\n\n⚠️ *Chú ý: Lịch sử cuộc trò chuyện của bạn sẽ được hệ thống lưu lại.*`,
             },
           ]);
         }
@@ -376,7 +376,7 @@ export const AiChatbotWidget: React.FC<AiChatbotWidgetProps> = ({ isOpen, onClos
       {
         id: 'welcome_new',
         sender: 'assistant',
-        text: `Đã khởi tạo phiên trò chuyện mới. Xin chào **${user?.full_name || user?.username || 'bạn'}**! Hãy đặt câu hỏi cho tôi.`,
+        text: `Đã khởi tạo phiên trò chuyện mới. Xin chào **${user?.full_name || user?.username || 'bạn'}**! Hãy đặt câu hỏi cho tôi.\n\n⚠️ *Chú ý: Lịch sử cuộc trò chuyện của bạn sẽ được hệ thống lưu lại.*`,
       },
     ]);
     toast.success('Đã tạo phiên hội thoại mới.');
