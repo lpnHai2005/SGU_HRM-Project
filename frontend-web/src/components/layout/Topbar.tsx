@@ -82,11 +82,14 @@ export function Topbar({
           {theme === 'dark' ? Icons.sun : Icons.moon}
         </button>
         <button
-          className="btn btn-ai"
+          className="btn btn-ai topbar-btn-ai"
           onClick={onOpenAi || (() => toast('✦ Trợ lý AI TechZone: Hệ thống đang kết nối trực tiếp cơ sở dữ liệu và vận hành ổn định.'))}
-          title="Hỏi trợ lý AI TechZone"
+          title="Hỏi trợ lý AI TechZone (Agentic RAG)"
+          aria-label="Trợ lý AI TechZone"
         >
-          ✦ Trợ lý AI
+          <span className="btn-ai-sparkle">✦</span>
+          <span className="btn-ai-text">Trợ lý AI</span>
+          <span className="btn-ai-text-mobile">AI</span>
         </button>
         <button
           className="btn btn-primary"

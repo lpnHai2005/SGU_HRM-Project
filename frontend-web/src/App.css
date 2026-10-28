@@ -673,6 +673,43 @@
   margin: 0 2px;
 }
 
+/* AI Assistant Button in Topbar (Vero Minimalist / Emerald Glow) */
+.topbar-btn-ai {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 10px;
+  font-size: var(--text-xs, 12px);
+  font-weight: 600;
+  border-radius: var(--radius-xs, 6px);
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: pointer;
+  background-color: var(--ai-btn-bg);
+  color: var(--ai-btn-text);
+  border: 1px solid var(--ai-btn-border);
+  transition: all var(--duration-fast, 120ms);
+}
+
+.topbar-btn-ai:hover {
+  background-color: var(--ai-btn-hover-bg);
+  border-color: var(--ai-btn-text);
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.2);
+}
+
+.btn-ai-sparkle {
+  font-size: 13px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+}
+
+.btn-ai-text-mobile {
+  display: none;
+}
+
 .topbar-user {
   display: flex;
   align-items: center;
@@ -1653,8 +1690,13 @@
     display: none; /* Hide name/role text on small screens, keep avatar */
   }
 
-  .topbar-divider {
+  .topbar-divider,
+  .topbar-right > .btn-primary {
     display: none;
+  }
+
+  .topbar-btn-ai {
+    display: inline-flex !important;
   }
 
   /* Sidebar Mobile Drawer & Overlay */
@@ -2425,10 +2467,13 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
    SMALL MOBILE ADAPTATION (480px and down)
    -------------------------------------------------------------------------- */
 @media (max-width: 480px) {
-  .topbar-right .btn-ai,
   .topbar-right > .btn-primary,
   .topbar-right .topbar-divider {
     display: none;
+  }
+
+  .topbar-btn-ai {
+    display: inline-flex !important;
   }
 
   .topbar-left {
@@ -3241,4 +3286,44 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 .calendar-more-chip:hover {
   background-color: var(--surface-hover);
   border-color: var(--border-hover, #94a3b8);
+}
+
+/* Responsive adaptation for Topbar AI button */
+@media (max-width: 640px) {
+  .btn-ai-text {
+    display: none;
+  }
+  .btn-ai-text-mobile {
+    display: inline;
+  }
+  .topbar-btn-ai {
+    height: 30px;
+    padding: 0 8px;
+    font-size: 11.5px;
+    gap: 3px;
+  }
+}
+
+@media (max-width: 380px) {
+  .topbar-right {
+    gap: 4px;
+  }
+  .btn-ai-text-mobile {
+    display: none;
+  }
+  .topbar-btn-ai {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    justify-content: center;
+  }
+  .btn-ai-sparkle {
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 340px) {
+  .topbar-right .topbar-icon-btn {
+    display: none;
+  }
 }
