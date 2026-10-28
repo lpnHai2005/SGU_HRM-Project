@@ -1,0 +1,41 @@
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
+
+# Git & editors
+.git/
+.gitignore
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Tests & test data
+.pytest_cache/
+.coverage
+htmlcov/
+tests/
+test_*.py
+
+# Logs & temp files
+*.log
+tmp/
+temp/
+
+# Uploads & local data
+uploads/
