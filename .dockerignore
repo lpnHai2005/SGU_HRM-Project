@@ -1,0 +1,26 @@
+# Virtual environments
+venv/
+.venv/
+
+# Node modules & frontend/mobile builds
+frontend-web/node_modules/
+frontend-web/dist/
+mobile/node_modules/
+mobile/.expo/
+
+# Git & editors
+.git/
+.idea/
+.vscode/
+
+# Python cache & env
+**/__pycache__/
+**/*.py[cod]
+**/.env
+**/.env.*
+!**/.env.example
+
+# Logs & temp files
+*.log
+tmp/
+temp/
