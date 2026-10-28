@@ -49,7 +49,7 @@ Báo cáo kiểm thử định lượng năng lực AI bằng Ragas: **[`backend
 **Đề tài:** Hệ thống HRM cho doanh nghiệp bán lẻ thiết bị công nghệ (TechZone HRM)
 
 | STT | Mã số SV | Họ và tên | Vai trò trong dự án | Tài khoản GitHub | Email liên hệ |
-|:---:|:---:|---|:---:|---|---|---|
+|:---:|:---:|---|:---:|---|---|
 | 1 | **3123411081** | **Lê Phan Nguyên Hải** | **Nhóm trưởng**|[VthongVthongVthong](https://github.com/VthongVthongVthong) | huynhvienthong979@gmail.com |
 | 2 | **3123411287** | **Huỳnh Viễn Thông** | **Thành viên**| [lpnHai2005](https://github.com/lpnHai2005) ([HiCyclone](https://github.com/HiCyclone)) | lephannguyenhai@gmail.com |
 | 3 | **3123411030** | **Võ Hoàng Bảo** | **Thành viên**| [hoangbao2908](https://github.com/hoangbao2908) | vohoangbao082005@gmail.com |
