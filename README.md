@@ -51,9 +51,9 @@ Báo cáo kiểm thử định lượng năng lực AI bằng Ragas: **[`backend
 | STT | Mã số SV | Họ và tên | Vai trò trong dự án | Tài khoản GitHub | Email liên hệ |
 |:---:|:---:|---|:---:|---|---|---|
 | 1 | **3123411081** | **Lê Phan Nguyên Hải** | **Nhóm trưởng**|[VthongVthongVthong](https://github.com/VthongVthongVthong) | huynhvienthong979@gmail.com |
-| 2 | **3123411287** | **Huỳnh Viễn Thông** | **Thành viên**|  [lpnHai2005](https://github.com/lpnHai2005) ([HiCyclone](https://github.com/HiCyclone)) | lephannguyenhai@gmail.com |
+| 2 | **3123411287** | **Huỳnh Viễn Thông** | **Thành viên**| [lpnHai2005](https://github.com/lpnHai2005) ([HiCyclone](https://github.com/HiCyclone)) | lephannguyenhai@gmail.com |
 | 3 | **3123411030** | **Võ Hoàng Bảo** | **Thành viên**| [hoangbao2908](https://github.com/hoangbao2908) | vohoangbao082005@gmail.com |
-| 4 | **3123411166** | **Đoàn Trung Kiên** | **Thành viên**| Thiết kế và quản lý DDL Migration 51 bảng CSDL, Module Phân ca & Chấm công 5 trạng thái, CSS in ấn phiếu lương/hợp đồng chuẩn A4, Trưởng nhóm Kiểm thử (Black-box & Automated Testing). | [TrungKien2005](https://github.com/TrungKien2005) | doantrungkien.live@gmail.com |
+| 4 | **3123411166** | **Đoàn Trung Kiên** | **Thành viên**|[TrungKien2005](https://github.com/TrungKien2005) | doantrungkien.live@gmail.com |
 
 > **Về đề tài này:** Toàn bộ hệ thống TechZone HRM được nghiên cứu và thiết kế độc lập bởi nhóm 4 sinh viên Khoa CNTT - SGU. Dự án tích hợp sâu giữa chuẩn mực nghiệp vụ quản trị nguồn nhân lực chuỗi bán lẻ hiện đại (Chuẩn hóa CSDL 3NF, phân quyền RBAC phân cấp, tính lương theo doanh số sản phẩm) với công nghệ phần mềm tiên tiến (FastAPI Async, React 19, Expo Router, Agentic RAG LLM với Mistral AI & LangGraph).
 
