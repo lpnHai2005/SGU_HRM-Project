@@ -334,7 +334,7 @@ export const AiChatbotWidget: React.FC<AiChatbotWidgetProps> = ({ isOpen, onClos
             {
               id: 'welcome',
               sender: 'assistant',
-              text: `Xin chào **${user?.full_name || user?.username || 'bạn'}**! 👋\n\nTôi là **Trợ lý AI Nhân sự TechZone HRM** (Agentic RAG Mistral AI). Tôi có thể hỗ trợ bạn:\n\n• Tra cứu **Quy chế & Chính sách** (PDF trích dẫn chính thức)\n\n• Kiểm tra **Bảng lương & Phụ cấp dự án**\n• Xem **Số dư phép năm & Lịch làm việc**\n\n• **Tạo đơn xin nghỉ phép** hoặc **Hủy đơn** nhanh chóng có xác nhận (HITL).\n\n⚠️ *Chú ý: Lịch sử cuộc trò chuyện của bạn sẽ được hệ thống lưu lại.*\n\nBạn có thể hỏi tôi câu hỏi bất kỳ bên dưới!`,
+              text: `Xin chào **${user?.full_name || user?.username || 'bạn'}**! 👋\n\nTôi là **Trợ lý AI Nhân sự TechZone HRM** (Agentic RAG Mistral AI). Tôi có thể hỗ trợ bạn:\n\n• Tra cứu **Quy chế & Chính sách** (PDF trích dẫn chính thức)\n\n• Kiểm tra **Bảng lương & Phụ cấp dự án**\n\n• Xem **Số dư phép năm & Lịch làm việc**\n\n• **Tạo đơn xin nghỉ phép** hoặc **Hủy đơn** nhanh chóng có xác nhận (HITL).\n\n⚠️ *Chú ý: Lịch sử cuộc trò chuyện của bạn sẽ được hệ thống lưu lại.*\n\nBạn có thể hỏi tôi câu hỏi bất kỳ bên dưới!`,
             },
           ]);
         }
