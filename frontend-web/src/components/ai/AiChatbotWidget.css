@@ -888,4 +888,12 @@
     bottom: 0;
     right: 0;
   }
+
+  .ai-header {
+    padding-top: max(12px, env(safe-area-inset-top));
+  }
+
+  .ai-input-bar {
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+  }
 }
