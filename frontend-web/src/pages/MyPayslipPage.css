@@ -1,0 +1,265 @@
+/* ==========================================================================
+   TechZone HRM - MyPayslip & Contracts Page (Main-Subform / Master-Detail)
+   Clean, Ergonomic Enterprise B2B Interface
+   ========================================================================== */
+
+/* Main-Subform Responsive Layout */
+.mypayslip-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+  align-items: start;
+  min-height: 480px;
+  transition: grid-template-columns 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.mypayslip-layout.has-subform {
+  grid-template-columns: minmax(0, 1.15fr) minmax(380px, 0.95fr);
+}
+
+@media (max-width: 1080px) {
+  .mypayslip-layout.has-subform {
+    grid-template-columns: 1fr;
+    min-height: auto;
+  }
+}
+
+/* Master (Main) Column Pane */
+.mypayslip-main-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  width: 100%;
+}
+
+/* Subform (Detail) Column Pane with Slide-in / Slide-out Animation */
+.mypayslip-subform-pane {
+  position: sticky;
+  top: calc(var(--topbar-height, 60px) + 16px);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: calc(100vh - var(--topbar-height, 60px) - 32px);
+  overflow-y: auto;
+  border-radius: var(--radius-md, 8px);
+  animation: mypayslipSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.mypayslip-subform-pane.is-closing {
+  animation: mypayslipSlideOut 0.22s cubic-bezier(0.7, 0, 0.84, 0) forwards;
+  pointer-events: none;
+}
+
+@keyframes mypayslipSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(36px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes mypayslipSlideOut {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(36px);
+  }
+}
+
+@media (max-width: 1080px) {
+  .mypayslip-subform-pane {
+    position: static;
+    max-height: none;
+    animation: none;
+  }
+  .mypayslip-subform-pane.is-closing {
+    animation: none;
+  }
+}
+
+/* Custom Scrollbar for Subform Pane */
+.mypayslip-subform-pane::-webkit-scrollbar {
+  width: 6px;
+}
+.mypayslip-subform-pane::-webkit-scrollbar-track {
+  background: transparent;
+}
+.mypayslip-subform-pane::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: 4px;
+}
+.mypayslip-subform-pane::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
+}
+
+/* Interactive Master Table Rows */
+.mypayslip-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.mypayslip-row {
+  cursor: pointer;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+  border-bottom: 1px solid var(--border-subtle);
+  user-select: none;
+}
+
+.mypayslip-row:hover {
+  background-color: var(--surface-subtle);
+}
+
+.mypayslip-row.is-selected {
+  background-color: rgba(37, 99, 235, 0.08) !important;
+  box-shadow: inset 4px 0 0 0 var(--primary-color, #2563eb);
+}
+
+.mypayslip-row.is-hover-preview:not(.is-selected) {
+  background-color: rgba(37, 99, 235, 0.04);
+  box-shadow: inset 2px 0 0 0 rgba(37, 99, 235, 0.5);
+}
+
+/* Live Active Indicator Pill */
+.mypayslip-active-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--primary-color, #2563eb);
+  background: rgba(37, 99, 235, 0.12);
+  padding: 2px 8px;
+  border-radius: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Detail Card Styling */
+.mypayslip-detail-card {
+  position: relative;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md, 8px);
+  background: var(--surface-card);
+  box-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: box-shadow 0.2s ease;
+  min-height: 480px;
+}
+
+/* Corner Close 'X' Button in Subform */
+.mypayslip-corner-close-btn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--border-default);
+  background: var(--surface-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  padding: 0;
+  z-index: 10;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+}
+
+.mypayslip-corner-close-btn:hover {
+  background: rgba(220, 38, 38, 0.08);
+  color: var(--status-error, #dc2626);
+  border-color: var(--status-error, #dc2626);
+  transform: scale(1.08);
+}
+
+.mypayslip-corner-close-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.mypayslip-detail-header {
+  padding: 16px 56px 16px 20px;
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: var(--surface-card);
+}
+
+.mypayslip-detail-body {
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+}
+
+/* Subform Breakdowns Grid */
+.mypayslip-breakdown-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+.mypayslip-section-box {
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--surface-card);
+}
+
+.mypayslip-section-title {
+  padding: 10px 14px;
+  background: var(--surface-subtle);
+  font-weight: 700;
+  font-size: 12.5px;
+  letter-spacing: 0.3px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border-default);
+}
+
+/* Financial Mono Value */
+.mypayslip-val-mono {
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Net Big Banner */
+.mypayslip-net-banner {
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: 8px;
+  padding: 14px 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* Action Floating Strip in Subform */
+.mypayslip-subform-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 4px;
+}
