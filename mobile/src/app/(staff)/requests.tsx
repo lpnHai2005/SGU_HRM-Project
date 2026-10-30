@@ -1,8 +1,9 @@
 import { AppIcon, AppText as Text } from '@/components/app-icon';
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useRef, useState, useMemo } from 'react';
+import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import {
   Alert,
+  Animated,
   Modal,
   Pressable,
   ScrollView,
@@ -17,6 +18,7 @@ import { useNotifications } from '@/contexts/notifications';
 import { ApiError, request } from '@/services/attendance';
 import type { Profile } from '@/services/staff';
 import { storeLabel } from '@/services/presentation';
+import { OvertimeManagement } from '@/components/overtime-management';
 import {
   fetchLeaveTypes,
   fetchLeaveBalance,
@@ -152,6 +154,37 @@ export default function RequestsScreen() {
   const [notice, setNotice] = useState('');
 
   // 4. Navigation & Search & Filters
+  const [domainTab, setDomainTab] = useState<'leaves' | 'overtime'>('leaves');
+  const [otScopeTab, setOtScopeTab] = useState<'my_ot' | 'manager_ot'>('my_ot');
+  const [showCreateOtModal, setShowCreateOtModal] = useState(false);
+
+  // Hiệu ứng nút "Đăng ký OT" trượt từ bên phải vào màn hình khi chuyển tab
+  const slideAnim = useRef(new Animated.Value(200)).current;
+  const opacityAnim = useRef(new Animated.Value(0)).current;
+
+  const triggerButtonSlideIn = useCallback(() => {
+    slideAnim.setValue(200);
+    opacityAnim.setValue(0);
+    Animated.parallel([
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        friction: 6,
+        tension: 45,
+        useNativeDriver: true,
+      }),
+      Animated.timing(opacityAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [slideAnim, opacityAnim]);
+
+  useEffect(() => {
+    if (domainTab === 'overtime') {
+      triggerButtonSlideIn();
+    }
+  }, [domainTab, otScopeTab, triggerButtonSlideIn]);
   const [activeTab, setActiveTab] = useState<'my_leaves' | 'manager_approvals'>('my_leaves');
   const [myStatusFilter, setMyStatusFilter] = useState<string>('ALL');
   const [mgrStatusFilter, setMgrStatusFilter] = useState<string>('PENDING_ONLY');
@@ -815,11 +848,16 @@ export default function RequestsScreen() {
   };
 
   return (
-    <ScrollView style={{ backgroundColor: p.bg }} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <View style={{ flex: 1, backgroundColor: p.bg }}>
+      <ScrollView
+        style={{ flex: 1, backgroundColor: p.bg }}
+        contentContainerStyle={[styles.content, { paddingBottom: 100 }]}
+        keyboardShouldPersistTaps="handled"
+      >
       {/* HEADER WITH NOTIFICATION BELL */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <View style={{ flex: 1 }}>
-          <Label large>Quản lý Nghỉ phép</Label>
+          <Label large>Quản lý Đơn & Tăng ca (OT)</Label>
           <Label muted>{profile?.full_name || 'Nhân viên TechZone'} · {storeLabel(profile?.department_name || profile?.store_name)}</Label>
         </View>
         <Pressable
@@ -859,7 +897,93 @@ export default function RequestsScreen() {
         </Pressable>
       </View>
 
-      {/* MANAGER TAB SWITCHER (IF USER IS MANAGER) */}
+      {/* NHÓM TAB NGOÀI: [ Đơn từ & Nghỉ phép ] vs [ Tăng ca (OT) ] */}
+      <View
+        style={{
+          flexDirection: 'row',
+          backgroundColor: p.card,
+          borderRadius: 14,
+          padding: 4,
+          borderWidth: 1,
+          borderColor: p.line,
+          gap: 4,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 1 },
+          shadowOpacity: p.dark ? 0.2 : 0.04,
+          shadowRadius: 3,
+          elevation: 2,
+        }}
+      >
+        <Pressable
+          accessibilityRole="tab"
+          accessibilityState={{ selected: domainTab === 'leaves' }}
+          onPress={() => setDomainTab('leaves')}
+          style={{
+            flex: 1,
+            paddingVertical: 10,
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexDirection: 'row',
+            gap: 6,
+            borderRadius: 10,
+            backgroundColor: domainTab === 'leaves' ? p.brand : 'transparent',
+          }}
+        >
+          <AppIcon
+            name="document-text-outline"
+            style={{
+              fontSize: 16,
+              color: domainTab === 'leaves' ? '#ffffff' : p.muted,
+            }}
+          />
+          <Text
+            style={{
+              fontFamily: 'BeVietnamBold',
+              fontSize: 13,
+              color: domainTab === 'leaves' ? '#ffffff' : p.text,
+            }}
+          >
+            Đơn từ & Nghỉ phép
+          </Text>
+        </Pressable>
+
+        <Pressable
+          accessibilityRole="tab"
+          accessibilityState={{ selected: domainTab === 'overtime' }}
+          onPress={() => setDomainTab('overtime')}
+          style={{
+            flex: 1,
+            paddingVertical: 10,
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexDirection: 'row',
+            gap: 6,
+            borderRadius: 10,
+            backgroundColor: domainTab === 'overtime' ? p.brand : 'transparent',
+          }}
+        >
+          <AppIcon
+            name="time-outline"
+            style={{
+              fontSize: 16,
+              color: domainTab === 'overtime' ? '#ffffff' : p.muted,
+            }}
+          />
+          <Text
+            style={{
+              fontFamily: 'BeVietnamBold',
+              fontSize: 13,
+              color: domainTab === 'overtime' ? '#ffffff' : p.text,
+            }}
+          >
+            Tăng ca (OT)
+          </Text>
+        </Pressable>
+      </View>
+
+      {domainTab === 'leaves' ? (
+        <>
+          {/* MANAGER TAB SWITCHER (IF USER IS MANAGER) */}
       {isManager && (
         <View style={{ flexDirection: 'row', backgroundColor: p.card, borderRadius: 12, padding: 4, borderWidth: 1, borderColor: p.line }}>
           <Pressable
@@ -1468,6 +1592,26 @@ export default function RequestsScreen() {
       )}
 
       {/* ============================================================== */}
+        </>
+      ) : (
+        <OvertimeManagement
+          token={token}
+          profile={profile}
+          isManager={isManager}
+          isStoreManager={isStoreManager}
+          isHrManager={isHrManager}
+          isAdmin={isAdmin}
+          monthOptions={monthOptions}
+          selectedMonth={selectedMonth}
+          setSelectedMonth={setSelectedMonth}
+          onRefreshLeaves={loadLeaveData}
+          showCreateModal={showCreateOtModal}
+          setShowCreateModal={setShowCreateOtModal}
+          activeScopeTab={otScopeTab}
+          onScopeTabChange={setOtScopeTab}
+        />
+      )}
+
       {/* 9. POPUP OVERLAY TẠO ĐƠN NGHỈ PHÉP MỚI (CREATE LEAVE MODAL)   */}
       {/* ============================================================== */}
       <Modal visible={showCreateModal} transparent animationType="fade" onRequestClose={() => setShowCreateModal(false)}>
@@ -2467,5 +2611,45 @@ export default function RequestsScreen() {
       </Modal>
 
     </ScrollView>
+
+      {/* BUTTON "ĐĂNG KÝ OT" NẰM Ở NGOÀI CARD BÊN DƯỚI GÓC PHẢI (CHO CẢ ĐƠN OT CỦA TÔI VÀ QUẢN LÝ DUYỆT OT) VỚI HIỆU ỨNG CHẠY TỪ PHẢI VÀO */}
+      {domainTab === 'overtime' && (
+        <Animated.View
+          style={{
+            position: 'absolute',
+            bottom: 20,
+            right: 18,
+            zIndex: 9999,
+            transform: [{ translateX: slideAnim }],
+            opacity: opacityAnim,
+          }}
+        >
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Đăng ký làm thêm giờ OT mới"
+            onPress={() => setShowCreateOtModal(true)}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
+              backgroundColor: '#16a34a',
+              paddingVertical: 12,
+              paddingHorizontal: 18,
+              borderRadius: 24,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.3,
+              shadowRadius: 8,
+              elevation: 8,
+            }}
+          >
+            <AppIcon name="add-outline" style={{ fontSize: 20, color: '#ffffff' }} />
+            <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 13, color: '#ffffff' }}>
+              Đăng ký OT
+            </Text>
+          </Pressable>
+        </Animated.View>
+      )}
+    </View>
   );
 }

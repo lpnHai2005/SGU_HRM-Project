@@ -320,8 +320,7 @@ export function WorkScheduleCalendar({
                               <span className="empty-label">Phân ca</span>
                             </button>
                           )}
-                          {shift.shift_id === standardShifts[0]?.shift_id && cellOvertime.length > 0 && <div className="calendar-overtime-list">{cellOvertime.slice(0, 2).map(request => overtimeChip(request, true))}{cellOvertime.length > 2 && <small>+{cellOvertime.length - 2} đơn OT</small>}</div>}
-                          {shift.shift_id === standardShifts[0]?.shift_id && canCreateOvertime && <button type="button" className="calendar-overtime-add" onClick={event => { event.stopPropagation(); onOpenOvertimeDrawer(d.date) }}>+ Đăng ký OT</button>}
+                          {/* Overtime is now displayed in its dedicated 'OT trong ngày' row */}
                         </div>
 
                         {/* Tooltip on Desktop hover */}
@@ -354,6 +353,46 @@ export function WorkScheduleCalendar({
                   })}
                 </tr>
               ))}
+
+              {/* Dedicated Row for 'OT trong ngày' */}
+              <tr key="row-overtime" className="week-shift-row week-shift-row-overtime">
+                <td className="week-shift-label-cell">
+                  <div className="week-shift-title">OT trong ngày</div>
+                  <div className="week-shift-hours">Tăng ca ngoài giờ</div>
+                  <span className="week-shift-tag week-shift-tag--ot">OT</span>
+                </td>
+
+                {weekDays.map(d => {
+                  const cellOvertime = overtimeByDate.get(d.date) || []
+
+                  return (
+                    <td
+                      key={d.date}
+                      className={`week-grid-cell week-grid-cell-overtime ${d.isToday ? 'is-today-cell' : ''} ${cellOvertime.length > 0 ? 'has-overtime' : 'is-empty'}`}
+                    >
+                      <div className="week-cell-content">
+                        {cellOvertime.length > 0 && (
+                          <div className="calendar-overtime-list">
+                            {cellOvertime.map(request => overtimeChip(request, true))}
+                          </div>
+                        )}
+                        {canCreateOvertime && (
+                          <button
+                            type="button"
+                            className="calendar-overtime-add"
+                            onClick={event => {
+                              event.stopPropagation()
+                              onOpenOvertimeDrawer(d.date)
+                            }}
+                          >
+                            + Đăng ký OT
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  )
+                })}
+              </tr>
             </tbody>
           </table>
         </div>

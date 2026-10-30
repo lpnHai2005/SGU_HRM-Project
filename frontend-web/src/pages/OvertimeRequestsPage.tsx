@@ -123,6 +123,8 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
   const [draftStoreId, setDraftStoreId] = useState<string>('')
   const [searchTerm, setSearchTerm] = useState('')
   const [activeTab, setActiveTab] = useState<'all' | 'pending_confirm' | 'pending_hr' | 'approved' | 'rejected_cancelled'>('all')
+  const [filterVerifiedOnly, setFilterVerifiedOnly] = useState(false)
+  const [reconFilterVerified, setReconFilterVerified] = useState(false)
 
   const [requests, setRequests] = useState<OvertimeRequest[]>([])
   const [reconciliations, setReconciliations] = useState<OvertimeReconciliation[]>([])
@@ -277,6 +279,12 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
     return () => document.removeEventListener('click', closeFilterOnOutsideClick)
   }, [])
 
+
+
+  const reconciliationByRequest = useMemo(
+    () => new Map(reconciliations.map(item => [item.request_id, item])), [reconciliations],
+  )
+
   // Filter requests by activeTab and search
   const filteredRequests = useMemo(() => {
     return requests.filter(req => {
@@ -286,6 +294,12 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
       if (activeTab === 'pending_hr' && req.status !== 'PENDING_HR') return false
       if (activeTab === 'approved' && req.status !== 'APPROVED') return false
       if (activeTab === 'rejected_cancelled' && !['REJECTED', 'EMPLOYEE_DECLINED', 'CANCELLED', 'REVOKED', 'REPLACED'].includes(req.status)) return false
+
+      // Filter verified only (khi click vào Card "Giờ OT đã xác nhận")
+      if (filterVerifiedOnly) {
+        const rec = reconciliationByRequest.get(req.request_id)
+        if (!rec || rec.effective_status !== 'VERIFIED') return false
+      }
 
       // Status dropdown filter
       if (statusFilter !== 'all' && req.status !== statusFilter) return false
@@ -303,7 +317,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
 
       return true
     })
-  }, [requests, activeTab, dateFrom, dateTo, statusFilter, searchTerm])
+  }, [requests, activeTab, filterVerifiedOnly, reconciliationByRequest, dateFrom, dateTo, statusFilter, searchTerm])
 
   // Calculate Stat counts
   const statCounts = useMemo(() => {
@@ -314,7 +328,6 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
     const approved = periodRequests.filter(r => r.status === 'APPROVED').length
     const rejected = periodRequests.filter(r => ['REJECTED', 'EMPLOYEE_DECLINED', 'CANCELLED'].includes(r.status)).length
 
-    const reconciliationByRequest = new Map(reconciliations.map(item => [item.request_id, item]))
     const verified = periodRequests.filter(request => {
       const rec = reconciliationByRequest.get(request.request_id)
       return request.status === 'APPROVED' && rec?.effective_status === 'VERIFIED'
@@ -334,36 +347,39 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
     const requestMap = new Map(requests.map(request => [request.request_id, request]))
     const start = new Date(`${dateFrom}T00:00:00+07:00`).getTime()
     const end = new Date(`${dateTo}T23:59:59.999+07:00`).getTime()
-    let milliseconds = 0
+    let microseconds = 0
     for (const reconciliation of reconciliations) {
       const request = requestMap.get(reconciliation.request_id)
       if (!request || request.status !== 'APPROVED' || !reconciliation.source_current
           || reconciliation.effective_status !== 'VERIFIED' || !reconciliation.payable_microseconds) continue
       if (request.revoke_requested_at && !request.revoke_decided_at) continue
-      for (const interval of reconciliation.eligible_intervals || []) {
-        const left = Math.max(start, new Date(interval.starts_at).getTime())
-        const right = Math.min(end, new Date(interval.ends_at).getTime())
-        if (right > left) milliseconds += right - left
+      if (reconciliation.eligible_intervals && reconciliation.eligible_intervals.length > 0) {
+        for (const interval of reconciliation.eligible_intervals) {
+          const left = Math.max(start, new Date(interval.starts_at).getTime())
+          const right = Math.min(end, new Date(interval.ends_at).getTime())
+          if (right > left) microseconds += (right - left) * 1000
+        }
+      } else {
+        microseconds += reconciliation.payable_microseconds
       }
     }
-    return milliseconds / 3_600_000
+    return microseconds / 3_600_000_000
   }, [dateFrom, dateTo, reconciliationError, reconciliations, requests])
 
-  const reconciliationByRequest = useMemo(
-    () => new Map(reconciliations.map(item => [item.request_id, item])), [reconciliations],
-  )
 
   const reconciliationRows = useMemo(() => {
-    const rows = requests.filter(request => request.status === 'APPROVED'
+    let rows = requests.filter(request => request.status === 'APPROVED'
       && request.work_date >= dateFrom && request.work_date <= dateTo
       && matchesRequestQuery(request, searchTerm))
       .map(request => ({ request, reconciliation: reconciliationByRequest.get(request.request_id) }))
-    if (workspaceTab === 'history') {
-      return rows.filter(({ reconciliation }) => reconciliation
+    if (reconFilterVerified) {
+      rows = rows.filter(({ reconciliation }) => reconciliation?.effective_status === 'VERIFIED')
+    } else if (workspaceTab === 'history') {
+      rows = rows.filter(({ reconciliation }) => reconciliation
         && ['VERIFIED', 'REJECTED', 'NEEDS_REVIEW'].includes(reconciliation.effective_status))
     }
     return rows
-  }, [dateFrom, dateTo, reconciliationByRequest, requests, searchTerm, workspaceTab])
+  }, [dateFrom, dateTo, reconciliationByRequest, reconFilterVerified, requests, searchTerm, workspaceTab])
 
   const historicalRequests = useMemo(() => requests.filter(request =>
     ['APPROVED', 'REJECTED', 'EMPLOYEE_DECLINED', 'CANCELLED', 'REVOKED', 'REPLACED'].includes(request.status)
@@ -567,7 +583,8 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
   const hasCustomDateRange = dateFrom !== initialRange.from || dateTo !== initialRange.to
   const activeAdvancedFilterCount = Number(hasCustomDateRange) + Number(Boolean(storeId))
   const hasActiveFilters = hasCustomDateRange || Boolean(storeId) || Boolean(searchTerm.trim())
-    || (workspaceTab === 'requests' && activeTab !== 'all')
+    || (workspaceTab === 'requests' && (activeTab !== 'all' || filterVerifiedOnly))
+    || (workspaceTab === 'reconciliation' && reconFilterVerified)
   const clearAdvancedFilters = () => {
     setDateFrom(initialRange.from)
     setDateTo(initialRange.to)
@@ -589,6 +606,8 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
     setSearchTerm('')
     setActiveTab('all')
     setStatusFilter('all')
+    setFilterVerifiedOnly(false)
+    setReconFilterVerified(false)
   }
   const statusTabLabels: Record<typeof activeTab, string> = {
     all: 'Tất cả',
@@ -643,25 +662,50 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
               icon={Icons.clock}
               iconColor="blue"
               label="Giờ OT đã xác nhận (kỳ này)"
-              value={personalVerifiedHours === null ? 'Chưa xác minh' : `${personalVerifiedHours.toFixed(1)} giờ`}
+              value={personalVerifiedHours === null ? 'Chưa xác minh' : `${personalVerifiedHours.toFixed(2)} giờ`}
+              footerNote={personalVerifiedHours !== null && personalVerifiedHours > 0 ? `Quy đổi: ${Math.round(personalVerifiedHours * 60)} phút` : undefined}
+              active={workspaceTab === 'requests' && filterVerifiedOnly}
+              onClick={() => {
+                setWorkspaceTab('requests')
+                setActiveTab('approved')
+                setFilterVerifiedOnly(prev => !prev)
+              }}
             />
             <StatCard
               icon={Icons.alertCircle}
               iconColor="amber"
               label="Chờ bạn xác nhận (Cấp 1)"
               value={`${statCounts.pendingConfirm} đơn`}
+              active={workspaceTab === 'requests' && activeTab === 'pending_confirm' && !filterVerifiedOnly}
+              onClick={() => {
+                setWorkspaceTab('requests')
+                setFilterVerifiedOnly(false)
+                setActiveTab(prev => (prev === 'pending_confirm' ? 'all' : 'pending_confirm'))
+              }}
             />
             <StatCard
               icon={Icons.shield}
               iconColor="blue"
               label="Chờ HR duyệt (Cấp 2)"
               value={`${statCounts.pendingHr} đơn`}
+              active={workspaceTab === 'requests' && activeTab === 'pending_hr' && !filterVerifiedOnly}
+              onClick={() => {
+                setWorkspaceTab('requests')
+                setFilterVerifiedOnly(false)
+                setActiveTab(prev => (prev === 'pending_hr' ? 'all' : 'pending_hr'))
+              }}
             />
             <StatCard
               icon={Icons.checkCircle}
               iconColor="green"
               label="Đơn OT đã duyệt"
               value={`${statCounts.approved} đơn`}
+              active={workspaceTab === 'requests' && activeTab === 'approved' && !filterVerifiedOnly}
+              onClick={() => {
+                setWorkspaceTab('requests')
+                setFilterVerifiedOnly(false)
+                setActiveTab(prev => (prev === 'approved' ? 'all' : 'approved'))
+              }}
             />
           </>
         ) : (
@@ -671,24 +715,56 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
               iconColor="blue"
               label="Tổng đơn đăng ký OT"
               value={`${statCounts.total} đơn`}
+              active={workspaceTab === 'requests' && activeTab === 'all' && !filterVerifiedOnly}
+              onClick={() => {
+                setWorkspaceTab('requests')
+                setActiveTab('all')
+                setFilterVerifiedOnly(false)
+                setReconFilterVerified(false)
+              }}
             />
             <StatCard
               icon={Icons.users}
               iconColor="amber"
               label="Chờ NV xác nhận (Cấp 1)"
               value={`${statCounts.pendingConfirm} đơn`}
+              active={workspaceTab === 'requests' && activeTab === 'pending_confirm'}
+              onClick={() => {
+                setWorkspaceTab('requests')
+                setFilterVerifiedOnly(false)
+                setReconFilterVerified(false)
+                setActiveTab(prev => (prev === 'pending_confirm' ? 'all' : 'pending_confirm'))
+              }}
             />
             <StatCard
               icon={Icons.shield}
               iconColor="blue"
               label="Chờ HR duyệt (Cấp 2)"
               value={`${statCounts.pendingHr} đơn`}
+              active={workspaceTab === 'requests' && activeTab === 'pending_hr'}
+              onClick={() => {
+                setWorkspaceTab('requests')
+                setFilterVerifiedOnly(false)
+                setReconFilterVerified(false)
+                setActiveTab(prev => (prev === 'pending_hr' ? 'all' : 'pending_hr'))
+              }}
             />
             <StatCard
               icon={Icons.checkCircle}
               iconColor="green"
               label="Đã VERIFIED"
               value={reconciliationError ? 'Chưa xác minh' : `${statCounts.verified} đơn`}
+              active={(workspaceTab === 'reconciliation' && reconFilterVerified) || (workspaceTab === 'requests' && filterVerifiedOnly)}
+              onClick={() => {
+                if (isReviewer) {
+                  setWorkspaceTab('reconciliation')
+                  setReconFilterVerified(prev => !prev)
+                } else {
+                  setWorkspaceTab('requests')
+                  setActiveTab('approved')
+                  setFilterVerifiedOnly(prev => !prev)
+                }
+              }}
             />
           </>
         )}
@@ -758,7 +834,9 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
           {searchTerm.trim() && <span className="overtime-filter-chip"><span>Từ khóa: {searchTerm.trim()}</span><button type="button" aria-label="Xóa từ khóa tìm kiếm" onClick={() => setSearchTerm('')}>{Icons.close}</button></span>}
           {hasCustomDateRange && <span className="overtime-filter-chip"><span>Thời gian: {dateFrom ? displayDate(dateFrom) : '—'} – {dateTo ? displayDate(dateTo) : '—'}</span><button type="button" aria-label="Đặt lại khoảng ngày" onClick={() => { setDateFrom(initialRange.from); setDateTo(initialRange.to) }}>{Icons.close}</button></span>}
           {storeId && <span className="overtime-filter-chip"><span>Cửa hàng: {selectedStoreName}</span><button type="button" aria-label="Xóa bộ lọc cửa hàng" onClick={() => setStoreId('')}>{Icons.close}</button></span>}
-          {workspaceTab === 'requests' && activeTab !== 'all' && <span className="overtime-filter-chip"><span>Trạng thái: {statusTabLabels[activeTab]}</span><button type="button" aria-label="Xóa bộ lọc trạng thái" onClick={() => setActiveTab('all')}>{Icons.close}</button></span>}
+          {workspaceTab === 'requests' && activeTab !== 'all' && <span className="overtime-filter-chip"><span>Trạng thái: {statusTabLabels[activeTab]}</span><button type="button" aria-label="Xóa bộ lọc trạng thái" onClick={() => { setActiveTab('all'); setFilterVerifiedOnly(false) }}>{Icons.close}</button></span>}
+          {filterVerifiedOnly && <span className="overtime-filter-chip"><span>Lọc: Đã VERIFIED</span><button type="button" aria-label="Xóa bộ lọc đã xác minh" onClick={() => setFilterVerifiedOnly(false)}>{Icons.close}</button></span>}
+          {reconFilterVerified && <span className="overtime-filter-chip"><span>Lọc: Đã VERIFIED</span><button type="button" aria-label="Xóa bộ lọc đã VERIFIED" onClick={() => setReconFilterVerified(false)}>{Icons.close}</button></span>}
           <button type="button" className="overtime-reset-all" onClick={resetAllFilters}>Đặt lại tất cả</button>
         </div>}
         </div>
@@ -770,7 +848,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
             <button
               type="button"
               className={`leave-tab-btn ${activeTab === 'all' ? 'active' : ''}`}
-              onClick={() => setActiveTab('all')}
+              onClick={() => { setActiveTab('all'); setFilterVerifiedOnly(false) }}
               aria-pressed={activeTab === 'all'}
             >
               <span>Tất cả</span>
@@ -779,7 +857,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
             <button
               type="button"
               className={`leave-tab-btn ${activeTab === 'pending_confirm' ? 'active' : ''}`}
-              onClick={() => setActiveTab('pending_confirm')}
+              onClick={() => { setActiveTab('pending_confirm'); setFilterVerifiedOnly(false) }}
               aria-pressed={activeTab === 'pending_confirm'}
             >
               <span>{isPersonalView ? 'Chờ bạn xác nhận' : 'Chờ NV xác nhận (C1)'}</span>
@@ -797,7 +875,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
             <button
               type="button"
               className={`leave-tab-btn ${activeTab === 'pending_hr' ? 'active' : ''}`}
-              onClick={() => setActiveTab('pending_hr')}
+              onClick={() => { setActiveTab('pending_hr'); setFilterVerifiedOnly(false) }}
               aria-pressed={activeTab === 'pending_hr'}
             >
               <span>Chờ HR duyệt (C2)</span>
@@ -815,7 +893,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
             <button
               type="button"
               className={`leave-tab-btn ${activeTab === 'approved' ? 'active' : ''}`}
-              onClick={() => setActiveTab('approved')}
+              onClick={() => { setActiveTab('approved'); setFilterVerifiedOnly(false) }}
               aria-pressed={activeTab === 'approved'}
             >
               <span>Đã duyệt</span>
@@ -824,7 +902,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
             <button
               type="button"
               className={`leave-tab-btn ${activeTab === 'rejected_cancelled' ? 'active' : ''}`}
-              onClick={() => setActiveTab('rejected_cancelled')}
+              onClick={() => { setActiveTab('rejected_cancelled'); setFilterVerifiedOnly(false) }}
               aria-pressed={activeTab === 'rejected_cancelled'}
             >
               <span>Từ chối / Hủy</span>

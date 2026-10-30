@@ -35,6 +35,11 @@ class ReconciliationRejection(BaseModel):
     reason: str = Field(min_length=3, max_length=1000)
 
 
+class ReconciliationReopen(BaseModel):
+    expected_version: int = Field(gt=0)
+    reason: str = Field(min_length=3, max_length=1000)
+
+
 class ExplanationRequest(BaseModel):
     expected_version: int = Field(gt=0)
     reason: str = Field(min_length=3, max_length=1000)
@@ -587,6 +592,71 @@ async def reject_reconciliation(request_id: int, body: ReconciliationRejection,
                                 user=Depends(require_roles(["HR_MANAGER", "ADMIN"])),
                                 db: AsyncSession = Depends(get_db)):
     return await _decide(db, request_id, user, body.expected_version, "REJECTED", body.reason)
+
+
+@router.post("/{request_id}/reopen")
+async def reopen_reconciliation(request_id: int, body: ReconciliationReopen,
+                                user=Depends(require_roles(["HR_MANAGER", "ADMIN"])),
+                                db: AsyncSession = Depends(get_db)):
+    await _require_schema(db)
+    request = await _lock_request(db, request_id)
+    _may_decide(request, user)
+    if not await _request_eligible(db, request_id):
+        raise HTTPException(409, "Đơn OT không còn ở trạng thái được phép đối soát.")
+    row = await _record(db, request_id, lock=True)
+    if not row:
+        raise HTTPException(404, "Không tìm thấy hồ sơ đối soát.")
+    if row["status"] not in {"VERIFIED", "REJECTED"}:
+        raise HTTPException(409, "Chỉ có thể hoàn tác kết quả đối soát khi đang ở trạng thái đã xác nhận (VERIFIED) hoặc đã từ chối (REJECTED).")
+    if row["version"] != body.expected_version:
+        raise HTTPException(409, "Phiên bản đối soát đã thay đổi; vui lòng tải lại dữ liệu trước khi hoàn tác.")
+
+    clean_reason = body.reason.strip()
+    if len(clean_reason) < 3:
+        raise HTTPException(422, "Lý do hoàn tác đối soát phải có ít nhất 3 ký tự.")
+
+    # Kiểm tra trạng thái Kỳ công / Bảng lương riêng cho nhân viên này (Payroll Lock Check)
+    period = str(request["work_date"])[:7] if request.get("work_date") else (str(request["starts_at"])[:7] if request.get("starts_at") else None)
+    has_payrolls = bool((await db.execute(text("SELECT to_regclass('public.payrolls') IS NOT NULL"))).scalar_one())
+    if period and has_payrolls:
+        payroll_locked_status = (await db.execute(text("""
+            SELECT payment_status FROM public.payrolls
+            WHERE salary_period = :period AND employee_id = :employee_id
+              AND payment_status IN ('CONFIRMED', 'PAID', 'LOCKED', 'APPROVED')
+            LIMIT 1
+        """), {"period": period, "employee_id": request["employee_id"]})).scalar_one_or_none()
+
+        if payroll_locked_status:
+            raise HTTPException(409, {
+                "code": "PAYROLL_PERIOD_LOCKED",
+                "message": f"Kỳ công/Bảng lương tháng {period} của nhân viên này đã chốt ({payroll_locked_status}). Toàn bộ dữ liệu giờ công và OT của tháng đó bị khóa để bảo đảm tính toàn vẹn của phiếu lương và báo cáo kế toán. Mọi điều chỉnh sẽ phải chuyển sang kỳ sau dưới dạng Truy lĩnh / Truy thu.",
+                "salary_period": period,
+                "payment_status": payroll_locked_status,
+            })
+
+    # Hoàn tác trạng thái đối soát: Chuyển về PENDING_RECONCILIATION hoặc NEEDS_REVIEW
+    signature, candidate, _ = await _source(db, request, lock=True)
+    new_status = candidate.status if candidate.status in {"PENDING_RECONCILIATION", "NEEDS_REVIEW"} else "NEEDS_REVIEW"
+
+    updated = (await db.execute(text("""UPDATE public.overtime_reconciliations SET
+        status=:status,version=version+1,verified_microseconds=NULL,
+        reviewed_by=NULL,reviewed_at=NULL,decision_reason=NULL,
+        updated_at=clock_timestamp()
+        WHERE request_id=:request AND version=:version
+        RETURNING *"""), {
+            "status": new_status,
+            "request": request_id,
+            "version": body.expected_version,
+        })).mappings().one_or_none()
+    if not updated:
+        raise HTTPException(409, "Hồ sơ đối soát vừa thay đổi; tải lại trước khi hoàn tác.")
+    current = dict(updated)
+
+    # Ghi vết kiểm toán append-only vào overtime_reconciliation_events
+    await _event(db, request_id, user["user_id"], "REOPEN", row, current, clean_reason)
+
+    await db.commit()
+    return await _response(db, request, current, user)
 
 
 @router.post("/{request_id}/explanation-requests", status_code=201)

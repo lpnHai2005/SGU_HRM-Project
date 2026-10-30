@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from app.core.config import settings
-from app.core.database import engine
+from app.core.database import engine, sync_engine
 from app.api.v1.router import api_router
 
 logging.basicConfig(
@@ -50,6 +50,8 @@ async def lifespan(app: FastAPI):
     # Dọn dẹp tài nguyên khi tắt server
     logger.info("Đang đóng các kết nối CSDL...")
     await engine.dispose()
+    if sync_engine is not None:
+        sync_engine.dispose()
     logger.info("Đã tắt máy chủ TechZone HRM Backend an toàn.")
 
 app = FastAPI(

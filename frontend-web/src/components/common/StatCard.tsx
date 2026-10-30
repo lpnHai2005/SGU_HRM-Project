@@ -8,6 +8,8 @@ export interface StatCardProps {
   trend?: string
   trendDirection?: 'up' | 'down' | 'warning'
   footerNote?: string
+  onClick?: () => void
+  active?: boolean
 }
 
 export function StatCard({
@@ -18,9 +20,27 @@ export function StatCard({
   trend,
   trendDirection = 'up',
   footerNote,
+  onClick,
+  active,
 }: StatCardProps) {
   return (
-    <div className="stat-card">
+    <div
+      className={`stat-card${active ? ' is-active' : ''}${onClick ? ' is-clickable' : ''}`}
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={
+        onClick
+          ? e => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onClick()
+              }
+            }
+          : undefined
+      }
+      style={onClick ? { cursor: 'pointer' } : undefined}
+    >
       <div className="stat-card-header">
         <span className="stat-card-label">{label}</span>
         {icon && <div className={`stat-card-icon ${iconColor || 'blue'}`}>{icon}</div>}

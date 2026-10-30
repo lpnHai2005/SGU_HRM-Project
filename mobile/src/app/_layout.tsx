@@ -34,7 +34,7 @@ function Navigation() {
   if ((!loaded && !error) || !ready) return <LoadingBar active label="Đang mở TechZone…" />;
   return <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: p.bg } }}>
     <Stack.Screen name="index" />
-    <Stack.Protected guard={!token}><Stack.Screen name="login" /></Stack.Protected>
-    <Stack.Protected guard={!!token}><Stack.Screen name="(staff)" /></Stack.Protected>
+    <Stack.Protected guard={!token} redirectTo="/(staff)"><Stack.Screen name="login" /></Stack.Protected>
+    <Stack.Protected guard={!!token} redirectTo="/login"><Stack.Screen name="(staff)" /></Stack.Protected>
   </Stack>;
 }

@@ -4,7 +4,7 @@ import { MonthPicker } from '../components/common/MonthPicker'
 import { attendanceLabels, scheduleLabels, operationToday } from './ActivityPage'
 import { Icons } from '../components/common/Icons'
 import { formatDate, formatTime } from '../utils/formatters'
-import { PayrollOvertimePanel } from './PayrollOvertimePanel'
+import { MonthlyVerifiedOvertimePanel } from './MonthlyVerifiedOvertimePanel'
 import './MonthlyAttendancePage.css'
 
 export function MonthlyAttendancePage({user}:{user:any}) {
@@ -37,7 +37,21 @@ export function MonthlyAttendancePage({user}:{user:any}) {
     </section>
     {error&&<p role="alert">{error}</p>}{loading?<p>Đang tải bảng công…</p>:<section className="card table-container"><table className="data-table"><thead><tr>{['Nhân viên / Phiên','Giờ phân ca','Giờ thực tế','Trễ (phút)','Sớm (phút)','OT thực tế','Ngày công','Phép','Trạng thái phiên'].map(h=><th key={h}>{h}</th>)}</tr></thead><tbody>{rows.map(p=><tr key={p.employee_id}><td><details><summary><strong>{p.employee_name}</strong><div>{p.store_name} · {p.department_name}</div></summary>{p.sessions.map((s:any)=><article key={s.attendance_id} style={{padding:'12px 0',minWidth:250}}><strong>{formatDate(s.work_date)} · {s.attendance_context?.actual?.shift_name||s.shift_name}</strong><div>{formatTime(s.check_in_time)} → {s.check_out_time?formatTime(s.check_out_time):'Chưa ra'}</div><div>{s.actual_work_hours} giờ · Trễ {s.late_minutes} phút · Sớm {s.early_minutes} phút · Ngoài ca ghi nhận {s.overtime_hours} giờ</div><div>{attendanceLabels[s.status]||s.status} · {scheduleLabels[s.schedule_status]||'Chưa đối chiếu'}</div></article>)}</details></td><td>{p.scheduled_hours.toFixed(2)}</td><td>{p.actual_work_hours.toFixed(2)}</td><td>{p.late_minutes}</td><td>{p.early_minutes}</td><td>{p.overtime_hours.toFixed(2)}</td><td>{p.working_days}</td><td>{p.leave_days??'Có đơn giao tháng – đối chiếu đơn'}</td><td>{p.statuses.map((s:string)=>attendanceLabels[s]||s).join(', ')||'Chưa chấm công'}</td></tr>)}</tbody></table>{!rows.length&&<p style={{padding:20}}>Không có dữ liệu phù hợp.</p>}</section>}
     <div style={{ marginTop: 24 }}>
-      <PayrollOvertimePanel period={period} />
+      <MonthlyVerifiedOvertimePanel
+        period={period}
+        storeId={filters.store_id}
+        employeeId={filters.employee_id}
+        user={user}
+        attendanceSessions={rows.flatMap((p: any) =>
+          (p.sessions || []).map((s: any) => ({
+            ...s,
+            employee_name: p.employee_name,
+            employee_code: p.employee_code,
+            store_name: p.store_name,
+            department_name: p.department_name,
+          }))
+        )}
+      />
     </div>
   </div>
 }

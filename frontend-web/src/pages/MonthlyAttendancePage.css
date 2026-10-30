@@ -61,3 +61,197 @@
     width: 100%;
   }
 }
+
+
+/* ==========================================================================
+   Bảng đối soát OT thành công trong tháng (Monthly Verified Overtime Panel)
+   ========================================================================== */
+
+.monthly-verified-ot-card {
+  margin-top: 20px;
+  border: 1px solid var(--border-default);
+  background: var(--surface-card);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.monthly-verified-ot-card .card-header {
+  padding: 12px 18px;
+  background: var(--surface-card);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.monthly-verified-ot-card .header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.monthly-verified-ot-card .card-title {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.monthly-verified-ot-card .card-subtitle {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+
+.monthly-verified-ot-card .header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Dải thống kê mỏng (KPI strip) */
+.monthly-verified-ot-card .kpi-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 8px 18px;
+  background: var(--surface-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 12px;
+}
+
+.monthly-verified-ot-card .kpi-metric {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+}
+
+.monthly-verified-ot-card .kpi-metric strong {
+  color: var(--text-primary);
+  font-size: 12.5px;
+}
+
+.monthly-verified-ot-card .kpi-metric strong.success {
+  color: var(--color-success, #16a34a);
+}
+
+.monthly-verified-ot-card .kpi-sep {
+  width: 1px;
+  height: 12px;
+  background: var(--border-subtle);
+}
+
+/* Bảng dữ liệu tối ưu không kéo ngang */
+.monthly-verified-ot-card .table-container {
+  overflow-x: auto;
+  width: 100%;
+}
+
+.monthly-verified-ot-card .data-table {
+  width: 100%;
+  table-layout: auto;
+  border-collapse: collapse;
+}
+
+.monthly-verified-ot-card .data-table th {
+  padding: 8px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  background-color: var(--surface-card);
+  border-bottom: 1px solid var(--border-default);
+  white-space: nowrap;
+}
+
+.monthly-verified-ot-card .data-table td {
+  padding: 8px 8px;
+  font-size: 11.5px;
+  vertical-align: middle;
+}
+
+.monthly-verified-ot-card .att-session-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-decoration: none;
+}
+
+.monthly-verified-ot-card .att-session-pill:hover {
+  background: var(--sidebar-hover);
+  border-color: var(--primary-color, #2563eb);
+  color: var(--primary-color, #2563eb);
+}
+
+/* Modal chi tiết đối soát */
+.ot-reconcile-detail-dialog {
+  max-width: 680px;
+  width: 100%;
+}
+
+.ot-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+@media (max-width: 640px) {
+  .ot-detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ot-detail-box {
+  padding: 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-subtle);
+}
+
+.ot-detail-box-title {
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.ot-detail-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.ot-detail-item:last-child {
+  margin-bottom: 0;
+}
+
+.ot-detail-label {
+  color: var(--text-secondary);
+}
+
+.ot-detail-val {
+  font-weight: 500;
+  color: var(--text-primary);
+  text-align: right;
+}
