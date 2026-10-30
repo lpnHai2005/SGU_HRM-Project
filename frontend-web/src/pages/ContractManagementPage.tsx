@@ -417,20 +417,33 @@ export function ContractManagementPage({ user }: ContractManagementPageProps) {
         )}
 
         <div className="action-dropdown-divider"></div>
-        <a
-          href={contract.contract_file_url || `/api/v1/contracts/${contract.contract_id}/download-pdf`}
-          target="_blank"
-          rel="noopener noreferrer"
+        <button
           className="action-dropdown-item"
-          style={{ textDecoration: 'none' }}
-          onClick={() => {
+          onClick={async () => {
             setOpenMenuId(null)
             setMenuPos(null)
+            if (contract.contract_file_url) {
+              window.open(contract.contract_file_url, '_blank', 'noopener,noreferrer')
+              return
+            }
+            // Open the tab synchronously so the popup blocker allows it; the endpoint needs the Bearer token, so fetch as blob.
+            const tab = window.open('', '_blank')
+            try {
+              const blob = await api.getBlob(`/contracts/${contract.contract_id}/download-pdf`)
+              const url = URL.createObjectURL(blob)
+              if (tab) tab.location.href = url
+              else window.open(url, '_blank')
+              setTimeout(() => URL.revokeObjectURL(url), 60_000)
+              fetchContracts()
+            } catch (err) {
+              tab?.close()
+              toast.error(err instanceof Error ? err.message : 'Không thể tạo file PDF hợp đồng')
+            }
           }}
         >
           <span className="action-icon">{Icons.fileText}</span>
           <span>{contract.contract_file_url ? 'Xem / Tải file PDF' : 'Tạo & Xem PDF chuẩn'}</span>
-        </a>
+        </button>
       </div>,
       document.body
     )
