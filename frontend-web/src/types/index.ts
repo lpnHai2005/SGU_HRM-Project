@@ -142,6 +142,7 @@ export interface Contract {
   contract_number: string;
   employee_id: number;
   employee_name?: string;
+  employee_code?: string;
   contract_type: string;
   start_date: string;
   end_date?: string;
@@ -151,7 +152,14 @@ export interface Contract {
   working_hours_per_week?: number;
   signed_date?: string;
   status: string;
+  notes?: string;
+  note?: string;
+  signer_name?: string;
+  position_name?: string;
+  department_name?: string;
+  store_name?: string;
   created_at?: string;
+  contract_file_url?: string;
 }
 
 export interface ContractCreate {
@@ -245,6 +253,8 @@ export interface CheckInRequest {
   employee_id?: number;
   shift_id?: number;
   notes?: string;
+  note?: string;
+  signer_name?: string;
   device_info?: string;
   location?: string;
 }
@@ -252,6 +262,8 @@ export interface CheckInRequest {
 export interface CheckOutRequest {
   attendance_id?: number;
   notes?: string;
+  note?: string;
+  signer_name?: string;
   location?: string;
 }
 
@@ -349,6 +361,8 @@ export interface ShiftSchedule {
   shift_name?: string;
   work_date: string;
   notes?: string;
+  note?: string;
+  signer_name?: string;
 }
 
 export interface ShiftScheduleCreate {
@@ -357,6 +371,8 @@ export interface ShiftScheduleCreate {
   shift_id: number;
   work_date: string;
   notes?: string;
+  note?: string;
+  signer_name?: string;
 }
 
 export interface WorkSchedule {
@@ -399,6 +415,8 @@ export interface WorkScheduleWrite {
   shift_id: number;
   work_date: string;
   notes?: string;
+  note?: string;
+  signer_name?: string;
   reason: string;
 }
 
@@ -923,6 +941,7 @@ export interface ProjectRole {
   display_order?: number;
   is_active?: boolean;
   created_at?: string;
+  contract_file_url?: string;
 }
 
 export interface ProjectRoleAllowance {
@@ -933,6 +952,7 @@ export interface ProjectRoleAllowance {
   allowance_amount: number;
   notes?: string | null;
   created_at?: string;
+  contract_file_url?: string;
   updated_at?: string;
 }
 
@@ -986,6 +1006,7 @@ export interface PayrollPeriodBonus {
   is_recurring?: boolean;
   is_active: boolean;
   created_at?: string;
+  contract_file_url?: string;
   updated_at?: string;
 }
 

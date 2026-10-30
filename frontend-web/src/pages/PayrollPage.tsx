@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { Icons } from '../components/common/Icons'
 import { StatCard } from '../components/common/StatCard'
@@ -7,6 +7,7 @@ import { formatCurrency, formatDate } from '../utils/formatters'
 import type { Payroll } from '../types'
 import { payrollApi } from '../services/api'
 import './PayslipPrint.css'
+import './MyPayslipPage.css'
 import { PayrollOvertimePanel } from './PayrollOvertimePanel'
 import { PayrollAdjustmentDialog } from './PayrollAdjustmentDialog'
 import { PayrollRegulationDialog } from './PayrollRegulationDialog'
@@ -88,12 +89,192 @@ export function PayrollPage({ user }: PayrollPageProps) {
 
   // Selected item for details & print
   const [selectedPayroll, setSelectedPayroll] = useState<Payroll | null>(null)
+  const [isClosingPayroll, setIsClosingPayroll] = useState(false)
+  const subformPaneRef = useRef<HTMLDivElement | null>(null)
   const [adjustmentPayroll, setAdjustmentPayroll] = useState<Payroll | null>(null)
   const [reopenDialogOpen, setReopenDialogOpen] = useState(false)
   const [unconfirmPayroll, setUnconfirmPayroll] = useState<Payroll | null>(null)
   const [selectedAnnualEmployeeId, setSelectedAnnualEmployeeId] = useState<number>(() => user?.employee_id || 0)
   const [annualData, setAnnualData] = useState<any>(null)
   const [annualLoading, setAnnualLoading] = useState(false)
+
+  // Subform close and select handlers with slide animation
+  const handleClosePayrollDetail = () => {
+    if (isClosingPayroll || !selectedPayroll) return
+    setIsClosingPayroll(true)
+    setTimeout(() => {
+      setSelectedPayroll(null)
+      setIsClosingPayroll(false)
+    }, 220)
+  }
+
+  const handleSelectPayroll = (payroll: Payroll) => {
+    setIsClosingPayroll(false)
+    setSelectedPayroll(payroll)
+    setTimeout(() => {
+      if (subformPaneRef.current) {
+        const rect = subformPaneRef.current.getBoundingClientRect()
+        if (rect.top < 80) {
+          subformPaneRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }
+      }
+    }, 60)
+  }
+
+  const isDetailOpen = Boolean(selectedPayroll || isClosingPayroll)
+
+  // Action dropdown menu state (rendered via Portal)
+  const [openMenuId, setOpenMenuId] = useState<number | null>(null)
+  const [menuPos, setMenuPos] = useState<{ top?: number; bottom?: number; right: number } | null>(null)
+
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setOpenMenuId(null)
+      setMenuPos(null)
+    }
+    const handleScroll = () => {
+      setOpenMenuId(null)
+      setMenuPos(null)
+    }
+    document.addEventListener('click', handleClickOutside)
+    window.addEventListener('scroll', handleScroll, true)
+    return () => {
+      document.removeEventListener('click', handleClickOutside)
+      window.removeEventListener('scroll', handleScroll, true)
+    }
+  }, [])
+
+  const handleToggleMenu = (e: React.MouseEvent<HTMLButtonElement>, payrollId: number, index: number, total: number) => {
+    e.stopPropagation()
+    if (openMenuId === payrollId) {
+      setOpenMenuId(null)
+      setMenuPos(null)
+      return
+    }
+
+    const rect = e.currentTarget.getBoundingClientRect()
+    const spaceBelow = window.innerHeight - rect.bottom
+    const menuEstimatedHeight = 190
+
+    const isNearBottom = index >= Math.max(1, total - 2)
+    const openUp = (spaceBelow < menuEstimatedHeight || isNearBottom) && rect.top > menuEstimatedHeight
+
+    setMenuPos({
+      top: openUp ? undefined : rect.bottom + 4,
+      bottom: openUp ? window.innerHeight - rect.top + 4 : undefined,
+      right: window.innerWidth - rect.right,
+    })
+    setOpenMenuId(payrollId)
+  }
+
+  const renderActionMenu = () => {
+    if (openMenuId === null || !menuPos) return null
+
+    const pr = filteredPayrolls.find((p) => p.payroll_id === openMenuId) || payrolls.find((p) => p.payroll_id === openMenuId)
+    if (!pr) return null
+
+    const isDropup = menuPos.bottom !== undefined
+    const canPrint = ['CONFIRMED', 'PAID'].includes(pr.payment_status || '')
+
+    return createPortal(
+      <div
+        className={`action-dropdown action-dropdown-fixed ${isDropup ? 'dropup' : 'dropdown'}`}
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          position: 'fixed',
+          top: menuPos.top !== undefined ? `${menuPos.top}px` : 'auto',
+          bottom: menuPos.bottom !== undefined ? `${menuPos.bottom}px` : 'auto',
+          right: `${menuPos.right}px`,
+          zIndex: 99999,
+          minWidth: '205px',
+        }}
+      >
+        {/* In phiếu lương PDF */}
+        <button
+          type="button"
+          className="action-dropdown-item"
+          disabled={!canPrint}
+          onClick={() => {
+            setOpenMenuId(null)
+            setMenuPos(null)
+            handleOpenMonthlyPrint(pr)
+          }}
+          title={pr.payment_status === 'DRAFT' ? 'Chỉ in sau khi duyệt' : 'Xem & In phiếu lương (PDF / A4)'}
+        >
+          <span className="action-icon" style={{ color: 'var(--status-info, #0284c7)' }}>{Icons.printer}</span>
+          <span>In phiếu lương (PDF)</span>
+        </button>
+
+        {/* Điều chỉnh lương nháp */}
+        {canRunPayroll && pr.payment_status === 'DRAFT' && (
+          <button
+            type="button"
+            className="action-dropdown-item"
+            onClick={() => {
+              setOpenMenuId(null)
+              setMenuPos(null)
+              setAdjustmentPayroll(pr)
+            }}
+          >
+            <span className="action-icon" style={{ color: 'var(--text-secondary)' }}>{Icons.edit}</span>
+            <span>Điều chỉnh lương nháp</span>
+          </button>
+        )}
+
+        {/* Duyệt phiếu lương */}
+        {canRunPayroll && pr.payment_status === 'DRAFT' && (
+          <button
+            type="button"
+            className="action-dropdown-item"
+            onClick={() => {
+              setOpenMenuId(null)
+              setMenuPos(null)
+              handleUpdateSingleStatus(pr.payroll_id, 'CONFIRMED')
+            }}
+          >
+            <span className="action-icon" style={{ color: 'var(--primary-color, #2563eb)' }}>{Icons.check}</span>
+            <span>Duyệt phiếu lương</span>
+          </button>
+        )}
+
+        {/* Xác nhận chi trả */}
+        {canRunPayroll && pr.payment_status === 'CONFIRMED' && (
+          <button
+            type="button"
+            className="action-dropdown-item"
+            onClick={() => {
+              setOpenMenuId(null)
+              setMenuPos(null)
+              handleUpdateSingleStatus(pr.payroll_id, 'PAID')
+            }}
+          >
+            <span className="action-icon" style={{ color: 'var(--status-success, #16a34a)' }}>{Icons.dollar}</span>
+            <span>Xác nhận chi trả</span>
+          </button>
+        )}
+
+        {/* Hoàn tác duyệt */}
+        {canRunPayroll && pr.payment_status === 'CONFIRMED' && (
+          <>
+            <div className="action-dropdown-divider" />
+            <button
+              type="button"
+              className="action-dropdown-item danger"
+              onClick={() => {
+                setOpenMenuId(null)
+                setMenuPos(null)
+                setUnconfirmPayroll(pr)
+              }}
+            >
+              <span className="action-icon" style={{ color: 'var(--status-error, #dc2626)' }}>{Icons.undo}</span>
+              <span>Hoàn tác về bản nháp</span>
+            </button>
+          </>
+        )}
+      </div>,
+      document.body
+    )
+  }
 
   // Modals state
   const [isPayrollRegulationOpen, setIsPayrollRegulationOpen] = useState(false)
@@ -119,7 +300,10 @@ export function PayrollPage({ user }: PayrollPageProps) {
       setPayrolls(data || [])
       if (data && data.length > 0) {
         const userPayroll = data.find(p => p.employee_id === user?.employee_id)
-        setSelectedPayroll(userPayroll || data[0])
+        setSelectedPayroll(prev => {
+          if (!prev) return null
+          return data.find(p => p.payroll_id === prev.payroll_id) || null
+        })
       } else {
         setSelectedPayroll(null)
       }
@@ -516,7 +700,10 @@ export function PayrollPage({ user }: PayrollPageProps) {
               <select
                 className="form-select"
                 value={selectedPeriod}
-                onChange={(e) => setSelectedPeriod(e.target.value)}
+                onChange={(e) => {
+                  setSelectedPeriod(e.target.value)
+                  setSelectedPayroll(null)
+                }}
                 style={{ width: 'auto', minWidth: '150px' }}
               >
                 {Array.from({ length: 12 }, (_, i) => {
@@ -638,214 +825,481 @@ export function PayrollPage({ user }: PayrollPageProps) {
 
           {/* MAIN VIEW: MANAGER/HR TABLE OR REGULAR EMPLOYEE SUMMARY CARD */}
           {canManage ? (
-            <div className="card" style={{ overflow: 'hidden' }}>
-              {/* Search & Filter Toolbar */}
-              <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flex: 1, minWidth: '260px' }}>
-                  <div style={{ position: 'relative', width: '100%', maxWidth: '320px' }}>
-                    <input
-                      type="text"
-                      className="form-input"
-                      placeholder="Tìm theo tên nhân viên, mã NV..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      style={{ paddingLeft: '32px' }}
-                    />
-                    <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }}>
-                      {Icons.search}
-                    </span>
+            <div className={`mypayslip-layout ${isDetailOpen ? 'has-subform' : 'is-full-width'}`}>
+              {/* CỘT TRÁI (MAIN PANE): BẢNG QUẢN LÝ LƯƠNG NHÂN SỰ */}
+              <div className="mypayslip-main-pane">
+                <div className="card" style={{ overflow: 'hidden' }}>
+                  {/* Search & Filter Toolbar */}
+                  <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flex: 1, minWidth: '260px' }}>
+                      <div style={{ position: 'relative', width: '100%', maxWidth: '320px' }}>
+                        <input
+                          type="text"
+                          className="form-input"
+                          placeholder="Tìm theo tên nhân viên, mã NV..."
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          style={{ paddingLeft: '32px' }}
+                        />
+                        <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }}>
+                          {Icons.search}
+                        </span>
+                      </div>
+
+                      <select
+                        className="form-select"
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value as any)}
+                        style={{ width: 'auto' }}
+                      >
+                        <option value="all">Tất cả trạng thái</option>
+                        <option value="DRAFT">Bản nháp (DRAFT)</option>
+                        <option value="NEEDS_RECALCULATION">Cần tính lại</option>
+                        <option value="CONFIRMED">Đã duyệt (CONFIRMED)</option>
+                        <option value="PAID">Đã chi trả (PAID)</option>
+                      </select>
+                    </div>
+
+                    <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                      Hiển thị <strong>{filteredPayrolls.length}</strong> / {payrolls.length} nhân sự
+                    </div>
                   </div>
 
-                  <select
-                    className="form-select"
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value as any)}
-                    style={{ width: 'auto' }}
-                  >
-                    <option value="all">Tất cả trạng thái</option>
-                    <option value="DRAFT">Bản nháp (DRAFT)</option>
-                    <option value="NEEDS_RECALCULATION">Cần tính lại</option>
-                    <option value="CONFIRMED">Đã duyệt (CONFIRMED)</option>
-                    <option value="PAID">Đã chi trả (PAID)</option>
-                  </select>
-                </div>
-
-                <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                  Hiển thị <strong>{filteredPayrolls.length}</strong> / {payrolls.length} nhân sự
-                </div>
-              </div>
-
-              {/* Table */}
-              <div style={{ overflowX: 'auto' }}>
-                {isLoading ? (
-                  <div style={{ textAlign: 'center', padding: '48px', color: 'var(--text-secondary)' }}>
-                    Đang tải dữ liệu bảng lương kỳ {selectedPeriod}...
-                  </div>
-                ) : filteredPayrolls.length === 0 ? (
-                  <div style={{ padding: '48px 24px' }}>
-                    <EmptyState
-                      icon={Icons.fileText}
-                      title="Chưa có dữ liệu bảng lương"
-                      description={`Kỳ ${selectedPeriod} chưa được chốt lương hoặc không có bản ghi phù hợp. Nhấn nút 'Chốt & Tính Lương' phía trên để chạy hệ thống.`}
-                    />
-                  </div>
-                ) : (
-                  <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                    <thead>
-                      <tr style={{ background: 'var(--surface-subtle)', borderBottom: '1px solid var(--border-default)' }}>
-                        <th style={{ padding: '12px 14px', textAlign: 'left' }}>Nhân viên</th>
-                        <th style={{ padding: '12px 10px', textAlign: 'center' }}>Công chuẩn/thực</th>
-                        <th style={{ padding: '12px 10px', textAlign: 'center' }}>Nghỉ phép</th>
-                        <th style={{ padding: '12px 12px', textAlign: 'right' }}>Lương HĐ</th>
-                        <th style={{ padding: '12px 12px', textAlign: 'right' }}>Lương CB thực</th>
-                        <th style={{ padding: '12px 12px', textAlign: 'right' }}>Phụ cấp & Thưởng</th>
-                        <th style={{ padding: '12px 12px', textAlign: 'right', fontWeight: 700 }}>Tổng Gross</th>
-                        <th style={{ padding: '12px 12px', textAlign: 'right' }}>BHXH (10.5%)</th>
-                        <th style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 800, color: 'var(--status-success)' }}>THỰC LĨNH (NET)</th>
-                        <th style={{ padding: '12px 10px', textAlign: 'center' }}>Trạng thái</th>
-                        <th style={{ padding: '12px 14px', textAlign: 'center' }}>Thao tác</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredPayrolls.map((pr) => {
-                        const totalAllowances = (pr.position_allowance || 0) + (pr.seniority_allowance || 0) + (pr.project_allowance || 0) + (pr.meal_transport_allowance || 0)
-                        const totalAdditions = totalAllowances + (pr.commission_amount || 0) + (pr.bonus_amount || 0)
-                        return (
-                          <tr
-                            key={pr.payroll_id}
-                            style={{
-                              borderBottom: '1px solid var(--border-subtle)',
-                              transition: 'background-color 0.15s ease',
-                            }}
-                            className="table-row-hover"
-                          >
-                            {/* Employee */}
-                            <td style={{ padding: '12px 14px' }}>
-                              <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{pr.employee_name}</div>
-                              <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
-                                <span style={{ fontFamily: 'var(--font-mono)' }}>{pr.employee_code}</span> • {pr.position_name} • {pr.store_name || 'Trụ sở'}
-                              </div>
-                            </td>
-
-                            {/* Working days */}
-                            <td style={{ padding: '12px 10px', textAlign: 'center' }}>
-                              <div style={{ fontWeight: 600 }}>{pr.actual_working_days ?? '—'} / {pr.standard_working_days ?? '—'}</div>
-                              <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>ngày công theo lương</div>
-                              <div title="Tổng hợp trực tiếp từ Attendance" style={{ marginTop:4,fontSize:'10px',lineHeight:1.5,color:'var(--text-secondary)' }}>
-                                {Number(pr.attendance_hours||0).toFixed(1)}h · trễ {pr.attendance_late_minutes||0}p · OT duyệt {Number(pr.attendance_approved_overtime_hours||0).toFixed(1)}h
-                              </div>
-                            </td>
-
-                            {/* Leaves */}
-                            <td style={{ padding: '12px 10px', textAlign: 'center' }}>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'center' }}>
-                                <span style={{ fontSize: '11px', color: 'var(--blue-600)' }} title="Phép năm hưởng lương">
-                                  Có lương: {pr.paid_leave_days || 0}
-                                </span>
-                                {(pr.unpaid_leave_days || 0) > 0 ? (
-                                  <span style={{ fontSize: '11px', color: 'var(--status-error)', fontWeight: 600 }} title="Nghỉ không lương (trừ lương)">
-                                    Không lương: {pr.unpaid_leave_days}
-                                  </span>
-                                ) : (
-                                  <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Không lương: 0</span>
-                                )}
-                              </div>
-                            </td>
-
-                            {/* Contract salary */}
-                            <td style={{ padding: '12px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
-                              {formatCurrency(pr.contract_salary)}
-                            </td>
-
-                            {/* Actual base salary */}
-                            <td style={{ padding: '12px 12px', textAlign: 'right', fontWeight: 600, fontFamily: 'var(--font-mono)' }}>
-                              {formatCurrency(pr.actual_base_salary)}
-                            </td>
-
-                            {/* Additions */}
-                            <td style={{ padding: '12px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
-                              {formatCurrency(totalAdditions)}
-                            </td>
-
-                            {/* Gross */}
-                            <td style={{ padding: '12px 12px', textAlign: 'right', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
-                              {formatCurrency(pr.gross_income)}
-                            </td>
-
-                            {/* Insurance */}
-                            <td style={{ padding: '12px 12px', textAlign: 'right', color: 'var(--status-error)', fontFamily: 'var(--font-mono)' }}>
-                              -{formatCurrency(pr.total_insurance)}
-                            </td>
-
-                            {/* Net */}
-                            <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 800, color: 'var(--status-success)', fontSize: '14px', fontFamily: 'var(--font-mono)' }}>
-                              {formatCurrency(pr.net_salary)}
-                            </td>
-
-                            {/* Status */}
-                            <td style={{ padding: '12px 10px', textAlign: 'center' }}>
-                              <span className={`badge ${getStatusBadgeClass(pr.payment_status)}`}>
-                                {getStatusLabel(pr.payment_status)}
-                              </span>
-                            </td>
-
-                            {/* Actions */}
-                            <td style={{ padding: '12px 14px', textAlign: 'center' }}>
-                              <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
-                                {canRunPayroll && pr.payment_status === 'DRAFT' && <button className="btn btn-secondary btn-sm btn-icon" title="Điều chỉnh lương nháp" aria-label={`Điều chỉnh lương ${pr.employee_name}`} onClick={()=>setAdjustmentPayroll(pr)}>{Icons.edit}</button>}
-                                {/* Open A4 PDF Payslip Popup Overlay */}
-                                <button
-                                  className="btn btn-secondary btn-sm"
-                                  onClick={() => handleOpenMonthlyPrint(pr)}
-                                  disabled={!['CONFIRMED','PAID'].includes(pr.payment_status || '')}
-                                  title={pr.payment_status==='DRAFT'?'Chỉ in sau khi duyệt':'Xem trước & In phiếu lương (PDF)'}
-                                >
-                                  {Icons.printer}
-                                  <span style={{ fontSize: '11px', marginLeft: '4px' }}>In PDF</span>
-                                </button>
-
-                                {/* Quick Confirm / Pay */}
-                                {canRunPayroll && pr.payment_status === 'DRAFT' && (
-                                  <button
-                                    className="btn btn-sm"
-                                    style={{ backgroundColor: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe' }}
-                                    onClick={() => handleUpdateSingleStatus(pr.payroll_id, 'CONFIRMED')}
-                                    title="Duyệt phiếu lương (DRAFT -> CONFIRMED)"
-                                  >
-                                    {Icons.check}
-                                  </button>
-                                )}
-
-                                {canRunPayroll && pr.payment_status === 'CONFIRMED' && (
-                                  <>
-                                    <button
-                                      className="btn btn-sm"
-                                      style={{ backgroundColor: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0' }}
-                                      onClick={() => handleUpdateSingleStatus(pr.payroll_id, 'PAID')}
-                                      title="Xác nhận chi trả (CONFIRMED -> PAID)"
-                                      aria-label={`Xác nhận chi trả phiếu ${pr.employee_name}`}
-                                    >
-                                      {Icons.dollar}
-                                    </button>
-                                    <button
-                                      className="btn btn-secondary btn-sm btn-icon"
-                                      onClick={() => setUnconfirmPayroll(pr)}
-                                      title="Hoàn tác duyệt phiếu về DRAFT"
-                                      aria-label={`Hoàn tác duyệt phiếu ${pr.employee_name}`}
-                                    >
-                                      {Icons.undo}
-                                    </button>
-                                  </>
-                                )}
-                              </div>
-                            </td>
+                  {/* Table with Dynamic Columns (Compact when Subform is Open, Full when Closed) */}
+                  <div style={{ overflowX: 'auto' }}>
+                    {isLoading ? (
+                      <div style={{ textAlign: 'center', padding: '48px', color: 'var(--text-secondary)' }}>
+                        Đang tải dữ liệu bảng lương kỳ {selectedPeriod}...
+                      </div>
+                    ) : filteredPayrolls.length === 0 ? (
+                      <div style={{ padding: '48px 24px' }}>
+                        <EmptyState
+                          icon={Icons.fileText}
+                          title="Chưa có dữ liệu bảng lương"
+                          description={`Kỳ ${selectedPeriod} chưa được chốt lương hoặc không có bản ghi phù hợp. Nhấn nút 'Chốt & Tính Lương' phía trên để chạy hệ thống.`}
+                        />
+                      </div>
+                    ) : (
+                      <table className="table mypayslip-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                        <thead>
+                          <tr style={{ background: 'var(--surface-subtle)', borderBottom: '1px solid var(--border-default)' }}>
+                            <th style={{ padding: '12px 14px', textAlign: 'left' }}>Nhân viên</th>
+                            <th style={{ padding: '12px 10px', textAlign: 'center' }}>Ngày công</th>
+                            {!isDetailOpen && (
+                              <th style={{ padding: '12px 12px', textAlign: 'right' }}>Lương HĐ</th>
+                            )}
+                            {!isDetailOpen && (
+                              <th style={{ padding: '12px 12px', textAlign: 'right', color: 'var(--status-error, #dc2626)' }}>Tổng giảm trừ</th>
+                            )}
+                            <th style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 800, color: 'var(--status-success)' }}>THỰC LĨNH (NET)</th>
+                            <th style={{ padding: '12px 10px', textAlign: 'center' }}>Trạng thái</th>
+                            <th style={{ padding: '12px 14px', textAlign: 'center', width: '90px' }}>Thao tác</th>
                           </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                )}
+                        </thead>
+                        <tbody>
+                          {filteredPayrolls.map((pr, idx) => {
+                            const isSelected = selectedPayroll?.payroll_id === pr.payroll_id
+                            return (
+                              <tr
+                                key={pr.payroll_id}
+                                style={{
+                                  borderBottom: '1px solid var(--border-subtle)',
+                                  transition: 'background-color 0.15s ease',
+                                }}
+                                className={`table-row-hover mypayslip-row ${isSelected ? 'is-selected' : ''}`}
+                                onClick={() => handleSelectPayroll(pr)}
+                              >
+                                {/* Nhân viên - Chỉ hiển thị tên theo yêu cầu */}
+                                <td style={{ padding: '12px 14px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{pr.employee_name}</span>
+                                    {isSelected && (
+                                      <span
+                                        title="Đang xem chi tiết nhân sự này"
+                                        style={{
+                                          marginLeft: 'auto',
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          color: 'var(--primary-color, #2563eb)',
+                                        }}
+                                      >
+                                        {Icons.eye}
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+
+                                {/* Ngày công */}
+                                <td style={{ padding: '12px 10px', textAlign: 'center', fontFamily: 'var(--font-mono)' }}>
+                                  <strong>{pr.actual_working_days ?? '—'}</strong> / {pr.standard_working_days ?? '—'}
+                                </td>
+
+                                {/* Lương HĐ (ẩn khi mở subform) */}
+                                {!isDetailOpen && (
+                                  <td style={{ padding: '12px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                                    {formatCurrency(pr.contract_salary)}
+                                  </td>
+                                )}
+
+
+                                {/* Tổng giảm trừ (ẩn khi mở subform) */}
+                                {!isDetailOpen && (
+                                  <td style={{ padding: '12px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--status-error, #dc2626)' }}>
+                                    -{formatCurrency(pr.total_deduction)}
+                                  </td>
+                                )}
+
+                                {/* Thực lĩnh NET */}
+                                <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 800, color: 'var(--status-success)', fontSize: '13.5px', fontFamily: 'var(--font-mono)' }}>
+                                  {formatCurrency(pr.net_salary)}
+                                </td>
+
+                                {/* Trạng thái */}
+                                <td style={{ padding: '12px 10px', textAlign: 'center' }}>
+                                  <span className={`badge ${getStatusBadgeClass(pr.payment_status)}`}>
+                                    {getStatusLabel(pr.payment_status)}
+                                  </span>
+                                </td>
+
+                                {/* Thao tác: Nút xem chi tiết icon con mắt + Nút dấu 3 chấm dọc mở menu gộp */}
+                                <td style={{ padding: '12px 14px', textAlign: 'center', width: '90px' }}>
+                                  <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', alignItems: 'center' }}>
+                                    {/* Nút xem chi tiết Subform */}
+                                    <button
+                                      type="button"
+                                      className={`btn btn-icon btn-sm ${isSelected ? 'btn-primary' : 'btn-secondary'}`}
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        if (isSelected) {
+                                          handleClosePayrollDetail()
+                                        } else {
+                                          handleSelectPayroll(pr)
+                                        }
+                                      }}
+                                      title={isSelected ? 'Đóng xem chi tiết' : 'Xem chi tiết phiếu lương'}
+                                      aria-label="Xem chi tiết phiếu lương"
+                                    >
+                                      {Icons.eye}
+                                    </button>
+
+                                    {/* Nút dấu 3 chấm dọc gộp các thao tác (In, Điều chỉnh, Duyệt, Chi trả, Hoàn tác) */}
+                                    <button
+                                      type="button"
+                                      className="btn btn-secondary btn-icon btn-sm"
+                                      onClick={(e) => handleToggleMenu(e, pr.payroll_id, idx, filteredPayrolls.length)}
+                                      title="Tùy chọn thao tác"
+                                      aria-label="Tùy chọn thao tác"
+                                    >
+                                      {Icons.moreVertical}
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                </div>
               </div>
+
+              {/* CỘT PHẢI (SUBFORM PANE): CHI TIẾT BẢNG LƯƠNG NHÂN SỰ ĐANG CHỌN */}
+              {isDetailOpen && selectedPayroll && (
+                <div ref={subformPaneRef} className={`mypayslip-subform-pane ${isClosingPayroll ? 'is-closing' : ''}`}>
+                  <div className="mypayslip-detail-card">
+                    {/* Góc trên bên phải: Nút X đóng chi tiết với slide animation */}
+                    <button
+                      type="button"
+                      className="mypayslip-corner-close-btn"
+                      onClick={handleClosePayrollDetail}
+                      title="Đóng xem chi tiết phiếu lương (quay về bảng đầy đủ)"
+                      aria-label="Đóng chi tiết"
+                    >
+                      {Icons.x}
+                    </button>
+
+                    {/* Header Info */}
+                    <div className="mypayslip-detail-header">
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>
+                            Chi Tiết Lương Kỳ {selectedPayroll.salary_period}
+                          </h3>
+                        </div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '3px' }}>
+                          Nhân viên: <strong>{selectedPayroll.employee_name}</strong> ({selectedPayroll.employee_code}) · <strong>{selectedPayroll.position_name || 'Nhân viên'}</strong> · {selectedPayroll.store_name || 'Trụ sở'}
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span className={`badge ${getStatusBadgeClass(selectedPayroll.payment_status)}`}>
+                          {getStatusLabel(selectedPayroll.payment_status)}
+                        </span>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => handleOpenMonthlyPrint(selectedPayroll)}
+                          disabled={!['CONFIRMED', 'PAID'].includes(selectedPayroll.payment_status || '')}
+                          title={selectedPayroll.payment_status === 'DRAFT' ? 'Chỉ in sau khi duyệt' : 'Mở bản in A4 xem toàn trang'}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
+                        >
+                          {Icons.printer}
+                          <span>Bản in A4</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="mypayslip-detail-body">
+                      {/* Thống kê ngày công & Chấm công Callout */}
+                      <div style={{ background: 'var(--surface-subtle)', padding: '12px 14px', borderRadius: '6px', border: '1px solid var(--border-default)', fontSize: '12.5px' }}>
+                        <div style={{ fontWeight: 700, fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '6px', letterSpacing: '0.5px' }}>
+                          Thống kê ngày công & Chấm công
+                        </div>
+                        <div style={{ display: 'flex', gap: '10px 16px', flexWrap: 'wrap' }}>
+                          <div>Công chuẩn: <strong>{selectedPayroll.standard_working_days ?? 26}</strong> ngày</div>
+                          <div>Công thực tế: <strong style={{ color: 'var(--status-success)' }}>{selectedPayroll.actual_working_days ?? 0}</strong> ngày</div>
+                          <div>Phép có lương: <strong>{selectedPayroll.paid_leave_days ?? 0}</strong> ngày</div>
+                          <div>Nghỉ không lương: <strong style={{ color: (selectedPayroll.unpaid_leave_days || 0) > 0 ? 'var(--status-error)' : 'inherit' }}>{selectedPayroll.unpaid_leave_days ?? 0}</strong> ngày</div>
+                          <div>Giờ công: <strong>{Number(selectedPayroll.attendance_hours || 0).toFixed(1)}h</strong></div>
+                          <div>Trễ: <strong style={{ color: (selectedPayroll.attendance_late_minutes || 0) > 0 ? 'var(--status-error)' : 'inherit' }}>{selectedPayroll.attendance_late_minutes || 0}p</strong></div>
+                          <div>OT duyệt: <strong style={{ color: 'var(--primary-color, #2563eb)' }}>{Number(selectedPayroll.attendance_approved_overtime_hours || 0).toFixed(1)}h</strong></div>
+                          {(selectedPayroll.unworked_hours || 0) > 0 && (
+                            <div>Giờ thiếu: <strong style={{ color: 'var(--status-error)' }}>{selectedPayroll.unworked_hours}h</strong></div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Thu nhập & Khấu trừ Breakdown Grid */}
+                      <div className="mypayslip-breakdown-grid">
+                        {/* I. Thu nhập Gross */}
+                        <div className="mypayslip-section-box">
+                          <div className="mypayslip-section-title">
+                            <span>I. CÁC KHOẢN THU NHẬP (GROSS)</span>
+                            <span className="mypayslip-val-mono" style={{ color: 'var(--text-primary)' }}>{formatCurrency(selectedPayroll.gross_income)}</span>
+                          </div>
+                          <table className="table" style={{ width: '100%', fontSize: '12.5px', margin: 0 }}>
+                            <tbody>
+                              <tr>
+                                <td style={{ padding: '8px 12px' }}>Lương hợp đồng (thỏa thuận)</td>
+                                <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                                  {formatCurrency(selectedPayroll.contract_salary)}
+                                </td>
+                              </tr>
+                              <tr>
+                                <td style={{ padding: '8px 12px' }}>Lương cơ bản theo ngày công thực tế</td>
+                                <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
+                                  {formatCurrency(selectedPayroll.actual_base_salary)}
+                                </td>
+                              </tr>
+                              {(selectedPayroll.position_allowance || 0) > 0 && (
+                                <tr>
+                                  <td style={{ padding: '8px 12px' }}>Phụ cấp chức vụ</td>
+                                  <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                                    {formatCurrency(selectedPayroll.position_allowance)}
+                                  </td>
+                                </tr>
+                              )}
+                              {(selectedPayroll.seniority_allowance || 0) > 0 && (
+                                <tr>
+                                  <td style={{ padding: '8px 12px' }}>Phụ cấp thâm niên</td>
+                                  <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                                    {formatCurrency(selectedPayroll.seniority_allowance)}
+                                  </td>
+                                </tr>
+                              )}
+                              {(selectedPayroll.project_allowance || 0) > 0 && (
+                                <tr>
+                                  <td style={{ padding: '8px 12px' }}>Phụ cấp dự án</td>
+                                  <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                                    {formatCurrency(selectedPayroll.project_allowance)}
+                                  </td>
+                                </tr>
+                              )}
+                              {(selectedPayroll.meal_transport_allowance || 0) > 0 && (
+                                <tr>
+                                  <td style={{ padding: '8px 12px' }}>Phụ cấp ăn trưa & đi lại</td>
+                                  <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                                    {formatCurrency(selectedPayroll.meal_transport_allowance)}
+                                  </td>
+                                </tr>
+                              )}
+                              {(selectedPayroll.commission_amount || 0) > 0 && (
+                                <tr>
+                                  <td style={{ padding: '8px 12px' }}>Hoa hồng doanh số bán hàng</td>
+                                  <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                                    {formatCurrency(selectedPayroll.commission_amount)}
+                                  </td>
+                                </tr>
+                              )}
+                              {(selectedPayroll.overtime_salary || 0) > 0 && (
+                                <tr>
+                                  <td style={{ padding: '8px 12px' }}>Tiền làm thêm giờ (OT)</td>
+                                  <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                                    {formatCurrency(selectedPayroll.overtime_salary)}
+                                  </td>
+                                </tr>
+                              )}
+                              {(selectedPayroll.bonus_amount || 0) > 0 && (
+                                <tr>
+                                  <td style={{ padding: '8px 12px' }}>Thưởng hiệu quả / năng suất</td>
+                                  <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                                    {formatCurrency(selectedPayroll.bonus_amount)}
+                                  </td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* II. Khấu trừ Deductions */}
+                        <div className="mypayslip-section-box">
+                          <div className="mypayslip-section-title" style={{ color: 'var(--status-error)' }}>
+                            <span>II. CÁC KHOẢN GIẢM TRỪ (DEDUCTIONS)</span>
+                            <span className="mypayslip-val-mono">-{formatCurrency(selectedPayroll.total_deduction)}</span>
+                          </div>
+                          <table className="table" style={{ width: '100%', fontSize: '12.5px', margin: 0 }}>
+                            <tbody>
+                              <tr>
+                                <td style={{ padding: '8px 12px' }}>Bảo hiểm Xã hội (BHXH 8%)</td>
+                                <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--status-error)' }}>
+                                  -{formatCurrency(selectedPayroll.bhxh_amount)}
+                                </td>
+                              </tr>
+                              <tr>
+                                <td style={{ padding: '8px 12px' }}>Bảo hiểm Y tế (BHYT 1.5%)</td>
+                                <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--status-error)' }}>
+                                  -{formatCurrency(selectedPayroll.bhyt_amount)}
+                                </td>
+                              </tr>
+                              <tr>
+                                <td style={{ padding: '8px 12px' }}>Bảo hiểm Thất nghiệp (BHTN 1%)</td>
+                                <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--status-error)' }}>
+                                  -{formatCurrency(selectedPayroll.bhtn_amount)}
+                                </td>
+                              </tr>
+                              {(selectedPayroll.personal_income_tax || 0) > 0 && (
+                                <tr>
+                                  <td style={{ padding: '8px 12px' }}>Thuế thu nhập cá nhân (TNCN)</td>
+                                  <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--status-error)' }}>
+                                    -{formatCurrency(selectedPayroll.personal_income_tax)}
+                                  </td>
+                                </tr>
+                              )}
+                              {(selectedPayroll.time_deduction_amount || 0) > 0 && (
+                                <tr>
+                                  <td style={{ padding: '8px 12px' }}>Giảm trừ đi trễ / về sớm</td>
+                                  <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--status-error)' }}>
+                                    -{formatCurrency(selectedPayroll.time_deduction_amount)}
+                                  </td>
+                                </tr>
+                              )}
+                              {(selectedPayroll.penalty_deduction || 0) > 0 && (
+                                <tr>
+                                  <td style={{ padding: '8px 12px' }}>Khấu trừ khác / Phạt vi phạm</td>
+                                  <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--status-error)' }}>
+                                    -{formatCurrency(selectedPayroll.penalty_deduction)}
+                                  </td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+
+                      {/* Net Highlight Box */}
+                      <div className="mypayslip-net-banner">
+                        <div>
+                          <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--status-success)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                            THỰC LĨNH CHUYỂN KHOẢN (NET)
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                            Số tiền thực chi sau bảo hiểm & thuế
+                          </div>
+                        </div>
+                        <div style={{ fontSize: '22px', fontWeight: 900, color: 'var(--status-success)', fontFamily: 'var(--font-mono)' }}>
+                          {formatCurrency(selectedPayroll.net_salary)}
+                        </div>
+                      </div>
+
+                      {/* Subform Action Buttons */}
+                      <div className="mypayslip-subform-actions">
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          onClick={() => handleOpenMonthlyPrint(selectedPayroll)}
+                          disabled={!['CONFIRMED', 'PAID'].includes(selectedPayroll.payment_status || '')}
+                          style={{ flex: 1, padding: '9px 16px', fontSize: '13px' }}
+                          title={selectedPayroll.payment_status === 'DRAFT' ? 'Chỉ in sau khi duyệt' : 'Mở bản in A4'}
+                        >
+                          {Icons.printer}
+                          In Phiếu Lương (PDF)
+                        </button>
+
+                        {canRunPayroll && selectedPayroll.payment_status === 'DRAFT' && (
+                          <>
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              onClick={() => setAdjustmentPayroll(selectedPayroll)}
+                              title="Điều chỉnh lương nháp"
+                            >
+                              {Icons.edit}
+                              Điều chỉnh
+                            </button>
+                            <button
+                              type="button"
+                              className="btn"
+                              style={{ backgroundColor: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe' }}
+                              onClick={() => handleUpdateSingleStatus(selectedPayroll.payroll_id, 'CONFIRMED')}
+                              title="Duyệt phiếu lương"
+                            >
+                              {Icons.check}
+                              Duyệt
+                            </button>
+                          </>
+                        )}
+
+                        {canRunPayroll && selectedPayroll.payment_status === 'CONFIRMED' && (
+                          <>
+                            <button
+                              type="button"
+                              className="btn"
+                              style={{ backgroundColor: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0' }}
+                              onClick={() => handleUpdateSingleStatus(selectedPayroll.payroll_id, 'PAID')}
+                              title="Xác nhận chi trả"
+                            >
+                              {Icons.dollar}
+                              Chi trả
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              onClick={() => setUnconfirmPayroll(selectedPayroll)}
+                              title="Hoàn tác duyệt phiếu về DRAFT"
+                            >
+                              {Icons.undo}
+                              Hoàn tác
+                            </button>
+                          </>
+                        )}
+
+                        <button
+                          type="button"
+                          className="btn-info-icon"
+                          onClick={() => setIsPayrollRegulationOpen(true)}
+                          title="Xem quy chế & công thức tính lương TechZone Retail"
+                          aria-label="Xem quy chế tính lương"
+                          style={{ width: '38px', height: '38px', flexShrink: 0 }}
+                        >
+                          <span style={{ fontStyle: 'italic', fontWeight: 700, fontFamily: 'serif', fontSize: '15px' }}>i</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             /* Regular Employee Personal Monthly View */
@@ -1154,6 +1608,9 @@ export function PayrollPage({ user }: PayrollPageProps) {
       {isPayrollRegulationOpen && <PayrollRegulationDialog onClose={() => setIsPayrollRegulationOpen(false)} />}
 
       {/* ========================================================================= */}
+      {/* RENDER ACTION DROPDOWN PORTAL */}
+      {renderActionMenu()}
+
       {/* MODAL 2: PRINTABLE MONTHLY PAYSLIP POPUP OVERLAY (PDF / A4) */}
       {/* ========================================================================= */}
       {/* ========================================================================= */}

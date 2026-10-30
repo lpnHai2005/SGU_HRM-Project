@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useSearchParams } from 'react-router-dom'
 import { Icons } from '../components/common/Icons'
@@ -6,10 +6,12 @@ import { StatCard } from '../components/common/StatCard'
 import { EmptyState } from '../components/common/EmptyState'
 import { formatCurrency, formatDate } from '../utils/formatters'
 import type { Payroll, Contract } from '../types'
-import { payrollApi, employeeApi } from '../services/api'
+import { payrollApi, employeeApi, default as api } from '../services/api'
+import { contractApi } from '../services/contractService'
 import { toast } from 'sonner'
 import { MonthPicker } from '../components/common/MonthPicker'
 import './PayslipPrint.css'
+import './MyPayslipPage.css'
 import { PayrollRegulationDialog } from './PayrollRegulationDialog'
 
 export interface MyPayslipPageProps {
@@ -99,10 +101,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
   const currentEmpId = employeeId || user?.employee_id
 
   // Period / Year Filters
-  const [selectedPeriod, setSelectedPeriod] = useState<string>(() => {
-    const now = new Date()
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-  })
+  const [selectedPeriod, setSelectedPeriod] = useState<string | null>(null)
   const [selectedYear, setSelectedYear] = useState<string>(() => String(new Date().getFullYear()))
 
   // Monthly State
@@ -122,8 +121,57 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
   const [contractsLoading, setContractsLoading] = useState(false)
   const [contractQuery, setContractQuery] = useState('')
   const [selectedContract, setSelectedContract] = useState<Contract | null>(null)
-  const [isContractPrintModalOpen, setIsContractPrintModalOpen] = useState(false)
   const [isPayrollRegulationOpen, setIsPayrollRegulationOpen] = useState(false)
+  const subformPaneRef = useRef<HTMLDivElement>(null)
+  const contractSubformPaneRef = useRef<HTMLDivElement>(null)
+
+  // Closing animation states for smooth slide-out
+  const [isClosingPayroll, setIsClosingPayroll] = useState(false)
+  const [isClosingContract, setIsClosingContract] = useState(false)
+
+  const handleClosePayrollDetail = () => {
+    if (isClosingPayroll || !selectedPeriod) return
+    setIsClosingPayroll(true)
+    setTimeout(() => {
+      setSelectedPeriod(null)
+      setIsClosingPayroll(false)
+    }, 220)
+  }
+
+  const handleCloseContractDetail = () => {
+    if (isClosingContract || !selectedContract) return
+    setIsClosingContract(true)
+    setTimeout(() => {
+      setSelectedContract(null)
+      setIsClosingContract(false)
+    }, 220)
+  }
+
+  const handleSelectPeriod = (period: string) => {
+    setIsClosingPayroll(false)
+    setSelectedPeriod(period)
+    setTimeout(() => {
+      if (subformPaneRef.current) {
+        const rect = subformPaneRef.current.getBoundingClientRect()
+        if (rect.top < 80) {
+          subformPaneRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }
+      }
+    }, 60)
+  }
+
+  const handleSelectContract = (contract: Contract) => {
+    setIsClosingContract(false)
+    setSelectedContract(contract)
+    setTimeout(() => {
+      if (contractSubformPaneRef.current) {
+        const rect = contractSubformPaneRef.current.getBoundingClientRect()
+        if (rect.top < 80) {
+          contractSubformPaneRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }
+      }
+    }, 60)
+  }
 
   // 1. Fetch Monthly Payrolls
   const fetchMonthlyData = useCallback(async () => {
@@ -163,8 +211,14 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
     if (!currentEmpId) return
     setContractsLoading(true)
     try {
-      const data = await employeeApi.getContracts(currentEmpId)
-      setContracts(data || [])
+      // Ưu tiên dùng contractApi.list để có đầy đủ thông tin chuẩn (bao gồm contract_file_url)
+      const res = await contractApi.list({ employee_id: currentEmpId, page_size: 100 }).catch(() => null)
+      if (res && Array.isArray(res.data)) {
+        setContracts(res.data as any)
+      } else {
+        const data = await employeeApi.getContracts(currentEmpId)
+        setContracts(data || [])
+      }
     } catch (err: any) {
       console.error('Error fetching contracts:', err)
       toast.error(err.message || 'Không thể tải danh sách hợp đồng')
@@ -179,10 +233,23 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
     fetchContracts()
   }, [fetchMonthlyData, fetchAnnualSummary, fetchContracts])
 
-  // Current selected month's payroll record
+  // Current selected month's payroll record (null khi chưa chọn kỳ nào)
   const currentPayroll = useMemo(() => {
+    if (!selectedPeriod) return null
     return monthlyRecords.find(p => p.salary_period === selectedPeriod) || null
   }, [monthlyRecords, selectedPeriod])
+
+  // Trạng thái mở chi tiết subform cho bảng lương (giữ true trong lúc đóng để chạy animation)
+  const isDetailOpen = Boolean((selectedPeriod || isClosingPayroll) && currentPayroll)
+
+  // Subform display payroll
+  const displayPayroll = currentPayroll
+
+  // StatCards overview payroll: hiển thị kỳ đang chọn, hoặc kỳ mới nhất trong năm nếu chưa chọn
+  const statPayroll = useMemo(() => {
+    if (currentPayroll) return currentPayroll
+    return monthlyRecords[0] || null
+  }, [currentPayroll, monthlyRecords])
 
   // Active Contract
   const activeContract = useMemo(() => {
@@ -199,6 +266,15 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
       (c.status || '').toLowerCase().includes(q)
     )
   }, [contracts, contractQuery])
+
+  // Subform display contract: null khi chưa chọn hợp đồng nào
+  const displayContract = useMemo(() => {
+    if (selectedContract) return selectedContract
+    return null
+  }, [selectedContract])
+
+  // Trạng thái mở chi tiết subform cho hợp đồng (giữ true trong lúc đóng để chạy animation)
+  const isContractDetailOpen = Boolean((selectedContract || isClosingContract) && displayContract)
 
   // Open Monthly Print Modal
   const handleOpenMonthlyPrint = async (payroll: Payroll) => {
@@ -224,10 +300,41 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
     setIsAnnualPrintModalOpen(true)
   }
 
-  // Open Contract Print Modal
-  const handleOpenContractPrint = (contract: Contract) => {
+  // Open Contract PDF (matching ContractManagementPage mechanism)
+  const [downloadingContractPdf, setDownloadingContractPdf] = useState(false)
+
+  const handleOpenContractPdf = async (contract: Contract) => {
     setSelectedContract(contract)
-    setIsContractPrintModalOpen(true)
+
+    // Nếu hợp đồng đã có file đính kèm trên hệ thống -> Mở xem trực tiếp ngay lập tức, không tạo mới lên cloud
+    if (contract.contract_file_url) {
+      const fileUrl = contract.contract_file_url.startsWith('http')
+        ? contract.contract_file_url
+        : `${window.location.origin}${contract.contract_file_url}`
+      window.open(fileUrl, '_blank', 'noopener,noreferrer')
+      return
+    }
+
+    // Mở tab trước để tránh popup blocker nếu cần tải stream
+    const tab = window.open('', '_blank')
+    setDownloadingContractPdf(true)
+    try {
+      const blob = await api.getBlob(`/contracts/${contract.contract_id}/download-pdf`)
+      const url = URL.createObjectURL(blob)
+      if (tab) {
+        tab.location.href = url
+      } else {
+        window.open(url, '_blank')
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+      fetchContracts()
+    } catch (err: any) {
+      tab?.close()
+      console.error('Error opening contract PDF:', err)
+      toast.error(err instanceof Error ? err.message : 'Không thể tải file PDF hợp đồng')
+    } finally {
+      setDownloadingContractPdf(false)
+    }
   }
 
   if (!currentEmpId) {
@@ -296,7 +403,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
       </div>
 
       {/* ========================================================================= */}
-      {/* TAB 1: BẢNG LƯƠNG THÁNG (MONTHLY) */}
+      {/* TAB 1: BẢNG LƯƠNG THÁNG (MONTHLY) - MAIN-SUBFORM INTERACTIVE LAYOUT       */}
       {/* ========================================================================= */}
       {activeTab === 'monthly' && (
         <div className="no-print" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -304,7 +411,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
           <div className="card" style={{ padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
               <MonthPicker
-                value={selectedPeriod}
+                value={selectedPeriod || `${selectedYear}-${String(new Date().getMonth() + 1).padStart(2, '0')}`}
                 label="Kỳ tính lương"
                 onChange={(value) => {
                   setSelectedPeriod(value)
@@ -328,11 +435,11 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
               >
                 <span style={{ fontStyle: 'italic', fontWeight: 700, fontFamily: 'serif', fontSize: '15px' }}>i</span>
               </button>
-              {currentPayroll && (
+              {displayPayroll && (
                 <button
                   type="button"
                   className="btn btn-primary"
-                  onClick={() => handleOpenMonthlyPrint(currentPayroll)}
+                  onClick={() => handleOpenMonthlyPrint(displayPayroll)}
                   disabled={printLoading}
                 >
                   {Icons.printer}
@@ -342,371 +449,448 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
             </div>
           </div>
 
-          {/* 4 Stat Cards for Selected Month */}
+          {/* 4 Stat Cards for Overview / Selected Month */}
           <div className="stat-grid-4">
             <StatCard
               icon={Icons.wallet}
               iconColor="blue"
               label="LƯƠNG CƠ BẢN THỰC TẾ"
-              value={formatCurrency(currentPayroll?.actual_base_salary ?? 0)}
-              footerNote={`Công chuẩn: ${currentPayroll?.standard_working_days ?? 26} · Làm: ${currentPayroll?.actual_working_days ?? 0} ngày`}
+              value={formatCurrency(statPayroll?.actual_base_salary ?? 0)}
+              footerNote={
+                statPayroll
+                  ? `Kỳ ${statPayroll.salary_period}: Chuẩn ${statPayroll.standard_working_days ?? 26} · Làm ${statPayroll.actual_working_days ?? 0} ngày`
+                  : 'Chưa có phiếu lương năm này'
+              }
             />
             <StatCard
               icon={Icons.trendingUp}
               iconColor="green"
               label="TỔNG THU NHẬP (GROSS)"
-              value={formatCurrency(currentPayroll?.gross_income ?? 0)}
-              footerNote="Bao gồm phụ cấp, hoa hồng, OT & thưởng"
+              value={formatCurrency(statPayroll?.gross_income ?? 0)}
+              footerNote={
+                statPayroll
+                  ? `Tổng thu nhập kỳ ${statPayroll.salary_period}`
+                  : 'Bao gồm phụ cấp, hoa hồng, OT & thưởng'
+              }
             />
             <StatCard
               icon={Icons.shield}
               iconColor="amber"
               label="BẢO HIỂM & KHẤU TRỪ"
-              value={currentPayroll ? `-${formatCurrency(currentPayroll.total_deduction)}` : '0 VNĐ'}
-              footerNote="BHXH 8%, BHYT 1.5%, BHTN 1% & giảm trừ"
+              value={statPayroll ? `-${formatCurrency(statPayroll.total_deduction ?? statPayroll.total_deductions ?? 0)}` : '0 VNĐ'}
+              footerNote={
+                statPayroll
+                  ? `Bảo hiểm & giảm trừ kỳ ${statPayroll.salary_period}`
+                  : 'BHXH 8%, BHYT 1.5%, BHTN 1% & giảm trừ'
+              }
             />
             <StatCard
               icon={Icons.dollar}
               iconColor="green"
               label="THỰC LĨNH CHUYỂN KHOẢN (NET)"
-              value={formatCurrency(currentPayroll?.net_salary ?? 0)}
+              value={formatCurrency(statPayroll?.net_salary ?? 0)}
               footerNote={
-                currentPayroll
-                  ? `Trạng thái: ${getStatusLabel(currentPayroll.payment_status)}`
+                statPayroll
+                  ? `Trạng thái (${statPayroll.salary_period}): ${getStatusLabel(statPayroll.payment_status)}`
                   : 'Chưa có phiếu lương kỳ này'
               }
             />
           </div>
 
-          {/* Current Month Detail View */}
-          {monthlyLoading ? (
-            <div className="card" style={{ padding: '48px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-              Đang tải dữ liệu phiếu lương...
-            </div>
-          ) : currentPayroll ? (
-            <div className="card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              {/* Header Info */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '16px' }}>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 700 }}>
-                    Chi Tiết Phiếu Lương Kỳ {currentPayroll.salary_period}
+          {/* MAIN - SUBFORM 2-COLUMN VIEW */}
+          <div className={`mypayslip-layout ${isDetailOpen ? 'has-subform' : 'is-full-width'}`}>
+            {/* ----------------------------------------------------------- */}
+            {/* CỘT TRÁI (MAIN PANE): DANH SÁCH LỊCH SỬ CÁC KỲ LƯƠNG        */}
+            {/* ----------------------------------------------------------- */}
+            <div className="mypayslip-main-pane">
+              <div className="card" style={{ overflow: 'hidden' }}>
+                <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                  <h3 className="card-title" style={{ margin: 0, fontSize: '15px' }}>
+                    Lịch Sử Các Kỳ Lương Năm {selectedYear}
                   </h3>
-                  <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                    Nhân viên: <strong>{currentPayroll.employee_name || user?.full_name}</strong> ({currentPayroll.employee_code || user?.username}) · Vị trí: <strong>{currentPayroll.position_name || 'Nhân viên'}</strong>
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span className={`badge-status ${getStatusBadgeClass(currentPayroll.payment_status)}`}>
-                    {getStatusLabel(currentPayroll.payment_status)}
+                  <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+                    <strong>{monthlyRecords.length}</strong> kỳ đã phát hành
                   </span>
-                  <button
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => handleOpenMonthlyPrint(currentPayroll)}
-                  >
-                    {Icons.printer}
-                    Xem bản in A4
-                  </button>
                 </div>
-              </div>
 
-              {/* Attendance Summary Callout */}
-              <div style={{ background: 'var(--surface-subtle)', padding: '14px 18px', borderRadius: '8px', border: '1px solid var(--border-default)', fontSize: '13px' }}>
-                <div style={{ fontWeight: 700, fontSize: '12px', textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '8px', letterSpacing: '0.5px' }}>
-                  Thống kê ngày công & thời gian làm việc (Đồng bộ hệ thống)
-                </div>
-                <div style={{ display: 'flex', gap: '14px 24px', flexWrap: 'wrap' }}>
-                  <div>Công chuẩn: <strong>{currentPayroll.standard_working_days ?? 26}</strong> ngày</div>
-                  <div>Công thực tế: <strong style={{ color: 'var(--status-success)' }}>{currentPayroll.actual_working_days ?? 0}</strong> ngày</div>
-                  <div>Nghỉ phép có lương: <strong>{currentPayroll.paid_leave_days ?? 0}</strong> ngày</div>
-                  <div>Nghỉ không lương: <strong style={{ color: (currentPayroll.unpaid_leave_days || 0) > 0 ? 'var(--status-error)' : 'inherit' }}>{currentPayroll.unpaid_leave_days ?? 0}</strong> ngày</div>
-                  {(currentPayroll.unworked_hours || 0) > 0 && (
-                    <div>Giờ trễ/thiếu: <strong style={{ color: 'var(--status-error)' }}>{currentPayroll.unworked_hours} giờ</strong></div>
-                  )}
-                  {(currentPayroll.overtime_salary || 0) > 0 && (
-                    <div>Lương làm thêm giờ (OT): <strong style={{ color: 'var(--text-primary)' }}>{formatCurrency(currentPayroll.overtime_salary)}</strong></div>
-                  )}
-                </div>
-              </div>
-
-              {/* 2-Column Earnings & Deductions Breakdown */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
-                {/* I. Thu nhập Gross */}
-                <div style={{ border: '1px solid var(--border-default)', borderRadius: '8px', overflow: 'hidden' }}>
-                  <div style={{ padding: '12px 16px', background: 'var(--surface-subtle)', fontWeight: 700, fontSize: '13.5px', color: 'var(--text-primary)', borderBottom: '1px solid var(--border-default)' }}>
-                    I. CÁC KHOẢN THU NHẬP (GROSS)
-                  </div>
-                  <table className="table" style={{ width: '100%', fontSize: '13px', margin: 0 }}>
+                <div style={{ overflowX: 'auto' }}>
+                  <table className="mypayslip-table">
+                    <thead>
+                      <tr style={{ background: 'var(--surface-subtle)', borderBottom: '1px solid var(--border-default)' }}>
+                        <th style={{ padding: '12px 14px' }}>Kỳ lương</th>
+                        {!isDetailOpen && (
+                          <th style={{ padding: '12px 14px', textAlign: 'center' }}>Ngày công</th>
+                        )}
+                        {!isDetailOpen && (
+                          <th style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 600 }}>Tổng Gross</th>
+                        )}
+                        {!isDetailOpen && (
+                          <th style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 600, color: 'var(--status-error, #dc2626)' }}>Tổng giảm trừ</th>
+                        )}
+                        <th style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 800, color: 'var(--status-success)' }}>THỰC LĨNH NET</th>
+                        <th style={{ padding: '12px 10px', textAlign: 'center' }}>Trạng thái</th>
+                        <th style={{ padding: '12px 14px', textAlign: 'center', width: '88px' }}>Thao tác</th>
+                      </tr>
+                    </thead>
                     <tbody>
-                      <tr>
-                        <td style={{ padding: '10px 14px' }}>Lương cơ bản theo ngày công thực tế</td>
-                        <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
-                          {formatCurrency(currentPayroll.actual_base_salary)}
-                        </td>
-                      </tr>
-                      {(currentPayroll.position_allowance || 0) > 0 && (
+                      {monthlyRecords.length > 0 ? (
+                        monthlyRecords.map((p) => {
+                          const isSelected = selectedPeriod === p.salary_period
+                          return (
+                            <tr
+                              key={p.payroll_id}
+                              className={`mypayslip-row ${isSelected ? 'is-selected' : ''}`}
+                              onClick={() => handleSelectPeriod(p.salary_period)}
+                            >
+                              <td style={{ padding: '12px 14px', fontWeight: 600 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <span>
+                                    {p.salary_period ? `Tháng ${parseInt(p.salary_period.split('-')[1], 10)}/${p.salary_period.split('-')[0]}` : p.salary_period}
+                                  </span>
+                                  {isSelected && (
+                                    <span
+                                      title="Đang xem cố định tháng này"
+                                      style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        color: 'var(--primary-color, #2563eb)',
+                                      }}
+                                    >
+                                      {Icons.eye}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              {!isDetailOpen && (
+                                <td style={{ padding: '12px 14px', textAlign: 'center', fontFamily: 'var(--font-mono)' }}>
+                                  {p.actual_working_days !== undefined && p.standard_working_days !== undefined ? (
+                                    <span>
+                                      <strong>{p.actual_working_days}</strong> / {p.standard_working_days} công
+                                    </span>
+                                  ) : (
+                                    <span style={{ color: 'var(--text-tertiary)' }}>—</span>
+                                  )}
+                                </td>
+                              )}
+                              {!isDetailOpen && (
+                                <td style={{ padding: '12px 14px', textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
+                                  {formatCurrency(p.gross_income)}
+                                </td>
+                              )}
+                              {!isDetailOpen && (
+                                <td style={{ padding: '12px 14px', textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--status-error, #dc2626)' }}>
+                                  {p.total_deduction || p.total_deductions ? `-${formatCurrency(p.total_deduction ?? p.total_deductions ?? 0)}` : '0 VNĐ'}
+                                </td>
+                              )}
+                              <td style={{ padding: '12px 14px', textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 800, color: 'var(--status-success)', fontSize: '13.5px' }}>
+                                {formatCurrency(p.net_salary)}
+                              </td>
+                              <td style={{ padding: '12px 10px', textAlign: 'center' }}>
+                                <span className={`badge-status ${getStatusBadgeClass(p.payment_status)}`}>
+                                  {getStatusLabel(p.payment_status)}
+                                </span>
+                              </td>
+                              <td style={{ padding: '12px 14px', textAlign: 'center', width: '88px' }}>
+                                <div style={{ display: 'inline-flex', gap: '6px', justifyContent: 'center' }}>
+                                  <button
+                                    type="button"
+                                    className={`btn btn-icon btn-sm ${isSelected ? 'btn-primary' : 'btn-secondary'}`}
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      if (isSelected) {
+                                        handleClosePayrollDetail()
+                                      } else {
+                                        handleSelectPeriod(p.salary_period)
+                                      }
+                                    }}
+                                    title={isSelected ? 'Đóng xem chi tiết' : 'Xem chi tiết kỳ lương này ở subform bên cạnh'}
+                                    aria-label="Xem chi tiết kỳ lương"
+                                  >
+                                    {Icons.eye}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary btn-icon btn-sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleOpenMonthlyPrint(p)
+                                    }}
+                                    title="In phiếu lương A4 PDF"
+                                    aria-label="In phiếu lương A4 PDF"
+                                  >
+                                    {Icons.printer}
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })
+                      ) : (
                         <tr>
-                          <td style={{ padding: '10px 14px' }}>Phụ cấp chức vụ</td>
-                          <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
-                            {formatCurrency(currentPayroll.position_allowance)}
+                          <td colSpan={isDetailOpen ? 4 : 7} style={{ padding: '36px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                            Chưa có phiếu lương chính thức nào được duyệt trong năm {selectedYear}.
                           </td>
                         </tr>
                       )}
-                      {(currentPayroll.seniority_allowance || 0) > 0 && (
-                        <tr>
-                          <td style={{ padding: '10px 14px' }}>Phụ cấp thâm niên</td>
-                          <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
-                            {formatCurrency(currentPayroll.seniority_allowance)}
-                          </td>
-                        </tr>
-                      )}
-                      {(currentPayroll.project_allowance || 0) > 0 && (
-                        <tr>
-                          <td style={{ padding: '10px 14px' }}>Phụ cấp dự án</td>
-                          <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
-                            {formatCurrency(currentPayroll.project_allowance)}
-                          </td>
-                        </tr>
-                      )}
-                      {(currentPayroll.meal_transport_allowance || 0) > 0 && (
-                        <tr>
-                          <td style={{ padding: '10px 14px' }}>Phụ cấp ăn trưa & đi lại</td>
-                          <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
-                            {formatCurrency(currentPayroll.meal_transport_allowance)}
-                          </td>
-                        </tr>
-                      )}
-                      {(currentPayroll.commission_amount || 0) > 0 && (
-                        <tr>
-                          <td style={{ padding: '10px 14px' }}>Hoa hồng doanh số bán hàng</td>
-                          <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
-                            {formatCurrency(currentPayroll.commission_amount)}
-                          </td>
-                        </tr>
-                      )}
-                      {(currentPayroll.overtime_salary || 0) > 0 && (
-                        <tr>
-                          <td style={{ padding: '10px 14px' }}>Tiền làm thêm giờ (OT)</td>
-                          <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
-                            {formatCurrency(currentPayroll.overtime_salary)}
-                          </td>
-                        </tr>
-                      )}
-                      {(currentPayroll.bonus_amount || 0) > 0 && (
-                        <tr>
-                          <td style={{ padding: '10px 14px' }}>Thưởng hiệu quả / năng suất</td>
-                          <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
-                            {formatCurrency(currentPayroll.bonus_amount)}
-                          </td>
-                        </tr>
-                      )}
-                      <tr style={{ background: 'var(--surface-subtle)', fontWeight: 700 }}>
-                        <td style={{ padding: '10px 14px' }}>TỔNG THU NHẬP (GROSS)</td>
-                        <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: '14px', color: 'var(--text-primary)' }}>
-                          {formatCurrency(currentPayroll.gross_income)}
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* II. Khấu trừ Deductions */}
-                <div style={{ border: '1px solid var(--border-default)', borderRadius: '8px', overflow: 'hidden' }}>
-                  <div style={{ padding: '12px 16px', background: 'var(--surface-subtle)', fontWeight: 700, fontSize: '13.5px', color: 'var(--status-error)', borderBottom: '1px solid var(--border-default)' }}>
-                    II. CÁC KHOẢN GIẢM TRỪ (DEDUCTIONS)
-                  </div>
-                  <table className="table" style={{ width: '100%', fontSize: '13px', margin: 0 }}>
-                    <tbody>
-                      <tr>
-                        <td style={{ padding: '10px 14px' }}>Bảo hiểm Xã hội (BHXH 8%)</td>
-                        <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--status-error)' }}>
-                          -{formatCurrency(currentPayroll.bhxh_amount)}
-                        </td>
-                      </tr>
-                      <tr>
-                        <td style={{ padding: '10px 14px' }}>Bảo hiểm Y tế (BHYT 1.5%)</td>
-                        <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--status-error)' }}>
-                          -{formatCurrency(currentPayroll.bhyt_amount)}
-                        </td>
-                      </tr>
-                      <tr>
-                        <td style={{ padding: '10px 14px' }}>Bảo hiểm Thất nghiệp (BHTN 1%)</td>
-                        <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--status-error)' }}>
-                          -{formatCurrency(currentPayroll.bhtn_amount)}
-                        </td>
-                      </tr>
-                      {(currentPayroll.personal_income_tax || 0) > 0 && (
-                        <tr>
-                          <td style={{ padding: '10px 14px' }}>Thuế thu nhập cá nhân (TNCN)</td>
-                          <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--status-error)' }}>
-                            -{formatCurrency(currentPayroll.personal_income_tax)}
-                          </td>
-                        </tr>
-                      )}
-                      {(currentPayroll.time_deduction_amount || 0) > 0 && (
-                        <tr>
-                          <td style={{ padding: '10px 14px' }}>Giảm trừ đi trễ / về sớm</td>
-                          <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--status-error)' }}>
-                            -{formatCurrency(currentPayroll.time_deduction_amount)}
-                          </td>
-                        </tr>
-                      )}
-                      {(currentPayroll.penalty_deduction || 0) > 0 && (
-                        <tr>
-                          <td style={{ padding: '10px 14px' }}>Khấu trừ khác / Phạt vi phạm</td>
-                          <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--status-error)' }}>
-                            -{formatCurrency(currentPayroll.penalty_deduction)}
-                          </td>
-                        </tr>
-                      )}
-                      <tr style={{ background: 'var(--surface-subtle)', fontWeight: 700 }}>
-                        <td style={{ padding: '10px 14px' }}>TỔNG GIẢM TRỪ</td>
-                        <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: '14px', color: 'var(--status-error)' }}>
-                          -{formatCurrency(currentPayroll.total_deduction)}
-                        </td>
-                      </tr>
                     </tbody>
                   </table>
                 </div>
               </div>
+            </div>
 
-              {/* Net Highlight Box */}
-              <div style={{ background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '8px', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-                <div>
-                  <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--status-success)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    THỰC LĨNH CHUYỂN KHOẢN (NET)
+            {/* ----------------------------------------------------------- */}
+            {/* CỘT PHẢI (SUBFORM PANE): CHI TIẾT PHIẾU LƯƠNG ĐANG CHỌN     */}
+            {/* ----------------------------------------------------------- */}
+            {isDetailOpen && displayPayroll && (
+              <div ref={subformPaneRef} className={`mypayslip-subform-pane ${isClosingPayroll ? 'is-closing' : ''}`}>
+                {monthlyLoading ? (
+                  <div className="card" style={{ padding: '48px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                    Đang tải dữ liệu phiếu lương...
                   </div>
-                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                    Số tiền thực tế nhận qua tài khoản ngân hàng sau khi trích nộp bảo hiểm và thuế
+                ) : (
+                  <div className="mypayslip-detail-card">
+                    {/* Góc trên bên phải: Nút X đóng chi tiết với slide animation */}
+                    <button
+                      type="button"
+                      className="mypayslip-corner-close-btn"
+                      onClick={handleClosePayrollDetail}
+                      title="Đóng xem chi tiết phiếu lương (quay về bảng đầy đủ)"
+                      aria-label="Đóng chi tiết"
+                    >
+                      {Icons.x}
+                    </button>
+
+                    {/* Header Info */}
+                    <div className="mypayslip-detail-header">
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>
+                            Chi Tiết Phiếu Lương Kỳ {displayPayroll.salary_period}
+                          </h3>
+
+                        </div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '3px' }}>
+                          Nhân viên: <strong>{displayPayroll.employee_name || user?.full_name}</strong> ({displayPayroll.employee_code || user?.username}) · <strong>{displayPayroll.position_name || 'Nhân viên'}</strong>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span className={`badge-status ${getStatusBadgeClass(displayPayroll.payment_status)}`}>
+                          {getStatusLabel(displayPayroll.payment_status)}
+                        </span>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => handleOpenMonthlyPrint(displayPayroll)}
+                          title="Mở bản in A4 xem toàn trang"
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
+                        >
+                          {Icons.printer}
+                          <span>Bản in A4</span>
+                        </button>
+                      </div>
+                    </div>
+
+                  <div className="mypayslip-detail-body">
+                    {/* Attendance Summary Callout */}
+                    <div style={{ background: 'var(--surface-subtle)', padding: '12px 14px', borderRadius: '6px', border: '1px solid var(--border-default)', fontSize: '12.5px' }}>
+                      <div style={{ fontWeight: 700, fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '6px', letterSpacing: '0.5px' }}>
+                        Thống kê ngày công & thời gian làm việc
+                      </div>
+                      <div style={{ display: 'flex', gap: '10px 16px', flexWrap: 'wrap' }}>
+                        <div>Công chuẩn: <strong>{displayPayroll.standard_working_days ?? 26}</strong> ngày</div>
+                        <div>Công thực tế: <strong style={{ color: 'var(--status-success)' }}>{displayPayroll.actual_working_days ?? 0}</strong> ngày</div>
+                        <div>Phép có lương: <strong>{displayPayroll.paid_leave_days ?? 0}</strong> ngày</div>
+                        <div>Nghỉ không lương: <strong style={{ color: (displayPayroll.unpaid_leave_days || 0) > 0 ? 'var(--status-error)' : 'inherit' }}>{displayPayroll.unpaid_leave_days ?? 0}</strong> ngày</div>
+                        {(displayPayroll.unworked_hours || 0) > 0 && (
+                          <div>Trễ/thiếu: <strong style={{ color: 'var(--status-error)' }}>{displayPayroll.unworked_hours}h</strong></div>
+                        )}
+                        {(displayPayroll.overtime_salary || 0) > 0 && (
+                          <div>Lương OT: <strong>{formatCurrency(displayPayroll.overtime_salary)}</strong></div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Earnings & Deductions Breakdown */}
+                    <div className="mypayslip-breakdown-grid">
+                      {/* I. Thu nhập Gross */}
+                      <div className="mypayslip-section-box">
+                        <div className="mypayslip-section-title">
+                          <span>I. CÁC KHOẢN THU NHẬP (GROSS)</span>
+                          <span className="mypayslip-val-mono" style={{ color: 'var(--text-primary)' }}>{formatCurrency(displayPayroll.gross_income)}</span>
+                        </div>
+                        <table className="table" style={{ width: '100%', fontSize: '12.5px', margin: 0 }}>
+                          <tbody>
+                            <tr>
+                              <td style={{ padding: '8px 12px' }}>Lương cơ bản theo ngày công thực tế</td>
+                              <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
+                                {formatCurrency(displayPayroll.actual_base_salary)}
+                              </td>
+                            </tr>
+                            {(displayPayroll.position_allowance || 0) > 0 && (
+                              <tr>
+                                <td style={{ padding: '8px 12px' }}>Phụ cấp chức vụ</td>
+                                <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                                  {formatCurrency(displayPayroll.position_allowance)}
+                                </td>
+                              </tr>
+                            )}
+                            {(displayPayroll.seniority_allowance || 0) > 0 && (
+                              <tr>
+                                <td style={{ padding: '8px 12px' }}>Phụ cấp thâm niên</td>
+                                <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                                  {formatCurrency(displayPayroll.seniority_allowance)}
+                                </td>
+                              </tr>
+                            )}
+                            {(displayPayroll.project_allowance || 0) > 0 && (
+                              <tr>
+                                <td style={{ padding: '8px 12px' }}>Phụ cấp dự án</td>
+                                <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                                  {formatCurrency(displayPayroll.project_allowance)}
+                                </td>
+                              </tr>
+                            )}
+                            {(displayPayroll.meal_transport_allowance || 0) > 0 && (
+                              <tr>
+                                <td style={{ padding: '8px 12px' }}>Phụ cấp ăn trưa & đi lại</td>
+                                <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                                  {formatCurrency(displayPayroll.meal_transport_allowance)}
+                                </td>
+                              </tr>
+                            )}
+                            {(displayPayroll.commission_amount || 0) > 0 && (
+                              <tr>
+                                <td style={{ padding: '8px 12px' }}>Hoa hồng doanh số bán hàng</td>
+                                <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                                  {formatCurrency(displayPayroll.commission_amount)}
+                                </td>
+                              </tr>
+                            )}
+                            {(displayPayroll.overtime_salary || 0) > 0 && (
+                              <tr>
+                                <td style={{ padding: '8px 12px' }}>Tiền làm thêm giờ (OT)</td>
+                                <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                                  {formatCurrency(displayPayroll.overtime_salary)}
+                                </td>
+                              </tr>
+                            )}
+                            {(displayPayroll.bonus_amount || 0) > 0 && (
+                              <tr>
+                                <td style={{ padding: '8px 12px' }}>Thưởng hiệu quả / năng suất</td>
+                                <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                                  {formatCurrency(displayPayroll.bonus_amount)}
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* II. Khấu trừ Deductions */}
+                      <div className="mypayslip-section-box">
+                        <div className="mypayslip-section-title" style={{ color: 'var(--status-error)' }}>
+                          <span>II. CÁC KHOẢN GIẢM TRỪ (DEDUCTIONS)</span>
+                          <span className="mypayslip-val-mono">-{formatCurrency(displayPayroll.total_deduction)}</span>
+                        </div>
+                        <table className="table" style={{ width: '100%', fontSize: '12.5px', margin: 0 }}>
+                          <tbody>
+                            <tr>
+                              <td style={{ padding: '8px 12px' }}>Bảo hiểm Xã hội (BHXH 8%)</td>
+                              <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--status-error)' }}>
+                                -{formatCurrency(displayPayroll.bhxh_amount)}
+                              </td>
+                            </tr>
+                            <tr>
+                              <td style={{ padding: '8px 12px' }}>Bảo hiểm Y tế (BHYT 1.5%)</td>
+                              <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--status-error)' }}>
+                                -{formatCurrency(displayPayroll.bhyt_amount)}
+                              </td>
+                            </tr>
+                            <tr>
+                              <td style={{ padding: '8px 12px' }}>Bảo hiểm Thất nghiệp (BHTN 1%)</td>
+                              <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--status-error)' }}>
+                                -{formatCurrency(displayPayroll.bhtn_amount)}
+                              </td>
+                            </tr>
+                            {(displayPayroll.personal_income_tax || 0) > 0 && (
+                              <tr>
+                                <td style={{ padding: '8px 12px' }}>Thuế thu nhập cá nhân (TNCN)</td>
+                                <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--status-error)' }}>
+                                  -{formatCurrency(displayPayroll.personal_income_tax)}
+                                </td>
+                              </tr>
+                            )}
+                            {(displayPayroll.time_deduction_amount || 0) > 0 && (
+                              <tr>
+                                <td style={{ padding: '8px 12px' }}>Giảm trừ đi trễ / về sớm</td>
+                                <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--status-error)' }}>
+                                  -{formatCurrency(displayPayroll.time_deduction_amount)}
+                                </td>
+                              </tr>
+                            )}
+                            {(displayPayroll.penalty_deduction || 0) > 0 && (
+                              <tr>
+                                <td style={{ padding: '8px 12px' }}>Khấu trừ khác / Phạt vi phạm</td>
+                                <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--status-error)' }}>
+                                  -{formatCurrency(displayPayroll.penalty_deduction)}
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Net Highlight Box */}
+                    <div className="mypayslip-net-banner">
+                      <div>
+                        <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--status-success)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                          THỰC LĨNH CHUYỂN KHOẢN (NET)
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                          Số tiền thực nhận sau bảo hiểm & thuế
+                        </div>
+                      </div>
+                      <div style={{ fontSize: '22px', fontWeight: 900, color: 'var(--status-success)', fontFamily: 'var(--font-mono)' }}>
+                        {formatCurrency(displayPayroll.net_salary)}
+                      </div>
+                    </div>
+
+                    {/* Subform Action Buttons */}
+                    <div className="mypayslip-subform-actions">
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        onClick={() => handleOpenMonthlyPrint(displayPayroll)}
+                        style={{ flex: 1, padding: '9px 16px', fontSize: '13px' }}
+                      >
+                        {Icons.printer}
+                        In Phiếu Lương (PDF)
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-info-icon"
+                        onClick={() => setIsPayrollRegulationOpen(true)}
+                        title="Xem quy chế & công thức tính lương TechZone Retail"
+                        aria-label="Xem quy chế tính lương"
+                        style={{ width: '38px', height: '38px', flexShrink: 0 }}
+                      >
+                        <span style={{ fontStyle: 'italic', fontWeight: 700, fontFamily: 'serif', fontSize: '15px' }}>i</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
-                <div style={{ fontSize: '26px', fontWeight: 900, color: 'var(--status-success)', fontFamily: 'var(--font-mono)' }}>
-                  {formatCurrency(currentPayroll.net_salary)}
-                </div>
+                )}
               </div>
-
-              {/* Action Buttons */}
-              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={() => handleOpenMonthlyPrint(currentPayroll)}
-                  style={{ padding: '10px 24px', fontSize: '14px' }}
-                >
-                  {Icons.printer}
-                  Xem Chi Tiết & In Phiếu Lương (PDF)
-                </button>
-                <button
-                  type="button"
-                  className="btn-info-icon"
-                  onClick={() => setIsPayrollRegulationOpen(true)}
-                  title="Xem quy chế & công thức tính lương TechZone Retail"
-                  aria-label="Xem quy chế tính lương"
-                  style={{ width: '40px', height: '40px' }}
-                >
-                  <span style={{ fontStyle: 'italic', fontWeight: 700, fontFamily: 'serif', fontSize: '16px' }}>i</span>
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="card" style={{ padding: '48px', textAlign: 'center' }}>
-              <EmptyState
-                icon={Icons.calendar}
-                title="Chưa có phiếu lương cho kỳ này"
-                description={`Chưa có dữ liệu bảng lương đã duyệt cho kỳ ${selectedPeriod}. Phiếu lương sẽ tự động hiển thị sau khi Ban Giám Đốc và Phòng Nhân sự duyệt chính thức.`}
-              />
-            </div>
-          )}
-
-          {/* Historical Released Payrolls Table */}
-          <div className="card" style={{ overflow: 'hidden' }}>
-            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 className="card-title" style={{ margin: 0, fontSize: '15px' }}>
-                Lịch Sử Các Kỳ Lương Đã Phát Hành Năm {selectedYear}
-              </h3>
-              <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>
-                {monthlyRecords.length} kỳ lương được phát hành
-              </span>
-            </div>
-            <div style={{ overflowX: 'auto' }}>
-              <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', whiteSpace: 'nowrap' }}>
-                <thead>
-                  <tr style={{ background: 'var(--surface-subtle)', borderBottom: '1px solid var(--border-default)' }}>
-                    <th style={{ padding: '12px 14px' }}>Kỳ lương</th>
-                    <th style={{ padding: '12px 10px', textAlign: 'center' }}>Công chuẩn / làm</th>
-                    <th style={{ padding: '12px 12px', textAlign: 'right' }}>Lương CB thực tế</th>
-                    <th style={{ padding: '12px 12px', textAlign: 'right', fontWeight: 700 }}>Tổng Gross</th>
-                    <th style={{ padding: '12px 12px', textAlign: 'right' }}>Khấu trừ</th>
-                    <th style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 800, color: 'var(--status-success)' }}>THỰC LĨNH NET</th>
-                    <th style={{ padding: '12px 10px', textAlign: 'center' }}>Trạng thái</th>
-                    <th style={{ padding: '12px 14px', textAlign: 'center' }}>Thao tác</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {monthlyRecords.length > 0 ? (
-                    monthlyRecords.map((p) => (
-                      <tr key={p.payroll_id} style={{ borderBottom: '1px solid var(--border-subtle)', background: p.salary_period === selectedPeriod ? 'var(--surface-subtle)' : 'transparent' }}>
-                        <td style={{ padding: '12px 14px', fontWeight: 600 }}>
-                          {p.salary_period ? `Tháng ${parseInt(p.salary_period.split('-')[1], 10)}/${p.salary_period.split('-')[0]}` : p.salary_period}
-                        </td>
-                        <td style={{ padding: '12px 10px', textAlign: 'center' }}>
-                          {p.actual_working_days ?? 0} / {p.standard_working_days ?? 26}
-                        </td>
-                        <td style={{ padding: '12px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
-                          {formatCurrency(p.actual_base_salary)}
-                        </td>
-                        <td style={{ padding: '12px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
-                          {formatCurrency(p.gross_income)}
-                        </td>
-                        <td style={{ padding: '12px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--status-error)' }}>
-                          -{formatCurrency(p.total_deduction)}
-                        </td>
-                        <td style={{ padding: '12px 14px', textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 800, color: 'var(--status-success)', fontSize: '13.5px' }}>
-                          {formatCurrency(p.net_salary)}
-                        </td>
-                        <td style={{ padding: '12px 10px', textAlign: 'center' }}>
-                          <span className={`badge-status ${getStatusBadgeClass(p.payment_status)}`}>
-                            {getStatusLabel(p.payment_status)}
-                          </span>
-                        </td>
-                        <td style={{ padding: '12px 14px', textAlign: 'center' }}>
-                          <div style={{ display: 'inline-flex', gap: '6px' }}>
-                            <button
-                              className="btn btn-secondary btn-sm"
-                              onClick={() => setSelectedPeriod(p.salary_period)}
-                              title="Xem chi tiết kỳ này"
-                            >
-                              {Icons.eye}
-                              Xem
-                            </button>
-                            <button
-                              className="btn btn-primary btn-sm"
-                              onClick={() => handleOpenMonthlyPrint(p)}
-                              title="In phiếu lương A4 PDF"
-                            >
-                              {Icons.printer}
-                              In PDF
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={8} style={{ padding: '36px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                        Chưa có phiếu lương chính thức nào được duyệt trong năm {selectedYear}.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+            )}
           </div>
         </div>
       )}
 
       {/* ========================================================================= */}
-      {/* TAB 2: BẢNG LƯƠNG NĂM (ANNUAL SUMMARY) */}
+      {/* TAB 2: BẢNG LƯƠNG NĂM (ANNUAL SUMMARY)                                    */}
       {/* ========================================================================= */}
       {activeTab === 'annual' && (
         <div className="no-print" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -890,7 +1074,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
       )}
 
       {/* ========================================================================= */}
-      {/* TAB 3: HỢP ĐỒNG LAO ĐỘNG (CONTRACTS) */}
+      {/* TAB 3: HỢP ĐỒNG LAO ĐỘNG (CONTRACTS) - MAIN-SUBFORM INTERACTIVE LAYOUT    */}
       {/* ========================================================================= */}
       {activeTab === 'contracts' && (
         <div className="no-print" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -914,14 +1098,14 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
               icon={Icons.wallet}
               iconColor="blue"
               label="LƯƠNG CƠ BẢN HỢP ĐỒNG"
-              value={formatCurrency(activeContract?.basic_salary ?? 0)}
-              footerNote={`Tỷ lệ hưởng lương: ${activeContract?.salary_percentage ?? 100}%`}
+              value={formatCurrency(displayContract?.basic_salary ?? activeContract?.basic_salary ?? 0)}
+              footerNote={`Tỷ lệ hưởng lương: ${displayContract?.salary_percentage ?? activeContract?.salary_percentage ?? 100}%`}
             />
             <StatCard
               icon={Icons.shield}
               iconColor="amber"
               label="LƯƠNG ĐÓNG BẢO HIỂM"
-              value={formatCurrency(activeContract?.insurance_salary ?? activeContract?.basic_salary ?? 0)}
+              value={formatCurrency(displayContract?.insurance_salary ?? activeContract?.insurance_salary ?? displayContract?.basic_salary ?? 0)}
               footerNote="Trích nộp BH Bắt buộc: 10.5% (BHXH 8%, BHYT 1.5%, BHTN 1%)"
             />
           </div>
@@ -942,111 +1126,302 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
               </span>
             </div>
 
-            {activeContract && (
+            {displayContract && (
               <button
                 type="button"
                 className="btn btn-primary"
-                onClick={() => handleOpenContractPrint(activeContract)}
+                onClick={() => handleOpenContractPdf(displayContract)}
+                disabled={downloadingContractPdf}
               >
-                {Icons.printer}
-                In Hợp Đồng Hiện Hành (PDF)
+                {Icons.fileText}
+                <span>{downloadingContractPdf ? 'Đang mở PDF...' : 'Xem / Tải File PDF Hợp Đồng'}</span>
               </button>
             )}
           </div>
 
-          {/* Contracts Table */}
-          {contractsLoading ? (
-            <div className="card" style={{ padding: '48px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-              Đang tải danh sách hợp đồng lao động...
-            </div>
-          ) : (
-            <div className="card" style={{ overflow: 'hidden' }}>
-              <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 className="card-title" style={{ margin: 0, fontSize: '15px' }}>
-                  Hồ Sơ Hợp Đồng Lao Động Cá Nhân
-                </h3>
-                <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>
-                  Hiển thị <strong>{filteredContracts.length}</strong> / {contracts.length} hợp đồng
-                </span>
-              </div>
+          {/* MAIN - SUBFORM 2-COLUMN VIEW FOR CONTRACTS */}
+          <div className={`mypayslip-layout ${isContractDetailOpen ? 'has-subform' : 'is-full-width'}`}>
+            {/* CỘT TRÁI (MAIN): DANH SÁCH HỢP ĐỒNG */}
+            <div className="mypayslip-main-pane">
+              {contractsLoading ? (
+                <div className="card" style={{ padding: '48px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                  Đang tải danh sách hợp đồng lao động...
+                </div>
+              ) : (
+                <div className="card" style={{ overflow: 'hidden' }}>
+                  <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                    <h3 className="card-title" style={{ margin: 0, fontSize: '15px' }}>
+                      Hồ Sơ Hợp Đồng Lao Động Cá Nhân
+                    </h3>
+                    <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+                      Hiển thị <strong>{filteredContracts.length}</strong> / {contracts.length} hợp đồng
+                    </span>
+                  </div>
 
-              <div style={{ overflowX: 'auto' }}>
-                <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', whiteSpace: 'nowrap' }}>
-                  <thead>
-                    <tr style={{ background: 'var(--surface-subtle)', borderBottom: '1px solid var(--border-default)' }}>
-                      <th style={{ padding: '12px 14px' }}>Số hợp đồng</th>
-                      <th style={{ padding: '12px 14px' }}>Loại hợp đồng</th>
-                      <th style={{ padding: '12px 14px' }}>Thời hạn hiệu lực</th>
-                      <th style={{ padding: '12px 12px', textAlign: 'right' }}>Lương cơ bản</th>
-                      <th style={{ padding: '12px 12px', textAlign: 'right' }}>Lương đóng BH</th>
-                      <th style={{ padding: '12px 10px', textAlign: 'center' }}>Tỷ lệ %</th>
-                      <th style={{ padding: '12px 12px', textAlign: 'center' }}>Ngày ký</th>
-                      <th style={{ padding: '12px 10px', textAlign: 'center' }}>Trạng thái</th>
-                      <th style={{ padding: '12px 14px', textAlign: 'center' }}>Thao tác</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredContracts.length > 0 ? (
-                      filteredContracts.map((c) => (
-                        <tr key={c.contract_id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                          <td style={{ padding: '12px 14px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
-                            #{c.contract_number}
-                          </td>
-                          <td style={{ padding: '12px 14px', fontWeight: 600 }}>
-                            {c.contract_type}
-                          </td>
-                          <td style={{ padding: '12px 14px', color: 'var(--text-secondary)' }}>
-                            {formatDate(c.start_date)} — {c.end_date ? formatDate(c.end_date) : 'Không xác định thời hạn'}
-                          </td>
-                          <td style={{ padding: '12px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
-                            {formatCurrency(c.basic_salary)}
-                          </td>
-                          <td style={{ padding: '12px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
-                            {formatCurrency(c.insurance_salary || c.basic_salary)}
-                          </td>
-                          <td style={{ padding: '12px 10px', textAlign: 'center', fontFamily: 'var(--font-mono)' }}>
-                            {c.salary_percentage ? `${c.salary_percentage}%` : '100%'}
-                          </td>
-                          <td style={{ padding: '12px 12px', textAlign: 'center' }}>
-                            {c.signed_date ? formatDate(c.signed_date) : '—'}
-                          </td>
-                          <td style={{ padding: '12px 10px', textAlign: 'center' }}>
-                            <span className={`badge-status ${getStatusBadgeClass(c.status)}`}>
-                              {getStatusLabel(c.status)}
-                            </span>
-                          </td>
-                          <td style={{ padding: '12px 14px', textAlign: 'center' }}>
-                            <button
-                              type="button"
-                              className="btn btn-primary btn-sm"
-                              onClick={() => handleOpenContractPrint(c)}
-                              title="Xem chi tiết & in hợp đồng PDF"
-                            >
-                              {Icons.printer}
-                              Xem / In PDF
-                            </button>
-                          </td>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table className="mypayslip-table">
+                      <thead>
+                        <tr style={{ background: 'var(--surface-subtle)', borderBottom: '1px solid var(--border-default)' }}>
+                          <th style={{ padding: '12px 14px' }}>Số hợp đồng</th>
+                          <th style={{ padding: '12px 14px' }}>Thời hạn hiệu lực</th>
+                          {!isContractDetailOpen && (
+                            <th style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 600 }}>Lương cơ bản</th>
+                          )}
+                          <th style={{ padding: '12px 10px', textAlign: 'center' }}>Trạng thái</th>
+                          <th style={{ padding: '12px 14px', textAlign: 'center' }}>Thao tác</th>
                         </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan={9} style={{ padding: '36px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                          Không tìm thấy hợp đồng lao động phù hợp.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                      </thead>
+                      <tbody>
+                        {filteredContracts.length > 0 ? (
+                          filteredContracts.map((c) => {
+                            const isSelected = (selectedContract?.contract_id ?? activeContract?.contract_id) === c.contract_id
+                            return (
+                              <tr
+                                key={c.contract_id}
+                                className={`mypayslip-row ${isSelected ? 'is-selected' : ''}`}
+                                onClick={() => handleSelectContract(c)}
+                              >
+                                <td style={{ padding: '12px 14px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span>#{c.contract_number}</span>
+                                    {isSelected && (
+                                      <span
+                                        title="Đang xem cố định hợp đồng này"
+                                        style={{
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          color: 'var(--primary-color, #2563eb)',
+                                        }}
+                                      >
+                                        {Icons.eye}
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td style={{ padding: '12px 14px', color: 'var(--text-secondary)' }}>
+                                  {formatDate(c.start_date)} — {c.end_date ? formatDate(c.end_date) : 'Không xác định'}
+                                </td>
+                                {!isContractDetailOpen && (
+                                  <td style={{ padding: '12px 14px', textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
+                                    {formatCurrency(c.basic_salary)}
+                                  </td>
+                                )}
+                                <td style={{ padding: '12px 10px', textAlign: 'center' }}>
+                                  <span className={`badge-status ${getStatusBadgeClass(c.status)}`}>
+                                    {getStatusLabel(c.status)}
+                                  </span>
+                                </td>
+                                <td style={{ padding: '12px 14px', textAlign: 'center', width: '88px' }}>
+                                  <div style={{ display: 'inline-flex', gap: '6px', justifyContent: 'center' }}>
+                                    <button
+                                      type="button"
+                                      className={`btn btn-icon btn-sm ${isSelected ? 'btn-primary' : 'btn-secondary'}`}
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        if (isSelected) {
+                                          handleCloseContractDetail()
+                                        } else {
+                                          handleSelectContract(c)
+                                        }
+                                      }}
+                                      title={isSelected ? 'Đóng xem chi tiết' : 'Xem chi tiết hợp đồng này ở subform bên cạnh'}
+                                      aria-label="Xem chi tiết hợp đồng"
+                                    >
+                                      {Icons.eye}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="btn btn-secondary btn-icon btn-sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        handleOpenContractPdf(c)
+                                      }}
+                                      title="Xem / Tải file PDF hợp đồng"
+                                      aria-label="Xem / Tải file PDF hợp đồng"
+                                      disabled={downloadingContractPdf}
+                                    >
+                                      {Icons.fileText}
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            )
+                          })
+                        ) : (
+                          <tr>
+                            <td colSpan={isContractDetailOpen ? 4 : 5} style={{ padding: '36px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                              Không tìm thấy hợp đồng lao động phù hợp.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
-          )}
+
+            {/* CỘT PHẢI (SUBFORM): CHI TIẾT HỢP ĐỒNG ĐANG CHỌN */}
+            {isContractDetailOpen && displayContract && (
+              <div ref={contractSubformPaneRef} className={`mypayslip-subform-pane ${isClosingContract ? 'is-closing' : ''}`}>
+                <div className="mypayslip-detail-card">
+                  {/* Góc trên bên phải: Nút X đóng chi tiết với slide animation */}
+                  <button
+                    type="button"
+                    className="mypayslip-corner-close-btn"
+                    onClick={handleCloseContractDetail}
+                    title="Đóng xem chi tiết hợp đồng (quay về bảng đầy đủ)"
+                    aria-label="Đóng chi tiết"
+                  >
+                    {Icons.x}
+                  </button>
+
+                  <div className="mypayslip-detail-header">
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>
+                          Chi Tiết Hợp Đồng #{displayContract.contract_number}
+                        </h3>
+
+                      </div>
+                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '3px' }}>
+                        Loại văn bản: <strong>{displayContract.contract_type}</strong>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span className={`badge-status ${getStatusBadgeClass(displayContract.status)}`}>
+                        {getStatusLabel(displayContract.status)}
+                      </span>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => handleOpenContractPdf(displayContract)}
+                        title="Xem / Tải file PDF hợp đồng chuẩn"
+                        disabled={downloadingContractPdf}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
+                      >
+                        {Icons.fileText}
+                        <span>{displayContract.contract_file_url ? 'Xem File PDF' : 'Xem PDF Hợp Đồng'}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mypayslip-detail-body">
+                    {/* Bảng chi tiết điều khoản hợp đồng */}
+                    <div className="mypayslip-section-box">
+                      <div className="mypayslip-section-title">
+                        <span>ĐIỀU KHOẢN & MỨC LƯƠNG GIAO KẾT</span>
+                        <span className="badge" style={{ fontSize: '11px', background: 'var(--surface-subtle)' }}>
+                          HĐ Chính thức
+                        </span>
+                      </div>
+                      <table className="table" style={{ width: '100%', fontSize: '12.5px', margin: 0 }}>
+                        <tbody>
+                          <tr>
+                            <td style={{ padding: '9px 12px', color: 'var(--text-secondary)', width: '42%' }}>Số hiệu hợp đồng</td>
+                            <td style={{ padding: '9px 12px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
+                              #{displayContract.contract_number}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style={{ padding: '9px 12px', color: 'var(--text-secondary)' }}>Hình thức hợp đồng</td>
+                            <td style={{ padding: '9px 12px', fontWeight: 600 }}>
+                              {displayContract.contract_type}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style={{ padding: '9px 12px', color: 'var(--text-secondary)' }}>Thời hạn hợp đồng</td>
+                            <td style={{ padding: '9px 12px', fontWeight: 600 }}>
+                              {formatDate(displayContract.start_date)} — {displayContract.end_date ? formatDate(displayContract.end_date) : 'Không xác định thời hạn'}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style={{ padding: '9px 12px', color: 'var(--text-secondary)' }}>Lương cơ bản tháng</td>
+                            <td style={{ padding: '9px 12px', fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--primary-color, #2563eb)' }}>
+                              {formatCurrency(displayContract.basic_salary)}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style={{ padding: '9px 12px', color: 'var(--text-secondary)' }}>Lương căn cứ đóng BHXH</td>
+                            <td style={{ padding: '9px 12px', fontWeight: 600, fontFamily: 'var(--font-mono)' }}>
+                              {formatCurrency(displayContract.insurance_salary || displayContract.basic_salary)}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style={{ padding: '9px 12px', color: 'var(--text-secondary)' }}>Tỷ lệ hưởng lương</td>
+                            <td style={{ padding: '9px 12px', fontWeight: 600, fontFamily: 'var(--font-mono)' }}>
+                              {displayContract.salary_percentage ? `${displayContract.salary_percentage}%` : '100%'}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style={{ padding: '9px 12px', color: 'var(--text-secondary)' }}>Ngày ký kết</td>
+                            <td style={{ padding: '9px 12px' }}>
+                              {displayContract.signed_date ? formatDate(displayContract.signed_date) : '—'}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style={{ padding: '9px 12px', color: 'var(--text-secondary)' }}>Người đại diện ký</td>
+                            <td style={{ padding: '9px 12px' }}>
+                              {(displayContract as any).signer_name || 'Tổng Giám Đốc TechZone Retail'}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style={{ padding: '9px 12px', color: 'var(--text-secondary)' }}>File văn bản PDF</td>
+                            <td style={{ padding: '9px 12px' }}>
+                              {displayContract.contract_file_url ? (
+                                <a
+                                  href={displayContract.contract_file_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{ color: 'var(--primary-color, #2563eb)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}
+                                >
+                                  {Icons.fileText} Bản PDF chính thức (Cloud)
+                                </a>
+                              ) : (
+                                <span style={{ color: 'var(--text-tertiary)' }}>Chưa có file scan đính kèm</span>
+                              )}
+                            </td>
+                          </tr>
+                          {((displayContract as any).notes || (displayContract as any).note) && (
+                            <tr>
+                              <td style={{ padding: '9px 12px', color: 'var(--text-secondary)' }}>Ghi chú điều khoản</td>
+                              <td style={{ padding: '9px 12px', color: 'var(--text-secondary)' }}>
+                                {((displayContract as any).notes || (displayContract as any).note)}
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Action in Subform */}
+                    <div className="mypayslip-subform-actions">
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        onClick={() => handleOpenContractPdf(displayContract)}
+                        style={{ width: '100%', padding: '9px 16px', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                        disabled={downloadingContractPdf}
+                      >
+                        {Icons.fileText}
+                        <span>
+                          {downloadingContractPdf
+                            ? 'Đang mở PDF...'
+                            : 'Xem / Tải File PDF Hợp Đồng'}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* MODAL 1: BẢN IN PHIẾU LƯƠNG THÁNG (KHỔ A4) */}
-      {/* ========================================================================= */}
-      {/* ========================================================================= */}
+            {/* ========================================================================= */}
       {/* MODAL 1: BẢN IN PHIẾU LƯƠNG THÁNG (KHỔ A4) */}
       {/* ========================================================================= */}
       {isMonthlyPrintModalOpen && monthlyPrintData && (() => {
@@ -1665,165 +2040,6 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
         )
       })()}
 
-      {/* ========================================================================= */}
-      {/* MODAL 3: BẢN IN HỢP ĐỒNG LAO ĐỘNG (KHỔ A4) */}
-      {/* ========================================================================= */}
-      {isContractPrintModalOpen && selectedContract && createPortal(
-        <div className="modal-overlay print-active-overlay" onClick={() => setIsContractPrintModalOpen(false)}>
-          <div className="modal print-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '880px', padding: 0, maxHeight: '92vh' }}>
-            {/* Header */}
-            <div className="modal-header no-print">
-              <h2 className="modal-title" style={{ fontSize: '16px' }}>
-                Bản In Hợp Đồng Lao Động (Khổ A4)
-              </h2>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <button className="btn btn-primary btn-sm" onClick={() => window.print()}>
-                  {Icons.printer}
-                  In hợp đồng (PDF)
-                </button>
-                <button
-                  className="modal-close"
-                  onClick={() => setIsContractPrintModalOpen(false)}
-                  title="Đóng"
-                >
-                  {Icons.close}
-                </button>
-              </div>
-            </div>
-
-            {/* A4 Sheet Body */}
-            <div className="payslip-modal-body" style={{ overflowY: 'auto', padding: '16px', background: 'var(--surface-ground)' }}>
-              <div className="payslip-a4-modal">
-                {/* Header */}
-                <div className="payslip-a4-header">
-                  <div>
-                    <div className="payslip-a4-company-name">CÔNG TY TNHH THƯƠNG MẠI DỊCH VỤ TECH ZONE</div>
-                    <div className="payslip-a4-company-sub">Hệ Thống Bán Lẻ Thiết Bị Công Nghệ Cao Cấp Toàn Quốc</div>
-                    <div className="payslip-a4-company-sub">Địa chỉ: 273 An Dương Vương, Phường 3, Quận 5, TP. Hồ Chí Minh</div>
-                    <div className="payslip-a4-company-sub">Mã số thuế: 0317894562 • Điện thoại: 1900 6868</div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: '12px', fontWeight: 700, color: '#1e3a8a' }}>
-                      SỐ HĐ: <span style={{ fontFamily: 'var(--font-mono)' }}>#{selectedContract.contract_number}</span>
-                    </div>
-                    <div style={{ fontSize: '12px', color: '#475569', marginTop: '3px' }}>
-                      NGÀY KÝ: <strong>{selectedContract.signed_date ? formatDate(selectedContract.signed_date) : formatDate(selectedContract.start_date)}</strong>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Main Title */}
-                <div className="payslip-a4-title-box">
-                  <div className="payslip-a4-main-title">HỢP ĐỒNG LAO ĐỘNG</div>
-                  <div className="payslip-a4-period-subtitle">
-                    (Ban hành theo Bộ luật Lao động Việt Nam & Quy chế Quản trị Nhân sự TechZone)
-                  </div>
-                </div>
-
-                {/* Parties Info Grid */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-                  {/* Bên A */}
-                  <div style={{ border: '1px solid #cbd5e1', borderRadius: '6px', padding: '12px 14px', background: '#f8fafc', fontSize: '12.5px', lineHeight: 1.6 }}>
-                    <div style={{ fontWeight: 800, color: '#1e3a8a', marginBottom: '6px', textTransform: 'uppercase', fontSize: '12px' }}>
-                      BÊN A (NGƯỜI SỬ DỤNG LAO ĐỘNG):
-                    </div>
-                    <div>Đơn vị: <strong>CÔNG TY TNHH TM DV TECH ZONE</strong></div>
-                    <div>Đại diện: <strong>Ban Giám Đốc TechZone Retail</strong></div>
-                    <div>Chức vụ: <strong>Đại diện theo pháp luật</strong></div>
-                    <div>Địa chỉ: <strong>273 An Dương Vương, P.3, Q.5, TP.HCM</strong></div>
-                  </div>
-
-                  {/* Bên B */}
-                  <div style={{ border: '1px solid #cbd5e1', borderRadius: '6px', padding: '12px 14px', background: '#f8fafc', fontSize: '12.5px', lineHeight: 1.6 }}>
-                    <div style={{ fontWeight: 800, color: '#1e3a8a', marginBottom: '6px', textTransform: 'uppercase', fontSize: '12px' }}>
-                      BÊN B (NGƯỜI LAO ĐỘNG):
-                    </div>
-                    <div>Họ và tên: <strong>{selectedContract.employee_name || user?.full_name}</strong></div>
-                    <div>Mã nhân viên: <strong>{user?.username || 'NV-TECHZONE'}</strong></div>
-                    <div>Chi nhánh làm việc: <strong>{user?.store_name || 'Hệ thống TechZone Retail'}</strong></div>
-                    <div>Trạng thái: <strong>{getStatusLabel(selectedContract.status)}</strong></div>
-                  </div>
-                </div>
-
-                {/* Contract Articles */}
-                <div style={{ fontSize: '12.5px', lineHeight: 1.65, display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '20px' }}>
-                  <div style={{ border: '1px solid #cbd5e1', borderRadius: '6px', padding: '12px 14px' }}>
-                    <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: '4px' }}>
-                      ĐIỀU 1: LOẠI HỢP ĐỒNG & THỜI HẠN CÔNG TÁC
-                    </div>
-                    <div>• <strong>Loại hợp đồng:</strong> {selectedContract.contract_type}</div>
-                    <div>
-                      • <strong>Thời hạn hiệu lực:</strong> Từ ngày <strong>{formatDate(selectedContract.start_date)}</strong> đến ngày <strong>{selectedContract.end_date ? formatDate(selectedContract.end_date) : 'Không xác định thời hạn'}</strong>
-                    </div>
-                    <div>• <strong>Thời gian làm việc tiêu chuẩn:</strong> {selectedContract.working_hours_per_week || 48} giờ / tuần (Theo ca phân công tại chi nhánh)</div>
-                  </div>
-
-                  <div style={{ border: '1px solid #cbd5e1', borderRadius: '6px', padding: '12px 14px' }}>
-                    <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: '4px' }}>
-                      ĐIỀU 2: TIỀN LƯƠNG, PHỤ CẤP & CÁC CHẾ ĐỘ ĐÃI NGỘ
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px', marginTop: '6px' }}>
-                      <div>• Mức lương cơ bản thỏa thuận: <strong style={{ fontFamily: 'var(--font-mono)' }}>{formatCurrency(selectedContract.basic_salary)}</strong></div>
-                      <div>• Mức lương đóng bảo hiểm: <strong style={{ fontFamily: 'var(--font-mono)' }}>{formatCurrency(selectedContract.basic_salary || selectedContract.insurance_salary)}</strong></div>
-                      <div>• Tỷ lệ hưởng lương: <strong style={{ fontFamily: 'var(--font-mono)' }}>{selectedContract.salary_percentage ? `${selectedContract.salary_percentage}%` : '100%'}</strong></div>
-                      <div>• Kỳ hạn trả lương: <strong>Hàng tháng (Từ ngày 05 - 10)</strong></div>
-                    </div>
-                    <div style={{ marginTop: '6px', color: '#475569', fontSize: '12px' }}>
-                      • <strong>Trích nộp Bảo hiểm Bắt buộc (10.5% lương đóng BH):</strong> - BHXH: 8.0% | BHYT: 1.5% | BHTN: 1.0%.
-                    </div>
-                    <div style={{ marginTop: '3px', color: '#475569', fontSize: '12px' }}>
-                      • <em>Phụ cấp & Thưởng:</em> Hưởng đầy đủ các khoản phụ cấp chức vụ, phụ cấp ăn trưa/đi lại, thưởng năng suất và hoa hồng doanh số theo chính sách kinh doanh chuỗi TechZone Retail.
-                    </div>
-                  </div>
-
-                  <div style={{ border: '1px solid #cbd5e1', borderRadius: '6px', padding: '12px 14px' }}>
-                    <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: '4px' }}>
-                      ĐIỀU 3: NGHĨA VỤ VÀ QUYỀN HẠN CỦA CÁC BÊN
-                    </div>
-                    <div>
-                      • Người lao động cam kết thực hiện đầy đủ nhiệm vụ chuyên môn, tuân thủ nội quy lao động, quy trình chấm công GPS và bảo mật bí mật kinh doanh, thông tin khách hàng của TechZone.
-                    </div>
-                    <div style={{ marginTop: '4px' }}>
-                      • Người sử dụng lao động bảo đảm cung cấp trang thiết bị làm việc, môi trường an toàn, và chi trả thu nhập đầy đủ, đúng hạn theo kết quả chấm công và chốt bảng lương hàng tháng.
-                    </div>
-                  </div>
-                </div>
-
-                {/* Signatures */}
-                <div className="payslip-a4-signatures" style={{ gridTemplateColumns: '1fr 1fr', marginTop: '30px' }}>
-                  <div>
-                    <div className="payslip-a4-sign-title">ĐẠI DIỆN NGƯỜI SỬ DỤNG LAO ĐỘNG</div>
-                    <div className="payslip-a4-sign-note">(Ký tên, đóng dấu)</div>
-                    <div className="payslip-a4-sign-space" style={{ height: '70px' }}></div>
-                    <div style={{ fontWeight: 700, fontSize: '12.5px' }}>TECHZONE RETAIL</div>
-                  </div>
-                  <div>
-                    <div className="payslip-a4-sign-title">NGƯỜI LAO ĐỘNG</div>
-                    <div className="payslip-a4-sign-note">(Ký và ghi rõ họ tên)</div>
-                    <div className="payslip-a4-sign-space" style={{ height: '70px' }}></div>
-                    <div style={{ fontWeight: 700, fontSize: '12.5px' }}>{selectedContract.employee_name || user?.full_name}</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div className="modal-footer no-print" style={{ padding: '14px 20px', background: 'var(--surface-card)' }}>
-              <button className="btn btn-secondary" onClick={() => setIsContractPrintModalOpen(false)}>
-                Đóng
-              </button>
-              <button className="btn btn-primary" onClick={() => window.print()}>
-                {Icons.printer}
-                In hợp đồng (PDF)
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
-      {isPayrollRegulationOpen && (
-        <PayrollRegulationDialog onClose={() => setIsPayrollRegulationOpen(false)} />
-      )}
     </div>
   )
 }

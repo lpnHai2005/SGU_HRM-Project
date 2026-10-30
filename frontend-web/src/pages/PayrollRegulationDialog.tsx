@@ -41,10 +41,10 @@ const BONUS_PRESETS = [
 
 export function PayrollRegulationDialog({ onClose }: { onClose: () => void }) {
   const { user } = useAuth()
-  const isHrOrAdmin = user?.roles?.some((r: string) => ['ADMIN', 'HR_MANAGER', 'DIRECTOR'].includes(r))
+  const isHrOrAdmin = Boolean(user?.roles?.some((r: string) => ['ADMIN', 'HR_MANAGER', 'DIRECTOR'].includes(r)))
 
-  // 3 Tabs: 'settings' | 'bonuses' | 'guide'
-  const [activeTab, setActiveTab] = useState<'settings' | 'bonuses' | 'guide'>('settings')
+  // Nếu là nhân viên không có quyền quản lý, chỉ mở tab 'guide' (Quy chế & công thức)
+  const [activeTab, setActiveTab] = useState<'settings' | 'bonuses' | 'guide'>(() => isHrOrAdmin ? 'settings' : 'guide')
 
   // State Tham số Quy chế
   const [settings, setSettings] = useState<PayrollPolicySetting[]>([])
@@ -85,8 +85,9 @@ export function PayrollRegulationDialog({ onClose }: { onClose: () => void }) {
     return () => document.removeEventListener('click', handleClickOutside)
   }, [])
 
-  // Tải danh sách cấu hình tham số
+  // Tải danh sách cấu hình tham số (chỉ dành cho HR/Admin)
   const fetchSettings = async () => {
+    if (!isHrOrAdmin) return
     setLoadingSettings(true)
     try {
       const data = await payrollApi.getPolicySettings()
@@ -99,8 +100,9 @@ export function PayrollRegulationDialog({ onClose }: { onClose: () => void }) {
     }
   }
 
-  // Tải danh sách thưởng kỳ
+  // Tải danh sách thưởng kỳ (chỉ dành cho HR/Admin)
   const fetchBonuses = async () => {
+    if (!isHrOrAdmin) return
     setLoadingBonuses(true)
     try {
       const data = await payrollApi.getPeriodBonuses()
@@ -114,12 +116,18 @@ export function PayrollRegulationDialog({ onClose }: { onClose: () => void }) {
   }
 
   useEffect(() => {
+    if (!isHrOrAdmin) {
+      if (activeTab !== 'guide') {
+        setActiveTab('guide')
+      }
+      return
+    }
     if (activeTab === 'settings') {
       fetchSettings()
     } else if (activeTab === 'bonuses') {
       fetchBonuses()
     }
-  }, [activeTab])
+  }, [activeTab, isHrOrAdmin])
 
   // Xử lý lưu tham số quy chế
   const handleSaveSetting = async (key: string) => {
@@ -282,10 +290,12 @@ export function PayrollRegulationDialog({ onClose }: { onClose: () => void }) {
         <div className="prd-header">
           <div>
             <h2 className="prd-header-title">
-              Quy Chế Tính Lương & Tham Số Doanh Nghiệp
+              {isHrOrAdmin ? 'Quy Chế Tính Lương & Tham Số Doanh Nghiệp' : 'Quy Chế & Công Thức Tính Lương TechZone'}
             </h2>
             <p className="prd-header-desc">
-              Cấu hình định mức phụ cấp, phạt trễ, ngày công chuẩn và quy chế tính toán lương
+              {isHrOrAdmin
+                ? 'Cấu hình định mức phụ cấp, phạt trễ, ngày công chuẩn và quy chế tính toán lương'
+                : 'Tra cứu chi tiết ngày công chuẩn, định mức phụ cấp, tỷ lệ làm thêm giờ và công thức tính lương áp dụng'}
             </p>
           </div>
           <button className="modal-close" onClick={onClose} title="Đóng">
@@ -293,34 +303,43 @@ export function PayrollRegulationDialog({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        {/* Tab Navigation - Tối Giản (Không icon thừa thãi) */}
-        <div className="prd-tabs">
-          <button
-            type="button"
-            className={`prd-tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
-            onClick={() => setActiveTab('settings')}
-          >
-            <span>Tham số quy chế</span>
-            <span className="prd-tab-count">{settings.length}</span>
-          </button>
+        {/* Tab Navigation - Tối Giản: Ẩn các tab cấu hình đối với nhân viên thường không có quyền chỉnh sửa */}
+        {isHrOrAdmin ? (
+          <div className="prd-tabs">
+            <button
+              type="button"
+              className={`prd-tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
+              onClick={() => setActiveTab('settings')}
+            >
+              <span>Tham số quy chế</span>
+              <span className="prd-tab-count">{settings.length}</span>
+            </button>
 
-          <button
-            type="button"
-            className={`prd-tab-btn ${activeTab === 'bonuses' ? 'active' : ''}`}
-            onClick={() => setActiveTab('bonuses')}
-          >
-            <span>Thưởng theo kỳ</span>
-            <span className="prd-tab-count">{bonuses.length}</span>
-          </button>
+            <button
+              type="button"
+              className={`prd-tab-btn ${activeTab === 'bonuses' ? 'active' : ''}`}
+              onClick={() => setActiveTab('bonuses')}
+            >
+              <span>Thưởng theo kỳ</span>
+              <span className="prd-tab-count">{bonuses.length}</span>
+            </button>
 
-          <button
-            type="button"
-            className={`prd-tab-btn ${activeTab === 'guide' ? 'active' : ''}`}
-            onClick={() => setActiveTab('guide')}
-          >
-            <span>Quy chế & công thức</span>
-          </button>
-        </div>
+            <button
+              type="button"
+              className={`prd-tab-btn ${activeTab === 'guide' ? 'active' : ''}`}
+              onClick={() => setActiveTab('guide')}
+            >
+              <span>Quy chế & công thức</span>
+            </button>
+          </div>
+        ) : (
+          <div className="prd-tabs" style={{ background: 'var(--surface-subtle)' }}>
+            <div style={{ padding: '10px 20px', fontSize: '13px', fontWeight: 600, color: 'var(--primary-color, #2563eb)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--primary-color, #2563eb)' }}></span>
+              <span>Cẩm Nang Quy Chế & Công Thức Tính Lương Chuỗi Cửa Hàng TechZone</span>
+            </div>
+          </div>
+        )}
 
         {/* Nội dung Tab - Scrollable Body */}
         <div className="modal-body prd-body">
