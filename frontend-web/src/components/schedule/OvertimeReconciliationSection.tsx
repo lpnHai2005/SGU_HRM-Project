@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { OvertimeReconciliation, OvertimeReconciliationStatus, OvertimeRequest } from '../../types'
 import { ApiHttpError, overtimeReconciliationApi } from '../../services/api'
+import { Icons } from '../common/Icons'
+import { toast } from 'sonner'
 
 type Props = { request: OvertimeRequest; user: { user_id?: number; employee_id?: number; store_id?: number; roles?: string[] }; highlightCaseId?: number }
 type ExceptionAction =
@@ -29,6 +31,12 @@ const executionMessages: Record<string, string> = {
   IN_PROGRESS: 'Nhân viên đang trong thời gian OT. Dữ liệu chấm công chưa hoàn tất; hệ thống sẽ chờ kết thúc khung OT.',
   ATTENDANCE_INCOMPLETE: 'Khung OT đã kết thúc nhưng dữ liệu Attendance chưa đầy đủ. Cần kiểm tra, chưa kết luận nhân viên vắng mặt.',
 }
+
+const MULTIPLIER_OPTIONS = [
+  { value: '1.5', label: 'Ngày làm việc bình thường', rate: '1,5×', desc: 'Tối thiểu 1,5× theo quy định pháp luật' },
+  { value: '2.0', label: 'Ngày nghỉ hằng tuần (Chủ nhật)', rate: '2,0×', desc: 'Tối thiểu 2,0× theo quy định pháp luật' },
+  { value: '3.0', label: 'Ngày lễ, Tết, ngày nghỉ hưởng lương', rate: '3,0×', desc: 'Tối thiểu 3,0× theo quy định pháp luật' },
+] as const
 
 const issueDetails: Record<string, { title: string; severity: string; reason: string; action: string; owner: string }> = {
   NO_ATTENDANCE: {
@@ -122,9 +130,22 @@ export function OvertimeReconciliationSection({ request, user, highlightCaseId }
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [rejecting, setRejecting] = useState(false)
+  const [verifying, setVerifying] = useState(false)
   const [reason, setReason] = useState('')
+  const [verifyNote, setVerifyNote] = useState('')
   const [exceptionAction, setExceptionAction] = useState<ExceptionAction | null>(null)
   const [exceptionText, setExceptionText] = useState('')
+  const [reopening, setReopening] = useState(false)
+  const [reopenReason, setReopenReason] = useState('')
+
+  const isSunday = useMemo(() => {
+    try {
+      return new Date(request.work_date).getDay() === 0
+    } catch {
+      return false
+    }
+  }, [request.work_date])
+  const [multiplier, setMultiplier] = useState<'1.5' | '2.0' | '3.0'>(isSunday ? '2.0' : '1.5')
 
   const reload = useCallback(async (): Promise<string | null> => {
     setLoading(true)
@@ -175,16 +196,21 @@ export function OvertimeReconciliationSection({ request, user, highlightCaseId }
       setResult(await action())
       setRefreshFailed(false)
       setNotice(success)
+      toast.success(success)
       setRejecting(false)
       setReason('')
+      setReopening(false)
+      setReopenReason('')
     } catch (err) {
+      const msg = errorMessage(err)
+      toast.error(msg)
       if (err instanceof ApiHttpError && err.status === 409) {
         const refreshError = await reload()
         setError(refreshError
-          ? `${errorMessage(err)} Không tải được dữ liệu mới nhất: ${refreshError}. Nội dung đang hiển thị có thể đã cũ; hãy thử tải lại trước khi quyết định.`
-          : `${errorMessage(err)} Dữ liệu mới nhất đã được tải lại; hãy kiểm tra trước khi xử lý tiếp.`)
+          ? `${msg} Không tải được dữ liệu mới nhất: ${refreshError}. Nội dung đang hiển thị có thể đã cũ; hãy thử tải lại trước khi quyết định.`
+          : `${msg} Dữ liệu mới nhất đã được tải lại; hãy kiểm tra trước khi xử lý tiếp.`)
       } else {
-        setError(errorMessage(err))
+        setError(msg)
       }
     } finally {
       setWorking(false)
@@ -297,7 +323,38 @@ export function OvertimeReconciliationSection({ request, user, highlightCaseId }
           <div><small>Giờ OT được HR duyệt</small><strong>{requestApproved ? hours(registeredMicroseconds) : 'Chưa duyệt'}</strong></div>
           <div><small>Attendance thực tế giao khung OT</small><strong>{hours(result.actual_microseconds)}</strong></div>
           <div><small>Giờ đề xuất sau đối soát</small><strong>{result.version ? hours(result.proposed_microseconds) : 'Chưa đối soát'}</strong></div>
-          <div><small>Giờ OT đã được HR xác nhận</small><strong>{result.effective_status === 'VERIFIED' ? hours(result.verified_microseconds) : 'Chưa có hiệu lực'}</strong></div>
+          <div>
+            <small>Giờ OT đã được HR xác nhận</small>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+              <strong>{result.effective_status === 'VERIFIED' ? hours(result.verified_microseconds) : 'Chưa có hiệu lực'}</strong>
+              {result.effective_status === 'VERIFIED' && (
+                <span
+                  style={{
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    padding: '2px 8px',
+                    borderRadius: '4px',
+                    backgroundColor: (result.decision_reason || '').includes('3.0') || (result.decision_reason || '').includes('3x')
+                      ? 'rgba(124, 58, 237, 0.15)'
+                      : (result.decision_reason || '').includes('2.0') || (result.decision_reason || '').includes('2x') || isSunday
+                      ? 'rgba(217, 119, 6, 0.15)'
+                      : 'rgba(37, 99, 235, 0.15)',
+                    color: (result.decision_reason || '').includes('3.0') || (result.decision_reason || '').includes('3x')
+                      ? '#7c3aed'
+                      : (result.decision_reason || '').includes('2.0') || (result.decision_reason || '').includes('2x') || isSunday
+                      ? '#b45309'
+                      : '#1d4ed8',
+                  }}
+                >
+                  Hệ số: {(result.decision_reason || '').includes('3.0') || (result.decision_reason || '').includes('3x')
+                    ? '3,0× (Lễ, Tết)'
+                    : (result.decision_reason || '').includes('2.0') || (result.decision_reason || '').includes('2x') || isSunday
+                    ? '2,0× (Nghỉ CN)'
+                    : '1,5× (Ngày thường)'}
+                </span>
+              )}
+            </div>
+          </div>
         </div>
         <div className="overtime-reconciliation-evidence">
           <h4>Nguồn Attendance</h4>
@@ -347,8 +404,200 @@ export function OvertimeReconciliationSection({ request, user, highlightCaseId }
         </div>}
         {canPreview && <div className="overtime-reconciliation-actions"><button type="button" className="btn btn-secondary btn-sm" disabled={working || loading || !result.reconciliation_window_open || ['OPEN', 'RESPONDED'].includes(explanationCase?.status || '')} title={!result.reconciliation_window_open ? 'Preview mở sau khi khung OT kết thúc.' : explanationCase && ['OPEN', 'RESPONDED'].includes(explanationCase.status) ? 'Đóng hồ sơ giải trình trước khi làm mới nguồn.' : undefined} onClick={() => void act(() => overtimeReconciliationApi.preview(request.request_id), result.version ? 'Đã kiểm tra lại nguồn đối soát.' : 'Đã tạo bản đối soát.')}>{working ? 'Đang xử lý…' : !result.reconciliation_window_open ? (result.execution_status === 'NOT_STARTED' ? 'Chưa đến giờ OT' : 'Đang trong thời gian OT') : result.version ? 'Làm mới đối soát' : 'Xem trước đối soát'}</button></div>}
         {canDecide && actionable && <div className="overtime-reconciliation-actions">
-          {explanationBlocksDecision ? <span className="ot-exception-inline-note" role="status">Đang chờ nhân viên giải trình; HR cần nhận phản hồi hoặc đóng hồ sơ thủ công.</span> : rejecting ? <div className="overtime-reconciliation-reject"><label className="form-group"><span className="form-label">Lý do từ chối đối soát</span><textarea className="form-input" rows={2} maxLength={1000} value={reason} onChange={event => setReason(event.target.value)} /></label><button type="button" className="btn btn-secondary btn-sm" disabled={working} onClick={() => setRejecting(false)}>Hủy</button><button type="button" className="btn btn-danger btn-sm" disabled={working || reason.trim().length < 3} onClick={() => void act(() => overtimeReconciliationApi.reject(request.request_id, result.version, reason.trim()), 'Đã từ chối kết quả đối soát.')}>Xác nhận từ chối</button></div> : <><button type="button" className="btn btn-secondary btn-sm" disabled={working} onClick={() => setRejecting(true)}>Từ chối đối soát</button><button type="button" className="btn btn-primary btn-sm" disabled={working || result.review_issues.length > 0 || result.proposed_microseconds <= 0} onClick={() => void act(() => overtimeReconciliationApi.verify(request.request_id, result.version), 'Đã xác nhận giờ OT thực tế; chưa đưa vào lương.')}>Xác minh OT</button></>}
+          {explanationBlocksDecision ? (
+            <span className="ot-exception-inline-note" role="status">Đang chờ nhân viên giải trình; HR cần nhận phản hồi hoặc đóng hồ sơ thủ công.</span>
+          ) : rejecting ? (
+            <div className="overtime-reconciliation-reject">
+              <label className="form-group">
+                <span className="form-label">Lý do từ chối đối soát</span>
+                <textarea className="form-input" rows={2} maxLength={1000} value={reason} onChange={event => setReason(event.target.value)} />
+              </label>
+              <button type="button" className="btn btn-secondary btn-sm" disabled={working} onClick={() => setRejecting(false)}>Hủy</button>
+              <button type="button" className="btn btn-danger btn-sm" disabled={working || reason.trim().length < 3} onClick={() => void act(() => overtimeReconciliationApi.reject(request.request_id, result.version, reason.trim()), 'Đã từ chối kết quả đối soát.')}>Xác nhận từ chối</button>
+            </div>
+          ) : verifying ? (
+            <div className="overtime-reconciliation-verify-form" style={{ width: '100%', padding: '14px 16px', background: 'var(--surface-subtle)', borderRadius: '10px', border: '1px solid var(--border-default)', marginTop: '8px' }}>
+              <div style={{ fontWeight: 600, fontSize: '13.5px', color: 'var(--text-primary)', marginBottom: '4px' }}>
+                Chọn hệ số tính lương làm thêm giờ (Bắt buộc)
+              </div>
+              <p style={{ margin: '0 0 12px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                Tiền lương OT = Số giờ làm thêm thực tế hợp lệ × Tiền lương giờ thực trả × Hệ số tương ứng theo quy định pháp luật.
+              </p>
+
+              <div style={{ display: 'grid', gap: '8px', marginBottom: '12px' }}>
+                {MULTIPLIER_OPTIONS.map(opt => (
+                  <label
+                    key={opt.value}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      padding: '9px 12px',
+                      borderRadius: '8px',
+                      border: `1.5px solid ${multiplier === opt.value ? 'var(--primary-color, #2563eb)' : 'var(--border-default)'}`,
+                      background: multiplier === opt.value ? 'rgba(37, 99, 235, 0.05)' : 'var(--surface-card)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="ot_multiplier"
+                      value={opt.value}
+                      checked={multiplier === opt.value}
+                      onChange={() => setMultiplier(opt.value)}
+                      style={{ accentColor: 'var(--primary-color, #2563eb)', cursor: 'pointer' }}
+                    />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <strong style={{ fontSize: '13px', color: 'var(--text-primary)' }}>{opt.label}</strong>
+                        <span
+                          style={{
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            padding: '1px 6px',
+                            borderRadius: '4px',
+                            backgroundColor: opt.value === '3.0' ? 'rgba(124, 58, 237, 0.12)' : opt.value === '2.0' ? 'rgba(217, 119, 6, 0.12)' : 'rgba(37, 99, 235, 0.12)',
+                            color: opt.value === '3.0' ? '#7c3aed' : opt.value === '2.0' ? '#d97706' : '#2563eb',
+                          }}
+                        >
+                          {opt.rate}
+                        </span>
+                      </div>
+                      <small style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>{opt.desc}</small>
+                    </div>
+                  </label>
+                ))}
+              </div>
+
+              <label className="form-group" style={{ marginBottom: '12px' }}>
+                <span className="form-label" style={{ fontSize: '12px' }}>Ghi chú thẩm định đối soát (không bắt buộc)</span>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="Nhập ghi chú hoặc căn cứ đối soát (nếu có)..."
+                  value={verifyNote}
+                  onChange={e => setVerifyNote(e.target.value)}
+                  maxLength={500}
+                />
+              </label>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={working}
+                  onClick={() => { setVerifying(false); setVerifyNote(''); }}
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  disabled={working || !multiplier}
+                  onClick={() => {
+                    const selectedOpt = MULTIPLIER_OPTIONS.find(o => o.value === multiplier);
+                    const reasonPayload = `[Hệ số: ${multiplier}x - ${selectedOpt?.label || 'OT'}]${verifyNote.trim() ? ` ${verifyNote.trim()}` : ''}`;
+                    void act(
+                      () => overtimeReconciliationApi.verify(request.request_id, result.version, reasonPayload),
+                      `Đã xác nhận giờ OT thực tế với hệ số ${multiplier}×.`
+                    );
+                    setVerifying(false);
+                  }}
+                >
+                  {working ? 'Đang lưu…' : `Xác nhận giờ OT (Hệ số ${multiplier}×)`}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                disabled={working}
+                onClick={() => setRejecting(true)}
+              >
+                Từ chối đối soát
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                disabled={working || result.review_issues.length > 0 || result.proposed_microseconds <= 0}
+                onClick={() => setVerifying(true)}
+              >
+                Xác minh OT
+              </button>
+            </>
+          )}
         </div>}
+
+        {canDecide && ['VERIFIED', 'REJECTED'].includes(result.status) && (
+          <div className="overtime-reconciliation-actions" style={{ marginTop: '12px', borderTop: '1px dashed var(--border-default)', paddingTop: '12px' }}>
+            {reopening ? (
+              <div className="overtime-reconciliation-reopen-form" style={{ width: '100%', padding: '14px 16px', background: 'var(--surface-subtle)', borderRadius: '10px', border: '1px solid var(--border-default)' }}>
+                <div style={{ fontWeight: 600, fontSize: '13.5px', color: 'var(--color-warning, #d97706)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  {Icons.undo || Icons.refresh} Hoàn tác kết quả đối soát OT
+                </div>
+                <p style={{ margin: '0 0 10px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  Thao tác này sẽ mở lại trạng thái đối soát (chuyển về chờ đối soát / rà soát lại). 
+                  Chỉ được phép khi Kỳ công/Bảng lương tháng này <strong>CHƯA chốt (Draft/Open)</strong>. 
+                  Nếu bảng lương đã chốt (CONFIRMED/PAID), hệ thống sẽ khóa dữ liệu để bảo đảm tính toàn vẹn báo cáo kế toán.
+                </p>
+                <label className="form-group" style={{ marginBottom: '10px' }}>
+                  <span className="form-label">Lý do hoàn tác (Bắt buộc, tối thiểu 3 ký tự)</span>
+                  <textarea
+                    className="form-input"
+                    rows={2}
+                    maxLength={1000}
+                    placeholder="Ví dụ: Phát hiện sai lệch dữ liệu chấm công, cần đối chiếu lại ca làm việc hoặc điều chỉnh hệ số OT..."
+                    value={reopenReason}
+                    onChange={e => setReopenReason(e.target.value)}
+                  />
+                </label>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    disabled={working}
+                    onClick={() => { setReopening(false); setReopenReason(''); }}
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-warning btn-sm"
+                    style={{ backgroundColor: '#d97706', color: '#fff', borderColor: '#d97706' }}
+                    disabled={working || reopenReason.trim().length < 3}
+                    onClick={() => {
+                      void act(
+                        () => overtimeReconciliationApi.reopen(request.request_id, result.version, reopenReason.trim()),
+                        'Đã hoàn tác kết quả đối soát OT thành công; hồ sơ đã được mở lại để kiểm tra/xác minh lại.'
+                      )
+                    }}
+                  >
+                    {working ? 'Đang hoàn tác…' : 'Xác nhận hoàn tác đối soát'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', flexWrap: 'wrap', gap: 8 }}>
+                <small style={{ color: 'var(--text-secondary)' }}>
+                  {result.status === 'VERIFIED'
+                    ? 'Đơn đã được xác nhận giờ OT hợp lệ. Cần điều chỉnh lại hoặc phát hiện sai sót?'
+                    : 'Đơn đã bị từ chối đối soát. Cần xem xét lại dữ liệu ca hoặc hệ số?'}
+                </small>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={working}
+                  onClick={() => { setReopening(true); setReopenReason(''); }}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                >
+                  {Icons.undo} Hoàn tác đối soát
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </>}
   </section>
 }

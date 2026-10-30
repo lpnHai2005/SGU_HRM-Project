@@ -549,6 +549,23 @@ svg:not([width]) {
   border-color: var(--border-strong);
 }
 
+.stat-card.is-clickable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.stat-card.is-clickable:hover {
+  border-color: var(--primary-color, #2563eb);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.stat-card.is-active {
+  border-color: var(--primary-color, #2563eb);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25);
+  background-color: var(--surface-subtle);
+}
+
 /* Shared KPI hover treatment, based on the Store Management KPI cards. */
 .kpi-hover-grid > *,
 .kpi-hover-card {

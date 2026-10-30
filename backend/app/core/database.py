@@ -4,13 +4,17 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from sqlalchemy.orm import declarative_base, sessionmaker
 from app.core.config import settings
 
+# Giữ pool nhỏ vì session pooler Supabase giới hạn client dùng chung cho
+# cùng database/role. Mỗi process tối đa 3 async + 1 sync connection;
+# không cho overflow tạo thêm client khi tải tăng đột biến.
 # 1. Async Engine kết nối Supabase PostgreSQL qua pooler cổng 5432
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=False,
     future=True,
-    pool_size=5,
-    max_overflow=5,
+    pool_size=3,
+    max_overflow=0,
+    pool_timeout=15,
     pool_recycle=300,
     pool_pre_ping=True
 )
@@ -30,7 +34,10 @@ sync_engine = None
 if settings.SYNC_DATABASE_URL:
     sync_engine = create_engine(
         settings.SYNC_DATABASE_URL,
-        pool_size=3,
+        pool_size=1,
+        max_overflow=0,
+        pool_timeout=15,
+        pool_recycle=300,
         pool_pre_ping=True
     )
 

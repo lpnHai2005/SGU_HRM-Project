@@ -458,18 +458,28 @@ async def list_requests(status: str | None = Query(default=None), employee_id: i
         params.update(date_from=date_from, date_to=date_to)
     await _require_overtime_schema(db)
     results = [dict(r) for r in (await db.execute(text("""SELECT o.*,e.full_name AS employee_name,e.employee_code,s.store_name,
-        creator.username AS creator_username,reviewer.username AS reviewer_username
+        creator.username AS creator_username,reviewer.username AS reviewer_username,
+        rec.status AS reconciliation_status,
+        rec.verified_microseconds,
+        rec.decision_reason AS reconciliation_reason,
+        rec.reviewed_at AS reconciliation_reviewed_at
         FROM overtime_requests o JOIN employees e ON e.employee_id=o.employee_id
         JOIN stores s ON s.store_id=o.store_id
         JOIN users creator ON creator.user_id=o.created_by
         LEFT JOIN users reviewer ON reviewer.user_id=o.reviewed_by
+        LEFT JOIN public.overtime_reconciliations rec ON rec.request_id=o.request_id
         WHERE """ + " AND ".join(where) + " ORDER BY o.work_date DESC,o.request_id DESC LIMIT :limit OFFSET :offset"), params)).mappings().all()]
     for result in results:
         for key in ("starts_at", "ends_at", "employee_confirmed_at", "employee_responded_at",
                     "reviewed_at", "cancelled_at", "created_at", "updated_at",
-                    "revoke_requested_at", "revoke_decided_at", "revoked_at"):
+                    "revoke_requested_at", "revoke_decided_at", "revoked_at",
+                    "reconciliation_reviewed_at"):
             if result.get(key) is not None:
                 result[key] = result[key].astimezone(VIETNAM_TZ)
+        if result.get("verified_microseconds") is not None:
+            result["verified_hours"] = round(float(result["verified_microseconds"]) / 3_600_000_000, 2)
+        else:
+            result["verified_hours"] = None
         result.update(_overdue_summary(result))
     return results
 
@@ -530,6 +540,28 @@ async def get_request(request_id: int, user=Depends(get_current_user), db: Async
         "blocking_attendance_id": attendance["attendance_id"] if attendance else None,
         "revocation_pending": pending_revoke,
     }
+
+    rec = (await db.execute(text("""
+        SELECT status AS reconciliation_status, verified_microseconds,
+               decision_reason AS reconciliation_reason, reviewed_at AS reconciliation_reviewed_at
+        FROM public.overtime_reconciliations WHERE request_id=:id
+    """), {"id": request_id})).mappings().first()
+    if rec:
+        rec_dict = dict(rec)
+        if rec_dict.get("reconciliation_reviewed_at") is not None:
+            rec_dict["reconciliation_reviewed_at"] = rec_dict["reconciliation_reviewed_at"].astimezone(VIETNAM_TZ)
+        if rec_dict.get("verified_microseconds") is not None:
+            rec_dict["verified_hours"] = round(float(rec_dict["verified_microseconds"]) / 3_600_000_000, 2)
+        else:
+            rec_dict["verified_hours"] = None
+        row.update(rec_dict)
+    else:
+        row["reconciliation_status"] = None
+        row["verified_microseconds"] = None
+        row["verified_hours"] = None
+        row["reconciliation_reason"] = None
+        row["reconciliation_reviewed_at"] = None
+
     return row
 
 

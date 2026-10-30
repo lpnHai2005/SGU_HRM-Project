@@ -446,6 +446,8 @@ export const overtimeReconciliationApi = {
     api.post(`/overtime-reconciliations/${requestId}/verify`, { expected_version, reason }),
   reject: (requestId: number, expected_version: number, reason: string): Promise<OvertimeReconciliation> =>
     api.post(`/overtime-reconciliations/${requestId}/reject`, { expected_version, reason }),
+  reopen: (requestId: number, expected_version: number, reason: string): Promise<OvertimeReconciliation> =>
+    api.post(`/overtime-reconciliations/${requestId}/reopen`, { expected_version, reason }),
   requestExplanation: (requestId: number, expected_version: number, reason: string): Promise<OvertimeReconciliationCase> =>
     api.post(`/overtime-reconciliations/${requestId}/explanation-requests`, { expected_version, reason }),
   respondToExplanation: (requestId: number, caseId: number, expected_case_version: number, response: string): Promise<OvertimeReconciliationCase> =>

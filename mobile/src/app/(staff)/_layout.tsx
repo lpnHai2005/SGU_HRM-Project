@@ -78,7 +78,7 @@ export default function StaffTabs() {
         name="requests"
         options={{
           title: 'Đơn từ',
-          headerTitle: 'Quản lý nghỉ phép & Đơn từ',
+          headerTitle: 'Quản lý Đơn & Tăng ca (OT)',
           tabBarIcon: icon("document-text-outline"),
         }}
       />
