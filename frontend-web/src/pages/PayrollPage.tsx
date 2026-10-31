@@ -612,6 +612,26 @@ export function PayrollPage({ user }: PayrollPageProps) {
     }
   }
 
+  // 9. Export Annual Excel
+  const handleExportAnnualExcel = async () => {
+    try {
+      const empId = selectedAnnualEmployeeId || selectedPayroll?.employee_id || user?.employee_id
+      const blob = await payrollApi.exportAnnualExcel(selectedYear, empId || undefined)
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const empCode = annualData?.employee?.employee_code || (empId ? `NV${empId}` : 'Toan_Chuoi')
+      a.download = `Bang_Luong_Nam_${selectedYear}_${empCode}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+      setFeedbackMessage({ type: 'success', text: `✓ Đã xuất file Excel bảng lương năm ${selectedYear} thành công!` })
+    } catch (err: any) {
+      setFeedbackMessage({ type: 'error', text: `Lỗi xuất file Excel năm: ${err.message}` })
+    }
+  }
+
   // Filtered payrolls
   const filteredPayrolls = useMemo(() => {
     return payrolls.filter(p => {
@@ -1532,15 +1552,27 @@ export function PayrollPage({ user }: PayrollPageProps) {
               )}
             </div>
 
-            {/* Print Annual Sheet Button */}
-            <button
-              className="btn btn-primary"
-              onClick={() => handleOpenAnnualPrint(selectedAnnualEmployeeId || selectedPayroll?.employee_id || user?.employee_id)}
-              disabled={annualLoading || !annualData || !(selectedAnnualEmployeeId || selectedPayroll?.employee_id || user?.employee_id)}
-            >
-              {Icons.printer}
-              In Bảng Lương Năm (PDF)
-            </button>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <button
+                className="btn btn-secondary"
+                onClick={handleExportAnnualExcel}
+                disabled={annualLoading || !annualData}
+                title="Xuất bảng tổng hợp thu nhập năm ra file Excel"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+              >
+                {Icons.fileText}
+                Xuất Excel Năm
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={() => handleOpenAnnualPrint(selectedAnnualEmployeeId || selectedPayroll?.employee_id || user?.employee_id)}
+                disabled={annualLoading || !annualData || !(selectedAnnualEmployeeId || selectedPayroll?.employee_id || user?.employee_id)}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+              >
+                {Icons.printer}
+                In Bảng Lương Năm (PDF)
+              </button>
+            </div>
           </div>
 
           {annualLoading ? (
