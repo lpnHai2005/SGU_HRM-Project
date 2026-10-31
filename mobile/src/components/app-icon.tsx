@@ -13,7 +13,7 @@ export function AppIcon({ size, style, color, ...props }: ComponentProps<typeof 
   const iconStyle = { ...appearance };
   delete iconStyle.fontFamily;
   delete iconStyle.fontWeight;
-  return <Ionicons {...props} size={iconSize} color={color ?? appearance?.color ?? (dark ? '#94a3b8' : '#64748b')}
+  return <Ionicons {...props} size={iconSize} color={color ?? (appearance?.color as string | undefined) ?? (dark ? '#94a3b8' : '#64748b')}
     accessible={false} style={[iconStyle, { fontSize: iconSize, lineHeight: iconSize + 4, includeFontPadding: false, textAlign: 'center', flexShrink: 0 }]} />;
 }
 
