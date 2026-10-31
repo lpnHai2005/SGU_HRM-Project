@@ -1242,3 +1242,432 @@ async def export_overview_excel(
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
+
+# ===================================================================================
+# 6. BÁO CÁO MA TRẬN ĐA CHIỀU (CROSS-TAB MATRIX REPORTS THEO QUÝ / NĂM / ĐỐI TƯỢNG)
+# Phục vụ thiết kế Main-Subform: Bảng ma trận Master -> Click hiển thị Subform Detail
+# ===================================================================================
+
+@router.get("/matrix/quarterly-payroll", summary="Thống kê ma trận chi phí lương và quỹ thưởng theo Quý & Năm")
+async def get_quarterly_payroll_matrix(
+    year: int = Query(2026, description="Năm thống kê"),
+    store_id: Optional[int] = Query(None, description="Lọc theo cửa hàng"),
+    current_user: dict = Depends(require_strict_roles(["DIRECTOR", "HR_MANAGER"])),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Thống kê ma trận chi phí theo chuẩn kế toán doanh nghiệp TechZone:
+    - 4 Quý (Q1, Q2, Q3, Q4) và Tổng năm (Cả năm)
+    - Chỉ số: Tổng Gross, Lương HĐ cơ bản, Thưởng & Phụ cấp, Giảm trừ BHXH/BHYT, Thuế TNCN, Thực lĩnh Net
+    - Kèm danh sách chi tiết N chứng từ theo từng quý phục vụ Subform
+    """
+    roles = current_user.get("roles", [])
+    if "STORE_MANAGER" in roles and not set(roles).intersection({"ADMIN", "HR_MANAGER", "DIRECTOR"}):
+        user_store_id = current_user.get("store_id")
+        if not user_store_id:
+            raise HTTPException(403, "Tài khoản chưa được gán cửa hàng.")
+        store_id = user_store_id
+
+    quarter_months = {
+        "Q1": [f"{year}-01", f"{year}-02", f"{year}-03"],
+        "Q2": [f"{year}-04", f"{year}-05", f"{year}-06"],
+        "Q3": [f"{year}-07", f"{year}-08", f"{year}-09"],
+        "Q4": [f"{year}-10", f"{year}-11", f"{year}-12"],
+    }
+
+    params = {"year": str(year)}
+    store_filter = ""
+    if store_id:
+        params["store_id"] = store_id
+        store_filter = " AND e.store_id = :store_id"
+
+    # Lấy toàn bộ bản ghi bảng lương trong năm
+    query = text(f"""
+        SELECT p.payroll_id, p.employee_id, e.employee_code, e.full_name as employee_name,
+               e.store_id, COALESCE(s.store_name, 'Văn phòng chính') as store_name,
+               pos.position_name, p.salary_period,
+               COALESCE(p.contract_salary, 0) as contract_salary,
+               COALESCE(p.total_allowances, 0) as total_allowances,
+               COALESCE(p.total_bonuses, 0) as total_bonuses,
+               COALESCE(p.total_insurance, 0) as total_insurance,
+               COALESCE(p.total_deductions, 0) as total_deductions,
+               COALESCE(p.gross_income, 0) as gross_income,
+               COALESCE(p.net_salary, 0) as net_salary,
+               p.payment_status, p.payment_date,
+               p.actual_working_days
+        FROM payrolls p
+        JOIN employees e ON p.employee_id = e.employee_id
+        LEFT JOIN stores s ON e.store_id = s.store_id
+        LEFT JOIN positions pos ON e.position_id = pos.position_id
+        WHERE p.salary_period LIKE :year || '-%' {store_filter}
+        ORDER BY p.salary_period ASC, e.employee_id ASC;
+    """)
+
+    res = await db.execute(query, params)
+    all_payrolls = [dict(r) for r in res.mappings().all()]
+
+    # Phân nhóm theo Quý
+    quarter_data = {"Q1": [], "Q2": [], "Q3": [], "Q4": []}
+    for pr in all_payrolls:
+        sp = pr.get("salary_period", "")
+        for q, months in quarter_months.items():
+            if sp in months:
+                pr_copy = dict(pr)
+                pr_copy["quarter"] = q
+                quarter_data[q].append(pr_copy)
+                break
+
+    def calc_metrics(rows):
+        total_gross = sum(float(r["gross_income"] or 0) for r in rows)
+        basic_salary = sum(float(r["contract_salary"] or 0) for r in rows)
+        allowances = sum(float(r["total_allowances"] or 0) for r in rows)
+        bonuses = sum(float(r["total_bonuses"] or 0) for r in rows)
+        insurance = sum(float(r["total_insurance"] or 0) for r in rows)
+        deductions = sum(float(r["total_deductions"] or 0) for r in rows)
+        net_salary = sum(float(r["net_salary"] or 0) for r in rows)
+        unique_emps = len(set(r["employee_id"] for r in rows))
+        return {
+            "record_count": len(rows),
+            "employee_count": unique_emps,
+            "total_gross": total_gross,
+            "basic_salary": basic_salary,
+            "allowances": allowances,
+            "bonuses": bonuses,
+            "insurance": insurance,
+            "deductions": deductions,
+            "net_salary": net_salary
+        }
+
+    q1_metrics = calc_metrics(quarter_data["Q1"])
+    q2_metrics = calc_metrics(quarter_data["Q2"])
+    q3_metrics = calc_metrics(quarter_data["Q3"])
+    q4_metrics = calc_metrics(quarter_data["Q4"])
+    year_metrics = calc_metrics(all_payrolls)
+
+    # Cấu trúc Bảng ma trận tài chính (Matrix Table)
+    indicators = [
+        {
+            "code": "gross",
+            "name": "1. Tổng chi phí lương (Gross)",
+            "is_header": True,
+            "q1": q1_metrics["total_gross"],
+            "q2": q2_metrics["total_gross"],
+            "q3": q3_metrics["total_gross"],
+            "q4": q4_metrics["total_gross"],
+            "total": year_metrics["total_gross"]
+        },
+        {
+            "code": "basic_salary",
+            "name": "   • Lương thỏa thuận hợp đồng",
+            "is_sub": True,
+            "q1": q1_metrics["basic_salary"],
+            "q2": q2_metrics["basic_salary"],
+            "q3": q3_metrics["basic_salary"],
+            "q4": q4_metrics["basic_salary"],
+            "total": year_metrics["basic_salary"]
+        },
+        {
+            "code": "bonuses",
+            "name": "   • Tiền thưởng (KPI, hiệu suất, doanh số)",
+            "is_sub": True,
+            "q1": q1_metrics["bonuses"],
+            "q2": q2_metrics["bonuses"],
+            "q3": q3_metrics["bonuses"],
+            "q4": q4_metrics["bonuses"],
+            "total": year_metrics["bonuses"]
+        },
+        {
+            "code": "allowances",
+            "name": "   • Các khoản phụ cấp trách nhiệm/ăn trưa",
+            "is_sub": True,
+            "q1": q1_metrics["allowances"],
+            "q2": q2_metrics["allowances"],
+            "q3": q3_metrics["allowances"],
+            "q4": q4_metrics["allowances"],
+            "total": year_metrics["allowances"]
+        },
+        {
+            "code": "insurance",
+            "name": "2. Trích nộp bảo hiểm (BHXH, BHYT, BHTN)",
+            "is_header": False,
+            "q1": q1_metrics["insurance"],
+            "q2": q2_metrics["insurance"],
+            "q3": q3_metrics["insurance"],
+            "q4": q4_metrics["insurance"],
+            "total": year_metrics["insurance"]
+        },
+        {
+            "code": "deductions",
+            "name": "3. Các khoản giảm trừ khác (Kỷ luật, tạm ứng)",
+            "is_header": False,
+            "q1": q1_metrics["deductions"],
+            "q2": q2_metrics["deductions"],
+            "q3": q3_metrics["deductions"],
+            "q4": q4_metrics["deductions"],
+            "total": year_metrics["deductions"]
+        },
+        {
+            "code": "net",
+            "name": "4. TỔNG THỰC LĨNH CHI TRẢ (NET)",
+            "is_highlight": True,
+            "q1": q1_metrics["net_salary"],
+            "q2": q2_metrics["net_salary"],
+            "q3": q3_metrics["net_salary"],
+            "q4": q4_metrics["net_salary"],
+            "total": year_metrics["net_salary"]
+        },
+        {
+            "code": "employee_count",
+            "name": "5. Số lượng nhân sự nhận lương",
+            "is_count": True,
+            "q1": q1_metrics["employee_count"],
+            "q2": q2_metrics["employee_count"],
+            "q3": q3_metrics["employee_count"],
+            "q4": q4_metrics["employee_count"],
+            "total": year_metrics["employee_count"]
+        }
+    ]
+
+    return {
+        "year": year,
+        "store_id": store_id,
+        "indicators": indicators,
+        "quarter_details": {
+            "Q1": quarter_data["Q1"],
+            "Q2": quarter_data["Q2"],
+            "Q3": quarter_data["Q3"],
+            "Q4": quarter_data["Q4"],
+            "ALL": all_payrolls
+        }
+    }
+
+
+@router.get("/matrix/by-store", summary="Thống kê ma trận chi phí lương theo Chi nhánh và 4 Quý")
+async def get_payroll_matrix_by_store(
+    year: int = Query(2026, description="Năm thống kê"),
+    current_user: dict = Depends(require_strict_roles(["DIRECTOR", "HR_MANAGER"])),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Ma trận chi phí quỹ lương theo Chi nhánh cửa hàng x 4 Quý trong năm
+    Bấm vào từng chi nhánh hoặc ô số liệu để hiển thị Subform nhân sự của chi nhánh đó
+    """
+    quarter_months = {
+        "Q1": [f"{year}-01", f"{year}-02", f"{year}-03"],
+        "Q2": [f"{year}-04", f"{year}-05", f"{year}-06"],
+        "Q3": [f"{year}-07", f"{year}-08", f"{year}-09"],
+        "Q4": [f"{year}-10", f"{year}-11", f"{year}-12"],
+    }
+
+    # Lấy danh sách cửa hàng
+    stores_res = await db.execute(text("SELECT store_id, store_name, store_code FROM stores ORDER BY store_id ASC;"))
+    stores_list = [dict(s) for s in stores_res.mappings().all()]
+
+    # Lấy dữ liệu payroll trong năm
+    payroll_res = await db.execute(text("""
+        SELECT p.payroll_id, p.employee_id, e.employee_code, e.full_name as employee_name,
+               COALESCE(e.store_id, 0) as store_id,
+               COALESCE(s.store_name, 'Văn phòng chính') as store_name,
+               p.salary_period,
+               COALESCE(p.contract_salary, 0) as contract_salary,
+               COALESCE(p.gross_income, 0) as gross_income,
+               COALESCE(p.net_salary, 0) as net_salary,
+               p.actual_working_days
+        FROM payrolls p
+        JOIN employees e ON p.employee_id = e.employee_id
+        LEFT JOIN stores s ON e.store_id = s.store_id
+        WHERE p.salary_period LIKE :year || '-%'
+    """), {"year": str(year)})
+    payrolls = [dict(r) for r in payroll_res.mappings().all()]
+
+    # Map payroll theo store_id và quarter
+    store_map = {}
+    for st in stores_list:
+        sid = st["store_id"]
+        store_map[sid] = {
+            "store_id": sid,
+            "store_name": st["store_name"],
+            "store_code": st.get("store_code", ""),
+            "q1_net": 0, "q2_net": 0, "q3_net": 0, "q4_net": 0, "total_net": 0,
+            "q1_gross": 0, "q2_gross": 0, "q3_gross": 0, "q4_gross": 0, "total_gross": 0,
+            "employee_count": set(),
+            "details": []
+        }
+
+    # Thêm văn phòng chính nếu có nhân viên không thuộc store nào
+    store_map[0] = {
+        "store_id": 0,
+        "store_name": "Văn phòng chính",
+        "store_code": "HQ",
+        "q1_net": 0, "q2_net": 0, "q3_net": 0, "q4_net": 0, "total_net": 0,
+        "q1_gross": 0, "q2_gross": 0, "q3_gross": 0, "q4_gross": 0, "total_gross": 0,
+        "employee_count": set(),
+        "details": []
+    }
+
+    for pr in payrolls:
+        sid = pr.get("store_id") or 0
+        if sid not in store_map:
+            store_map[sid] = {
+                "store_id": sid,
+                "store_name": pr.get("store_name", "Khác"),
+                "store_code": "",
+                "q1_net": 0, "q2_net": 0, "q3_net": 0, "q4_net": 0, "total_net": 0,
+                "q1_gross": 0, "q2_gross": 0, "q3_gross": 0, "q4_gross": 0, "total_gross": 0,
+                "employee_count": set(),
+                "details": []
+            }
+        
+        sp = pr.get("salary_period", "")
+        net = float(pr.get("net_salary") or 0)
+        gross = float(pr.get("gross_income") or 0)
+        store_map[sid]["employee_count"].add(pr["employee_id"])
+        store_map[sid]["total_net"] += net
+        store_map[sid]["total_gross"] += gross
+        store_map[sid]["details"].append(pr)
+
+        if sp in quarter_months["Q1"]:
+            store_map[sid]["q1_net"] += net
+            store_map[sid]["q1_gross"] += gross
+        elif sp in quarter_months["Q2"]:
+            store_map[sid]["q2_net"] += net
+            store_map[sid]["q2_gross"] += gross
+        elif sp in quarter_months["Q3"]:
+            store_map[sid]["q3_net"] += net
+            store_map[sid]["q3_gross"] += gross
+        elif sp in quarter_months["Q4"]:
+            store_map[sid]["q4_net"] += net
+            store_map[sid]["q4_gross"] += gross
+
+    rows = []
+    for sid, data in store_map.items():
+        if data["total_gross"] > 0 or sid != 0:
+            rows.append({
+                "store_id": sid,
+                "store_name": data["store_name"],
+                "store_code": data["store_code"],
+                "q1_net": data["q1_net"],
+                "q2_net": data["q2_net"],
+                "q3_net": data["q3_net"],
+                "q4_net": data["q4_net"],
+                "total_net": data["total_net"],
+                "total_gross": data["total_gross"],
+                "employee_count": len(data["employee_count"]),
+                "details": data["details"]
+            })
+
+    rows.sort(key=lambda x: x["total_net"], reverse=True)
+
+    totals = {
+        "q1_net": sum(r["q1_net"] for r in rows),
+        "q2_net": sum(r["q2_net"] for r in rows),
+        "q3_net": sum(r["q3_net"] for r in rows),
+        "q4_net": sum(r["q4_net"] for r in rows),
+        "total_net": sum(r["total_net"] for r in rows),
+        "total_gross": sum(r["total_gross"] for r in rows),
+        "employee_count": sum(r["employee_count"] for r in rows),
+    }
+
+    return {
+        "year": year,
+        "rows": rows,
+        "totals": totals
+    }
+
+
+@router.get("/matrix/by-employee", summary="Thống kê ma trận thu nhập theo từng Nhân viên và 4 Quý")
+async def get_payroll_matrix_by_employee(
+    year: int = Query(2026, description="Năm thống kê"),
+    store_id: Optional[int] = Query(None, description="Lọc theo cửa hàng"),
+    current_user: dict = Depends(require_strict_roles(["DIRECTOR", "HR_MANAGER"])),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Ma trận thu nhập theo từng Nhân viên x 4 Quý trong năm
+    Bấm vào từng nhân sự để xem lịch sử phiếu lương ở Subform bên cạnh
+    """
+    quarter_months = {
+        "Q1": [f"{year}-01", f"{year}-02", f"{year}-03"],
+        "Q2": [f"{year}-04", f"{year}-05", f"{year}-06"],
+        "Q3": [f"{year}-07", f"{year}-08", f"{year}-09"],
+        "Q4": [f"{year}-10", f"{year}-11", f"{year}-12"],
+    }
+
+    params = {"year": str(year)}
+    store_filter = ""
+    if store_id:
+        params["store_id"] = store_id
+        store_filter = " AND e.store_id = :store_id"
+
+    res = await db.execute(text(f"""
+        SELECT p.payroll_id, p.employee_id, e.employee_code, e.full_name as employee_name,
+               COALESCE(s.store_name, 'Văn phòng chính') as store_name,
+               COALESCE(pos.position_name, 'Nhân viên') as position_name,
+               p.salary_period,
+               COALESCE(p.contract_salary, 0) as contract_salary,
+               COALESCE(p.gross_income, 0) as gross_income,
+               COALESCE(p.net_salary, 0) as net_salary,
+               p.payment_status, p.payment_date, p.actual_working_days
+        FROM payrolls p
+        JOIN employees e ON p.employee_id = e.employee_id
+        LEFT JOIN stores s ON e.store_id = s.store_id
+        LEFT JOIN positions pos ON e.position_id = pos.position_id
+        WHERE p.salary_period LIKE :year || '-%' {store_filter}
+        ORDER BY e.employee_id ASC, p.salary_period ASC;
+    """), params)
+
+    payrolls = [dict(r) for r in res.mappings().all()]
+    emp_map = {}
+
+    for pr in payrolls:
+        eid = pr["employee_id"]
+        if eid not in emp_map:
+            emp_map[eid] = {
+                "employee_id": eid,
+                "employee_code": pr["employee_code"],
+                "employee_name": pr["employee_name"],
+                "store_name": pr["store_name"],
+                "position_name": pr["position_name"],
+                "q1_net": 0, "q2_net": 0, "q3_net": 0, "q4_net": 0, "total_net": 0,
+                "total_gross": 0,
+                "paid_months": 0,
+                "payrolls": []
+            }
+        
+        sp = pr.get("salary_period", "")
+        net = float(pr.get("net_salary") or 0)
+        gross = float(pr.get("gross_income") or 0)
+        emp_map[eid]["total_net"] += net
+        emp_map[eid]["total_gross"] += gross
+        emp_map[eid]["paid_months"] += 1
+        emp_map[eid]["payrolls"].append(pr)
+
+        if sp in quarter_months["Q1"]:
+            emp_map[eid]["q1_net"] += net
+        elif sp in quarter_months["Q2"]:
+            emp_map[eid]["q2_net"] += net
+        elif sp in quarter_months["Q3"]:
+            emp_map[eid]["q3_net"] += net
+        elif sp in quarter_months["Q4"]:
+            emp_map[eid]["q4_net"] += net
+
+    emp_list = list(emp_map.values())
+    emp_list.sort(key=lambda x: x["total_net"], reverse=True)
+
+    totals = {
+        "q1_net": sum(e["q1_net"] for e in emp_list),
+        "q2_net": sum(e["q2_net"] for e in emp_list),
+        "q3_net": sum(e["q3_net"] for e in emp_list),
+        "q4_net": sum(e["q4_net"] for e in emp_list),
+        "total_net": sum(e["total_net"] for e in emp_list),
+        "total_gross": sum(e["total_gross"] for e in emp_list),
+        "employee_count": len(emp_list)
+    }
+
+    return {
+        "year": year,
+        "rows": emp_list,
+        "totals": totals
+    }
+
+

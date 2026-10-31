@@ -1025,6 +1025,22 @@ export const reportApi = {
     const params = period ? `?period=${period}` : '';
     return `${API_BASE_URL}/reports/export/payroll-summary/excel${params}`;
   },
+
+  getQuarterlyPayrollMatrix: async (year: number = 2026, storeId?: number): Promise<any> => {
+    const params: Record<string, any> = { year };
+    if (storeId) params.store_id = storeId;
+    return api.get('/reports/matrix/quarterly-payroll', params);
+  },
+
+  getPayrollMatrixByStore: async (year: number = 2026): Promise<any> => {
+    return api.get('/reports/matrix/by-store', { year });
+  },
+
+  getPayrollMatrixByEmployee: async (year: number = 2026, storeId?: number): Promise<any> => {
+    const params: Record<string, any> = { year };
+    if (storeId) params.store_id = storeId;
+    return api.get('/reports/matrix/by-employee', params);
+  },
 };
 
 export const storeApi = {
