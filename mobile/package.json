@@ -52,5 +52,10 @@
     "web": "expo start --web",
     "lint": "expo lint"
   },
-  "private": true
+  "private": true,
+  "overrides": {
+    "@expo/ws-tunnel": {
+      "ws": "^8.18.0"
+    }
+  }
 }
