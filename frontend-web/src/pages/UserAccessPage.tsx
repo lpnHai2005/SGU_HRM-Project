@@ -6,8 +6,44 @@ import { useAuth } from '../contexts/AuthContext'
 import { formatDateTime, getInitials } from '../utils/formatters'
 import { Icons } from '../components/common/Icons'
 import { EmployeeSearchSelect } from '../components/common/EmployeeSearchSelect'
-import { Pencil, KeyRound, Lock, Unlock, Trash2 } from 'lucide-react'
+import { Pencil, KeyRound, Lock, Unlock, Trash2, Filter, X } from 'lucide-react'
+import {
+  AdvancedSearchModal,
+  evaluateAdvancedSearch,
+  type SearchCondition,
+  type SearchFieldConfig,
+} from '../components/common/AdvancedSearchModal'
 import './UserAccessPage.css'
+
+const USER_FILTER_FIELDS: SearchFieldConfig[] = [
+  { key: 'username', label: 'Tên đăng nhập (username)', type: 'string' },
+  { key: 'full_name', label: 'Họ và tên nhân sự', type: 'string' },
+  { key: 'employee_code', label: 'Mã nhân viên', type: 'string' },
+  { key: 'email', label: 'Email', type: 'string' },
+  { key: 'phone', label: 'Số điện thoại', type: 'string' },
+  {
+    key: 'is_active',
+    label: 'Trạng thái tài khoản',
+    type: 'select',
+    options: [
+      { label: 'Đang hoạt động', value: 'true' },
+      { label: 'Đã khóa', value: 'false' },
+    ],
+  },
+  {
+    key: 'role_code',
+    label: 'Vai trò (Role Code)',
+    type: 'select',
+    options: [
+      { label: 'ADMIN - Quản trị viên', value: 'ADMIN' },
+      { label: 'DIRECTOR - Giám đốc', value: 'DIRECTOR' },
+      { label: 'HR_MANAGER - Quản lý nhân sự', value: 'HR_MANAGER' },
+      { label: 'STORE_MANAGER - Cửa hàng trưởng', value: 'STORE_MANAGER' },
+      { label: 'EMPLOYEE - Nhân viên', value: 'EMPLOYEE' },
+    ],
+  },
+  { key: 'user_id', label: 'ID Tài khoản (user_id)', type: 'number' },
+]
 
 interface UserAccessPageProps {
   currentUserId: number
@@ -29,6 +65,10 @@ export function UserAccessPage({ currentUserId }: UserAccessPageProps) {
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'locked'>('all')
   const [linkedFilter, setLinkedFilter] = useState<'all' | 'linked' | 'unlinked'>('all')
   const [roleFilter, setRoleFilter] = useState<string>('all')
+
+  // Advanced Search Modal state
+  const [advSearchOpen, setAdvSearchOpen] = useState(false)
+  const [advConditions, setAdvConditions] = useState<SearchCondition[]>([])
 
   // Modals state
   const [activeModal, setActiveModal] = useState<ModalType>(null)
@@ -124,9 +164,27 @@ export function UserAccessPage({ currentUserId }: UserAccessPageProps) {
           ? Boolean(account.employee_id)
           : !account.employee_id
 
-      return matchSearch && matchStatus && matchRole && matchLinked
+      const matchAdv =
+        advConditions.length === 0
+          ? true
+          : evaluateAdvancedSearch(
+              {
+                user_id: account.user_id,
+                username: account.username,
+                full_name: account.full_name || '',
+                employee_code: account.employee_code || '',
+                email: account.email || '',
+                phone: account.phone || '',
+                is_active: account.is_active ? 'true' : 'false',
+                role_code: account.roles?.[0] || '',
+              },
+              advConditions,
+              USER_FILTER_FIELDS
+            )
+
+      return matchSearch && matchStatus && matchRole && matchLinked && matchAdv
     })
-  }, [users, search, statusFilter, roleFilter, linkedFilter])
+  }, [users, search, statusFilter, roleFilter, linkedFilter, advConditions])
 
   // Statistics
   const stats = useMemo(() => {
@@ -529,7 +587,32 @@ export function UserAccessPage({ currentUserId }: UserAccessPageProps) {
             </select>
           </div>
 
-          {(search || statusFilter !== 'all' || roleFilter !== 'all' || linkedFilter !== 'all') && (
+          <button
+            type="button"
+            className={`btn btn-sm ${advConditions.length > 0 ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setAdvSearchOpen(true)}
+            title="Mở bảng tìm kiếm nâng cao (AND, OR, NOT, phép toán >, <, =)"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+          >
+            <Filter size={15} />
+            <span>Tìm nâng cao</span>
+            {advConditions.length > 0 && (
+              <span
+                style={{
+                  backgroundColor: '#ffffff',
+                  color: '#1e293b',
+                  fontWeight: 700,
+                  padding: '1px 7px',
+                  borderRadius: '10px',
+                  fontSize: '11px',
+                }}
+              >
+                {advConditions.length}
+              </span>
+            )}
+          </button>
+
+          {(search || statusFilter !== 'all' || roleFilter !== 'all' || linkedFilter !== 'all' || advConditions.length > 0) && (
             <button
               type="button"
               className="btn btn-secondary btn-sm"
@@ -538,12 +621,60 @@ export function UserAccessPage({ currentUserId }: UserAccessPageProps) {
                 setStatusFilter('all')
                 setRoleFilter('all')
                 setLinkedFilter('all')
+                setAdvConditions([])
               }}
             >
               Đặt lại
             </button>
           )}
         </div>
+
+        {advConditions.length > 0 && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              marginTop: '12px',
+              flexWrap: 'wrap',
+              padding: '8px 12px',
+              background: 'var(--surface-subtle)',
+              borderRadius: '6px',
+              fontSize: '12px',
+              border: '1px solid var(--border-default)',
+            }}
+          >
+            <span style={{ fontWeight: 600, color: 'var(--primary-color)' }}>Bộ lọc nâng cao:</span>
+            {advConditions.map((cond, idx) => (
+              <span
+                key={idx}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  background: 'var(--surface-card, #ffffff)',
+                  border: '1px solid var(--border-default)',
+                  padding: '3px 8px',
+                  borderRadius: '4px',
+                }}
+              >
+                {idx > 0 && <strong style={{ color: 'var(--primary-color)' }}>{cond.logic} </strong>}
+                {cond.isNot ? <span style={{ color: 'var(--status-danger)', fontWeight: 700 }}>NOT </span> : ''}
+                <span>{USER_FILTER_FIELDS.find(f => f.key === cond.fieldKey)?.label || cond.fieldKey}</span>
+                <span style={{ fontWeight: 600 }}>{cond.operator}</span>
+                <span style={{ color: 'var(--primary-color)' }}>"{cond.value}"</span>
+              </span>
+            ))}
+            <button
+              type="button"
+              className="btn btn-sm btn-ghost"
+              onClick={() => setAdvConditions([])}
+              style={{ padding: '2px 8px', fontSize: '11.5px', color: 'var(--status-danger)', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+            >
+              <X size={13} /> Xóa bộ lọc
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Users Data Table */}
@@ -1213,6 +1344,18 @@ export function UserAccessPage({ currentUserId }: UserAccessPageProps) {
           </div>
         </div>
       )}
+
+      {/* Advanced Search Modal */}
+      <AdvancedSearchModal
+        isOpen={advSearchOpen}
+        onClose={() => setAdvSearchOpen(false)}
+        fields={USER_FILTER_FIELDS}
+        conditions={advConditions}
+        onApply={setAdvConditions}
+        onReset={() => setAdvConditions([])}
+        title="Tìm kiếm nâng cao tài khoản & phân quyền (Toán tử >, <, =, AND, OR, NOT)"
+      />
     </div>
   )
 }
+
