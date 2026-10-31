@@ -910,6 +910,21 @@ export const payrollApi = {
     if (!response.ok) throw new Error('Không thể tải file CSV bảng lương');
     return response.blob();
   },
+
+  exportAnnualExcel: async (year: string, employeeId?: number, storeId?: number): Promise<Blob> => {
+    const token = tokenService.get();
+    const query = new URLSearchParams({ year });
+    if (employeeId) query.append('employee_id', String(employeeId));
+    if (storeId) query.append('store_id', String(storeId));
+
+    const response = await fetch(`${API_BASE_URL}/payrolls/export/annual/excel?${query.toString()}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!response.ok) throw new Error('Không thể tải file Excel bảng lương năm');
+    return response.blob();
+  },
 };
 
 // ============================================

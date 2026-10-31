@@ -300,6 +300,29 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
     setIsAnnualPrintModalOpen(true)
   }
 
+  // Export Annual Excel
+  const handleExportAnnualExcel = async () => {
+    try {
+      if (!currentEmpId) {
+        toast.error('Không tìm thấy thông tin nhân sự')
+        return
+      }
+      const blob = await payrollApi.exportAnnualExcel(selectedYear, currentEmpId)
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const empCode = annualData?.employee?.employee_code || `NV${currentEmpId}`
+      a.download = `Bang_Luong_Nam_${selectedYear}_${empCode}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+      toast.success(`✓ Đã xuất file Excel bảng lương năm ${selectedYear} thành công!`)
+    } catch (err: any) {
+      toast.error(`Lỗi xuất file Excel năm: ${err.message}`)
+    }
+  }
+
   // Open Contract PDF (matching ContractManagementPage mechanism)
   const [downloadingContractPdf, setDownloadingContractPdf] = useState(false)
 
@@ -428,12 +451,13 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
               <button
                 type="button"
-                className="btn-info-icon"
+                className="btn btn-secondary"
                 onClick={() => setIsPayrollRegulationOpen(true)}
                 title="Xem quy chế & công thức tính lương TechZone Retail"
-                aria-label="Xem quy chế tính lương"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
               >
-                <span style={{ fontStyle: 'italic', fontWeight: 700, fontFamily: 'serif', fontSize: '15px' }}>i</span>
+                {Icons.info}
+                <span>Quy chế lương</span>
               </button>
               {displayPayroll && (
                 <button
@@ -920,12 +944,24 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
               <button
                 type="button"
-                className="btn-info-icon"
+                className="btn btn-secondary"
                 onClick={() => setIsPayrollRegulationOpen(true)}
                 title="Xem quy chế & công thức tính lương TechZone Retail"
-                aria-label="Xem quy chế tính lương"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
               >
-                <span style={{ fontStyle: 'italic', fontWeight: 700, fontFamily: 'serif', fontSize: '15px' }}>i</span>
+                {Icons.info}
+                <span>Quy chế lương</span>
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handleExportAnnualExcel}
+                disabled={annualLoading || !annualData}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                title="Xuất bảng tổng hợp thu nhập năm ra file Excel"
+              >
+                {Icons.fileText}
+                <span>Xuất Excel</span>
               </button>
               <button
                 type="button"
@@ -2046,6 +2082,13 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
           document.body
         )
       })()}
+
+      {/* Modal Quy Chế & Công Thức Tính Lương */}
+      {isPayrollRegulationOpen && (
+        <PayrollRegulationDialog
+          onClose={() => setIsPayrollRegulationOpen(false)}
+        />
+      )}
 
     </div>
   )

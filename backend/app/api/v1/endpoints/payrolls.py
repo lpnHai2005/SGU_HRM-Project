@@ -1668,38 +1668,47 @@ async def export_payroll_excel(
     if not payrolls:
         raise HTTPException(status_code=404, detail=f"Không có dữ liệu bảng lương trong kỳ {period}")
 
+    status_map = {"DRAFT": "Bản nháp", "CONFIRMED": "Đã duyệt", "PAID": "Đã chi trả"}
     columns = [
         {"key": "employee_code", "title": "Mã NV", "width": 12, "align": "center"},
         {"key": "employee_name", "title": "Họ và Tên", "width": 24},
-        {"key": "store_name", "title": "Cửa hàng / Đơn vị", "width": 20},
+        {"key": "store_name", "title": "Cửa hàng / Đơn vị", "width": 22},
         {"key": "position_name", "title": "Chức vụ", "width": 18},
-        {"key": "standard_working_days", "title": "Công chuẩn", "width": 12, "format": "number"},
-        {"key": "actual_working_days", "title": "Công thực tế", "width": 12, "format": "number"},
-        {"key": "contract_salary", "title": "Lương HĐ", "width": 16, "format": "currency"},
+        {"key": "standard_working_days", "title": "Công chuẩn", "width": 13, "format": "number"},
+        {"key": "actual_working_days", "title": "Công thực tế", "width": 13, "format": "number"},
+        {"key": "paid_leave_days", "title": "Phép có lương", "width": 14, "format": "number"},
+        {"key": "contract_salary", "title": "Lương Hợp đồng", "width": 18, "format": "currency"},
         {"key": "time_deduction_amount", "title": "Trừ thời gian", "width": 16, "format": "currency"},
-        {"key": "actual_base_salary", "title": "Lương CB thực", "width": 16, "format": "currency"},
-        {"key": "position_allowance", "title": "PC Chức vụ", "width": 14, "format": "currency"},
-        {"key": "seniority_allowance", "title": "PC Thâm niên", "width": 14, "format": "currency"},
-        {"key": "project_allowance", "title": "PC Dự án", "width": 14, "format": "currency"},
-        {"key": "meal_transport_allowance", "title": "PC Cơm xe", "width": 14, "format": "currency"},
+        {"key": "actual_base_salary", "title": "Lương CB thực tế", "width": 18, "format": "currency"},
+        {"key": "position_allowance", "title": "PC Chức vụ", "width": 15, "format": "currency"},
+        {"key": "seniority_allowance", "title": "PC Thâm niên", "width": 15, "format": "currency"},
+        {"key": "meal_transport_allowance", "title": "PC Cơm xe", "width": 15, "format": "currency"},
+        {"key": "project_allowance", "title": "PC Dự án", "width": 15, "format": "currency"},
         {"key": "commission_amount", "title": "Hoa hồng", "width": 16, "format": "currency"},
-        {"key": "bonus_amount", "title": "Tổng thưởng", "width": 16, "format": "currency"},
-        {"key": "gross_income", "title": "Tổng Gross", "width": 18, "format": "currency"},
-        {"key": "total_insurance", "title": "Bảo hiểm (10.5%)", "width": 16, "format": "currency"},
+        {"key": "bonus_amount", "title": "Tổng tiền thưởng", "width": 17, "format": "currency"},
+        {"key": "overtime_salary", "title": "Lương tăng ca (OT)", "width": 18, "format": "currency"},
+        {"key": "gross_income", "title": "TỔNG GROSS", "width": 20, "format": "currency"},
+        {"key": "total_insurance", "title": "Bảo hiểm (10.5%)", "width": 18, "format": "currency"},
         {"key": "penalty_deduction", "title": "Phạt trễ", "width": 14, "format": "currency"},
-        {"key": "total_deduction", "title": "Tổng giảm trừ", "width": 16, "format": "currency"},
-        {"key": "net_salary", "title": "THỰC LĨNH (NET)", "width": 20, "format": "currency"},
-        {"key": "payment_status", "title": "Trạng thái", "width": 14, "align": "center"}
+        {"key": "total_deduction", "title": "Tổng giảm trừ", "width": 18, "format": "currency"},
+        {"key": "net_salary", "title": "THỰC LĨNH (NET)", "width": 22, "format": "currency"},
+        {"key": "payment_status_label", "title": "Trạng thái", "width": 14, "align": "center"}
     ]
 
     total_keys = [
         "contract_salary", "time_deduction_amount", "actual_base_salary",
-        "position_allowance", "seniority_allowance", "project_allowance",
-        "meal_transport_allowance", "commission_amount", "bonus_amount",
-        "gross_income", "total_insurance", "total_deduction", "net_salary"
+        "position_allowance", "seniority_allowance", "meal_transport_allowance", "project_allowance",
+        "commission_amount", "bonus_amount", "overtime_salary",
+        "gross_income", "total_insurance", "penalty_deduction", "total_deduction", "net_salary"
     ]
 
-    excel_data = [p if isinstance(p, dict) else p.model_dump() for p in payrolls]
+    excel_data = []
+    for p in payrolls:
+        p_dict = dict(p if isinstance(p, dict) else p.model_dump())
+        p_dict["payment_status_label"] = status_map.get(p_dict.get("payment_status"), p_dict.get("payment_status"))
+        p_dict["total_deduction"] = p_dict.get("total_deductions") or p_dict.get("total_deduction") or 0.0
+        excel_data.append(p_dict)
+
     file_stream = create_styled_excel(
         title=f"BẢNG LƯƠNG NHÂN SỰ TOÀN CHUỖI - KỲ {period}",
         subtitle=f"Thời điểm xuất báo cáo: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')} - Đơn vị tiền tệ: VNĐ",
@@ -1710,6 +1719,145 @@ async def export_payroll_excel(
     )
 
     filename = f"Bang_Luong_TechZone_{period}.xlsx"
+    return StreamingResponse(
+        file_stream,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+@router.get("/export/annual/excel", summary="Xuất bảng lương năm ra file Excel (.xlsx) chuẩn TechZone")
+async def export_annual_payroll_excel(
+    year: Optional[str] = Query("2026", description="Năm thống kê (YYYY)"),
+    employee_id: Optional[int] = Query(None, description="Mã nhân viên (nếu xuất riêng cho 1 nhân sự)"),
+    store_id: Optional[int] = Query(None, description="Lọc theo cửa hàng"),
+    current_user: dict = Depends(require_roles(["ADMIN", "DIRECTOR", "HR_MANAGER", "STORE_MANAGER", "EMPLOYEE"])),
+    db: AsyncSession = Depends(get_db)
+):
+    roles = current_user.get("roles", [])
+    status_map = {"DRAFT": "Bản nháp", "CONFIRMED": "Đã duyệt", "PAID": "Đã chi trả"}
+
+    target_emp_id = employee_id
+    if "EMPLOYEE" in roles and not any(r in roles for r in ["ADMIN", "HR_MANAGER", "DIRECTOR", "STORE_MANAGER"]):
+        target_emp_id = current_user.get("employee_id")
+
+    if target_emp_id:
+        annual_data = await get_annual_salary(employee_id=target_emp_id, year=year, current_user=current_user, db=db)
+        monthly_records = annual_data.get("monthly_records", [])
+        emp_info = annual_data.get("employee", {})
+        if not monthly_records:
+            raise HTTPException(status_code=404, detail=f"Không có dữ liệu bảng lương năm {year} của nhân sự {emp_info.get('full_name', '')}")
+
+        columns = [
+            {"key": "salary_period_label", "title": "Kỳ lương", "width": 14, "align": "center"},
+            {"key": "standard_working_days", "title": "Công chuẩn", "width": 13, "format": "number"},
+            {"key": "actual_working_days", "title": "Công thực tế", "width": 13, "format": "number"},
+            {"key": "paid_leave_days", "title": "Phép có lương", "width": 14, "format": "number"},
+            {"key": "contract_salary", "title": "Lương Hợp đồng", "width": 18, "format": "currency"},
+            {"key": "time_deduction_amount", "title": "Trừ thời gian", "width": 16, "format": "currency"},
+            {"key": "actual_base_salary", "title": "Lương CB thực tế", "width": 18, "format": "currency"},
+            {"key": "position_allowance", "title": "PC Chức vụ", "width": 15, "format": "currency"},
+            {"key": "seniority_allowance", "title": "PC Thâm niên", "width": 15, "format": "currency"},
+            {"key": "meal_transport_allowance", "title": "PC Cơm xe", "width": 15, "format": "currency"},
+            {"key": "project_allowance", "title": "PC Dự án", "width": 15, "format": "currency"},
+            {"key": "commission_amount", "title": "Hoa hồng", "width": 16, "format": "currency"},
+            {"key": "bonus_amount", "title": "Tiền thưởng", "width": 16, "format": "currency"},
+            {"key": "overtime_salary", "title": "Lương tăng ca (OT)", "width": 18, "format": "currency"},
+            {"key": "gross_income", "title": "TỔNG GROSS", "width": 20, "format": "currency"},
+            {"key": "total_insurance", "title": "Bảo hiểm (10.5%)", "width": 18, "format": "currency"},
+            {"key": "personal_income_tax", "title": "Thuế TNCN", "width": 16, "format": "currency"},
+            {"key": "penalty_deduction", "title": "Phạt trễ", "width": 14, "format": "currency"},
+            {"key": "total_deduction", "title": "Tổng giảm trừ", "width": 18, "format": "currency"},
+            {"key": "net_salary", "title": "THỰC LĨNH (NET)", "width": 22, "format": "currency"},
+            {"key": "payment_status_label", "title": "Trạng thái", "width": 14, "align": "center"}
+        ]
+
+        total_keys = [
+            "contract_salary", "time_deduction_amount", "actual_base_salary",
+            "position_allowance", "seniority_allowance", "meal_transport_allowance", "project_allowance",
+            "commission_amount", "bonus_amount", "overtime_salary",
+            "gross_income", "total_insurance", "personal_income_tax", "penalty_deduction",
+            "total_deduction", "net_salary"
+        ]
+
+        excel_data = []
+        for r in monthly_records:
+            r_copy = dict(r)
+            r_copy["salary_period_label"] = f"Tháng {r_copy.get('salary_period', '')}"
+            r_copy["payment_status_label"] = status_map.get(r_copy.get("payment_status"), r_copy.get("payment_status"))
+            r_copy["total_deduction"] = r_copy.get("total_deductions") or r_copy.get("total_deduction") or 0.0
+            excel_data.append(r_copy)
+
+        emp_code = emp_info.get("employee_code", f"NV{target_emp_id}")
+        emp_name = emp_info.get("full_name", "")
+        file_stream = create_styled_excel(
+            title=f"BẢNG TỔNG HỢP THU NHẬP NĂM {year} - {emp_name} ({emp_code})",
+            subtitle=f"Chức vụ: {emp_info.get('position_name', '-')} • Đơn vị: {emp_info.get('store_name', '-')} • MST: {emp_info.get('tax_code') or 'Chưa có'} • Thời điểm xuất: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}",
+            columns=columns,
+            data=excel_data,
+            include_totals=True,
+            total_keys=total_keys
+        )
+        filename = f"Bang_Luong_Nam_{year}_{emp_code}.xlsx"
+        return StreamingResponse(
+            file_stream,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+
+    # Nếu không chọn nhân sự cụ thể (Quản lý xuất toàn chuỗi cả năm)
+    query = """
+        SELECT e.employee_id, e.employee_code, e.full_name as employee_name,
+               s.store_name, pos.position_name,
+               COUNT(p.payroll_id) as total_paid_months,
+               COALESCE(SUM(p.contract_salary), 0) as total_contract_salary,
+               COALESCE(SUM(p.gross_income), 0) as total_gross_income,
+               COALESCE(SUM(p.net_salary), 0) as total_net_salary,
+               COALESCE(SUM(p.total_insurance), 0) as total_insurance,
+               COALESCE(SUM(p.total_deductions), 0) as total_deduction
+        FROM employees e
+        LEFT JOIN stores s ON e.store_id = s.store_id
+        JOIN positions pos ON e.position_id = pos.position_id
+        JOIN payrolls p ON e.employee_id = p.employee_id
+        WHERE p.salary_period LIKE :year_prefix AND p.payment_status IN ('CONFIRMED', 'PAID')
+    """
+    params = {"year_prefix": f"{year}-%"}
+    if store_id:
+        query += " AND e.store_id = :store_id"
+        params["store_id"] = store_id
+
+    query += " GROUP BY e.employee_id, e.employee_code, e.full_name, s.store_name, pos.position_name ORDER BY s.store_name ASC, e.employee_code ASC"
+    res = await db.execute(text(query), params)
+    all_emp_rows = [dict(r) for r in res.mappings().all()]
+    if not all_emp_rows:
+        raise HTTPException(status_code=404, detail=f"Không có dữ liệu quyết toán lương năm {year}")
+
+    columns = [
+        {"key": "employee_code", "title": "Mã NV", "width": 12, "align": "center"},
+        {"key": "employee_name", "title": "Họ và Tên", "width": 24},
+        {"key": "store_name", "title": "Cửa hàng / Đơn vị", "width": 22},
+        {"key": "position_name", "title": "Chức vụ", "width": 18},
+        {"key": "total_paid_months", "title": "Số tháng chốt", "width": 15, "format": "number"},
+        {"key": "total_contract_salary", "title": "Tổng Lương HĐ", "width": 18, "format": "currency"},
+        {"key": "total_gross_income", "title": "TỔNG GROSS CẢ NĂM", "width": 22, "format": "currency"},
+        {"key": "total_insurance", "title": "Trích nộp BHXH", "width": 18, "format": "currency"},
+        {"key": "total_deduction", "title": "Tổng giảm trừ", "width": 18, "format": "currency"},
+        {"key": "total_net_salary", "title": "TỔNG THỰC LĨNH (NET)", "width": 24, "format": "currency"}
+    ]
+    total_keys = [
+        "total_paid_months", "total_contract_salary", "total_gross_income",
+        "total_insurance", "total_deduction", "total_net_salary"
+    ]
+
+    file_stream = create_styled_excel(
+        title=f"BẢNG TỔNG HỢP THU NHẬP NĂM TOÀN CHUỖI TECHZONE - NĂM {year}",
+        subtitle=f"Thời điểm xuất báo cáo: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')} - Đơn vị tiền tệ: VNĐ",
+        columns=columns,
+        data=all_emp_rows,
+        include_totals=True,
+        total_keys=total_keys
+    )
+    filename = f"Bang_Luong_Nam_Toan_Chuoi_{year}.xlsx"
     return StreamingResponse(
         file_stream,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
