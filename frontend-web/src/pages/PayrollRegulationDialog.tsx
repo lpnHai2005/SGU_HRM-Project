@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Icons } from '../components/common/Icons'
 import { payrollApi } from '../services/api'
-import type { PayrollPolicySetting, PayrollPeriodBonus } from '../types'
+import type { PayrollPolicySetting, PayrollPeriodBonus, PublicHoliday, PayrollPeriodWorkingDays } from '../types'
 import { formatCurrency } from '../utils/formatters'
 import { toast } from 'sonner'
 import { useAuth } from '../contexts/AuthContext'
@@ -39,12 +39,22 @@ const BONUS_PRESETS = [
   },
 ]
 
-export function PayrollRegulationDialog({ onClose }: { onClose: () => void }) {
+const VIETNAMESE_DAYS = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy']
+
+export interface PayrollRegulationDialogProps {
+  onClose: () => void
+  initialTab?: 'settings' | 'bonuses' | 'holidays_working_days' | 'attendance' | 'guide'
+}
+
+export function PayrollRegulationDialog({ onClose, initialTab }: PayrollRegulationDialogProps) {
   const { user } = useAuth()
   const isHrOrAdmin = Boolean(user?.roles?.some((r: string) => ['ADMIN', 'HR_MANAGER', 'DIRECTOR'].includes(r)))
 
-  // Nếu là nhân viên không có quyền quản lý, chỉ mở tab 'guide' (Quy chế & công thức)
-  const [activeTab, setActiveTab] = useState<'settings' | 'bonuses' | 'guide'>(() => isHrOrAdmin ? 'settings' : 'guide')
+  // Nếu là nhân viên không có quyền quản lý, chỉ mở tab 'guide' hoặc 'attendance'
+  const [activeTab, setActiveTab] = useState<'settings' | 'bonuses' | 'holidays_working_days' | 'attendance' | 'guide'>(() => {
+    if (initialTab) return initialTab
+    return isHrOrAdmin ? 'settings' : 'guide'
+  })
 
   // State Tham số Quy chế
   const [settings, setSettings] = useState<PayrollPolicySetting[]>([])
@@ -73,17 +83,28 @@ export function PayrollRegulationDialog({ onClose }: { onClose: () => void }) {
   const [selectedPreset, setSelectedPreset] = useState<string>('')
   const [savingBonus, setSavingBonus] = useState(false)
 
-  // Dropdown menu thao tác mở cho ID/Key nào (tương tự LeaveRequestsPage)
-  const [openMenuId, setOpenMenuId] = useState<string | number | null>(null)
+  // State Lịch Lễ, Tết & Công chuẩn (Tab 3)
+  const [selectedWorkingPeriod, setSelectedWorkingPeriod] = useState<string>(() => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  })
+  const [workingDaysData, setWorkingDaysData] = useState<PayrollPeriodWorkingDays | null>(null)
+  const [loadingWorkingDays, setLoadingWorkingDays] = useState(false)
+  const [isManualOverride, setIsManualOverride] = useState(false)
+  const [manualDays, setManualDays] = useState<number>(26)
+  const [manualReason, setManualReason] = useState<string>('')
+  const [savingWorkingDays, setSavingWorkingDays] = useState(false)
 
-  // Đóng dropdown khi click bên ngoài
-  useEffect(() => {
-    const handleClickOutside = () => {
-      setOpenMenuId(null)
-    }
-    document.addEventListener('click', handleClickOutside)
-    return () => document.removeEventListener('click', handleClickOutside)
-  }, [])
+  // State Danh mục Ngày lễ
+  const [holidayYear, setHolidayYear] = useState<number>(() => new Date().getFullYear())
+  const [holidays, setHolidays] = useState<PublicHoliday[]>([])
+  const [loadingHolidays, setLoadingHolidays] = useState(false)
+  const [showHolidayModal, setShowHolidayModal] = useState(false)
+  const [editingHoliday, setEditingHoliday] = useState<PublicHoliday | null>(null)
+  const [holidayDate, setHolidayDate] = useState<string>('')
+  const [holidayName, setHolidayName] = useState<string>('')
+  const [holidayNotes, setHolidayNotes] = useState<string>('')
+  const [savingHoliday, setSavingHoliday] = useState(false)
 
   // Tải danh sách cấu hình tham số (chỉ dành cho HR/Admin)
   const fetchSettings = async () => {
@@ -115,9 +136,40 @@ export function PayrollRegulationDialog({ onClose }: { onClose: () => void }) {
     }
   }
 
+  // Tải thông số công chuẩn của kỳ lương
+  const fetchWorkingDays = async (period: string) => {
+    setLoadingWorkingDays(true)
+    try {
+      const data = await payrollApi.getWorkingDays(period)
+      setWorkingDaysData(data)
+      setIsManualOverride(Boolean(data.is_manual_override))
+      setManualDays(data.manual_standard_days ?? data.auto_standard_days ?? 26)
+      setManualReason(data.reason || '')
+    } catch (err: any) {
+      console.error('Error fetching working days:', err)
+      toast.error(err.message || 'Lỗi khi tải thông số ngày công chuẩn')
+    } finally {
+      setLoadingWorkingDays(false)
+    }
+  }
+
+  // Tải danh mục ngày lễ theo năm
+  const fetchHolidays = async (year: number) => {
+    setLoadingHolidays(true)
+    try {
+      const data = await payrollApi.getHolidays(year)
+      setHolidays(data || [])
+    } catch (err: any) {
+      console.error('Error fetching holidays:', err)
+      toast.error(err.message || 'Lỗi khi tải danh mục ngày lễ')
+    } finally {
+      setLoadingHolidays(false)
+    }
+  }
+
   useEffect(() => {
     if (!isHrOrAdmin) {
-      if (activeTab !== 'guide') {
+      if (activeTab !== 'guide' && activeTab !== 'attendance') {
         setActiveTab('guide')
       }
       return
@@ -126,8 +178,11 @@ export function PayrollRegulationDialog({ onClose }: { onClose: () => void }) {
       fetchSettings()
     } else if (activeTab === 'bonuses') {
       fetchBonuses()
+    } else if (activeTab === 'holidays_working_days') {
+      fetchWorkingDays(selectedWorkingPeriod)
+      fetchHolidays(holidayYear)
     }
-  }, [activeTab, isHrOrAdmin])
+  }, [activeTab, isHrOrAdmin, selectedWorkingPeriod, holidayYear])
 
   // Xử lý lưu tham số quy chế
   const handleSaveSetting = async (key: string) => {
@@ -173,7 +228,7 @@ export function PayrollRegulationDialog({ onClose }: { onClose: () => void }) {
     setShowBonusModal(true)
   }
 
-  // Chọn mẫu gợi ý
+  // Chọn mẫu gợi ý thưởng
   const handleSelectPreset = (presetCode: string) => {
     setSelectedPreset(presetCode)
     if (!presetCode) return
@@ -260,6 +315,131 @@ export function PayrollRegulationDialog({ onClose }: { onClose: () => void }) {
     }
   }
 
+  // Lưu công chuẩn ghi đè cho kỳ
+  const handleSaveWorkingDays = async () => {
+    if (manualDays <= 0 || manualDays > 31) {
+      toast.error('Số ngày công phải từ 0.5 đến 31 ngày')
+      return
+    }
+    setSavingWorkingDays(true)
+    try {
+      if (isManualOverride) {
+        await payrollApi.overrideWorkingDays(selectedWorkingPeriod, {
+          override_working_days: Number(manualDays),
+          reason: manualReason.trim() || undefined,
+        })
+        toast.success(`Đã lưu công chuẩn ghi đè (${manualDays} ngày) cho kỳ ${selectedWorkingPeriod}!`)
+      } else {
+        await payrollApi.resetWorkingDays(selectedWorkingPeriod)
+        toast.success(`Đã đặt lại công chuẩn tự động cho kỳ ${selectedWorkingPeriod}!`)
+      }
+      await fetchWorkingDays(selectedWorkingPeriod)
+    } catch (err: any) {
+      toast.error(err.message || 'Lỗi khi lưu ngày công chuẩn')
+    } finally {
+      setSavingWorkingDays(false)
+    }
+  }
+
+  // Đặt lại công chuẩn về tự động theo lịch
+  const handleResetWorkingDaysToAuto = async () => {
+    setSavingWorkingDays(true)
+    try {
+      await payrollApi.resetWorkingDays(selectedWorkingPeriod)
+      toast.success(`Đã đưa công chuẩn kỳ ${selectedWorkingPeriod} về tính tự động theo lịch!`)
+      await fetchWorkingDays(selectedWorkingPeriod)
+    } catch (err: any) {
+      toast.error(err.message || 'Lỗi khi đặt lại công chuẩn')
+    } finally {
+      setSavingWorkingDays(false)
+    }
+  }
+
+  // Mở modal thêm ngày lễ
+  const handleOpenAddHoliday = () => {
+    setEditingHoliday(null)
+    setHolidayDate(`${holidayYear}-01-01`)
+    setHolidayName('')
+    setHolidayNotes('')
+    setShowHolidayModal(true)
+  }
+
+  // Mở modal sửa ngày lễ
+  const handleOpenEditHoliday = (h: PublicHoliday) => {
+    setEditingHoliday(h)
+    setHolidayDate(h.holiday_date)
+    setHolidayName(h.holiday_name)
+    setHolidayNotes(h.notes || '')
+    setShowHolidayModal(true)
+  }
+
+  // Submit tạo/sửa ngày lễ
+  const handleSubmitHoliday = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!holidayDate) {
+      toast.error('Vui lòng chọn ngày nghỉ')
+      return
+    }
+    if (!holidayName.trim()) {
+      toast.error('Vui lòng nhập tên dịp lễ / sự kiện')
+      return
+    }
+    setSavingHoliday(true)
+    try {
+      if (editingHoliday) {
+        await payrollApi.updateHoliday(editingHoliday.holiday_id, {
+          holiday_date: holidayDate,
+          holiday_name: holidayName.trim(),
+          notes: holidayNotes.trim() || undefined,
+        })
+        toast.success(`Đã cập nhật ngày lễ "${holidayName}"!`)
+      } else {
+        await payrollApi.createHoliday({
+          holiday_date: holidayDate,
+          holiday_name: holidayName.trim(),
+          notes: holidayNotes.trim() || undefined,
+        })
+        toast.success(`Đã thêm ngày lễ "${holidayName}"!`)
+      }
+      setShowHolidayModal(false)
+      setEditingHoliday(null)
+      await fetchHolidays(holidayYear)
+      await fetchWorkingDays(selectedWorkingPeriod)
+    } catch (err: any) {
+      toast.error(err.message || 'Lỗi khi lưu ngày lễ')
+    } finally {
+      setSavingHoliday(false)
+    }
+  }
+
+  // Xóa ngày lễ
+  const handleDeleteHoliday = async (h: PublicHoliday) => {
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa ngày lễ "${h.holiday_name}" (${h.holiday_date})? Ngày công chuẩn của tháng tương ứng sẽ tự động tăng thêm.`)) {
+      return
+    }
+    try {
+      await payrollApi.deleteHoliday(h.holiday_id)
+      toast.success(`Đã xóa ngày lễ "${h.holiday_name}"!`)
+      await fetchHolidays(holidayYear)
+      await fetchWorkingDays(selectedWorkingPeriod)
+    } catch (err: any) {
+      toast.error(err.message || 'Lỗi khi xóa ngày lễ')
+    }
+  }
+
+  // Format ngày hiển thị kèm thứ
+  const formatHolidayDateWithDay = (dateStr: string) => {
+    if (!dateStr) return { dateFormatted: '', dayName: '', isSunday: false }
+    const d = new Date(dateStr)
+    const dayName = VIETNAMESE_DAYS[d.getDay()]
+    const [year, month, day] = dateStr.split('-')
+    return {
+      dateFormatted: `${day}/${month}/${year}`,
+      dayName: dayName,
+      isSunday: d.getDay() === 0
+    }
+  }
+
   // Danh sách tham số sau khi lọc
   const filteredSettings = settings.filter(s => {
     const matchesGroup = selectedGroup === 'ALL' || s.setting_group === selectedGroup
@@ -280,6 +460,14 @@ export function PayrollRegulationDialog({ onClose }: { onClose: () => void }) {
       b.salary_period.includes(query)
   })
 
+  // Danh sách 24 tháng cho dropdown kỳ lương (dùng setDate(1) để chặn tràn tháng khi rơi vào ngày 31)
+  const periodOptions = Array.from({ length: 24 }).map((_, i) => {
+    const d = new Date()
+    d.setDate(1)
+    d.setMonth(d.getMonth() - i + 2) // Lấy từ 2 tháng tới trở về trước
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  })
+
   return (
     <div className="modal-overlay no-print">
       <div
@@ -294,7 +482,7 @@ export function PayrollRegulationDialog({ onClose }: { onClose: () => void }) {
             </h2>
             <p className="prd-header-desc">
               {isHrOrAdmin
-                ? 'Cấu hình định mức phụ cấp, phạt trễ, ngày công chuẩn và quy chế tính toán lương'
+                ? 'Cấu hình định mức phụ cấp, phạt trễ, ngày công chuẩn linh hoạt, đa hệ số OT và danh mục ngày lễ'
                 : 'Tra cứu chi tiết ngày công chuẩn, định mức phụ cấp, tỷ lệ làm thêm giờ và công thức tính lương áp dụng'}
             </p>
           </div>
@@ -303,7 +491,7 @@ export function PayrollRegulationDialog({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        {/* Tab Navigation - Tối Giản: Ẩn các tab cấu hình đối với nhân viên thường không có quyền chỉnh sửa */}
+        {/* Tab Navigation */}
         {isHrOrAdmin ? (
           <div className="prd-tabs">
             <button
@@ -326,18 +514,46 @@ export function PayrollRegulationDialog({ onClose }: { onClose: () => void }) {
 
             <button
               type="button"
+              className={`prd-tab-btn ${activeTab === 'holidays_working_days' ? 'active' : ''}`}
+              onClick={() => setActiveTab('holidays_working_days')}
+            >
+              <span>Lịch Lễ, Tết & Công chuẩn</span>
+              <span className="prd-tab-count">{holidays.length}</span>
+            </button>
+
+            <button
+              type="button"
+              className={`prd-tab-btn ${activeTab === 'attendance' ? 'active' : ''}`}
+              onClick={() => setActiveTab('attendance')}
+            >
+              <span>Quy định chấm công</span>
+            </button>
+
+            <button
+              type="button"
               className={`prd-tab-btn ${activeTab === 'guide' ? 'active' : ''}`}
               onClick={() => setActiveTab('guide')}
             >
-              <span>Quy chế & công thức</span>
+              <span>Cẩm nang quy chế</span>
             </button>
           </div>
         ) : (
-          <div className="prd-tabs" style={{ background: 'var(--surface-subtle)' }}>
-            <div style={{ padding: '10px 20px', fontSize: '13px', fontWeight: 600, color: 'var(--primary-color, #2563eb)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--primary-color, #2563eb)' }}></span>
-              <span>Cẩm Nang Quy Chế & Công Thức Tính Lương Chuỗi Cửa Hàng TechZone</span>
-            </div>
+          <div className="prd-tabs">
+            <button
+              type="button"
+              className={`prd-tab-btn ${activeTab === 'guide' ? 'active' : ''}`}
+              onClick={() => setActiveTab('guide')}
+            >
+              <span>Cẩm nang quy chế & Công thức</span>
+            </button>
+
+            <button
+              type="button"
+              className={`prd-tab-btn ${activeTab === 'attendance' ? 'active' : ''}`}
+              onClick={() => setActiveTab('attendance')}
+            >
+              <span>Quy định chấm công</span>
+            </button>
           </div>
         )}
 
@@ -348,7 +564,7 @@ export function PayrollRegulationDialog({ onClose }: { onClose: () => void }) {
           {/* ================================================================= */}
           {activeTab === 'settings' && (
             <>
-              {/* Toolbar Tối Giản: Tìm kiếm & Lọc Nhóm */}
+              {/* Toolbar Tối Giản */}
               <div className="prd-toolbar">
                 <div className="prd-search-box">
                   <span className="prd-search-icon">{Icons.search}</span>
@@ -450,123 +666,60 @@ export function PayrollRegulationDialog({ onClose }: { onClose: () => void }) {
                                     if (e.key === 'Escape') setEditingKey(null)
                                   }}
                                   className="form-input"
-                                  style={{
-                                    width: '100%',
-                                    maxWidth: '120px',
-                                    height: '28px',
-                                    padding: '2px 8px',
-                                    fontSize: '12.5px',
-                                    textAlign: 'right',
-                                    fontFamily: 'var(--font-mono)',
-                                    display: 'inline-block',
-                                  }}
+                                  style={{ textAlign: 'right', padding: '4px 8px', fontSize: '12.5px', width: '100%' }}
                                   autoFocus
                                 />
                               ) : (
                                 <span className="prd-mono-val">
                                   {s.unit === 'VND' ? formatCurrency(s.numeric_value) :
                                    s.unit === 'TY_LE' ? `${(s.numeric_value * 100).toFixed(1)}%` :
-                                   s.numeric_value}
+                                   s.unit === 'HE_SO' ? `${s.numeric_value}x` : s.numeric_value}
                                 </span>
                               )}
                             </td>
-                            <td style={{ textAlign: 'center', fontSize: '11.5px', color: 'var(--text-tertiary)' }}>
-                              {s.unit || '—'}
+                            <td style={{ textAlign: 'center', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                              {s.unit === 'VND' ? 'VNĐ' :
+                               s.unit === 'TY_LE' ? 'Tỷ lệ' :
+                               s.unit === 'HE_SO' ? 'Hệ số' :
+                               s.unit === 'PHUT' ? 'Phút' :
+                               s.unit === 'NGAY' ? 'Ngày' : s.unit}
                             </td>
                             {isHrOrAdmin && (
-                              <td className="prd-action-cell">
+                              <td style={{ textAlign: 'center' }}>
                                 {isEditing ? (
-                                  <div style={{ display: 'inline-flex', gap: '4px', alignItems: 'center' }}>
+                                  <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
                                     <button
                                       type="button"
-                                      className="btn btn-primary btn-sm"
-                                      style={{ padding: '0 8px', height: '26px', fontSize: '11px', gap: '4px' }}
+                                      className="btn btn-primary"
+                                      style={{ padding: '3px 8px', fontSize: '11px', height: '26px' }}
                                       onClick={() => handleSaveSetting(s.setting_key)}
                                       disabled={savingKey === s.setting_key}
-                                      title="Lưu"
                                     >
-                                      {Icons.check} {savingKey === s.setting_key ? '...' : 'Lưu'}
+                                      Lưu
                                     </button>
                                     <button
                                       type="button"
-                                      className="btn btn-secondary btn-sm"
-                                      style={{ padding: '0 6px', height: '26px', fontSize: '11px' }}
+                                      className="btn btn-secondary"
+                                      style={{ padding: '3px 8px', fontSize: '11px', height: '26px' }}
                                       onClick={() => setEditingKey(null)}
-                                      title="Hủy"
+                                      disabled={savingKey === s.setting_key}
                                     >
-                                      {Icons.close}
+                                      Hủy
                                     </button>
                                   </div>
                                 ) : (
-                                  <div className="prd-action-group">
-                                    {/* Nút 1: Chỉnh sửa (theo LeaveRequestsPage) */}
-                                    <button
-                                      type="button"
-                                      className="btn btn-secondary btn-sm btn-icon"
-                                      title="Chỉnh sửa tham số"
-                                      onClick={() => {
-                                        setEditingKey(s.setting_key)
-                                        setEditValue(s.numeric_value)
-                                        setEditDesc(s.description || '')
-                                      }}
-                                    >
-                                      {Icons.edit}
-                                    </button>
-
-                                    {/* Nút 2: Tùy chọn 3 chấm (theo LeaveRequestsPage) */}
-                                    <button
-                                      type="button"
-                                      className="btn btn-secondary btn-sm btn-icon"
-                                      title="Tùy chọn thao tác"
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                        setOpenMenuId(openMenuId === s.setting_key ? null : s.setting_key)
-                                      }}
-                                    >
-                                      {Icons.moreVertical}
-                                    </button>
-
-                                    {/* Dropdown Menu thao tác (sử dụng action-dropdown từ App.css như LeaveRequestsPage) */}
-                                    {openMenuId === s.setting_key && (
-                                      <div
-                                        className="action-dropdown"
-                                        onClick={(e) => e.stopPropagation()}
-                                        style={{
-                                          position: 'absolute',
-                                          top: '100%',
-                                          right: 0,
-                                          marginTop: '4px',
-                                          zIndex: 80,
-                                          minWidth: '180px',
-                                        }}
-                                      >
-                                        <button
-                                          type="button"
-                                          className="action-dropdown-item"
-                                          onClick={() => {
-                                            setOpenMenuId(null)
-                                            setEditingKey(s.setting_key)
-                                            setEditValue(s.numeric_value)
-                                            setEditDesc(s.description || '')
-                                          }}
-                                        >
-                                          <span className="action-icon">{Icons.edit}</span>
-                                          <span>Điều chỉnh giá trị</span>
-                                        </button>
-                                        <button
-                                          type="button"
-                                          className="action-dropdown-item"
-                                          onClick={() => {
-                                            setOpenMenuId(null)
-                                            setActiveTab('guide')
-                                          }}
-                                        >
-                                          <span className="action-icon">{Icons.info}</span>
-                                          <span>Xem quy chế áp dụng</span>
-                                        </button>
-                                      </div>
-                                    )}
-                                  </div>
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    style={{ padding: '3px 10px', fontSize: '11.5px', height: '26px' }}
+                                    onClick={() => {
+                                      setEditingKey(s.setting_key)
+                                      setEditValue(Number(s.numeric_value))
+                                      setEditDesc(s.description || '')
+                                    }}
+                                  >
+                                    Chỉnh sửa
+                                  </button>
                                 )}
                               </td>
                             )}
@@ -585,50 +738,38 @@ export function PayrollRegulationDialog({ onClose }: { onClose: () => void }) {
           {/* ================================================================= */}
           {activeTab === 'bonuses' && (
             <>
-              {/* Toolbar Tối Giản */}
               <div className="prd-toolbar">
                 <div className="prd-search-box">
                   <span className="prd-search-icon">{Icons.search}</span>
                   <input
                     type="text"
                     className="prd-search-input"
-                    placeholder="Tìm theo tên khoản thưởng, kỳ lương (YYYY-MM)..."
+                    placeholder="Tìm theo tên hoặc kỳ lương (VD: 2026-09)..."
                     value={bonusSearch}
                     onChange={(e) => setBonusSearch(e.target.value)}
                   />
-                  {bonusSearch && (
-                    <button
-                      type="button"
-                      className="prd-search-clear"
-                      onClick={() => setBonusSearch('')}
-                      title="Xóa tìm kiếm"
-                    >
-                      {Icons.close}
-                    </button>
-                  )}
                 </div>
 
                 {isHrOrAdmin && (
                   <button
                     type="button"
-                    className="btn btn-primary btn-sm"
+                    className="btn btn-primary"
                     onClick={handleOpenCreateBonus}
-                    style={{ height: '30px', padding: '0 12px', gap: '4px' }}
+                    style={{ height: '30px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}
                   >
                     {Icons.plus}
-                    <span>Thiết lập thưởng kỳ</span>
+                    Thêm khoản thưởng kỳ
                   </button>
                 )}
               </div>
 
-              {/* Bảng Danh Sách Thưởng Kỳ */}
               {loadingBonuses ? (
                 <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)' }}>
                   Đang tải danh mục thưởng kỳ...
                 </div>
               ) : filteredBonuses.length === 0 ? (
-                <div style={{ padding: '36px 20px', textAlign: 'center', color: 'var(--text-secondary)', background: 'var(--surface-subtle)', borderRadius: '4px' }}>
-                  Chưa có khoản thưởng kỳ nào được cấu hình.
+                <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)', background: 'var(--surface-subtle)', borderRadius: '4px' }}>
+                  Chưa có khoản thưởng sự kiện nào được cấu hình. Bấm "Thêm khoản thưởng kỳ" để thiết lập.
                 </div>
               ) : (
                 <div className="prd-table-card">
@@ -636,9 +777,9 @@ export function PayrollRegulationDialog({ onClose }: { onClose: () => void }) {
                     <thead>
                       <tr>
                         <th style={{ width: '15%' }}>Kỳ Lương</th>
-                        <th style={{ width: '37%' }}>Khoản Thưởng</th>
-                        <th style={{ width: '22%' }}>Cách Thức Tính</th>
-                        <th style={{ width: '14%', textAlign: 'right' }}>Mức Cơ Sở</th>
+                        <th style={{ width: '35%' }}>Khoản Thưởng & Mã</th>
+                        <th style={{ width: '20%' }}>Cách Tính</th>
+                        <th style={{ width: '18%', textAlign: 'right' }}>Mức Cơ Sở</th>
                         {isHrOrAdmin && <th style={{ width: '12%', textAlign: 'center' }}>Thao Tác</th>}
                       </tr>
                     </thead>
@@ -649,94 +790,39 @@ export function PayrollRegulationDialog({ onClose }: { onClose: () => void }) {
                             <span className="prd-mono-val">{b.salary_period}</span>
                           </td>
                           <td>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <span style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '13px' }}>
-                                {b.bonus_name}
-                              </span>
-                              {b.is_recurring && (
-                                <span className="prd-badge" style={{ fontSize: '10.5px' }}>
-                                  Hàng năm
-                                </span>
-                              )}
-                            </div>
-                            <div style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)', marginTop: '2px' }}>
-                              {b.bonus_code}
-                            </div>
+                            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{b.bonus_name}</div>
+                            <div style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)' }}>{b.bonus_code}</div>
                           </td>
-                          <td style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                            {b.calculation_type === 'COEFFICIENT' && 'Hệ số chức vụ (Mức CS × Coef)'}
-                            {b.calculation_type === 'FIXED_AMOUNT' && 'Tiền cố định cho toàn nhân viên'}
-                            {b.calculation_type === 'CONTRACT_SALARY' && '1 Tháng lương hợp đồng (Tháng 13)'}
+                          <td>
+                            <span className="prd-badge">
+                              {b.calculation_type === 'COEFFICIENT' ? 'Nhân hệ số chức vụ' :
+                               b.calculation_type === 'CONTRACT_SALARY' ? '1 tháng lương HĐ' : 'Số tiền cố định'}
+                            </span>
                           </td>
                           <td style={{ textAlign: 'right' }}>
-                            <span className="prd-mono-val" style={{ color: 'var(--text-primary)' }}>
-                              {formatCurrency(b.base_amount)}
+                            <span className="prd-mono-val">
+                              {b.calculation_type === 'CONTRACT_SALARY' ? '100% Lương HĐ' : formatCurrency(b.base_amount)}
                             </span>
                           </td>
                           {isHrOrAdmin && (
-                            <td className="prd-action-cell">
-                              <div className="prd-action-group">
-                                {/* Nút 1: Chỉnh sửa (theo LeaveRequestsPage) */}
+                            <td style={{ textAlign: 'center' }}>
+                              <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
                                 <button
                                   type="button"
-                                  className="btn btn-secondary btn-sm btn-icon"
-                                  title="Chỉnh sửa khoản thưởng"
+                                  className="btn btn-secondary"
+                                  style={{ padding: '2px 8px', fontSize: '11px', height: '26px' }}
                                   onClick={() => handleOpenEditBonus(b)}
                                 >
-                                  {Icons.edit}
+                                  Sửa
                                 </button>
-
-                                {/* Nút 2: Tùy chọn 3 chấm (theo LeaveRequestsPage) */}
                                 <button
                                   type="button"
-                                  className="btn btn-secondary btn-sm btn-icon"
-                                  title="Tùy chọn thao tác"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    setOpenMenuId(openMenuId === b.bonus_id ? null : b.bonus_id)
-                                  }}
+                                  className="btn btn-secondary"
+                                  style={{ padding: '2px 8px', fontSize: '11px', height: '26px', color: 'var(--status-error)' }}
+                                  onClick={() => handleDeleteBonus(b.bonus_id, b.bonus_name)}
                                 >
-                                  {Icons.moreVertical}
+                                  Xóa
                                 </button>
-
-                                {/* Dropdown Menu (chuẩn action-dropdown từ App.css như LeaveRequestsPage) */}
-                                {openMenuId === b.bonus_id && (
-                                  <div
-                                    className="action-dropdown"
-                                    onClick={(e) => e.stopPropagation()}
-                                    style={{
-                                      position: 'absolute',
-                                      top: '100%',
-                                      right: 0,
-                                      marginTop: '4px',
-                                      zIndex: 80,
-                                      minWidth: '180px',
-                                    }}
-                                  >
-                                    <button
-                                      type="button"
-                                      className="action-dropdown-item"
-                                      onClick={() => {
-                                        setOpenMenuId(null)
-                                        handleOpenEditBonus(b)
-                                      }}
-                                    >
-                                      <span className="action-icon">{Icons.edit}</span>
-                                      <span>Chỉnh sửa khoản thưởng</span>
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="action-dropdown-item danger"
-                                      onClick={() => {
-                                        setOpenMenuId(null)
-                                        handleDeleteBonus(b.bonus_id, b.bonus_name)
-                                      }}
-                                    >
-                                      <span className="action-icon">{Icons.close}</span>
-                                      <span>Xóa khoản thưởng</span>
-                                    </button>
-                                  </div>
-                                )}
                               </div>
                             </td>
                           )}
@@ -750,25 +836,425 @@ export function PayrollRegulationDialog({ onClose }: { onClose: () => void }) {
           )}
 
           {/* ================================================================= */}
-          {/* TAB 3: QUY CHẾ TÍNH LƯƠNG & CÔNG THỨC (Tối Giản, Đầy Đủ Nội Dung) */}
+          {/* TAB 3: LỊCH LỄ, TẾT & CÔNG CHUẨN */}
+          {/* ================================================================= */}
+          {activeTab === 'holidays_working_days' && (
+            <div className="prd-working-days-panel">
+              {/* 1. THIẾT LẬP CÔNG CHUẨN THEO KỲ LƯƠNG */}
+              <div className="prd-section-card">
+                <div className="prd-section-title-row">
+                  <div className="prd-section-heading">1. Thiết lập ngày công chuẩn theo kỳ lương</div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Kỳ lương:</span>
+                    <select
+                      className="form-select"
+                      value={selectedWorkingPeriod}
+                      onChange={(e) => setSelectedWorkingPeriod(e.target.value)}
+                      style={{ width: '130px', height: '30px', fontSize: '12px' }}
+                    >
+                      {periodOptions.map(p => (
+                        <option key={p} value={p}>Tháng {p.split('-')[1]}/{p.split('-')[0]}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {loadingWorkingDays ? (
+                  <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '12.5px' }}>
+                    Đang tải thông số ngày công chuẩn...
+                  </div>
+                ) : workingDaysData ? (
+                  <>
+                    <div className="prd-stat-grid-4">
+                      <div className="prd-stat-box">
+                        <div className="prd-stat-box-label">Tổng số ngày</div>
+                        <div className="prd-stat-box-value">{workingDaysData.calendar_days}</div>
+                      </div>
+
+                      <div className="prd-stat-box">
+                        <div className="prd-stat-box-label">Số ngày Chủ Nhật</div>
+                        <div className="prd-stat-box-value">{workingDaysData.sundays_count}</div>
+                      </div>
+
+                      <div className="prd-stat-box">
+                        <div className="prd-stat-box-label">Lễ, Tết (T2-T7)</div>
+                        <div className="prd-stat-box-value">{workingDaysData.holidays_count}</div>
+                      </div>
+
+                      <div className="prd-stat-box highlight">
+                        <div className="prd-stat-box-label">Công chuẩn tự động</div>
+                        <div className="prd-stat-box-value">{workingDaysData.auto_standard_days} ngày</div>
+                      </div>
+                    </div>
+
+                    {workingDaysData.is_locked ? (
+                      <div className="prd-lock-notice">
+                        <span style={{ display: 'flex', alignItems: 'center' }}>{Icons.lock}</span>
+                        <span>
+                          Kỳ lương đã chốt hoặc thanh toán. Công chuẩn được khóa cố định theo bảng lương: <strong>{workingDaysData.applied_standard_days} ngày</strong>. (Mở lại kỳ lương tại trang Quản lý bảng lương nếu cần điều chỉnh).
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="prd-override-form">
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12.5px', fontWeight: 600 }}>
+                            <input
+                              type="checkbox"
+                              checked={isManualOverride}
+                              onChange={(e) => setIsManualOverride(e.target.checked)}
+                            />
+                            <span>Ghi đè ngày công chuẩn thủ công (Manual Override)</span>
+                          </label>
+
+                          <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                            Công chuẩn áp dụng: <strong style={{ color: 'var(--text-primary)' }}>{workingDaysData.applied_standard_days} ngày</strong>
+                            <span className="prd-badge" style={{ marginLeft: '6px' }}>
+                              {workingDaysData.is_manual_override ? 'Ghi đè thủ công' : 'Tính tự động theo lịch'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {isManualOverride && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '2px', paddingTop: '8px', borderTop: '1px solid var(--border-subtle)' }}>
+                            <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+                              <div style={{ width: '130px' }}>
+                                <label className="form-label" style={{ fontSize: '11px', marginBottom: '4px' }}>Số ngày công</label>
+                                <input
+                                  type="number"
+                                  step="0.5"
+                                  min="1"
+                                  max="31"
+                                  value={manualDays}
+                                  onChange={(e) => setManualDays(parseFloat(e.target.value) || 0)}
+                                  className="form-input"
+                                  style={{ textAlign: 'right', fontWeight: 600 }}
+                                />
+                              </div>
+
+                              <div style={{ flex: 1, minWidth: '220px' }}>
+                                <label className="form-label" style={{ fontSize: '11px', marginBottom: '4px' }}>Lý do điều chỉnh</label>
+                                <input
+                                  type="text"
+                                  value={manualReason}
+                                  onChange={(e) => setManualReason(e.target.value)}
+                                  placeholder="Nhập lý do điều chỉnh công chuẩn..."
+                                  className="form-input"
+                                />
+                              </div>
+                            </div>
+
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                onClick={handleResetWorkingDaysToAuto}
+                                disabled={savingWorkingDays || !workingDaysData.is_manual_override}
+                                style={{ height: '30px', fontSize: '11.5px' }}
+                              >
+                                Đặt lại tự động ({workingDaysData.auto_standard_days} ngày)
+                              </button>
+
+                              <button
+                                type="button"
+                                className="btn btn-primary"
+                                onClick={handleSaveWorkingDays}
+                                disabled={savingWorkingDays}
+                                style={{ height: '30px', fontSize: '11.5px' }}
+                              >
+                                {savingWorkingDays ? 'Đang lưu...' : 'Lưu công chuẩn kỳ này'}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
+                ) : null}
+              </div>
+
+              {/* 2. DANH MỤC NGÀY NGHỈ LỄ, TẾT & NGHỈ BÙ */}
+              <div className="prd-section-card">
+                <div className="prd-section-title-row">
+                  <div className="prd-section-heading">2. Danh mục ngày nghỉ Lễ, Tết & nghỉ bù (Điều 112 BLLĐ)</div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Năm:</span>
+                    <select
+                      className="form-select"
+                      value={holidayYear}
+                      onChange={(e) => setHolidayYear(Number(e.target.value))}
+                      style={{ width: '90px', height: '30px', fontSize: '12px' }}
+                    >
+                      {[2024, 2025, 2026, 2027, 2028, 2029, 2030].map(y => (
+                        <option key={y} value={y}>{y}</option>
+                      ))}
+                    </select>
+
+                    {isHrOrAdmin && (
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        onClick={handleOpenAddHoliday}
+                        style={{ height: '30px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                      >
+                        {Icons.plus}
+                        Thêm ngày nghỉ
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {loadingHolidays ? (
+                  <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '12.5px' }}>
+                    Đang tải danh mục ngày nghỉ lễ...
+                  </div>
+                ) : holidays.length === 0 ? (
+                  <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)', background: 'var(--surface-subtle)', borderRadius: '4px', fontSize: '12.5px' }}>
+                    Chưa có ngày nghỉ lễ nào cho năm {holidayYear}. Bấm "Thêm ngày nghỉ" để khởi tạo.
+                  </div>
+                ) : (
+                  <div className="prd-table-card">
+                    <table className="prd-table">
+                      <thead>
+                        <tr>
+                          <th style={{ width: '16%' }}>Ngày Nghỉ</th>
+                          <th style={{ width: '14%' }}>Thứ</th>
+                          <th style={{ width: '36%' }}>Dịp Lễ / Sự Kiện</th>
+                          <th style={{ width: '22%' }}>Ghi Chú</th>
+                          {isHrOrAdmin && <th style={{ width: '12%', textAlign: 'center' }}>Thao Tác</th>}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {holidays.map(h => {
+                          const dateInfo = formatHolidayDateWithDay(h.holiday_date)
+                          return (
+                            <tr key={h.holiday_id}>
+                              <td>
+                                <span className="prd-mono-val">{dateInfo.dateFormatted}</span>
+                              </td>
+                              <td>
+                                <span className="prd-badge">{dateInfo.dayName}</span>
+                              </td>
+                              <td>
+                                <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{h.holiday_name}</div>
+                              </td>
+                              <td style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>
+                                {h.notes || '—'}
+                              </td>
+                              {isHrOrAdmin && (
+                                <td style={{ textAlign: 'center' }}>
+                                  <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                                    <button
+                                      type="button"
+                                      className="btn btn-secondary"
+                                      style={{ padding: '2px 8px', fontSize: '11px', height: '26px' }}
+                                      onClick={() => handleOpenEditHoliday(h)}
+                                    >
+                                      Sửa
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="btn btn-secondary"
+                                      style={{ padding: '2px 8px', fontSize: '11px', height: '26px', color: 'var(--status-error)' }}
+                                      onClick={() => handleDeleteHoliday(h)}
+                                    >
+                                      Xóa
+                                    </button>
+                                  </div>
+                                </td>
+                              )}
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ================================================================= */}
+          {/* TAB: QUY ĐỊNH CHẤM CÔNG & ĐỐI SOÁT CÔNG VỚI BẢNG LƯƠNG */}
+          {/* ================================================================= */}
+          {activeTab === 'attendance' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div style={{
+                background: 'var(--surface-subtle)',
+                border: '1px solid var(--border-default)',
+                borderRadius: 'var(--radius-sm, 6px)',
+                padding: '14px 16px',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '12px',
+              }}>
+                <div style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '50%',
+                  background: 'rgba(37, 99, 235, 0.1)',
+                  color: 'var(--primary-color, #2563eb)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  marginTop: '2px',
+                }}>
+                  {Icons.clock}
+                </div>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '13.5px', color: 'var(--text-primary)' }}>
+                    Quy Định Ghi Nhận Phiên Chấm Công & Đối Soát Bảng Lương
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px', lineHeight: 1.5 }}>
+                    Mỗi phiên làm việc của nhân viên được hệ thống tự động đối chiếu ca làm việc, thời gian check-in / check-out, thời gian đi muộn / về sớm và giờ OT để làm căn cứ tính lương minh bạch, chính xác.
+                  </div>
+                </div>
+              </div>
+
+              {/* BẢNG QUY TẮC PHIÊN CHẤM CÔNG */}
+              <div className="prd-table-card">
+                <table className="prd-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: '22%' }}>Nội dung</th>
+                      <th style={{ width: '48%' }}>Quy định áp dụng</th>
+                      <th style={{ width: '30%' }}>Tác động bảng lương</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>
+                        <strong>Ca được phân công</strong>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>Phân ca & Chụp phiên</div>
+                      </td>
+                      <td>
+                        Check-in đối chiếu ca và cửa hàng đã phân công trước. Khi nhân viên check-in, thông tin ca (giờ bắt đầu, kết thúc, số giờ ca chuẩn) được lưu làm bản chụp (snapshot) cố định để tính công về sau, không bị sai lệch nếu lịch bị đổi sau đó.
+                      </td>
+                      <td>
+                        <span className="prd-badge">CĂN CỨ CÔNG</span>
+                        <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                          Xác định số giờ chuẩn cần hoàn thành trong ngày làm việc.
+                        </div>
+                      </td>
+                    </tr>
+
+                    <tr>
+                      <td>
+                        <strong>Quy tắc đi muộn (Grace period)</strong>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>Ân hạn 15 phút</div>
+                      </td>
+                      <td>
+                        Phút trễ tính từ giờ bắt đầu của chính ca đó. Hệ thống chỉ gắn nhãn <code>LATE</code> và ghi nhận vi phạm khi trễ quá 15 phút (ví dụ: ca 13:00 thì sau 13:15 mới bị đánh dấu muộn).
+                      </td>
+                      <td>
+                        <span className="prd-badge">PHẠT CHUYÊN CẦN</span>
+                        <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                          Trễ &gt; 15p bị trừ chuyên cần theo mức phạt quy chế (<code>LATE_PENALTY_AMOUNT</code>) + trừ theo số phút thiếu.
+                        </div>
+                      </td>
+                    </tr>
+
+                    <tr>
+                      <td>
+                        <strong>Về sớm & Làm thêm giờ (OT)</strong>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>Checkout ca</div>
+                      </td>
+                      <td>
+                        Checkout trước giờ kết thúc ca ghi nhận <code>early_minutes</code>. Làm vượt số giờ của ca được ghi nhận <code>overtime_hours</code> thực tế. Mọi giờ OT đưa vào tính lương bắt buộc phải có đơn OT đã được Quản lý / HR phê duyệt.
+                      </td>
+                      <td>
+                        <span className="prd-badge">LƯƠNG OT & KHẤU TRỪ</span>
+                        <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                          OT được nhân hệ số 1.5x, 2.0x, 3.0x. Về sớm bị trừ vào tiền lương thiếu thời gian nếu không có lý do hợp lệ.
+                        </div>
+                      </td>
+                    </tr>
+
+                    <tr>
+                      <td>
+                        <strong>Nhãn phiên chấm công</strong>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>Thứ tự ưu tiên</div>
+                      </td>
+                      <td>
+                        Ưu tiên nhãn hiển thị: <code>LATE_AND_EARLY</code> → <code>LATE</code> → <code>EARLY</code> → <code>OVERTIME</code> → <code>NORMAL</code>. Dù nhãn tóm tắt là gì, hệ thống vẫn lưu trữ độc lập chính xác số giờ làm, số phút trễ, phút sớm và giờ OT.
+                      </td>
+                      <td>
+                        <span className="prd-badge">ĐỐI SOÁT TRƯỜNG SỐ</span>
+                        <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                          Bảng lương chỉ đối chiếu trường số thực tế, không suy đoán phạt/thưởng từ nhãn phiên.
+                        </div>
+                      </td>
+                    </tr>
+
+                    <tr>
+                      <td>
+                        <strong>Khoảng chờ an toàn (Anti-spam)</strong>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>Chống thao tác nhầm</div>
+                      </td>
+                      <td>
+                        Checkout chỉ thực hiện sau ít nhất 60 giây kể từ khi check-in. Sau khi checkout, cần chờ tối thiểu 60 giây trước lượt check-in tiếp theo để ngăn ngừa thao tác đúp hoặc lỗi kết nối.
+                      </td>
+                      <td>
+                        <span className="prd-badge">TOÀN VẸN DỮ LIỆU</span>
+                        <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                          Tránh tạo ra các phiên rác hoặc thời lượng 0 giờ trong kỳ tính lương.
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* LƯU Ý ĐỐI CHIẾU BẢNG LƯƠNG */}
+              <div className="prd-rule-section">
+                <div className="prd-rule-header">
+                  <h4 className="prd-rule-title">Nguyên Tắc Kết Nối Chấm Công Với Phiếu Lương (Payroll Reconcile)</h4>
+                  <span className="prd-badge">ĐỐI SOÁT TỰ ĐỘNG</span>
+                </div>
+                <div className="prd-rule-list">
+                  <div className="prd-rule-item">
+                    <span className="dot">•</span>
+                    <span><strong>Ngày công thực tế:</strong> Tổng ngày có check-in hợp lệ trong kỳ tính lương (<code>attendance_actual_days</code>) kết hợp cùng ngày nghỉ phép hưởng lương (<code>paid_leave_days</code>) cấu thành công hưởng lương chính thức.</span>
+                  </div>
+                  <div className="prd-rule-item">
+                    <span className="dot">•</span>
+                    <span><strong>Giờ làm thêm OT được tính tiền:</strong> Chỉ số giờ làm thêm có đơn đăng ký OT và đã được cấp có thẩm quyền phê duyệt chính thức (<code>approved_overtime_hours</code>) mới được đưa vào bảng tính lương với các hệ số tương ứng (150% ngày thường, 200% Chủ Nhật, 300% Lễ Tết).</span>
+                  </div>
+                  <div className="prd-rule-item">
+                    <span className="dot">•</span>
+                    <span><strong>Khấu trừ đi trễ / về sớm:</strong> Tổng phút thiếu hụt do đi trễ và về sớm chưa xin phép sẽ được quy đổi thành số tiền khấu trừ thời gian thiếu (<code>time_deduction_amount</code>) dựa trên đơn giá lương theo phút của nhân viên.</span>
+                  </div>
+                  <div className="prd-rule-item">
+                    <span className="dot">•</span>
+                    <span><strong>Trạng thái phiên là nhãn tóm tắt:</strong> Bảng lương đối soát trên các trường số giờ, số phút thực tế và quyết định phê duyệt OT, tuyệt đối không suy đoán thưởng hoặc phạt tùy tiện chỉ từ nhãn trạng thái của phiên.</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ================================================================= */}
+          {/* TAB 4: CẨM NANG QUY CHẾ TÍNH LƯƠNG & CÔNG THỨC */}
           {/* ================================================================= */}
           {activeTab === 'guide' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {/* 1. LƯƠNG CƠ BẢN & NGÀY CÔNG */}
               <div className="prd-rule-section">
                 <div className="prd-rule-header">
-                  <h4 className="prd-rule-title">1. Lương Cơ Bản & Ngày Công Chuẩn</h4>
+                  <h4 className="prd-rule-title">1. Lương Cơ Bản, Ngày Công Chuẩn & Hệ Số OT (Điều 98 BLLĐ 2019)</h4>
                   <span className="prd-badge">CÔNG & CA</span>
                 </div>
 
                 <div className="prd-rule-formula">
-                  Lương CB thực nhận = (Lương Hợp Đồng / Ngày Công Chuẩn 26) × (Công Đi Làm Thực Tế + Công Nghỉ Phép Hưởng Lương)
+                  Lương CB thực nhận = (Lương Hợp Đồng / D_std) × (Công Đi Làm Thực Tế + Công Nghỉ Phép Hưởng Lương)
                 </div>
 
                 <div className="prd-rule-list">
                   <div className="prd-rule-item">
                     <span className="dot">•</span>
-                    <span><strong>Ngày công chuẩn tháng:</strong> 26 ngày/tháng (áp dụng toàn bộ khối cửa hàng và văn phòng).</span>
+                    <span><strong>Ngày công chuẩn tháng (D_std):</strong> Tự động tính theo lịch thực tế từng tháng = <code>Tổng ngày trong tháng - Số ngày Chủ Nhật - Số ngày Lễ/Tết (Thứ 2 đến Thứ 7)</code>. Ban Giám đốc có thể ghi đè thủ công cho kỳ lương tại Tab <em>"Lịch Lễ, Tết & Công chuẩn"</em>.</span>
                   </div>
                   <div className="prd-rule-item">
                     <span className="dot">•</span>
@@ -776,7 +1262,13 @@ export function PayrollRegulationDialog({ onClose }: { onClose: () => void }) {
                   </div>
                   <div className="prd-rule-item">
                     <span className="dot">•</span>
-                    <span><strong>Làm thêm giờ (OT):</strong> Giờ OT được HR phê duyệt hưởng theo tỷ lệ luật định (Ngày thường 1.5x • Cuối tuần 2.0x • Lễ Tết 3.0x).</span>
+                    <span><strong>Làm thêm giờ đa hệ số (OT Bóc Tách):</strong> Lương 1 giờ = <code>Lương HĐ / D_std / 8</code>. Áp dụng 3 hệ số chuẩn luật định:
+                      <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
+                        <li><strong>1.5x (150%):</strong> Làm thêm ngày làm việc bình thường (Thứ Hai đến Thứ Bảy).</li>
+                        <li><strong>2.0x (200%):</strong> Làm thêm ngày nghỉ hằng tuần (Chủ Nhật).</li>
+                        <li><strong>3.0x (300%):</strong> Làm thêm ngày nghỉ Lễ, Tết theo luật định (bao gồm cả các ngày nghỉ bù chính thức).</li>
+                      </ul>
+                    </span>
                   </div>
                 </div>
               </div>
@@ -853,7 +1345,7 @@ export function PayrollRegulationDialog({ onClose }: { onClose: () => void }) {
                   </div>
                   <div className="prd-rule-item">
                     <span className="dot">•</span>
-                    <span><strong>Nghỉ không lương:</strong> Khấu trừ trực tiếp <code>(Lương HĐ / 26) × Số ngày nghỉ</code>.</span>
+                    <span><strong>Nghỉ không lương:</strong> Khấu trừ trực tiếp <code>(Lương HĐ / D_std) × Số ngày nghỉ</code>.</span>
                   </div>
                   <div className="prd-rule-item">
                     <span className="dot">•</span>
@@ -862,37 +1354,41 @@ export function PayrollRegulationDialog({ onClose }: { onClose: () => void }) {
                 </div>
               </div>
 
-              {/* 5. QUY TRÌNH PHÊ DUYỆT 3 CẤP */}
+              {/* 5. QUY TRÌNH PHÊ DUYỆT 3 CẤP & KHÓA BẢO VỆ 3 LỚP */}
               <div className="prd-rule-section">
                 <div className="prd-rule-header">
-                  <h4 className="prd-rule-title">5. Quy Trình Kiểm Soát & Quyết Toán 3 Cấp</h4>
-                  <span className="prd-badge">QUY TRÌNH</span>
+                  <h4 className="prd-rule-title">5. Quy Trình Kiểm Soát 3 Cấp & Cơ Chế Khóa Bất Biến</h4>
+                  <span className="prd-badge">QUY TRÌNH & BẢO MẬT</span>
                 </div>
 
                 <div className="prd-steps-row">
                   <div className="prd-step-box">
                     <span className="prd-step-num">CẤP 1 • SOẠN THẢO</span>
                     <span className="prd-step-role">Kế Toán / Cửa Hàng Trưởng</span>
-                    <span className="prd-step-desc">Tính toán sơ bộ từ Chấm công & POS, rà soát ngoại lệ, tạo bảng lương nháp (Draft).</span>
+                    <span className="prd-step-desc">Tính toán sơ bộ từ Chấm công & POS, rà soát ngoại lệ, tạo bảng lương nháp (DRAFT).</span>
                   </div>
 
                   <div className="prd-step-box">
                     <span className="prd-step-num">CẤP 2 • THẨM ĐỊNH</span>
                     <span className="prd-step-role">Trưởng Phòng Nhân Sự</span>
-                    <span className="prd-step-desc">Kiểm tra công chuẩn, phụ cấp dự án, giải trình phạt và xác nhận phê duyệt (HR Approved).</span>
+                    <span className="prd-step-desc">Kiểm tra công chuẩn, phụ cấp dự án, giải trình phạt và xác nhận phê duyệt (CONFIRMED).</span>
                   </div>
 
                   <div className="prd-step-box">
                     <span className="prd-step-num">CẤP 3 • QUYẾT TOÁN</span>
                     <span className="prd-step-role">Giám Đốc Điều Hành</span>
-                    <span className="prd-step-desc">Phê duyệt cấp cao cuối cùng, xuất lệnh chuyển khoản ngân hàng và khóa sổ chi trả (Paid).</span>
+                    <span className="prd-step-desc">Phê duyệt cấp cao cuối cùng, xuất lệnh chuyển khoản ngân hàng và khóa sổ chi trả (PAID).</span>
                   </div>
                 </div>
 
                 <div className="prd-rule-list" style={{ marginTop: '2px' }}>
                   <div className="prd-rule-item">
                     <span className="dot">•</span>
-                    <span><strong>Vết kiểm toán (Audit Trail):</strong> Mọi thao tác điều chỉnh số tiền thủ công (Adjust Draft) đều bắt buộc nhập lý do giải trình và lưu vết vĩnh viễn.</span>
+                    <span><strong>Khóa bất biến 3 lớp (3-Tier Locking):</strong> Mọi kỳ lương đã CONFIRMED hoặc PAID đều được khóa chặt ở cả 3 tầng (Database Trigger $\rightarrow$ Backend API $\rightarrow$ Frontend UI).</span>
+                  </div>
+                  <div className="prd-rule-item">
+                    <span className="dot">•</span>
+                    <span><strong>Mở khóa có kiểm soát (Reopen Period):</strong> Khi cần điều chỉnh kỳ đã chốt, HR/Director sử dụng quy trình Mở lại kỳ lương kèm ghi nhận lý do vào vết kiểm toán <code>audit_logs</code>.</span>
                   </div>
                 </div>
               </div>
@@ -912,7 +1408,7 @@ export function PayrollRegulationDialog({ onClose }: { onClose: () => void }) {
       </div>
 
       {/* ========================================================================= */}
-      {/* SUB-MODAL: THIẾT LẬP THƯỞNG KỲ (Tối Giản) */}
+      {/* SUB-MODAL 1: THIẾT LẬP THƯỞNG KỲ */}
       {/* ========================================================================= */}
       {showBonusModal && (
         <div
@@ -925,7 +1421,7 @@ export function PayrollRegulationDialog({ onClose }: { onClose: () => void }) {
           >
             <div className="modal-header">
               <div>
-                <h3 className="modal-title" style={{ fontSize: '15px', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
+                <h3 className="modal-title" style={{ fontSize: '14px', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>
                   {editingBonus ? 'Chỉnh Sửa Khoản Thưởng Kỳ' : 'Thiết Lập Thưởng Kỳ Mới'}
                 </h3>
                 <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
@@ -943,119 +1439,117 @@ export function PayrollRegulationDialog({ onClose }: { onClose: () => void }) {
             </div>
 
             <form onSubmit={handleSubmitBonus}>
-              <div className="modal-body">
+              <div className="modal-body" style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {!editingBonus && (
-                  <div>
-                    <label className="form-label" style={{ fontSize: '12px' }}>
-                      Mẫu gợi ý khoản thưởng
-                    </label>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label">Mẫu gợi ý khoản thưởng</label>
                     <select
                       className="form-select"
                       value={selectedPreset}
                       onChange={(e) => handleSelectPreset(e.target.value)}
-                      style={{ fontSize: '12px' }}
                     >
-                      <option value="">-- Chọn mẫu điền nhanh (hoặc tự nhập) --</option>
-                      <option value="TET_BONUS">TET_BONUS — Thưởng Tết Nguyên Đán (Tháng 2)</option>
-                      <option value="HOLIDAY_BONUS_30_4">HOLIDAY_BONUS_30_4 — Thưởng Lễ 30/4 & 1/5 (Tháng 4)</option>
-                      <option value="HOLIDAY_BONUS_2_9">HOLIDAY_BONUS_2_9 — Thưởng Lễ Quốc khánh 2/9 (Tháng 9)</option>
-                      <option value="YEAR_END_BONUS">YEAR_END_BONUS — Thưởng Tháng 13 Cuối Năm (Tháng 12)</option>
-                      <option value="CUSTOM">Tự viết mã & tên khoản thưởng khác...</option>
+                      <option value="">-- Chọn mẫu điền nhanh --</option>
+                      {BONUS_PRESETS.map((p) => (
+                        <option key={p.code} value={p.code}>
+                          {p.name} ({p.month ? `Tháng ${p.month}` : ''})
+                        </option>
+                      ))}
+                      <option value="CUSTOM">Khác (Tự định nghĩa)</option>
                     </select>
                   </div>
                 )}
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                  <div>
-                    <label className="form-label" style={{ fontSize: '12px' }}>Kỳ lương áp dụng *</label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label">Kỳ lương (YYYY-MM) *</label>
                     <input
-                      type="month"
-                      className="form-input"
+                      type="text"
+                      pattern="^[0-9]{4}-(0[1-9]|1[0-2])$"
+                      placeholder="VD: 2026-09"
                       value={bonusPeriod}
-                      disabled={Boolean(editingBonus)}
                       onChange={(e) => setBonusPeriod(e.target.value)}
+                      disabled={Boolean(editingBonus)}
+                      className="form-input"
                       required
                     />
                   </div>
 
-                  <div>
-                    <label className="form-label" style={{ fontSize: '12px' }}>Mã khoản thưởng *</label>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label">Mã khoản thưởng *</label>
                     <input
                       type="text"
-                      className="form-input"
-                      value={bonusCode}
-                      disabled={Boolean(editingBonus)}
-                      onChange={(e) => setBonusCode(e.target.value.toUpperCase().replace(/\s+/g, '_'))}
-                      required
                       placeholder="VD: TET_BONUS"
-                      style={{ fontFamily: 'var(--font-mono)' }}
+                      value={bonusCode}
+                      onChange={(e) => setBonusCode(e.target.value.toUpperCase())}
+                      disabled={Boolean(editingBonus)}
+                      className="form-input"
+                      required
                     />
                   </div>
                 </div>
 
-                <div>
-                  <label className="form-label" style={{ fontSize: '12px' }}>Tên khoản thưởng *</label>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">Tên khoản thưởng *</label>
                   <input
                     type="text"
-                    className="form-input"
+                    placeholder="VD: Thưởng Lễ Quốc Khánh 2/9"
                     value={bonusName}
                     onChange={(e) => setBonusName(e.target.value)}
+                    className="form-input"
                     required
-                    placeholder="VD: Thưởng Tết Nguyên Đán 2026"
                   />
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                  <div>
-                    <label className="form-label" style={{ fontSize: '12px' }}>Cách thức tính</label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label">Cách tính thưởng</label>
                     <select
                       className="form-select"
                       value={bonusType}
                       onChange={(e) => setBonusType(e.target.value)}
                     >
-                      <option value="COEFFICIENT">Hệ số chức vụ (Mức CS × Coef)</option>
-                      <option value="FIXED_AMOUNT">Tiền cố định toàn nhân viên</option>
-                      <option value="CONTRACT_SALARY">Tháng 13 (Lương Hợp đồng)</option>
+                      <option value="COEFFICIENT">Hệ số chức vụ × Mức cơ sở</option>
+                      <option value="FIXED_AMOUNT">Số tiền cố định toàn bộ</option>
+                      <option value="CONTRACT_SALARY">1 tháng lương Hợp đồng</option>
                     </select>
                   </div>
 
-                  <div>
-                    <label className="form-label" style={{ fontSize: '12px' }}>Mức tiền cơ sở (VNĐ) *</label>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label">
+                      {bonusType === 'CONTRACT_SALARY' ? 'Mức cơ sở (Không áp dụng)' : 'Mức tiền cơ sở (VNĐ) *'}
+                    </label>
                     <input
                       type="number"
-                      className="form-input"
-                      step="100000"
+                      step="50000"
+                      min="0"
                       value={bonusAmount}
                       onChange={(e) => setBonusAmount(parseFloat(e.target.value) || 0)}
-                      required
-                      style={{ fontFamily: 'var(--font-mono)' }}
-                      placeholder="0"
+                      disabled={bonusType === 'CONTRACT_SALARY'}
+                      className="form-input"
+                      style={{ textAlign: 'right' }}
                     />
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingTop: '2px' }}>
-                  <input
-                    type="checkbox"
-                    id="bonusRecurringMinimal"
-                    checked={bonusRecurring}
-                    onChange={(e) => setBonusRecurring(e.target.checked)}
-                    style={{ width: '15px', height: '15px', cursor: 'pointer' }}
-                  />
-                  <label
-                    htmlFor="bonusRecurringMinimal"
-                    style={{ fontSize: '12px', color: 'var(--text-primary)', cursor: 'pointer', margin: 0 }}
-                  >
-                    Lặp lại hàng năm (tự động áp dụng cho các năm kế tiếp vào cùng kỳ này)
+                <div style={{ marginTop: '2px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12px' }}>
+                    <input
+                      type="checkbox"
+                      checked={bonusRecurring}
+                      onChange={(e) => setBonusRecurring(e.target.checked)}
+                    />
+                    <span>Lặp lại tự động vào các năm sau</span>
                   </label>
                 </div>
               </div>
 
-              <div className="modal-footer">
+              <div className="modal-footer" style={{ padding: '12px 20px' }}>
                 <button
                   type="button"
                   className="btn btn-secondary"
                   onClick={() => setShowBonusModal(false)}
+                  disabled={savingBonus}
+                  style={{ height: '30px', fontSize: '12px' }}
                 >
                   Hủy
                 </button>
@@ -1063,8 +1557,102 @@ export function PayrollRegulationDialog({ onClose }: { onClose: () => void }) {
                   type="submit"
                   className="btn btn-primary"
                   disabled={savingBonus}
+                  style={{ height: '30px', fontSize: '12px' }}
                 >
-                  {savingBonus ? 'Đang lưu...' : editingBonus ? 'Cập nhật' : 'Lưu khoản thưởng'}
+                  {savingBonus ? 'Đang lưu...' : (editingBonus ? 'Cập nhật' : 'Tạo mới')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* SUB-MODAL 2: THÊM / CHỈNH SỬA NGÀY NGHỈ LỄ, TẾT */}
+      {/* ========================================================================= */}
+      {showHolidayModal && (
+        <div
+          className="modal-overlay"
+          style={{ zIndex: 1200, background: 'rgba(0, 0, 0, 0.6)' }}
+        >
+          <div
+            className="modal prd-submodal"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '440px' }}
+          >
+            <div className="modal-header">
+              <div>
+                <h3 className="modal-title" style={{ fontSize: '14px', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>
+                  {editingHoliday ? 'Chỉnh Sửa Ngày Nghỉ Lễ/Tết' : 'Thêm Ngày Nghỉ Lễ/Tết Mới'}
+                </h3>
+                <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  Hưởng nguyên lương & nhân hệ số 3.0x khi làm thêm giờ (OT)
+                </p>
+              </div>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => setShowHolidayModal(false)}
+                title="Đóng popup"
+              >
+                {Icons.close}
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitHoliday}>
+              <div className="modal-body" style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">Ngày nghỉ *</label>
+                  <input
+                    type="date"
+                    value={holidayDate}
+                    onChange={(e) => setHolidayDate(e.target.value)}
+                    className="form-input"
+                    required
+                  />
+                </div>
+
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">Dịp Lễ / Sự kiện *</label>
+                  <input
+                    type="text"
+                    value={holidayName}
+                    onChange={(e) => setHolidayName(e.target.value)}
+                    placeholder="VD: Nghỉ bù Giỗ Tổ Hùng Vương"
+                    className="form-input"
+                    required
+                  />
+                </div>
+
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">Ghi chú</label>
+                  <input
+                    type="text"
+                    value={holidayNotes}
+                    onChange={(e) => setHolidayNotes(e.target.value)}
+                    placeholder="VD: Theo Thông báo nghỉ lễ của Chính phủ"
+                    className="form-input"
+                  />
+                </div>
+              </div>
+
+              <div className="modal-footer" style={{ padding: '12px 20px' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowHolidayModal(false)}
+                  disabled={savingHoliday}
+                  style={{ height: '30px', fontSize: '12px' }}
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={savingHoliday}
+                  style={{ height: '30px', fontSize: '12px' }}
+                >
+                  {savingHoliday ? 'Đang lưu...' : (editingHoliday ? 'Cập nhật' : 'Thêm mới')}
                 </button>
               </div>
             </form>

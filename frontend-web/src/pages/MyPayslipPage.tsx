@@ -770,7 +770,14 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
                             )}
                             {(displayPayroll.overtime_salary || 0) > 0 && (
                               <tr>
-                                <td style={{ padding: '8px 12px' }}>Tiền làm thêm giờ (OT)</td>
+                                <td style={{ padding: '8px 12px' }}>
+                                  <div>Tiền làm thêm giờ (OT)</div>
+                                  {displayPayroll.details?.find((d: any) => d.item_code === 'OVERTIME')?.calculation_formula && (
+                                    <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '2px', fontStyle: 'italic' }}>
+                                      {displayPayroll.details.find((d: any) => d.item_code === 'OVERTIME')?.calculation_formula}
+                                    </div>
+                                  )}
+                                </td>
                                 <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
                                   {formatCurrency(displayPayroll.overtime_salary)}
                                 </td>

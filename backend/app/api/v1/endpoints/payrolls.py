@@ -27,7 +27,9 @@ from app.schemas.schemas import (
     ProjectRoleOut, ProjectRoleCreate,
     ProjectRoleAllowanceCreate, ProjectRoleAllowanceOut,
     PayrollPolicySettingOut, PayrollPolicySettingUpdate,
-    PayrollPeriodBonusCreate, PayrollPeriodBonusUpdate, PayrollPeriodBonusOut
+    PayrollPeriodBonusCreate, PayrollPeriodBonusUpdate, PayrollPeriodBonusOut,
+    PublicHolidayCreate, PublicHolidayUpdate, PublicHolidayOut,
+    PayrollPeriodOverrideCreate, PayrollPeriodWorkingDaysOut
 )
 
 logger = logging.getLogger("techzone_hrm.payrolls")
@@ -1339,6 +1341,316 @@ async def delete_payroll_period_bonus(
         raise HTTPException(status_code=404, detail="Không tìm thấy bản ghi")
     await db.commit()
     return {"message": f"Đã xóa khoản thưởng #{bonus_id} thành công!"}
+
+
+
+# ===================================================================================
+# 4.2. PUBLIC HOLIDAYS & FLEXIBLE STANDARD WORKING DAYS
+# ===================================================================================
+
+@router.get("/working-days/{period}", response_model=PayrollPeriodWorkingDaysOut, summary="Lấy chi tiết ngày công chuẩn của kỳ lương")
+async def get_payroll_period_working_days(
+    period: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    if not re.match(r"^[0-9]{4}-(0[1-9]|1[0-2])$", period):
+        raise HTTPException(status_code=400, detail="Định dạng kỳ lương không hợp lệ (yêu cầu YYYY-MM)")
+
+    query = text("""
+        SELECT 
+            v.salary_period,
+            v.calendar_days,
+            v.sundays_count,
+            v.holidays_count,
+            v.auto_standard_days,
+            v.manual_standard_days,
+            v.locked_standard_days,
+            v.applied_standard_days,
+            v.is_manual_override,
+            v.is_locked,
+            v.reason,
+            v.updated_at,
+            p_stat.draft_standard_days,
+            (p_stat.draft_standard_days IS NOT NULL AND p_stat.draft_standard_days <> v.applied_standard_days) AS is_sync_needed
+        FROM public.v_payroll_period_working_days v
+        LEFT JOIN (
+            SELECT salary_period, MIN(standard_working_days) AS draft_standard_days
+            FROM public.payrolls
+            WHERE payment_status IN ('DRAFT', 'NEEDS_RECALCULATION')
+            GROUP BY salary_period
+        ) p_stat ON v.salary_period = p_stat.salary_period
+        WHERE v.salary_period = :period;
+    """)
+    res = await db.execute(query, {"period": period})
+    row = res.mappings().first()
+    if not row:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy dữ liệu ngày công cho kỳ lương {period}")
+    return dict(row)
+
+
+@router.post("/working-days/{period}", response_model=PayrollPeriodWorkingDaysOut, summary="Ghi đè ngày công chuẩn thủ công cho kỳ lương")
+async def override_payroll_period_working_days(
+    period: str,
+    req: PayrollPeriodOverrideCreate,
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
+    db: AsyncSession = Depends(get_db)
+):
+    if not re.match(r"^[0-9]{4}-(0[1-9]|1[0-2])$", period):
+        raise HTTPException(status_code=400, detail="Định dạng kỳ lương không hợp lệ (yêu cầu YYYY-MM)")
+
+    # 1. Kiểm tra khóa kỳ lương
+    closed = (await db.execute(text("""
+        SELECT 1 FROM public.payrolls 
+        WHERE salary_period = :period AND payment_status IN ('CONFIRMED', 'PAID')
+        LIMIT 1
+    """), {"period": period})).first()
+    if closed:
+        raise HTTPException(status_code=409, detail=f"Kỳ lương {period} đã chốt hoặc thanh toán. Không thể can thiệp ghi đè ngày công chuẩn vào kỳ này!")
+
+    # 2. Lưu vào payroll_period_overrides
+    await db.execute(text("""
+        INSERT INTO public.payroll_period_overrides (salary_period, override_working_days, reason, updated_by, updated_at)
+        VALUES (:period, :days, :reason, :uid, CURRENT_TIMESTAMP)
+        ON CONFLICT (salary_period) DO UPDATE SET
+            override_working_days = EXCLUDED.override_working_days,
+            reason = EXCLUDED.reason,
+            updated_by = EXCLUDED.updated_by,
+            updated_at = CURRENT_TIMESTAMP;
+    """), {
+        "period": period,
+        "days": req.override_working_days,
+        "reason": req.reason,
+        "uid": current_user["user_id"]
+    })
+
+    # 3. Ghi audit log
+    import json
+    await db.execute(text("""
+        INSERT INTO public.audit_logs (user_id, action, entity_name, entity_id, new_values)
+        VALUES (:uid, 'OVERRIDE_STANDARD_WORKING_DAYS', 'payroll_period_overrides', :eid, CAST(:new AS jsonb))
+    """), {
+        "uid": current_user["user_id"],
+        "eid": period,
+        "new": json.dumps({"override_working_days": req.override_working_days, "reason": req.reason})
+    })
+
+    await db.commit()
+    return await get_payroll_period_working_days(period=period, current_user=current_user, db=db)
+
+
+@router.delete("/working-days/{period}", response_model=PayrollPeriodWorkingDaysOut, summary="Hủy ghi đè thủ công, đưa về tự động tính theo lịch")
+async def reset_payroll_period_working_days(
+    period: str,
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
+    db: AsyncSession = Depends(get_db)
+):
+    if not re.match(r"^[0-9]{4}-(0[1-9]|1[0-2])$", period):
+        raise HTTPException(status_code=400, detail="Định dạng kỳ lương không hợp lệ (yêu cầu YYYY-MM)")
+
+    # 1. Kiểm tra khóa kỳ lương
+    closed = (await db.execute(text("""
+        SELECT 1 FROM public.payrolls 
+        WHERE salary_period = :period AND payment_status IN ('CONFIRMED', 'PAID')
+        LIMIT 1
+    """), {"period": period})).first()
+    if closed:
+        raise HTTPException(status_code=409, detail=f"Kỳ lương {period} đã chốt hoặc thanh toán. Không thể sửa hoặc xóa ghi đè công chuẩn!")
+
+    # 2. Xóa khỏi payroll_period_overrides
+    await db.execute(text("DELETE FROM public.payroll_period_overrides WHERE salary_period = :period"), {"period": period})
+
+    # 3. Ghi audit log
+    import json
+    await db.execute(text("""
+        INSERT INTO public.audit_logs (user_id, action, entity_name, entity_id, new_values)
+        VALUES (:uid, 'RESET_STANDARD_WORKING_DAYS', 'payroll_period_overrides', :eid, CAST(:new AS jsonb))
+    """), {
+        "uid": current_user["user_id"],
+        "eid": period,
+        "new": json.dumps({"action": "reset_to_auto"})
+    })
+
+    await db.commit()
+    return await get_payroll_period_working_days(period=period, current_user=current_user, db=db)
+
+
+@router.get("/holidays", response_model=List[PublicHolidayOut], summary="Danh sách ngày nghỉ Lễ, Tết & Nghỉ bù theo năm")
+async def list_public_holidays(
+    year: Optional[int] = Query(None, ge=2020, le=2040, description="Năm cần lấy danh sách ngày lễ"),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    filter_sql = "WHERE EXTRACT(YEAR FROM holiday_date) = :year" if year else ""
+    params = {"year": year} if year else {}
+    res = await db.execute(text(f"""
+        SELECT holiday_id, holiday_date, holiday_name, notes, created_by, created_at
+        FROM public.public_holidays
+        {filter_sql}
+        ORDER BY holiday_date ASC
+    """), params)
+    return res.mappings().all()
+
+
+@router.post("/holidays", response_model=PublicHolidayOut, summary="Thêm mới ngày nghỉ Lễ, Tết / Nghỉ bù")
+async def create_public_holiday(
+    req: PublicHolidayCreate,
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
+    db: AsyncSession = Depends(get_db)
+):
+    h_period = req.holiday_date.strftime("%Y-%m")
+    closed = (await db.execute(text("""
+        SELECT 1 FROM public.payrolls 
+        WHERE salary_period = :period AND payment_status IN ('CONFIRMED', 'PAID')
+        LIMIT 1
+    """), {"period": h_period})).first()
+    if closed:
+        raise HTTPException(status_code=409, detail=f"Kỳ lương {h_period} đã chốt hoặc thanh toán. Không thể thêm hoặc chuyển ngày lễ vào kỳ này!")
+
+    # Check duplicate
+    existing = (await db.execute(text("SELECT holiday_id FROM public.public_holidays WHERE holiday_date = :hdate"), {"hdate": req.holiday_date})).first()
+    if existing:
+        raise HTTPException(status_code=400, detail=f"Ngày {req.holiday_date.strftime('%d/%m/%Y')} đã tồn tại trong danh mục ngày lễ!")
+
+    res = await db.execute(text("""
+        INSERT INTO public.public_holidays (holiday_date, holiday_name, notes, created_by)
+        VALUES (:hdate, :hname, :notes, :uid)
+        RETURNING holiday_id, holiday_date, holiday_name, notes, created_by, created_at
+    """), {
+        "hdate": req.holiday_date,
+        "hname": req.holiday_name.strip(),
+        "notes": req.notes.strip() if req.notes else None,
+        "uid": current_user["user_id"]
+    })
+    row = res.mappings().first()
+
+    import json
+    await db.execute(text("""
+        INSERT INTO public.audit_logs (user_id, action, entity_name, entity_id, new_values)
+        VALUES (:uid, 'CREATE_PUBLIC_HOLIDAY', 'public_holidays', :eid, CAST(:new AS jsonb))
+    """), {
+        "uid": current_user["user_id"],
+        "eid": str(row["holiday_id"]),
+        "new": json.dumps({"holiday_date": str(req.holiday_date), "holiday_name": req.holiday_name})
+    })
+
+    await db.commit()
+    return dict(row)
+
+
+@router.put("/holidays/{holiday_id}", response_model=PublicHolidayOut, summary="Cập nhật ngày nghỉ Lễ, Tết (Kiểm tra kép Dual-Period Check)")
+async def update_public_holiday(
+    holiday_id: int,
+    req: PublicHolidayUpdate,
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
+    db: AsyncSession = Depends(get_db)
+):
+    current = (await db.execute(text("""
+        SELECT holiday_id, holiday_date, holiday_name, notes, created_by, created_at
+        FROM public.public_holidays
+        WHERE holiday_id = :hid
+    """), {"hid": holiday_id})).mappings().first()
+    if not current:
+        raise HTTPException(status_code=404, detail="Không tìm thấy ngày lễ")
+
+    old_period = current["holiday_date"].strftime("%Y-%m")
+    new_date = req.holiday_date or current["holiday_date"]
+    new_period = new_date.strftime("%Y-%m")
+
+    # DUAL-PERIOD CHECK
+    # 1. Kiểm tra kỳ cũ
+    old_closed = (await db.execute(text("""
+        SELECT 1 FROM public.payrolls 
+        WHERE salary_period = :period AND payment_status IN ('CONFIRMED', 'PAID')
+        LIMIT 1
+    """), {"period": old_period})).first()
+    if old_closed:
+        raise HTTPException(status_code=409, detail=f"Kỳ lương {old_period} đã chốt hoặc thanh toán. Không thể sửa hoặc xóa ngày lễ thuộc kỳ này!")
+
+    # 2. Kiểm tra kỳ mới nếu thay đổi ngày sang kỳ khác
+    if new_period != old_period:
+        new_closed = (await db.execute(text("""
+            SELECT 1 FROM public.payrolls 
+            WHERE salary_period = :period AND payment_status IN ('CONFIRMED', 'PAID')
+            LIMIT 1
+        """), {"period": new_period})).first()
+        if new_closed:
+            raise HTTPException(status_code=409, detail=f"Kỳ lương {new_period} đã chốt hoặc thanh toán. Không thể thêm hoặc chuyển ngày lễ vào kỳ này!")
+
+    # Kiểm tra trùng lặp ngày nếu đổi ngày
+    if req.holiday_date and req.holiday_date != current["holiday_date"]:
+        dup = (await db.execute(text("SELECT holiday_id FROM public.public_holidays WHERE holiday_date = :hdate AND holiday_id <> :hid"), {"hdate": req.holiday_date, "hid": holiday_id})).first()
+        if dup:
+            raise HTTPException(status_code=400, detail=f"Ngày {req.holiday_date.strftime('%d/%m/%Y')} đã tồn tại trong danh mục ngày lễ!")
+
+    name_to_set = req.holiday_name.strip() if req.holiday_name is not None else current["holiday_name"]
+    notes_to_set = req.notes.strip() if req.notes is not None else current["notes"]
+
+    res = await db.execute(text("""
+        UPDATE public.public_holidays
+        SET holiday_date = :hdate, holiday_name = :hname, notes = :notes
+        WHERE holiday_id = :hid
+        RETURNING holiday_id, holiday_date, holiday_name, notes, created_by, created_at
+    """), {
+        "hdate": new_date,
+        "hname": name_to_set,
+        "notes": notes_to_set,
+        "hid": holiday_id
+    })
+    row = res.mappings().first()
+
+    import json
+    await db.execute(text("""
+        INSERT INTO public.audit_logs (user_id, action, entity_name, entity_id, old_values, new_values)
+        VALUES (:uid, 'UPDATE_PUBLIC_HOLIDAY', 'public_holidays', :eid, CAST(:old AS jsonb), CAST(:new AS jsonb))
+    """), {
+        "uid": current_user["user_id"],
+        "eid": str(holiday_id),
+        "old": json.dumps({"holiday_date": str(current["holiday_date"]), "holiday_name": current["holiday_name"]}),
+        "new": json.dumps({"holiday_date": str(new_date), "holiday_name": name_to_set})
+    })
+
+    await db.commit()
+    return dict(row)
+
+
+@router.delete("/holidays/{holiday_id}", summary="Xóa ngày nghỉ Lễ, Tết")
+async def delete_public_holiday(
+    holiday_id: int,
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
+    db: AsyncSession = Depends(get_db)
+):
+    current = (await db.execute(text("""
+        SELECT holiday_id, holiday_date, holiday_name
+        FROM public.public_holidays
+        WHERE holiday_id = :hid
+    """), {"hid": holiday_id})).mappings().first()
+    if not current:
+        raise HTTPException(status_code=404, detail="Không tìm thấy ngày lễ")
+
+    h_period = current["holiday_date"].strftime("%Y-%m")
+    closed = (await db.execute(text("""
+        SELECT 1 FROM public.payrolls 
+        WHERE salary_period = :period AND payment_status IN ('CONFIRMED', 'PAID')
+        LIMIT 1
+    """), {"period": h_period})).first()
+    if closed:
+        raise HTTPException(status_code=409, detail=f"Kỳ lương {h_period} đã chốt hoặc thanh toán. Không thể sửa hoặc xóa ngày lễ thuộc kỳ này!")
+
+    await db.execute(text("DELETE FROM public.public_holidays WHERE holiday_id = :hid"), {"hid": holiday_id})
+
+    import json
+    await db.execute(text("""
+        INSERT INTO public.audit_logs (user_id, action, entity_name, entity_id, old_values)
+        VALUES (:uid, 'DELETE_PUBLIC_HOLIDAY', 'public_holidays', :eid, CAST(:old AS jsonb))
+    """), {
+        "uid": current_user["user_id"],
+        "eid": str(holiday_id),
+        "old": json.dumps({"holiday_date": str(current["holiday_date"]), "holiday_name": current["holiday_name"]})
+    })
+
+    await db.commit()
+    return {"message": f"Đã xóa ngày lễ '{current['holiday_name']}' thành công!"}
 
 
 # ===================================================================================

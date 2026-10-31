@@ -522,3 +522,96 @@
     padding-right: 14px;
   }
 }
+
+
+/* =========================================================================
+   Tab 3: Lịch Lễ, Tết & Công chuẩn (Vero Minimalist Architecture)
+   ========================================================================= */
+.prd-working-days-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.prd-section-card {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs, 4px);
+  background: var(--surface-card);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.prd-section-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.prd-section-heading {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.prd-stat-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+}
+
+.prd-stat-box {
+  padding: 8px 12px;
+  border-radius: var(--radius-xs, 4px);
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-subtle);
+}
+
+.prd-stat-box-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 2px;
+}
+
+.prd-stat-box-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+}
+
+.prd-stat-box.highlight {
+  border-color: var(--border-hover, #52525b);
+}
+
+.prd-stat-box.highlight .prd-stat-box-value {
+  color: var(--primary-color, #2563eb);
+}
+
+.prd-lock-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-xs, 4px);
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-default);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.prd-override-form {
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs, 4px);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}

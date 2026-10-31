@@ -4,7 +4,7 @@ import { Icons } from '../components/common/Icons'
 import { StatCard } from '../components/common/StatCard'
 import { EmptyState } from '../components/common/EmptyState'
 import { formatCurrency, formatDate } from '../utils/formatters'
-import type { Payroll } from '../types'
+import type { Payroll, PayrollPeriodWorkingDays } from '../types'
 import { payrollApi } from '../services/api'
 import './PayslipPrint.css'
 import './MyPayslipPage.css'
@@ -278,10 +278,37 @@ export function PayrollPage({ user }: PayrollPageProps) {
 
   // Modals state
   const [isPayrollRegulationOpen, setIsPayrollRegulationOpen] = useState(false)
+  const [payrollRegulationInitialTab, setPayrollRegulationInitialTab] = useState<'settings' | 'bonuses' | 'holidays_working_days' | 'attendance' | 'guide'>('settings')
   const [isAttendanceRulesOpen, setIsAttendanceRulesOpen] = useState(false)
   const [isMonthlyPrintModalOpen, setIsMonthlyPrintModalOpen] = useState(false)
   const [isAnnualPrintModalOpen, setIsAnnualPrintModalOpen] = useState(false)
   const [monthlyPrintData, setMonthlyPrintData] = useState<any>(null)
+  const [workingDaysInfo, setWorkingDaysInfo] = useState<PayrollPeriodWorkingDays | null>(null)
+
+  const fetchWorkingDays = useCallback(async (period: string) => {
+    try {
+      const data = await payrollApi.getWorkingDays(period)
+      setWorkingDaysInfo(data)
+    } catch (err) {
+      console.warn('Could not fetch working days info:', err)
+      setWorkingDaysInfo(null)
+    }
+  }, [])
+
+  // Xác định số ngày công chuẩn của các phiếu lương nháp hiện tại
+  const draftStandardDays = useMemo(() => {
+    const draftPayrolls = payrolls.filter(p => p.payment_status === 'DRAFT' || p.payment_status === 'NEEDS_RECALCULATION')
+    if (draftPayrolls.length === 0) return null
+    return Number(draftPayrolls[0].standard_working_days)
+  }, [payrolls])
+
+  // Cảnh báo lệch công chuẩn: Đối chiếu giữa ngày công quy chế và các phiếu lương nháp thực tế trên giao diện
+  const isSyncNeeded = useMemo(() => {
+    if (!workingDaysInfo) return false
+    const draftPayrolls = payrolls.filter(p => p.payment_status === 'DRAFT' || p.payment_status === 'NEEDS_RECALCULATION')
+    if (draftPayrolls.length === 0) return false
+    return draftPayrolls.some(p => Number(p.standard_working_days) !== Number(workingDaysInfo.applied_standard_days))
+  }, [workingDaysInfo, payrolls])
 
   // Roles determination
   const userRoles = useMemo(() => user?.roles || [], [user])
@@ -307,6 +334,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
       } else {
         setSelectedPayroll(null)
       }
+      await fetchWorkingDays(selectedPeriod)
     } catch (err: any) {
       console.error('Error fetching payrolls:', err)
       setFeedbackMessage({ type: 'error', text: err.message || 'Lỗi khi tải danh sách bảng lương' })
@@ -314,11 +342,12 @@ export function PayrollPage({ user }: PayrollPageProps) {
     } finally {
       setIsLoading(false)
     }
-  }, [selectedPeriod, user?.employee_id])
+  }, [selectedPeriod, user?.employee_id, fetchWorkingDays])
 
   useEffect(() => {
     fetchPayrolls()
-  }, [fetchPayrolls])
+    fetchWorkingDays(selectedPeriod)
+  }, [fetchPayrolls, fetchWorkingDays, selectedPeriod])
 
   // Fetch annual data when annual tab is active or selected employee changes
   const fetchAnnualSummary = useCallback(async (empId: number, year: string) => {
@@ -360,6 +389,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
         text: `✓ ${res.message} (Đã tính ${res.total_employees_calculated} nhân sự | Quỹ lương: ${formatCurrency(res.total_gross_income)} | Thực chi: ${formatCurrency(res.total_net_salary)})`,
       })
       await fetchPayrolls()
+      await fetchWorkingDays(selectedPeriod)
     } catch (err: any) {
       setFeedbackMessage({ type: 'error', text: `Lỗi tính bảng lương: ${err.message}` })
     } finally {
@@ -686,17 +716,13 @@ export function PayrollPage({ user }: PayrollPageProps) {
       {activeTab === 'monthly' && (
         <div className="no-print" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {/* Sub Toolbar: Month Selector & Batch Actions */}
-          <div className="card" style={{ padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-              <button type="button" className="btn btn-secondary" onClick={() => setIsAttendanceRulesOpen(true)} title="Xem quy định chấm công và đối chiếu giờ công">
-                {Icons.clock}
-                Quy định chấm công
-              </button>
-              <button type="button" className="btn btn-secondary" onClick={() => setIsPayrollRegulationOpen(true)} title="Xem và điều chỉnh quy chế lương, phạt trễ, phụ cấp cơm xe, thưởng lễ tết">
-                {Icons.settings}
-                Quy chế & Cài đặt lương
-              </button>
-              <span className="text-secondary" style={{ fontSize: '13px', fontWeight: 600 }}>Kỳ tính lương:</span>
+          <div className="card" style={{ padding: '12px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+            {/* Left Zone: Period Selector & Regulation Settings */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)' }}>
+                {Icons.calendar}
+                <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>Kỳ tính lương:</span>
+              </div>
               <select
                 className="form-select"
                 value={selectedPeriod}
@@ -704,10 +730,11 @@ export function PayrollPage({ user }: PayrollPageProps) {
                   setSelectedPeriod(e.target.value)
                   setSelectedPayroll(null)
                 }}
-                style={{ width: 'auto', minWidth: '150px' }}
+                style={{ width: 'auto', minWidth: '150px', height: '32px', fontSize: '12.5px', padding: '0 10px' }}
               >
                 {Array.from({ length: 12 }, (_, i) => {
                   const d = new Date()
+                  d.setDate(1)
                   d.setMonth(d.getMonth() - i)
                   const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
                   return (
@@ -717,71 +744,87 @@ export function PayrollPage({ user }: PayrollPageProps) {
                   )
                 })}
               </select>
+
+              <button
+                type="button"
+                className="btn btn-secondary btn-icon"
+                onClick={() => {
+                  setPayrollRegulationInitialTab('settings')
+                  setIsPayrollRegulationOpen(true)
+                }}
+                title="Quy chế & Cài đặt lương (Tham số, Thưởng, Công chuẩn, Chấm công)"
+                aria-label="Quy chế & Cài đặt lương"
+              >
+                {Icons.settings}
+              </button>
             </div>
 
-            {/* Actions for Manager / HR */}
+            {/* Right Zone: Core Actions & Utilities */}
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
               {canRunPayroll && (
-                <>
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                   <button
                     className="btn btn-primary"
-                    onClick={()=>setConfirmation({message:`Tính bảng lương kỳ ${selectedPeriod} theo OT đã duyệt?`,action:handleRunPayroll})}
+                    onClick={() => setConfirmation({ message: `Tính bảng lương kỳ ${selectedPeriod} theo OT đã duyệt?`, action: handleRunPayroll })}
                     disabled={actionLoading}
-                    style={{ backgroundColor: '#2563eb' }}
+                    style={{ backgroundColor: '#2563eb', borderColor: '#2563eb' }}
+                    title="Chốt và tính toán bảng lương kỳ này theo dữ liệu chấm công và OT"
                   >
                     {Icons.clock}
-                    {actionLoading ? 'Đang tính...' : 'Chốt & Tính Lương'}
+                    <span>{actionLoading ? 'Đang tính...' : 'Chốt & Tính Lương'}</span>
                   </button>
 
                   <button
                     className="btn btn-secondary"
-                    onClick={()=>setConfirmation({message:`Duyệt chính thức các phiếu nháp kỳ ${selectedPeriod}?`,action:handleConfirmAll})}
+                    onClick={() => setConfirmation({ message: `Duyệt chính thức các phiếu nháp kỳ ${selectedPeriod}?`, action: handleConfirmAll })}
                     disabled={actionLoading || metrics.draftCount === 0}
                     title="Duyệt chính thức các bản ghi DRAFT"
                   >
                     {Icons.check}
-                    Duyệt tất cả
+                    <span>Duyệt</span>
                   </button>
 
                   <button
                     className="btn btn-secondary"
-                    onClick={()=>setConfirmation({message:`Xác nhận đã chi trả các phiếu được duyệt kỳ ${selectedPeriod}?`,action:handlePayAll})}
+                    onClick={() => setConfirmation({ message: `Xác nhận đã chi trả các phiếu được duyệt kỳ ${selectedPeriod}?`, action: handlePayAll })}
                     disabled={actionLoading || (metrics.draftCount === 0 && metrics.confirmedCount === 0)}
                     title="Xác nhận đã chi trả chuyển khoản"
                   >
                     {Icons.dollar}
-                    Chi trả tất cả
+                    <span>Chi trả</span>
                   </button>
-                  <button className="btn btn-secondary" onClick={()=>setReopenDialogOpen(true)}
-                    disabled={actionLoading || (metrics.paidCount===0 && metrics.confirmedCount===0)}
-                    title={`Mở lại toàn kỳ ${selectedPeriod} để rà soát Attendance và tính lại`}>
-                    {Icons.undo} Mở lại kỳ lương
+
+                  <button
+                    className="btn btn-secondary btn-icon"
+                    onClick={() => setReopenDialogOpen(true)}
+                    disabled={actionLoading || (metrics.paidCount === 0 && metrics.confirmedCount === 0)}
+                    title={`Mở lại toàn kỳ ${selectedPeriod} để rà soát Attendance và tính lại`}
+                    aria-label="Mở lại kỳ lương"
+                  >
+                    {Icons.undo}
                   </button>
-                </>
+                </div>
               )}
 
-              {/* Actions & Export Buttons */}
-              <div style={{ display: 'flex', gap: '6px' }}>
+              {/* Visual Divider */}
+              <div style={{ width: '1px', height: '22px', backgroundColor: 'var(--border-default)', margin: '0 2px' }} />
+
+              {/* Export Utilities (Clean Icon Buttons) */}
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                 <button
-                  className="btn btn-secondary"
-                  onClick={() => setIsPayrollRegulationOpen(true)}
-                  title="Xem quy chế & công thức tính lương TechZone Retail"
-                >
-                  <span style={{ fontStyle: 'italic', fontWeight: 700, fontFamily: 'serif' }}>i</span>
-                  Quy chế tính lương
-                </button>
-                <button
-                  className="btn btn-secondary"
+                  className="btn btn-secondary btn-icon"
                   onClick={handleExportExcel}
-                  title="Xuất bảng lương tháng ra file Excel"
+                  title="Xuất bảng lương tháng ra file Excel (.xlsx)"
+                  aria-label="Xuất file Excel"
                 >
                   {Icons.fileText}
-                  Excel
                 </button>
                 <button
-                  className="btn btn-secondary"
+                  className="btn btn-secondary btn-icon"
                   onClick={handleExportCsv}
-                  title="Xuất file CSV"
+                  title="Xuất bảng lương ra file CSV"
+                  aria-label="Xuất file CSV"
+                  style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '-0.3px' }}
                 >
                   CSV
                 </button>
@@ -790,6 +833,51 @@ export function PayrollPage({ user }: PayrollPageProps) {
           </div>
 
           {canRunPayroll&&<PayrollOvertimePanel period={selectedPeriod} mode="history"/>}
+          {isSyncNeeded && (
+            <div style={{
+              background: 'var(--surface-subtle)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-md, 6px)',
+              padding: '10px 14px',
+              margin: '12px 0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '12px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)', fontSize: '12.5px' }}>
+                <span style={{ color: 'var(--status-warning, #d97706)', display: 'flex', alignItems: 'center' }}>
+                  {Icons.alertTriangle}
+                </span>
+                <div>
+                  <strong>Cảnh báo lệch công chuẩn:</strong> Quy chế hiện tại là <strong>{workingDaysInfo?.applied_standard_days} ngày</strong>, các phiếu lương nháp đang tính theo <strong>{draftStandardDays ?? workingDaysInfo?.draft_standard_days} ngày</strong>. Vui lòng tính lại để đồng bộ.
+                </div>
+              </div>
+              {canRunPayroll && (
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setConfirmation({
+                    message: `Tính lại bảng lương kỳ ${selectedPeriod} để đồng bộ công chuẩn (${workingDaysInfo?.applied_standard_days} ngày)?`,
+                    action: handleRunPayroll
+                  })}
+                  disabled={actionLoading}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    height: '28px',
+                    fontSize: '11.5px',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  {Icons.refresh}
+                  Tính lại
+                </button>
+              )}
+            </div>
+          )}
+
 
           {/* 4 Balanced Stat Cards for the Month */}
           <div className="stat-grid-4">
@@ -1604,8 +1692,22 @@ export function PayrollPage({ user }: PayrollPageProps) {
       {reopenDialogOpen&&<PayrollReopenDialog period={selectedPeriod} busy={actionLoading} onClose={()=>setReopenDialogOpen(false)} onSubmit={handleReopenPeriod}/>}
       {unconfirmPayroll&&<PayrollUnconfirmDialog payroll={unconfirmPayroll} busy={actionLoading} onClose={()=>setUnconfirmPayroll(null)} onSubmit={handleUnconfirmPayroll}/>}
       {adjustmentPayroll&&<PayrollAdjustmentDialog payroll={adjustmentPayroll} busy={actionLoading} onClose={()=>setAdjustmentPayroll(null)} onSave={handleSaveAdjustment}/>}
-      {isAttendanceRulesOpen && <AttendanceRegulationDialog onClose={() => setIsAttendanceRulesOpen(false)} />}
-      {isPayrollRegulationOpen && <PayrollRegulationDialog onClose={() => setIsPayrollRegulationOpen(false)} />}
+      {isAttendanceRulesOpen && (
+        <PayrollRegulationDialog
+          initialTab="attendance"
+          onClose={() => setIsAttendanceRulesOpen(false)}
+        />
+      )}
+      {isPayrollRegulationOpen && (
+        <PayrollRegulationDialog
+          initialTab={payrollRegulationInitialTab}
+          onClose={() => {
+            setIsPayrollRegulationOpen(false)
+            fetchPayrolls()
+            fetchWorkingDays(selectedPeriod)
+          }}
+        />
+      )}
 
       {/* ========================================================================= */}
       {/* RENDER ACTION DROPDOWN PORTAL */}
