@@ -696,6 +696,8 @@ import type {
   ProjectRoleAllowance,
   PayrollPolicySetting,
   PayrollPeriodBonus,
+  PublicHoliday,
+  PayrollPeriodWorkingDays,
 } from '../types';
 
 export const payrollApi = {
@@ -811,6 +813,34 @@ export const payrollApi = {
 
   deletePeriodBonus: async (bonusId: number): Promise<{ message: string }> => {
     return api.delete(`/payrolls/policies/period-bonuses/${bonusId}`);
+  },
+
+  getWorkingDays: async (period: string): Promise<PayrollPeriodWorkingDays> => {
+    return api.get<PayrollPeriodWorkingDays>(`/payrolls/working-days/${period}`);
+  },
+
+  overrideWorkingDays: async (period: string, data: { override_working_days: number; reason?: string }): Promise<PayrollPeriodWorkingDays> => {
+    return api.post<PayrollPeriodWorkingDays>(`/payrolls/working-days/${period}`, data);
+  },
+
+  resetWorkingDays: async (period: string): Promise<PayrollPeriodWorkingDays> => {
+    return api.delete<PayrollPeriodWorkingDays>(`/payrolls/working-days/${period}`);
+  },
+
+  getHolidays: async (year?: number): Promise<PublicHoliday[]> => {
+    return api.get<PublicHoliday[]>('/payrolls/holidays', year ? { year } : undefined);
+  },
+
+  createHoliday: async (data: { holiday_date: string; holiday_name: string; notes?: string }): Promise<PublicHoliday> => {
+    return api.post<PublicHoliday>('/payrolls/holidays', data);
+  },
+
+  updateHoliday: async (holidayId: number, data: { holiday_date?: string; holiday_name?: string; notes?: string }): Promise<PublicHoliday> => {
+    return api.put<PublicHoliday>(`/payrolls/holidays/${holidayId}`, data);
+  },
+
+  deleteHoliday: async (holidayId: number): Promise<{ message: string }> => {
+    return api.delete(`/payrolls/holidays/${holidayId}`);
   },
 
   getPayslip: async (payrollId: number): Promise<any> => {

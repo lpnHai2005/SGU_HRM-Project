@@ -1011,3 +1011,28 @@ export interface PayrollPeriodBonus {
 }
 
 
+export interface PublicHoliday {
+  holiday_id: number;
+  holiday_date: string;
+  holiday_name: string;
+  notes?: string | null;
+  created_by?: number | null;
+  created_at?: string;
+}
+
+export interface PayrollPeriodWorkingDays {
+  salary_period: string;
+  calendar_days: number;
+  sundays_count: number;
+  holidays_count: number;
+  auto_standard_days: number;
+  manual_standard_days?: number | null;
+  locked_standard_days?: number | null;
+  applied_standard_days: number;
+  is_manual_override: boolean;
+  is_locked: boolean;
+  reason?: string | null;
+  updated_at?: string | null;
+  is_sync_needed?: boolean;
+  draft_standard_days?: number | null;
+}

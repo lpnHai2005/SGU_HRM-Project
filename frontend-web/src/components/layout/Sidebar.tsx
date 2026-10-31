@@ -144,16 +144,12 @@ export function Sidebar({
                         aria-expanded={isExpanded}
                         title={item.label}
                       >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '9px', minWidth: 0, flex: 1 }}>
-                          {Icons[item.icon] || Icons.clipboardList}
-                          {!collapsed && <span className="nav-item-label">{item.label}</span>}
-                        </div>
+                        {Icons[item.icon] || Icons.clipboardList}
+                        {!collapsed && <span className="nav-item-label">{item.label}</span>}
                         {!collapsed && (
                           <span
                             className="nav-item-arrow"
                             style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
                               transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
                               transition: 'transform 0.2s ease',
                               opacity: 0.7,

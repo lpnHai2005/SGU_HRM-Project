@@ -1071,3 +1071,54 @@ class PayrollPeriodBonusOut(BaseModel):
     updated_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# ===================================================================================
+# 8.1. PUBLIC HOLIDAYS & FLEXIBLE STANDARD DAYS SCHEMAS
+# ===================================================================================
+
+class PublicHolidayCreate(BaseModel):
+    holiday_date: date
+    holiday_name: str = Field(..., min_length=2, max_length=150)
+    notes: Optional[str] = Field(None, max_length=255)
+
+
+class PublicHolidayUpdate(BaseModel):
+    holiday_date: Optional[date] = None
+    holiday_name: Optional[str] = Field(None, min_length=2, max_length=150)
+    notes: Optional[str] = Field(None, max_length=255)
+
+
+class PublicHolidayOut(BaseModel):
+    holiday_id: int
+    holiday_date: date
+    holiday_name: str
+    notes: Optional[str] = None
+    created_by: Optional[int] = None
+    created_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PayrollPeriodOverrideCreate(BaseModel):
+    override_working_days: float = Field(..., gt=0, le=31.0)
+    reason: Optional[str] = Field(None, max_length=255)
+
+
+class PayrollPeriodWorkingDaysOut(BaseModel):
+    salary_period: str
+    calendar_days: int
+    sundays_count: int
+    holidays_count: int
+    auto_standard_days: float
+    manual_standard_days: Optional[float] = None
+    locked_standard_days: Optional[float] = None
+    applied_standard_days: float
+    is_manual_override: bool
+    is_locked: bool
+    reason: Optional[str] = None
+    updated_at: Optional[datetime] = None
+    is_sync_needed: bool = False
+    draft_standard_days: Optional[float] = None
+
+    model_config = ConfigDict(from_attributes=True)
