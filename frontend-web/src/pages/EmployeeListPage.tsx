@@ -7,6 +7,25 @@ import { DatePicker } from '../components/common/DatePicker'
 import { ContractHistory } from '../components/ContractHistory'
 import { getInitials, getRoleFromUser, formatDate, formatCurrency } from '../utils/formatters'
 import type { Employee, EmployeeCreate, Lookups, Contract, PromotionCreate } from '../types'
+import { EMPTY_ADDRESS, composeAddress, parseAddress, type AddressParts } from '../utils/address'
+import {
+  EmployeeAdvancedSearchModal,
+  describeConditionsInNaturalLanguage,
+  type SearchCondition,
+  type Province,
+} from '../components/EmployeeAdvancedSearchModal'
+import './OvertimeApprovalsPanel.css'
+
+// Payload gửi backend: phép "in" gửi danh sách trong value
+const toSearchPayload = (cond: SearchCondition) => ({
+  join: cond.join,
+  not: cond.not,
+  field: cond.field,
+  op: cond.op,
+  value: cond.op === 'in' ? cond.values : cond.value,
+  value2: cond.value2,
+})
+type AddressField = 'permanent_address' | 'current_address'
 
 export interface EmployeeListPageProps {
   user: any
@@ -36,6 +55,14 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
     return Number.isSafeInteger(value) && value > 0 ? value : null
   })
   const [filterPosition, setFilterPosition] = useState<number | null>(null)
+  const [advancedSearch, setAdvancedSearch] = useState<SearchCondition[]>([])
+  const [searchMatchMode, setSearchMatchMode] = useState<'AND' | 'OR'>('AND')
+  const [showAdvancedModal, setShowAdvancedModal] = useState(false)
+  const [provinces, setProvinces] = useState<Province[]>([])
+  const [addressParts, setAddressParts] = useState<Record<AddressField, AddressParts>>({
+    permanent_address: EMPTY_ADDRESS,
+    current_address: EMPTY_ADDRESS,
+  })
   const [isLoading, setIsLoading] = useState(true)
 
   // Modal state
@@ -185,16 +212,18 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
       if (filterStore) params.store_id = filterStore
       if (filterStatus !== 'all') params.status = filterStatus
       if (searchTerm) params.search = searchTerm
+      if (advancedSearch.length) params.conditions = JSON.stringify(advancedSearch.map(toSearchPayload))
 
       const data = await employeeApi.getAll(params)
       setEmployees(data || [])
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error fetching employees:', err)
       setEmployees([])
+      if (advancedSearch.length) showToast('error', err?.message || 'Điều kiện tìm kiếm nâng cao không hợp lệ')
     } finally {
       setIsLoading(false)
     }
-  }, [filterStore, filterStatus, searchTerm])
+  }, [filterStore, filterStatus, searchTerm, advancedSearch, showToast])
 
   const fetchLookups = useCallback(async () => {
     try {
@@ -211,16 +240,20 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
     fetchLookups()
   }, [fetchEmployees, fetchLookups])
 
+  useEffect(() => {
+    fetch('/data/province.json')
+      .then(response => { if (!response.ok) throw new Error('Không tải được dữ liệu địa chỉ'); return response.json() })
+      .then((data: Province[]) => setProvinces(data))
+      .catch(err => console.error('Error fetching provinces:', err))
+  }, [])
 
-  const filteredEmployees = employees.filter(emp => {
-    const matchesSearch =
-      !searchTerm ||
-      emp.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      emp.employee_code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      emp.phone?.includes(searchTerm)
-    const matchesPosition = !filterPosition || emp.position_id === filterPosition
-    return matchesSearch && matchesPosition
-  })
+
+  // Từ khóa đã được server lọc (không dấu); lọc lại ở client sẽ loại mất kết quả không dấu
+  const filteredEmployees = employees.filter(emp => !filterPosition || emp.position_id === filterPosition)
+
+  const clearAdvancedSearch = () => {
+    setAdvancedSearch([])
+  }
 
 
 
@@ -234,6 +267,10 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
     setFormError('')
     setOpenMenuId(null)
     setMenuPos(null)
+    setAddressParts({
+      permanent_address: mode === 'edit' && employee ? parseAddress(employee.permanent_address) : EMPTY_ADDRESS,
+      current_address: mode === 'edit' && employee ? parseAddress(employee.current_address) : EMPTY_ADDRESS,
+    })
 
     if (mode === 'view') {
       // Load contracts for view mode
@@ -349,6 +386,72 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
   // Form handlers
   const handleInputChange = (field: keyof EmployeeCreate, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }))
+  }
+
+  const updateAddress = (field: AddressField, patch: Partial<AddressParts>) => {
+    const next = { ...addressParts[field], ...patch }
+    setAddressParts(prev => ({ ...prev, [field]: next }))
+    handleInputChange(field, composeAddress(next))
+  }
+
+  // Trả về thông báo lỗi nếu địa chỉ không khớp danh mục province.json
+  const getAddressError = (field: AddressField, label: string, required: boolean) => {
+    const address = addressParts[field]
+    if (!required && !address.street.trim() && !address.ward && !address.province) return ''
+    if (!provinces.length) return 'Chưa tải được danh mục tỉnh/phường, vui lòng tải lại trang'
+    const province = provinces.find(item => item.name === address.province)
+    if (!province) return `Vui lòng chọn Tỉnh/Thành phố cho ${label}`
+    if (!province.wards.some(ward => ward.name === address.ward)) return `Vui lòng chọn Phường/Xã cho ${label}`
+    return ''
+  }
+
+  const validateAddresses = () =>
+    getAddressError('permanent_address', 'địa chỉ thường trú', false) ||
+    getAddressError('current_address', 'địa chỉ hiện tại', true)
+
+  const renderAddressFields = (field: AddressField, label: string, required: boolean) => {
+    const address = addressParts[field]
+    const selectedProvince = provinces.find(item => item.name === address.province)
+    const wards = selectedProvince?.wards || []
+    return (
+      <div className="form-group">
+        <label className="form-label">
+          {label} {required && <span style={{ color: 'red' }}>*</span>}
+        </label>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+          <select
+            className="form-select"
+            aria-label={`${label} - Tỉnh/Thành phố`}
+            value={address.province}
+            onChange={(e) => updateAddress(field, { province: e.target.value, ward: '' })}
+          >
+            <option value="">-- Tỉnh/Thành phố --</option>
+            {address.province && !selectedProvince && <option value={address.province}>{address.province} (không hợp lệ)</option>}
+            {provinces.map(item => <option key={item.code} value={item.name}>{item.name}</option>)}
+          </select>
+          <select
+            className="form-select"
+            aria-label={`${label} - Phường/Xã`}
+            value={address.ward}
+            disabled={!selectedProvince}
+            onChange={(e) => updateAddress(field, { ward: e.target.value })}
+          >
+            <option value="">-- Phường/Xã --</option>
+            {address.ward && !wards.some(ward => ward.name === address.ward) && <option value={address.ward}>{address.ward} (không hợp lệ)</option>}
+            {wards.map(ward => <option key={ward.code} value={ward.name}>{ward.name}</option>)}
+          </select>
+        </div>
+        <input
+          type="text"
+          className="form-input"
+          style={{ marginTop: '8px' }}
+          aria-label={`${label} - Số nhà, tên đường`}
+          value={address.street}
+          onChange={(e) => updateAddress(field, { street: e.target.value })}
+          placeholder="Số nhà, tên đường (VD: 123 Nguyễn Huệ)"
+        />
+      </div>
+    )
   }
 
   const handlePromotionChange = (field: string, value: any) => {
@@ -543,6 +646,11 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
       setFormError('Vui lòng nhập họ và tên')
       return
     }
+    const addressError = validateAddresses()
+    if (addressError) {
+      setFormError(addressError)
+      return
+    }
     requestConfirm('add', `Xác nhận thêm nhân viên mới "${formData.first_name} ${formData.last_name}"?`)
   }
 
@@ -550,6 +658,11 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
     if (!selectedEmployee) return
     if (!formData.first_name || !formData.last_name) {
       setFormError('Vui lòng nhập họ và tên')
+      return
+    }
+    const addressError = validateAddresses()
+    if (addressError) {
+      setFormError(addressError)
       return
     }
     requestConfirm('edit', `Xác nhận cập nhật thông tin nhân viên "${selectedEmployee.full_name}"?`)
@@ -809,27 +922,9 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
           />
         </div>
 
-        <div className="form-group">
-          <label className="form-label">Địa chỉ thường trú</label>
-          <input
-            type="text"
-            className="form-input"
-            value={formData.permanent_address || ''}
-            onChange={(e) => handleInputChange('permanent_address', e.target.value)}
-            placeholder="123 Đường ABC, Phường X, Quận Y, TP.HCM"
-          />
-        </div>
+        {renderAddressFields('permanent_address', 'Địa chỉ thường trú', false)}
 
-        <div className="form-group">
-          <label className="form-label">Địa chỉ hiện tại</label>
-          <input
-            type="text"
-            className="form-input"
-            value={formData.current_address || ''}
-            onChange={(e) => handleInputChange('current_address', e.target.value)}
-            placeholder="123 Đường ABC, Phường X, Quận Y, TP.HCM"
-          />
-        </div>
+        {renderAddressFields('current_address', 'Địa chỉ hiện tại', true)}
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
           <div className="form-group">
@@ -1311,8 +1406,53 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
                 ))}
               </select>
             )}
+            <button
+              type="button"
+              className={`btn ${advancedSearch.length > 0 ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setShowAdvancedModal(true)}
+              title="Tìm kiếm nâng cao"
+            >
+              {Icons.search}
+              <span>Tìm kiếm nâng cao</span>
+              {advancedSearch.length > 0 && (
+                <span className="search-count-badge">
+                  {advancedSearch.length}
+                </span>
+              )}
+            </button>
           </div>
         </div>
+
+        {advancedSearch.length > 0 && (
+          <div className="employee-advanced-filter-bar">
+            <div className="employee-filter-bar-content">
+              <span className="employee-filter-mode-badge">
+                {Icons.filter}
+                <span>{searchMatchMode === 'AND' ? 'Khớp TẤT CẢ (VÀ)' : 'Khớp BẤT KỲ (HOẶC)'}</span>
+              </span>
+              <span className="employee-filter-bar-desc">
+                {describeConditionsInNaturalLanguage(advancedSearch, searchMatchMode)}
+              </span>
+            </div>
+            <div className="employee-filter-bar-actions">
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setShowAdvancedModal(true)}
+              >
+                {Icons.edit} Chỉnh sửa
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                title="Xóa bộ lọc nâng cao"
+                onClick={clearAdvancedSearch}
+              >
+                {Icons.close} Xóa
+              </button>
+            </div>
+          </div>
+        )}
 
         {isLoading ? (
           <div className="card-body" style={{ textAlign: 'center', padding: '40px' }}>
@@ -1518,6 +1658,21 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
           </div>
         </div>
       )}
+
+      {/* Advanced Search Modal */}
+      <EmployeeAdvancedSearchModal
+        isOpen={showAdvancedModal}
+        onClose={() => setShowAdvancedModal(false)}
+        onApply={(conditions, matchMode) => {
+          setSearchMatchMode(matchMode)
+          setAdvancedSearch(conditions)
+        }}
+        onClear={clearAdvancedSearch}
+        initialConditions={advancedSearch}
+        initialMatchMode={searchMatchMode}
+        provinces={provinces}
+        canManage={canManage}
+      />
 
       {/* Toast notification */}
       {toast && (

@@ -1,4 +1,6 @@
-from typing import Optional, List
+from datetime import date
+from typing import Literal, Optional, List, Union
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
@@ -11,12 +13,161 @@ from app.schemas.schemas import (
 
 router = APIRouter()
 
+# ===================== Tìm kiếm nâng cao =====================
+# Client gửi danh sách điều kiện [{join, not, field, op, value, value2}] dạng JSON.
+# Tên trường và phép toán chỉ lấy từ whitelist dưới đây; giá trị luôn đi qua bind param.
+
+def _address_part(column: str, from_end: int) -> str:
+    """Phần thứ from_end tính từ cuối của địa chỉ 'số nhà đường, phường/xã, tỉnh/thành phố'."""
+    parts = f"string_to_array({column}, ',')"
+    return f"trim(({parts})[cardinality({parts}) - {from_end - 1}])"
+
+
+ACTIVE_CONTRACT_SALARY = (
+    "(SELECT c.basic_salary FROM contracts c WHERE c.employee_id = e.employee_id "
+    "AND c.status = 'ACTIVE' ORDER BY c.start_date DESC LIMIT 1)"
+)
+
+# key -> (biểu thức SQL, kiểu, nhạy cảm)
+SEARCH_FIELDS = {
+    "name": (("e.full_name",), "text", False),
+    "code": (("e.employee_code",), "text", False),
+    "phone": (("e.phone",), "text", False),
+    "email": (("e.personal_email", "e.company_email"), "text", False),
+    "address": (("e.permanent_address", "e.current_address"), "text", False),
+    "current_province": ((_address_part("e.current_address", 1),), "province", False),
+    "current_ward": ((_address_part("e.current_address", 2),), "text", False),
+    "permanent_province": ((_address_part("e.permanent_address", 1),), "province", False),
+    "permanent_ward": ((_address_part("e.permanent_address", 2),), "text", False),
+    "identity_card": (("e.identity_card",), "text", False),
+    "department": (("d.department_name",), "text", False),
+    "bank_name": (("e.bank_name",), "text", False),
+    "tax_code": (("e.tax_code",), "text", True),
+    "insurance_code": (("e.insurance_code",), "text", True),
+    "bank_account": (("e.bank_account_number",), "text", True),
+    "base_salary": ((ACTIVE_CONTRACT_SALARY,), "number", False),
+    "age": (("date_part('year', age(current_date, e.dob))",), "number", False),
+    "join_date": (("e.join_date",), "date", False),
+}
+SEARCH_OPS = {
+    "text": {"contains", "eq", "neq", "starts"},
+    "province": {"eq", "neq", "in"},
+    "number": {"eq", "neq", "gt", "gte", "lt", "lte", "between"},
+    "date": {"eq", "neq", "gt", "gte", "lt", "lte", "between"},
+}
+COMPARE_SQL = {"eq": "=", "gt": ">", "gte": ">=", "lt": "<", "lte": "<="}
+SENSITIVE_SEARCH_ROLES = {"ADMIN", "HR_MANAGER", "DIRECTOR"}
+MAX_SEARCH_CONDITIONS = 10
+
+
+class SearchCondition(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    join: Literal["AND", "OR"] = "AND"
+    negate: bool = Field(False, alias="not")
+    field: str
+    op: str
+    value: Union[str, float, int, List[str]]  # danh sách chỉ dùng cho op "in"
+    value2: Optional[Union[str, float, int]] = None
+
+
+def _like_escape(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _parse_value(raw, kind: str):
+    if kind == "number":
+        number = float(raw)
+        if number != number or number in (float("inf"), float("-inf")):
+            raise ValueError("số không hợp lệ")
+        return number
+    if kind == "date":
+        return date.fromisoformat(str(raw))
+    text_value = str(raw).strip()
+    if not text_value or len(text_value) > 100:
+        raise ValueError("giá trị chữ phải dài 1-100 ký tự")
+    return text_value
+
+
+def _condition_sql(cond: SearchCondition, index: int, params: dict, can_see_sensitive: bool) -> str:
+    if cond.field not in SEARCH_FIELDS:
+        raise HTTPException(status_code=422, detail=f"Trường tìm kiếm không hợp lệ: {cond.field}")
+    columns, kind, sensitive = SEARCH_FIELDS[cond.field]
+    if sensitive and not can_see_sensitive:
+        raise HTTPException(status_code=403, detail="Bạn không có quyền tìm kiếm theo trường này.")
+    if cond.op not in SEARCH_OPS[kind]:
+        raise HTTPException(status_code=422, detail=f"Phép toán '{cond.op}' không áp dụng cho trường {cond.field}")
+    try:
+        if cond.op == "in":
+            # "thuộc một trong": 1-34 giá trị (34 tỉnh/thành)
+            if not isinstance(cond.value, list) or not 1 <= len(cond.value) <= 34:
+                raise ValueError("cần 1-34 giá trị")
+            value = [_parse_value(item, kind) for item in cond.value]
+        elif isinstance(cond.value, list):
+            raise ValueError("chỉ phép 'thuộc một trong' nhận danh sách")
+        else:
+            value = _parse_value(cond.value, kind)
+        value2 = _parse_value(cond.value2, kind) if cond.op == "between" else None
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail=f"Giá trị không hợp lệ cho trường {cond.field}")
+    if value2 is not None and value2 < value:
+        raise HTTPException(status_code=422, detail=f"Khoảng giá trị của {cond.field} bị ngược")
+
+    p = f"c{index}"
+    if cond.op == "in":
+        names = [f"{p}_{i}" for i in range(len(value))]
+        params.update({name: _like_escape(item) for name, item in zip(names, value)})
+        expr = " OR ".join(
+            f"extensions.unaccent({col}) ILIKE extensions.unaccent(:{name})" for col in columns for name in names
+        )
+    elif kind in ("text", "province"):
+        patterns = {"contains": f"%{_like_escape(value)}%", "starts": f"{_like_escape(value)}%"}
+        params[p] = patterns.get(cond.op, _like_escape(value))
+        # Không dấu, không phân biệt hoa thường; eq/neq so khớp nguyên chuỗi
+        expr = " OR ".join(f"extensions.unaccent({col}) ILIKE extensions.unaccent(:{p})" for col in columns)
+    elif cond.op == "between":
+        params[p], params[f"{p}b"] = value, value2
+        expr = f"{columns[0]} BETWEEN :{p} AND :{p}b"
+    else:
+        params[p] = value
+        expr = f"{columns[0]} {COMPARE_SQL['eq' if cond.op == 'neq' else cond.op]} :{p}"
+    # COALESCE để NULL được coi là "không khớp", nhờ vậy NOT / ≠ vẫn trả về bản ghi thiếu dữ liệu
+    sql = f"COALESCE(({expr}), FALSE)"
+    if cond.op == "neq":
+        sql = f"NOT {sql}"
+    return f"NOT {sql}" if cond.negate else sql
+
+
+def build_advanced_search(raw_conditions: str, user_roles, params: dict) -> str:
+    """Trả về biểu thức SQL đã bọc ngoặc; SQL tự tính AND trước OR."""
+    try:
+        conditions = TypeAdapter(List[SearchCondition]).validate_json(raw_conditions)
+    except ValidationError:
+        raise HTTPException(status_code=422, detail="Điều kiện tìm kiếm nâng cao không hợp lệ")
+    if len(conditions) > MAX_SEARCH_CONDITIONS:
+        raise HTTPException(status_code=422, detail=f"Tối đa {MAX_SEARCH_CONDITIONS} điều kiện")
+    can_see_sensitive = bool(SENSITIVE_SEARCH_ROLES & set(user_roles))
+    parts = []
+    for index, cond in enumerate(conditions):
+        sql = _condition_sql(cond, index, params, can_see_sensitive)
+        parts.append(sql if index == 0 else f"{cond.join} {sql}")
+    return "(" + " ".join(parts) + ")" if parts else ""
+
+
+def _unaccent_match(columns, param: str) -> str:
+    """So khớp không dấu, không phân biệt hoa thường (cần extension unaccent)."""
+    return "(" + " OR ".join(
+        f"extensions.unaccent({col}) ILIKE extensions.unaccent(:{param})" for col in columns
+    ) + ")"
+
+
 @router.get("", response_model=List[EmployeeOut], summary="Danh sách nhân sự chuỗi TechZone")
 async def list_employees(
     store_id: Optional[int] = Query(None, description="Lọc theo chi nhánh cửa hàng"),
     department_id: Optional[int] = Query(None, description="Lọc theo phòng ban"),
     status: Optional[str] = Query(None, description="Lọc theo trạng thái"),
     search: Optional[str] = Query(None, description="Tìm theo họ tên, mã NV, SĐT"),
+    conditions: Optional[str] = Query(None, description="Tìm nâng cao: JSON [{join, not, field, op, value, value2}]"),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -57,8 +208,13 @@ async def list_employees(
         base_query += " AND e.employment_status = :status"
         params["status"] = status
     if search:
-        base_query += " AND (e.full_name ILIKE :search OR e.employee_code ILIKE :search OR e.phone ILIKE :search)"
+        base_query += " AND " + _unaccent_match(("e.full_name", "e.employee_code", "e.phone"), "search")
         params["search"] = f"%{search}%"
+    if conditions:
+        # Bọc ngoặc rồi AND với bộ lọc/phạm vi ở trên để OR không vượt được giới hạn cửa hàng
+        advanced_sql = build_advanced_search(conditions, user_roles, params)
+        if advanced_sql:
+            base_query += " AND " + advanced_sql
 
     base_query += " ORDER BY e.employee_id ASC"
 

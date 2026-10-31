@@ -354,6 +354,7 @@ export const employeeApi = {
     department_id?: number
     status?: string
     search?: string
+    conditions?: string
   }): Promise<Employee[]> => {
     return api.get<Employee[]>('/employees', params);
   },
