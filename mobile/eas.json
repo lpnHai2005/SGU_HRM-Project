@@ -9,10 +9,15 @@
       "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "android": { "buildType": "apk" },
+      "environment": "preview",
+      "env": { "EXPO_PUBLIC_API_URL": "https://sgu-hrm-project.onrender.com/api/v1" }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "environment": "production",
+      "env": { "EXPO_PUBLIC_API_URL": "https://sgu-hrm-project.onrender.com/api/v1" }
     }
   },
   "submit": {

@@ -250,7 +250,7 @@ function HistoryScreen() {
                 Chưa có dữ liệu chấm công cho tháng {applied}.
               </Text>
             </Card>
-          ) : null
+          ) : undefined
         }
         renderItem={({ item }) => {
           const storeName = storeLabel(item.store_name);
