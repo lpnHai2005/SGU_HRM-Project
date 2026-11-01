@@ -1962,14 +1962,16 @@
   font-size: 0.875rem;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-sm);
-  background: var(--surface-card);
+  background-color: var(--surface-card);
   color: var(--text-primary);
   cursor: pointer;
+  -webkit-appearance: none;
+  -moz-appearance: none;
   appearance: none;
   background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2371717a' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
-  background-position: right 8px center;
-  background-repeat: no-repeat;
-  background-size: 16px;
+  background-position: right 10px center !important;
+  background-repeat: no-repeat !important;
+  background-size: 16px 16px !important;
   transition: all 0.15s ease;
   box-sizing: border-box;
 }
@@ -1981,7 +1983,10 @@
 }
 
 [data-theme="dark"] .form-select {
-  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23f4f4f5' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2394a3b8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 10px center !important;
+  background-repeat: no-repeat !important;
+  background-size: 16px 16px !important;
 }
 
 /* Date input calendar picker indicator */

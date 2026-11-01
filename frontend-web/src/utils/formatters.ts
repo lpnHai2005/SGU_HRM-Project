@@ -74,3 +74,55 @@ export function getRoleBadgeClass(role: UserRole): string {
       return 'employee'
   }
 }
+
+export function formatDurationMinutes(minutes?: number | null): string {
+  if (minutes == null || isNaN(minutes) || minutes <= 0) return '0p'
+  const h = Math.floor(minutes / 60)
+  const m = Math.round(minutes % 60)
+  if (h === 0) return `${m}p`
+  if (m === 0) return `${h}h`
+  return `${h}h ${m}p`
+}
+
+export function formatQualityFlag(flag: string): string {
+  switch (flag) {
+    case 'SHORT_SESSION':
+      return 'Phiên ngắn ≤15p'
+    case 'OPEN_SESSION':
+      return 'Phiên chưa checkout'
+    case 'OVERDUE_OPEN_SESSION':
+      return 'Quá hạn 7 ngày chưa checkout'
+    case 'SHIFT_MISMATCH':
+      return 'Lệch lịch phân ca'
+    case 'UNSCHEDULED':
+      return 'Ngoài lịch phân ca'
+    case 'EXCESSIVE_LATE':
+      return 'Trễ quá 4h (Chờ HR rà soát)'
+    case 'EXCESSIVE_EARLY':
+      return 'Sớm quá 4h (Chờ HR rà soát)'
+    case 'NORMAL':
+      return 'Hợp lệ'
+    default:
+      return flag
+  }
+}
+
+export function formatQualityStatus(status?: string): string {
+  switch (status) {
+    case 'NORMAL':
+      return 'Hợp lệ'
+    case 'SHORT_SESSION':
+      return 'Phiên ngắn bất thường (≤15p)'
+    case 'OPEN_SESSION':
+      return 'Chưa checkout'
+    case 'OVERDUE_OPEN_SESSION':
+      return 'Quá hạn 7 ngày'
+    case 'NEEDS_REVIEW':
+      return 'Cần HR rà soát'
+    case 'FLAGGED':
+      return 'Có cờ cảnh báo'
+    default:
+      return status || 'Chưa xác định'
+  }
+}
+
