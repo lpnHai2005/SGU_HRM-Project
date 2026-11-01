@@ -79,8 +79,14 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
   const [loading, setLoading] = useState(true)
 
   const branch =
-    user.roles.includes('STORE_MANAGER') &&
-    !user.roles.some((r: string) => ['ADMIN', 'HR_MANAGER', 'DIRECTOR'].includes(r))
+    user?.roles?.includes('STORE_MANAGER') &&
+    !user?.roles?.some((r: string) => ['ADMIN', 'HR_MANAGER', 'DIRECTOR'].includes(r))
+
+  const isStoreManager = Boolean(
+    branch ||
+      user?.username?.toLowerCase()?.startsWith('store_mgr') ||
+      user?.role === 'STORE_MANAGER'
+  )
 
   useEffect(() => {
     api.get('/operations/filter-options').then(setOptions).catch(e => setError(e.message))
@@ -855,6 +861,8 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
           employee={selectedEmployeeForDetail}
           period={period}
           isAdmin={isAdmin}
+          isStoreManager={isStoreManager}
+          currentUser={user}
           onClose={() => setSelectedEmployeeForDetail(null)}
           onOpenPrint={() => {
             setSelectedEmployeeForPrint(selectedEmployeeForDetail)
