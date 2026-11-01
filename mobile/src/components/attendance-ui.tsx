@@ -14,33 +14,37 @@ import type { ReactNode } from 'react';
 
 export function usePalette() {
   const { dark } = usePreferences();
+  // Vero tokens, kept in sync with DESIGN.md (web): Paper Crisp light / Obsidian Charcoal dark.
   return {
     dark,
-    bg: dark ? '#0f172a' : '#f8fafc',
-    card: dark ? '#1e293b' : '#ffffff',
-    surfaceLow: dark ? '#182234' : '#f1f5f9',
-    surfaceHigh: dark ? '#334155' : '#e2e8f0',
-    text: dark ? '#f8fafc' : '#0f172a',
-    body: dark ? '#cbd5e1' : '#334155',
-    muted: dark ? '#94a3b8' : '#64748b',
-    line: dark ? '#334155' : '#e2e8f0',
-    accent: dark ? '#ffffff' : '#0f172a',
-    brand: '#2563eb',
-    brandDark: '#1d4ed8',
-    brandLight: dark ? '#1e3a8a' : '#eff6ff',
-    brandText: dark ? '#93c5fd' : '#1d4ed8',
-    danger: dark ? '#f87171' : '#ef4444',
-    dangerBg: dark ? '#450a0a' : '#fef2f2',
-    dangerText: dark ? '#fca5a5' : '#dc2626',
+    bg: dark ? '#0d0d0e' : '#f6f6f8',
+    card: dark ? '#151517' : '#ffffff',
+    surfaceLow: dark ? '#1a1a1d' : '#f0f0f3',
+    surfaceHigh: dark ? '#27272a' : '#e4e4e7',
+    text: dark ? '#f4f4f5' : '#09090b',
+    body: dark ? '#d4d4d8' : '#3f3f46',
+    muted: dark ? '#a1a1aa' : '#68686f',
+    line: dark ? '#222225' : '#e4e4e7',
+    accent: dark ? '#ffffff' : '#09090b',
+    // Stark primary: black on paper, white on charcoal. Text on it uses onBrand.
+    brand: dark ? '#fafafa' : '#09090b',
+    brandDark: dark ? '#e4e4e7' : '#27272a',
+    onBrand: dark ? '#09090b' : '#ffffff',
+    brandLight: dark ? '#222225' : '#f0f0f3',
+    brandText: dark ? '#f4f4f5' : '#09090b',
+    danger: dark ? '#ef4444' : '#dc2626',
+    dangerBg: dark ? 'rgba(239,68,68,0.14)' : 'rgba(239,68,68,0.08)',
+    dangerText: dark ? '#f87171' : '#b91c1c',
     emerald: '#10b981',
-    emeraldBg: dark ? '#064e3b' : '#ecfdf5',
-    emeraldText: dark ? '#6ee7b7' : '#059669',
+    emeraldBg: dark ? 'rgba(16,185,129,0.14)' : 'rgba(16,185,129,0.10)',
+    emeraldText: dark ? '#34d399' : '#047857',
     amber: '#f59e0b',
-    amberBg: dark ? '#78350f' : '#fffbeb',
-    amberText: dark ? '#fcd34d' : '#d97706',
-    indigo: '#6366f1',
-    indigoBg: dark ? '#312e81' : '#e0e7ff',
-    indigoText: dark ? '#a5b4fc' : '#4338ca',
+    amberBg: dark ? 'rgba(245,158,11,0.14)' : 'rgba(245,158,11,0.12)',
+    amberText: dark ? '#fbbf24' : '#b45309',
+    // "indigo" keys now carry the web's info/sky status colour.
+    indigo: '#0ea5e9',
+    indigoBg: dark ? 'rgba(14,165,233,0.14)' : 'rgba(14,165,233,0.10)',
+    indigoText: dark ? '#38bdf8' : '#0369a1',
   };
 }
 
@@ -116,14 +120,9 @@ export function Card({
     backgroundColor: low ? p.surfaceLow : p.card,
     borderColor: p.line,
     borderWidth: 1,
-    borderRadius: 16,
+    borderRadius: 8,
     padding: 16,
     gap: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: p.dark ? 0.3 : 0.04,
-    shadowRadius: 8,
-    elevation: low ? 0 : 2,
   };
 
   if (onPress) {
@@ -188,9 +187,9 @@ export function Badge({
         alignItems: 'center',
         gap: 6,
         backgroundColor: bg,
-        paddingHorizontal: size === 'sm' ? 8 : 10,
-        paddingVertical: size === 'sm' ? 3 : 5,
-        borderRadius: 9999,
+        paddingHorizontal: size === 'sm' ? 6 : 8,
+        paddingVertical: size === 'sm' ? 2 : 4,
+        borderRadius: 4,
         alignSelf: 'flex-start',
       }}
     >
@@ -244,6 +243,8 @@ export function MetricBox({
   if (variant === 'warning') valColor = p.amberText;
   if (variant === 'danger') valColor = p.dangerText;
   if (variant === 'brand') valColor = p.brandText;
+  // "2 người" -> mono "2" + plain "người": only the figure uses the tabular font.
+  const [, number = String(value), unit = ''] = String(value).match(/^([\d.,:/%—–+-]+h?)\s*(.*)$/) ?? [];
 
   return (
     <Pressable onPress={onPress} disabled={!onPress} accessibilityRole={onPress ? "button" : undefined}
@@ -252,9 +253,9 @@ export function MetricBox({
           flex: 1,
           minWidth: 0,
           minHeight: 110,
-          backgroundColor: p.surfaceLow,
+          backgroundColor: p.card,
           padding: 12,
-          borderRadius: 14,
+          borderRadius: 8,
           gap: 4,
           borderWidth: 1,
           borderColor: p.line,
@@ -272,14 +273,15 @@ export function MetricBox({
         numberOfLines={1}
         adjustsFontSizeToFit
         style={{
-          fontFamily: 'BeVietnamBold',
-          fontSize: 18,
-          fontWeight: '700',
+          fontFamily: 'MonoBold',
+          fontSize: 22,
           color: valColor,
-          lineHeight: 24,
+          lineHeight: 28,
+          letterSpacing: -0.5,
         }}
       >
-        {value}
+        {number}
+        {!!unit && <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.muted, letterSpacing: 0 }}> {unit}</Text>}
       </Text>
       {subtext && (
         <Text numberOfLines={1} style={{ fontFamily: 'BeVietnam', fontSize: 11, color: p.muted }}>
@@ -342,7 +344,7 @@ export function Button({
   const finalVariant = variant || (secondary ? 'secondary' : 'brand');
 
   let bgColor = p.brand;
-  let textColor = '#ffffff';
+  let textColor = p.onBrand;
   let borderColor = p.brand;
 
   if (finalVariant === 'secondary') {
@@ -359,7 +361,7 @@ export function Button({
     borderColor = p.danger;
   } else if (finalVariant === 'primary') {
     bgColor = p.accent;
-    textColor = p.dark ? '#09090b' : '#ffffff';
+    textColor = p.onBrand;
     borderColor = p.accent;
   }
 
@@ -374,7 +376,7 @@ export function Button({
         {
           paddingVertical: 14,
           paddingHorizontal: 16,
-          borderRadius: 14,
+          borderRadius: 8,
           alignItems: 'center',
           justifyContent: 'center',
           flexDirection: 'row',
@@ -383,11 +385,6 @@ export function Button({
           borderWidth: 1,
           borderColor,
           opacity: disabled ? 0.45 : pressed ? 0.8 : 1,
-          shadowColor: finalVariant === 'brand' ? p.brand : 'transparent',
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: finalVariant === 'brand' ? 0.2 : 0,
-          shadowRadius: 4,
-          elevation: finalVariant === 'brand' && !disabled ? 2 : 0,
         },
         style,
       ]}
@@ -422,10 +419,10 @@ export function Input(
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: p.surfaceLow,
+        backgroundColor: p.card,
         borderColor: p.line,
         borderWidth: 1,
-        borderRadius: 14,
+        borderRadius: 6,
         paddingHorizontal: 14,
       }}
     >

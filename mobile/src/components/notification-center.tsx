@@ -145,7 +145,7 @@ export function NotificationCenterModal({ visible, onClose }: Props) {
                 <Text
                   style={[
                     styles.tabChipText,
-                    activeTab === 'all' ? { color: '#fff', fontWeight: '700' } : { color: p.text },
+                    activeTab === 'all' ? { color: p.onBrand, fontWeight: '700' } : { color: p.text },
                   ]}
                 >
                   Tất cả ({notifications.length})
@@ -164,7 +164,7 @@ export function NotificationCenterModal({ visible, onClose }: Props) {
                 <Text
                   style={[
                     styles.tabChipText,
-                    activeTab === 'unread' ? { color: '#fff', fontWeight: '700' } : { color: p.text },
+                    activeTab === 'unread' ? { color: p.onBrand, fontWeight: '700' } : { color: p.text },
                   ]}
                 >
                   Chưa đọc ({unreadCount})
@@ -184,7 +184,7 @@ export function NotificationCenterModal({ visible, onClose }: Props) {
                   <Text
                     style={[
                       styles.tabChipText,
-                      activeTab === 'approvals' ? { color: '#fff', fontWeight: '700' } : { color: p.text },
+                      activeTab === 'approvals' ? { color: p.onBrand, fontWeight: '700' } : { color: p.text },
                     ]}
                   >
                     Duyệt đơn
@@ -204,7 +204,7 @@ export function NotificationCenterModal({ visible, onClose }: Props) {
                 <Text
                   style={[
                     styles.tabChipText,
-                    activeTab === 'attendance' ? { color: '#fff', fontWeight: '700' } : { color: p.text },
+                    activeTab === 'attendance' ? { color: p.onBrand, fontWeight: '700' } : { color: p.text },
                   ]}
                 >
                   Chấm công
@@ -223,7 +223,7 @@ export function NotificationCenterModal({ visible, onClose }: Props) {
                 <Text
                   style={[
                     styles.tabChipText,
-                    activeTab === 'settings' ? { color: '#fff', fontWeight: '700' } : { color: p.text },
+                    activeTab === 'settings' ? { color: p.onBrand, fontWeight: '700' } : { color: p.text },
                   ]}
                 >
                   Cài đặt
@@ -284,7 +284,7 @@ export function NotificationCenterModal({ visible, onClose }: Props) {
                   <Switch
                     value={prefs.enabled}
                     onValueChange={val => updatePrefs({ enabled: val })}
-                    trackColor={{ false: '#cbd5e1', true: p.brand }}
+                    trackColor={{ false: p.surfaceHigh, true: p.brand }}
                   />
                 </View>
 
@@ -299,7 +299,7 @@ export function NotificationCenterModal({ visible, onClose }: Props) {
                     value={prefs.attendanceReminders}
                     disabled={!prefs.enabled}
                     onValueChange={val => updatePrefs({ attendanceReminders: val })}
-                    trackColor={{ false: '#cbd5e1', true: p.brand }}
+                    trackColor={{ false: p.surfaceHigh, true: p.brand }}
                   />
                 </View>
 
@@ -315,7 +315,7 @@ export function NotificationCenterModal({ visible, onClose }: Props) {
                         value={prefs.leaveApprovals}
                         disabled={!prefs.enabled}
                         onValueChange={val => updatePrefs({ leaveApprovals: val })}
-                        trackColor={{ false: '#cbd5e1', true: p.brand }}
+                        trackColor={{ false: p.surfaceHigh, true: p.brand }}
                       />
                     </View>
                   </>
@@ -332,7 +332,7 @@ export function NotificationCenterModal({ visible, onClose }: Props) {
                     value={prefs.leaveStatusUpdates}
                     disabled={!prefs.enabled}
                     onValueChange={val => updatePrefs({ leaveStatusUpdates: val })}
-                    trackColor={{ false: '#cbd5e1', true: p.brand }}
+                    trackColor={{ false: p.surfaceHigh, true: p.brand }}
                   />
                 </View>
 
@@ -347,7 +347,7 @@ export function NotificationCenterModal({ visible, onClose }: Props) {
                     value={prefs.payrollAlerts}
                     disabled={!prefs.enabled}
                     onValueChange={val => updatePrefs({ payrollAlerts: val })}
-                    trackColor={{ false: '#cbd5e1', true: p.brand }}
+                    trackColor={{ false: p.surfaceHigh, true: p.brand }}
                   />
                 </View>
               </Card>
@@ -408,7 +408,7 @@ export function NotificationCenterModal({ visible, onClose }: Props) {
                   )}
 
                   <Pressable onPress={clearAll}>
-                    <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: '#ef4444' }}>
+                    <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.dangerText }}>
                       Xóa tất cả
                     </Text>
                   </Pressable>
@@ -436,9 +436,9 @@ export function NotificationCenterModal({ visible, onClose }: Props) {
                       style={({ pressed }) => [
                         styles.notifCard,
                         {
-                          backgroundColor: item.read ? p.card : p.card,
-                          borderColor: item.read ? p.line : p.brand,
-                          borderLeftWidth: item.read ? 1 : 4,
+                          backgroundColor: item.read ? p.card : p.surfaceLow,
+                          borderColor: p.line,
+                          borderLeftWidth: 1,
                           opacity: pressed ? 0.8 : 1,
                         },
                       ]}
@@ -542,7 +542,7 @@ export function GlobalNotificationBanner() {
           styles.bannerCard,
           {
             backgroundColor: p.card,
-            borderColor: p.brand,
+            borderColor: p.line,
             shadowColor: '#000',
           },
         ]}
@@ -571,7 +571,7 @@ export function GlobalNotificationBanner() {
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(9,9,11,0.5)',
     justifyContent: 'flex-end',
   },
   container: {
@@ -616,7 +616,7 @@ const styles = StyleSheet.create({
   tabChip: {
     paddingHorizontal: 14,
     paddingVertical: 6,
-    borderRadius: 16,
+    borderRadius: 8,
     borderWidth: 1,
   },
   tabChipText: {
@@ -633,7 +633,7 @@ const styles = StyleSheet.create({
   },
   notifCard: {
     padding: 14,
-    borderRadius: 14,
+    borderRadius: 8,
     borderWidth: 1,
   },
   itemTitle: {
@@ -706,7 +706,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 14,
     paddingVertical: 10,
-    borderRadius: 16,
+    borderRadius: 8,
     borderWidth: 1.5,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,

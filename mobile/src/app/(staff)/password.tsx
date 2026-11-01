@@ -3,7 +3,6 @@ import { useRef, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import {
   Button,
-  Card,
   Input,
   Label,
   styles,
@@ -57,20 +56,22 @@ export default function Password() {
     }
   }
 
+  const strength = [next.length >= 8, /[0-9A-Z]/.test(next), /[^A-Za-z0-9]/.test(next), next.length >= 12].filter(Boolean).length;
+
   return (
     <ScrollView
       style={{ backgroundColor: p.bg }}
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
+      automaticallyAdjustKeyboardInsets
     >
       <View style={{ gap: 4 }}>
-        <Label variant="title">Đổi mật khẩu bảo mật</Label>
         <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.muted }}>
           Thiết lập mật khẩu an toàn theo tiêu chuẩn bảo mật TechZone
         </Text>
       </View>
 
-      <Card style={{ gap: 14 }}>
+      <View style={{ gap: 16 }}>
         {!done && (
           <>
             <View style={{ gap: 6 }}>
@@ -95,6 +96,18 @@ export default function Password() {
                 onChangeText={setNext}
                 leftIcon="key-outline"
               />
+              {!!next && (
+                <View style={{ gap: 6, marginTop: 2 }}>
+                  <View style={{ flexDirection: 'row', gap: 4 }}>
+                    {[0, 1, 2, 3].map(i => (
+                      <View key={i} style={{ flex: 1, height: 3, borderRadius: 2, backgroundColor: i < strength ? (strength >= 3 ? p.emerald : p.amber) : p.surfaceHigh }} />
+                    ))}
+                  </View>
+                  <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: next.length >= 8 ? p.emeraldText : p.amberText }}>
+                    {next.length >= 8 ? 'Đạt yêu cầu tối thiểu 8 ký tự' : `Cần thêm ${8 - next.length} ký tự`}
+                  </Text>
+                </View>
+              )}
             </View>
 
             <View style={{ gap: 6 }}>
@@ -107,26 +120,13 @@ export default function Password() {
                 onChangeText={setConfirm}
                 leftIcon="checkmark-circle-outline"
               />
+              {!!confirm && (
+                <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: next === confirm ? p.emeraldText : p.dangerText }}>
+                  {next === confirm ? 'Mật khẩu xác nhận đã khớp' : 'Mật khẩu xác nhận không khớp với mật khẩu mới.'}
+                </Text>
+              )}
             </View>
 
-            {/* Password Criteria checklist */}
-            <Card low style={{ gap: 6, padding: 12 }}>
-              <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: p.text }}>
-                Tiêu chuẩn mật khẩu an toàn:
-              </Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <AppIcon name={next.length >= 8 ? 'checkmark-outline' : 'ellipse-outline'} style={{ fontSize: 12, color: next.length >= 8 ? p.emeraldText : p.muted }} />
-                <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: next.length >= 8 ? p.emeraldText : p.muted }}>
-                  Độ dài tối thiểu 8 ký tự
-                </Text>
-              </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <AppIcon name={next && confirm && next === confirm ? 'checkmark-outline' : 'ellipse-outline'} style={{ fontSize: 12, color: next && confirm && next === confirm ? p.emeraldText : p.muted }} />
-                <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: next && confirm && next === confirm ? p.emeraldText : p.muted }}>
-                  Khớp giữa 2 lần nhập
-                </Text>
-              </View>
-            </Card>
           </>
         )}
 
@@ -138,7 +138,7 @@ export default function Password() {
               backgroundColor: done ? p.emeraldBg : p.dangerBg,
               borderColor: done ? p.emerald : p.danger,
               borderWidth: 1,
-              borderRadius: 10,
+              borderRadius: 6,
               padding: 12,
             }}
           >
@@ -172,7 +172,7 @@ export default function Password() {
             disabled={busy || !current || next.length < 8 || !confirm}
           />
         )}
-      </Card>
+      </View>
     </ScrollView>
   );
 }

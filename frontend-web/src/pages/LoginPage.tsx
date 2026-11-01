@@ -1,8 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
-import { authApi } from '../services/api'
 import { Icons } from '../components/common/Icons'
-import type { TestAccountResponse } from '../types'
 
 export interface LoginPageProps {
   onLogin: () => void
@@ -21,15 +19,6 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const [testAccounts, setTestAccounts] = useState<TestAccountResponse[]>([])
-  const [showTestAccounts, setShowTestAccounts] = useState(true)
-
-  useEffect(() => {
-    authApi
-      .getTestAccounts()
-      .then(setTestAccounts)
-      .catch(() => setShowTestAccounts(false))
-  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -38,22 +27,6 @@ export function LoginPage({ onLogin }: LoginPageProps) {
 
     try {
       await login(username, password)
-      onLogin()
-    } catch (err: any) {
-      setError(getLoginErrorMessage(err))
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const quickLogin = async (testUsername: string) => {
-    setUsername(testUsername)
-    setPassword('123456')
-    setError('')
-    setIsLoading(true)
-
-    try {
-      await login(testUsername, '123456')
       onLogin()
     } catch (err: any) {
       setError(getLoginErrorMessage(err))
@@ -113,27 +86,8 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             </button>
           </form>
 
-          {showTestAccounts && testAccounts.length > 0 && (
-            <div className="login-quick-access">
-              <p className="login-quick-access-title">Tài khoản demo kiểm thử vai trò</p>
-              <div className="quick-access-grid">
-                {testAccounts.slice(0, 6).map((account) => (
-                  <button
-                    key={account.username}
-                    className="quick-access-btn"
-                    onClick={() => quickLogin(account.username)}
-                    disabled={isLoading}
-                  >
-                    <span className="role">{account.username}</span>
-                    <span className="desc">{account.name}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
           <div className="login-footer-notice">
-            TechZone Enterprise HRM v2.5 • Mật khẩu mặc định: <strong>123456</strong> • Mọi truy cập đều được ghi nhật ký bảo mật
+            TechZone Enterprise HRM v2.5 • Mọi truy cập đều được ghi nhật ký bảo mật
           </div>
         </div>
       </div>

@@ -10,8 +10,8 @@ import {
   Label,
   styles,
   usePalette,
-  Badge,
   MetricBox,
+  ProgressBar,
 } from '@/components/attendance-ui';
 import { LoadingBar } from '@/components/loading-bar';
 import { ApiError, request, vietnamPeriod } from '@/services/attendance';
@@ -68,21 +68,11 @@ export default function SummaryScreen() {
       style={{ backgroundColor: p.bg }}
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
+      automaticallyAdjustKeyboardInsets
     >
-      {/* Title & Month Badge */}
-      <View style={{ gap: 4 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Label variant="title">Bảng công cá nhân</Label>
-          <Badge label={`Tháng ${query.period.slice(5)}/${query.period.slice(0, 4)}`} variant="brand" />
-        </View>
-        <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.muted }}>
-          Nhân viên: <Text style={{ fontFamily: 'BeVietnamBold', color: p.text }}>{data?.employee_name || 'TechZone Staff'}</Text>
-        </Text>
-      </View>
-
-      {/* Month Query Filter */}
-      <Card low style={{ gap: 10 }}>
-        <Label variant="caption">Tra cứu kỳ công (Định dạng YYYY-MM)</Label>
+      {/* Period lookup */}
+      <View style={{ gap: 6 }}>
+        <Label variant="caption" muted>Kỳ công (YYYY-MM){data?.employee_name ? ` · ${data.employee_name}` : ''}</Label>
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <View style={{ flex: 1 }}>
             <Input
@@ -92,20 +82,21 @@ export default function SummaryScreen() {
               placeholder="YYYY-MM"
               maxLength={7}
               leftIcon="calendar-outline"
+              style={{ fontFamily: 'Mono', paddingVertical: 11 }}
             />
           </View>
           <Button
             title="Tra cứu"
             variant="brand"
             disabled={busy}
+            style={{ paddingVertical: 11 }}
             onPress={() => {
               if (/^\d{4}-(0[1-9]|1[0-2])$/.test(period)) setQuery({ period });
               else setError('Vui lòng nhập định dạng năm-tháng hợp lệ (VD: 2026-10).');
             }}
           />
         </View>
-      </Card>
-
+      </View>
       <LoadingBar active={busy} label="Đang đối chiếu dữ liệu bảng công từ máy chủ…" />
 
       {!!error && (
@@ -116,69 +107,70 @@ export default function SummaryScreen() {
         </Card>
       )}
 
-      {/* Core 4 Metrics (Grid 2x2) */}
-      {data && (
-        <>
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            <MetricBox
-              label="Ngày công thực tế"
-              value={`${data.working_days.actual_days} / ${data.working_days.standard_days}`}
-              subtext={`${data.working_days.total_hours} giờ làm việc`}
-              icon="briefcase-outline"
-              variant="brand"
-            />
-            <MetricBox
-              label="Quỹ phép năm"
-              value={`${data.leave_quota.remaining_leave} ngày`}
-              subtext={`Đã dùng ${data.leave_quota.used_leave}/${data.leave_quota.annual_leave} ngày`}
-              icon="sunny-outline"
-              variant="success"
-            />
-          </View>
+      {data && (() => {
+        const pct = Math.min(100, Math.round((data.working_days.actual_days / (data.working_days.standard_days || 26)) * 100));
+        const leavePct = data.leave_quota.annual_leave ? Math.min(100, (data.leave_quota.remaining_leave / data.leave_quota.annual_leave) * 100) : 0;
+        const kv: [string, string][] = [
+          ['Về sớm quy chuẩn', `${data.early_departures.count} lần · ${data.early_departures.minutes} phút`],
+          ['Công tác ngoài Showroom', `${data.business_trips?.days ?? 0} ngày`],
+          ['Nghỉ bù tích lũy', `${data.compensatory_leave?.total ?? 0} ngày`],
+        ];
+        return (
+          <>
+            <Card style={{ gap: 10 }}>
+              <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 10, letterSpacing: 0.8, textTransform: 'uppercase', color: p.muted }}>
+                Ngày công thực tế · {query.period.slice(5)}/{query.period.slice(0, 4)}
+              </Text>
+              <Text style={{ fontFamily: 'MonoBold', fontSize: 36, lineHeight: 42, letterSpacing: -1, color: p.text }}>
+                {data.working_days.actual_days}
+                <Text style={{ fontFamily: 'Mono', fontSize: 16, color: p.muted, letterSpacing: 0 }}> / {data.working_days.standard_days}</Text>
+              </Text>
+              <ProgressBar progress={pct} color={p.text} />
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.emeraldText }}>Đạt {pct}% ngày công chuẩn</Text>
+                <Text style={{ fontFamily: 'Mono', fontSize: 12, color: p.muted }}>{data.working_days.total_hours}h</Text>
+              </View>
+            </Card>
 
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            <MetricBox
-              label="Giờ ngoài ca ghi nhận"
-              value={`+${data.overtime.hours}h`}
-              subtext={`${data.overtime.shifts_count} phiên · chưa phải OT đã duyệt`}
-              icon="flash-outline"
-              variant="brand"
-            />
-            <MetricBox
-              label="Đi muộn"
-              value={`${data.late_arrivals.count} lần`}
-              subtext={`Tổng ${data.late_arrivals.minutes} phút`}
-              icon="time-outline"
-              variant={data.late_arrivals.count ? 'warning' : 'neutral'}
-            />
-          </View>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <MetricBox
+                label="Đi muộn"
+                value={`${data.late_arrivals.count} lần`}
+                subtext={data.late_arrivals.minutes ? `⚠ Tổng ${data.late_arrivals.minutes} phút` : 'Đúng giờ'}
+                variant={data.late_arrivals.count ? 'warning' : 'neutral'}
+              />
+              <MetricBox
+                label="Giờ ngoài ca ghi nhận"
+                value={`${data.overtime.hours}h`}
+                subtext={`${data.overtime.shifts_count} phiên · chưa phải OT đã duyệt`}
+              />
+            </View>
 
-          {/* Secondary Metrics */}
-          <Card style={{ gap: 10 }}>
-            <Label variant="subtitle">Chỉ số công tác & nghỉ bù</Label>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }}>
-              <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.muted }}>Về sớm quy chuẩn:</Text>
-              <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 13, color: p.text }}>
-                {data.early_departures.count} lần ({data.early_departures.minutes} phút)
-              </Text>
+            <Card style={{ gap: 10 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.body }}>Quỹ phép năm còn lại</Text>
+                <Text style={{ fontFamily: 'MonoBold', fontSize: 14, color: p.text }}>
+                  {data.leave_quota.remaining_leave}<Text style={{ fontFamily: 'Mono', fontSize: 12, color: p.muted }}> / {data.leave_quota.annual_leave} ngày</Text>
+                </Text>
+              </View>
+              <ProgressBar progress={leavePct} color={p.emerald} />
+              <Text style={{ fontFamily: 'BeVietnam', fontSize: 11, color: p.muted }}>Đã dùng {data.leave_quota.used_leave} ngày</Text>
+            </Card>
+
+            <View style={{ gap: 8 }}>
+              <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 10, letterSpacing: 0.8, textTransform: 'uppercase', color: p.muted }}>Chỉ số công tác & nghỉ bù</Text>
+              <Card style={{ padding: 0, gap: 0 }}>
+                {kv.map(([k, v], i) => (
+                  <View key={k} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: i === kv.length - 1 ? 0 : 1, borderBottomColor: p.line }}>
+                    <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.muted }}>{k}</Text>
+                    <Text style={{ fontFamily: 'MonoBold', fontSize: 13, color: p.text }}>{v}</Text>
+                  </View>
+                ))}
+              </Card>
             </View>
-            <View style={{ height: 1, backgroundColor: p.line }} />
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }}>
-              <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.muted }}>Công tác ngoài Showroom:</Text>
-              <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 13, color: p.text }}>
-                {data.business_trips.days ?? 0} ngày
-              </Text>
-            </View>
-            <View style={{ height: 1, backgroundColor: p.line }} />
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }}>
-              <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.muted }}>Nghỉ bù tích lũy:</Text>
-              <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 13, color: p.text }}>
-                {data.compensatory_leave.total ?? 0} ngày
-              </Text>
-            </View>
-          </Card>
-        </>
-      )}
+          </>
+        );
+      })()}
 
       {/* Rules Card */}
       <Card low style={{ gap: 10 }}>
