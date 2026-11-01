@@ -983,6 +983,13 @@ export interface Project {
   members: ProjectMember[];
 }
 
+export interface PositionAllowance {
+  position_id: number;
+  position_name: string;
+  position_allowance: number;
+  position_coefficient?: number;
+}
+
 export interface PayrollPolicySetting {
   setting_id: number;
   setting_key: string;

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Icons } from '../components/common/Icons'
 import { payrollApi } from '../services/api'
-import type { PayrollPolicySetting, PayrollPeriodBonus, PublicHoliday, PayrollPeriodWorkingDays } from '../types'
+import type { PayrollPolicySetting, PayrollPeriodBonus, PublicHoliday, PayrollPeriodWorkingDays, PositionAllowance } from '../types'
 import { formatCurrency } from '../utils/formatters'
 import { toast } from 'sonner'
 import { useAuth } from '../contexts/AuthContext'
@@ -60,11 +60,19 @@ export function PayrollRegulationDialog({ onClose, initialTab }: PayrollRegulati
   const [settings, setSettings] = useState<PayrollPolicySetting[]>([])
   const [loadingSettings, setLoadingSettings] = useState(false)
   const [editingKey, setEditingKey] = useState<string | null>(null)
-  const [editValue, setEditValue] = useState<number>(0)
+  const [editInputText, setEditInputText] = useState<string>('')
   const [editDesc, setEditDesc] = useState<string>('')
   const [savingKey, setSavingKey] = useState<string | null>(null)
   const [settingSearch, setSettingSearch] = useState<string>('')
   const [selectedGroup, setSelectedGroup] = useState<string>('ALL')
+
+  // State Định mức Phụ cấp Chức vụ theo vị trí (bảng positions)
+  const [positions, setPositions] = useState<PositionAllowance[]>([])
+  const [loadingPositions, setLoadingPositions] = useState(false)
+  const [editingPosId, setEditingPosId] = useState<number | null>(null)
+  const [editPosAllowanceText, setEditPosAllowanceText] = useState<string>('')
+  const [editPosCoefText, setEditPosCoefText] = useState<string>('')
+  const [savingPosId, setSavingPosId] = useState<number | null>(null)
 
   // State Thưởng Kỳ (Tết, Lễ...)
   const [bonuses, setBonuses] = useState<PayrollPeriodBonus[]>([])
@@ -118,6 +126,21 @@ export function PayrollRegulationDialog({ onClose, initialTab }: PayrollRegulati
       toast.error('Lỗi khi tải tham số quy chế lương')
     } finally {
       setLoadingSettings(false)
+    }
+  }
+
+  // Tải định mức phụ cấp chức vụ theo vị trí công việc
+  const fetchPositions = async () => {
+    if (!isHrOrAdmin) return
+    setLoadingPositions(true)
+    try {
+      const data = await payrollApi.getPositionAllowances()
+      setPositions(data || [])
+    } catch (err: any) {
+      console.error('Error fetching position allowances:', err)
+      toast.error('Lỗi khi tải phụ cấp chức vụ')
+    } finally {
+      setLoadingPositions(false)
     }
   }
 
@@ -176,6 +199,7 @@ export function PayrollRegulationDialog({ onClose, initialTab }: PayrollRegulati
     }
     if (activeTab === 'settings') {
       fetchSettings()
+      fetchPositions()
     } else if (activeTab === 'bonuses') {
       fetchBonuses()
     } else if (activeTab === 'holidays_working_days') {
@@ -184,21 +208,91 @@ export function PayrollRegulationDialog({ onClose, initialTab }: PayrollRegulati
     }
   }, [activeTab, isHrOrAdmin, selectedWorkingPeriod, holidayYear])
 
+  // Bắt đầu chỉnh sửa tham số quy chế
+  const handleStartEditSetting = (s: PayrollPolicySetting) => {
+    setEditingKey(s.setting_key)
+    if (s.unit === 'TY_LE') {
+      // Tự động format theo số phần trăm (VD: 0.015 -> 1.5, 0.08 -> 8)
+      const pct = (Number(s.numeric_value) * 100).toFixed(2).replace(/\.?0+$/, '')
+      setEditInputText(pct)
+    } else {
+      setEditInputText(String(s.numeric_value))
+    }
+    setEditDesc(s.description || '')
+  }
+
   // Xử lý lưu tham số quy chế
-  const handleSaveSetting = async (key: string) => {
-    setSavingKey(key)
+  const handleSaveSetting = async (s: PayrollPolicySetting) => {
+    const rawStr = editInputText.trim().replace(',', '.')
+    const parsedVal = parseFloat(rawStr)
+    if (isNaN(parsedVal) || parsedVal < 0) {
+      toast.error('Vui lòng nhập giá trị số hợp lệ')
+      return
+    }
+
+    // Nếu đơn vị là TY_LE (phần trăm):
+    // Người dùng nhập 1 là 1% (0.01), nhập 3.5 là 3.5% (0.035), nhập 1.5 là 1.5% (0.015), nhập 8 là 8% (0.08)
+    // Nếu người dùng quen tay nhập dạng số thập phân (<= 0.09 ví dụ 0.015 hoặc 0.08) thì giữ nguyên
+    let finalValue = parsedVal
+    if (s.unit === 'TY_LE') {
+      finalValue = (parsedVal > 0 && parsedVal <= 0.09) ? parsedVal : parsedVal / 100.0
+    }
+
+    setSavingKey(s.setting_key)
     try {
-      await payrollApi.updatePolicySetting(key, {
-        numeric_value: editValue,
+      await payrollApi.updatePolicySetting(s.setting_key, {
+        numeric_value: finalValue,
         description: editDesc || undefined,
       })
-      toast.success(`Đã cập nhật tham số ${key}!`)
+      const displayStr = s.unit === 'TY_LE'
+        ? `${(finalValue * 100).toFixed(2).replace(/\.?0+$/, '')}%`
+        : s.unit === 'VND' ? formatCurrency(finalValue) : `${finalValue}`
+      toast.success(`Đã cập nhật tham số ${s.setting_name} (${displayStr})! Phiếu lương nháp đã tự động cập nhật.`)
       setEditingKey(null)
       await fetchSettings()
     } catch (err: any) {
       toast.error(err.message || 'Lỗi khi cập nhật tham số')
     } finally {
       setSavingKey(null)
+    }
+  }
+
+  // Bắt đầu chỉnh sửa phụ cấp chức vụ và hệ số chức vụ
+  const handleStartEditPosition = (pos: PositionAllowance) => {
+    setEditingPosId(pos.position_id)
+    setEditPosAllowanceText(String(pos.position_allowance || 0))
+    setEditPosCoefText(String(pos.position_coefficient != null ? pos.position_coefficient : 1.0))
+  }
+
+  // Xử lý lưu định mức phụ cấp chức vụ và hệ số chức vụ
+  const handleSavePositionAllowance = async (posId: number) => {
+    const cleanedAllow = editPosAllowanceText.trim().replace(/,/g, '').replace(/\./g, '')
+    const amount = parseFloat(cleanedAllow)
+    if (isNaN(amount) || amount < 0) {
+      toast.error('Vui lòng nhập định mức phụ cấp hợp lệ (≥ 0 VNĐ)')
+      return
+    }
+
+    const cleanedCoef = editPosCoefText.trim().replace(',', '.')
+    const coef = parseFloat(cleanedCoef)
+    if (isNaN(coef) || coef < 0.5 || coef > 10.0) {
+      toast.error('Hệ số chức vụ phải là số từ 0.5 đến 10.0')
+      return
+    }
+
+    setSavingPosId(posId)
+    try {
+      await payrollApi.updatePositionAllowance(posId, {
+        position_allowance: amount,
+        position_coefficient: coef,
+      })
+      toast.success(`Đã cập nhật chức vụ thành công (Hệ số: ${coef}x, Phụ cấp: ${formatCurrency(amount)})! Phiếu lương nháp đã tự động cập nhật.`)
+      setEditingPosId(null)
+      await fetchPositions()
+    } catch (err: any) {
+      toast.error(err.message || 'Lỗi khi cập nhật chức vụ')
+    } finally {
+      setSavingPosId(null)
     }
   }
 
@@ -451,6 +545,14 @@ export function PayrollRegulationDialog({ onClose, initialTab }: PayrollRegulati
     return matchesGroup && matchesSearch
   })
 
+  // Danh sách phụ cấp chức vụ sau khi lọc theo từ khóa tìm kiếm
+  const filteredPositions = positions.filter(pos => {
+    const query = settingSearch.toLowerCase().trim()
+    return !query ||
+      pos.position_name.toLowerCase().includes(query) ||
+      String(pos.position_id).includes(query)
+  })
+
   // Danh sách thưởng sau khi lọc
   const filteredBonuses = bonuses.filter(b => {
     const query = bonusSearch.toLowerCase().trim()
@@ -590,10 +692,11 @@ export function PayrollRegulationDialog({ onClose, initialTab }: PayrollRegulati
                 <div className="prd-chips">
                   {[
                     { id: 'ALL', label: 'Tất cả' },
-                    { id: 'ATTENDANCE', label: 'Công & Ca' },
-                    { id: 'ALLOWANCE', label: 'Phụ cấp' },
-                    { id: 'PENALTY', label: 'Giảm trừ & Phạt' },
+                    { id: 'ALLOWANCE', label: 'Phụ cấp & Thâm niên' },
+                    { id: 'POSITION_ALLOWANCE', label: 'Phụ cấp chức vụ' },
                     { id: 'INSURANCE', label: 'Bảo hiểm' },
+                    { id: 'ATTENDANCE', label: 'Công & Ca' },
+                    { id: 'PENALTY', label: 'Giảm trừ & Phạt' },
                   ].map(tab => (
                     <button
                       key={tab.id}
@@ -607,127 +710,273 @@ export function PayrollRegulationDialog({ onClose, initialTab }: PayrollRegulati
                 </div>
               </div>
 
-              {/* Bảng Tham Số */}
-              {loadingSettings ? (
-                <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                  Đang tải tham số quy chế...
-                </div>
-              ) : filteredSettings.length === 0 ? (
-                <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)', background: 'var(--surface-subtle)', borderRadius: '4px' }}>
-                  Không tìm thấy tham số nào khớp với bộ lọc.
-                </div>
-              ) : (
-                <div className="prd-table-card">
-                  <table className="prd-table">
-                    <thead>
-                      <tr>
-                        <th style={{ width: '42%' }}>Tham Số & Định Mức</th>
-                        <th style={{ width: '16%' }}>Phân Nhóm</th>
-                        <th style={{ width: '18%', textAlign: 'right' }}>Giá Trị Áp Dụng</th>
-                        <th style={{ width: '10%', textAlign: 'center' }}>Đơn Vị</th>
-                        {isHrOrAdmin && <th style={{ width: '14%', textAlign: 'center' }}>Thao Tác</th>}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredSettings.map((s) => {
-                        const isEditing = editingKey === s.setting_key
-                        return (
-                          <tr key={s.setting_key}>
-                            <td>
-                              <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '13px' }}>
-                                {s.setting_name}
-                              </div>
-                              <div style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)', marginTop: '2px' }}>
-                                {s.setting_key}
-                              </div>
-                              {s.description && (
-                                <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                                  {s.description}
-                                </div>
-                              )}
-                            </td>
-                            <td>
-                              <span className="prd-badge">
-                                {s.setting_group === 'PENALTY' ? 'Giảm trừ & Phạt' :
-                                 s.setting_group === 'ALLOWANCE' ? 'Phụ cấp' :
-                                 s.setting_group === 'INSURANCE' ? 'Bảo hiểm' :
-                                 s.setting_group === 'ATTENDANCE' ? 'Công & Ca' : s.setting_group}
-                              </span>
-                            </td>
-                            <td style={{ textAlign: 'right' }}>
-                              {isEditing ? (
-                                <input
-                                  type="number"
-                                  step="any"
-                                  value={editValue}
-                                  onChange={(e) => setEditValue(parseFloat(e.target.value) || 0)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter') handleSaveSetting(s.setting_key)
-                                    if (e.key === 'Escape') setEditingKey(null)
-                                  }}
-                                  className="form-input"
-                                  style={{ textAlign: 'right', padding: '4px 8px', fontSize: '12.5px', width: '100%' }}
-                                  autoFocus
-                                />
-                              ) : (
-                                <span className="prd-mono-val">
-                                  {s.unit === 'VND' ? formatCurrency(s.numeric_value) :
-                                   s.unit === 'TY_LE' ? `${(s.numeric_value * 100).toFixed(1)}%` :
-                                   s.unit === 'HE_SO' ? `${s.numeric_value}x` : s.numeric_value}
-                                </span>
-                              )}
-                            </td>
-                            <td style={{ textAlign: 'center', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                              {s.unit === 'VND' ? 'VNĐ' :
-                               s.unit === 'TY_LE' ? 'Tỷ lệ' :
-                               s.unit === 'HE_SO' ? 'Hệ số' :
-                               s.unit === 'PHUT' ? 'Phút' :
-                               s.unit === 'NGAY' ? 'Ngày' : s.unit}
-                            </td>
-                            {isHrOrAdmin && (
-                              <td style={{ textAlign: 'center' }}>
-                                {isEditing ? (
-                                  <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
-                                    <button
-                                      type="button"
-                                      className="btn btn-primary"
-                                      style={{ padding: '3px 8px', fontSize: '11px', height: '26px' }}
-                                      onClick={() => handleSaveSetting(s.setting_key)}
-                                      disabled={savingKey === s.setting_key}
-                                    >
-                                      Lưu
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="btn btn-secondary"
-                                      style={{ padding: '3px 8px', fontSize: '11px', height: '26px' }}
-                                      onClick={() => setEditingKey(null)}
-                                      disabled={savingKey === s.setting_key}
-                                    >
-                                      Hủy
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    className="btn btn-secondary"
-                                    style={{ padding: '3px 10px', fontSize: '11.5px', height: '26px' }}
-                                    onClick={() => {
-                                      setEditingKey(s.setting_key)
-                                      setEditValue(Number(s.numeric_value))
-                                      setEditDesc(s.description || '')
-                                    }}
-                                  >
-                                    Chỉnh sửa
-                                  </button>
-                                )}
-                              </td>
-                            )}
+              {/* BẢNG THAM SỐ QUY CHẾ (Ẩn khi chỉ lọc riêng Phụ cấp chức vụ) */}
+              {selectedGroup !== 'POSITION_ALLOWANCE' && (
+                <>
+                  {loadingSettings ? (
+                    <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                      Đang tải tham số quy chế...
+                    </div>
+                  ) : filteredSettings.length === 0 ? (
+                    <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)', background: 'var(--surface-subtle)', borderRadius: '4px' }}>
+                      Không tìm thấy tham số nào khớp với bộ lọc.
+                    </div>
+                  ) : (
+                    <div className="prd-table-card">
+                      <table className="prd-table">
+                        <thead>
+                          <tr>
+                            <th style={{ width: '42%' }}>Tham Số & Định Mức</th>
+                            <th style={{ width: '16%' }}>Phân Nhóm</th>
+                            <th style={{ width: '18%', textAlign: 'right' }}>Giá Trị Áp Dụng</th>
+                            <th style={{ width: '10%', textAlign: 'center' }}>Đơn Vị</th>
+                            {isHrOrAdmin && <th style={{ width: '14%', textAlign: 'center' }}>Thao Tác</th>}
                           </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
+                        </thead>
+                        <tbody>
+                          {filteredSettings.map((s) => {
+                            const isEditing = editingKey === s.setting_key
+                            return (
+                              <tr key={s.setting_key}>
+                                <td>
+                                  <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '13px' }}>
+                                    {s.setting_name}
+                                  </div>
+                                  <div style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)', marginTop: '2px' }}>
+                                    {s.setting_key}
+                                  </div>
+                                  {s.description && (
+                                    <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                                      {s.description}
+                                    </div>
+                                  )}
+                                </td>
+                                <td>
+                                  <span className="prd-badge">
+                                    {s.setting_group === 'PENALTY' ? 'Giảm trừ & Phạt' :
+                                     s.setting_group === 'ALLOWANCE' ? 'Phụ cấp' :
+                                     s.setting_group === 'INSURANCE' ? 'Bảo hiểm' :
+                                     s.setting_group === 'ATTENDANCE' ? 'Công & Ca' : s.setting_group}
+                                  </span>
+                                </td>
+                                <td style={{ textAlign: 'right' }}>
+                                  {isEditing ? (
+                                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', width: '100%', justifyContent: 'flex-end' }}>
+                                      <input
+                                        type="text"
+                                        value={editInputText}
+                                        onChange={(e) => setEditInputText(e.target.value)}
+                                        placeholder={s.unit === 'TY_LE' ? '1.5' : 'Nhập giá trị'}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') handleSaveSetting(s)
+                                          if (e.key === 'Escape') setEditingKey(null)
+                                        }}
+                                        className="form-input"
+                                        style={{ textAlign: 'right', padding: '4px 8px', fontSize: '12.5px', width: s.unit === 'TY_LE' ? '85px' : '100%' }}
+                                        autoFocus
+                                      />
+                                      {s.unit === 'TY_LE' && (
+                                        <span style={{ fontWeight: 700, color: 'var(--primary-color, #1a73e8)', fontSize: '13px' }}>%</span>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <span className="prd-mono-val">
+                                      {s.unit === 'VND' ? formatCurrency(s.numeric_value) :
+                                       s.unit === 'TY_LE' ? `${(s.numeric_value * 100).toFixed(2).replace(/\.?0+$/, '')}%` :
+                                       s.unit === 'HE_SO' ? `${s.numeric_value}x` : s.numeric_value}
+                                    </span>
+                                  )}
+                                </td>
+                                <td style={{ textAlign: 'center', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                  {s.unit === 'VND' ? 'VNĐ' :
+                                   s.unit === 'TY_LE' ? '%' :
+                                   s.unit === 'HE_SO' ? 'Hệ số' :
+                                   s.unit === 'PHUT' ? 'Phút' :
+                                   s.unit === 'NGAY' ? 'Ngày' : s.unit}
+                                </td>
+                                {isHrOrAdmin && (
+                                  <td style={{ textAlign: 'center' }}>
+                                    {isEditing ? (
+                                      <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                                        <button
+                                          type="button"
+                                          className="btn btn-primary"
+                                          style={{ padding: '3px 8px', fontSize: '11px', height: '26px' }}
+                                          onClick={() => handleSaveSetting(s)}
+                                          disabled={savingKey === s.setting_key}
+                                        >
+                                          Lưu
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="btn btn-secondary"
+                                          style={{ padding: '3px 8px', fontSize: '11px', height: '26px' }}
+                                          onClick={() => setEditingKey(null)}
+                                          disabled={savingKey === s.setting_key}
+                                        >
+                                          Hủy
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        className="btn btn-secondary"
+                                        style={{ padding: '3px 10px', fontSize: '11.5px', height: '26px' }}
+                                        onClick={() => handleStartEditSetting(s)}
+                                      >
+                                        Chỉnh sửa
+                                      </button>
+                                    )}
+                                  </td>
+                                )}
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* BẢNG ĐỊNH MỨC PHỤ CẤP CHỨC VỤ & HỆ SỐ CHỨC VỤ (bảng positions) */}
+              {(selectedGroup === 'ALL' || selectedGroup === 'ALLOWANCE' || selectedGroup === 'POSITION_ALLOWANCE') && (
+                <div style={{ marginTop: selectedGroup === 'POSITION_ALLOWANCE' ? '0' : '24px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                    <div>
+                      <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
+                        Định Mức Phụ Cấp Chức Vụ & Hệ Số Chức Vụ Theo Vị Trí Công Việc
+                      </h3>
+                      <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '2px 0 0 0' }}>
+                        Cấu hình phụ cấp trách nhiệm và hệ số chức vụ (dùng tính thưởng Tết/Lễ theo hệ số). Tự động cập nhật vào phiếu lương nháp.
+                      </p>
+                    </div>
+                    <span className="prd-badge" style={{ background: 'var(--primary-subtle, rgba(26,115,232,0.1))', color: 'var(--primary-color, #1a73e8)' }}>
+                      {filteredPositions.length} Chức vụ
+                    </span>
+                  </div>
+
+                  {loadingPositions ? (
+                    <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                      Đang tải danh mục phụ cấp chức vụ...
+                    </div>
+                  ) : filteredPositions.length === 0 ? (
+                    <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)', background: 'var(--surface-subtle)', borderRadius: '4px' }}>
+                      Không tìm thấy chức vụ nào khớp với từ khóa tìm kiếm.
+                    </div>
+                  ) : (
+                    <div className="prd-table-card">
+                      <table className="prd-table">
+                        <thead>
+                          <tr>
+                            <th style={{ width: '40%' }}>Vị Trí / Chức Danh</th>
+                            <th style={{ width: '20%', textAlign: 'center' }}>Hệ Số Chức Vụ (Hệ số tính thưởng)</th>
+                            <th style={{ width: '25%', textAlign: 'right' }}>Phụ Cấp Trách Nhiệm (VNĐ)</th>
+                            {isHrOrAdmin && <th style={{ width: '15%', textAlign: 'center' }}>Thao Tác</th>}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredPositions.map((pos) => {
+                            const isEditingPos = editingPosId === pos.position_id
+                            return (
+                              <tr key={pos.position_id}>
+                                <td>
+                                  <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '13px' }}>
+                                    {pos.position_name}
+                                  </div>
+                                  <div style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)', marginTop: '2px' }}>
+                                    Mã chức vụ: #{pos.position_id} • Hệ thống bán lẻ TechZone
+                                  </div>
+                                </td>
+                                <td style={{ textAlign: 'center' }}>
+                                  {isEditingPos ? (
+                                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', justifyContent: 'center' }}>
+                                      <input
+                                        type="text"
+                                        value={editPosCoefText}
+                                        onChange={(e) => setEditPosCoefText(e.target.value)}
+                                        placeholder="1.0"
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') handleSavePositionAllowance(pos.position_id)
+                                          if (e.key === 'Escape') setEditingPosId(null)
+                                        }}
+                                        className="form-input"
+                                        style={{ textAlign: 'center', padding: '4px 6px', fontSize: '12.5px', width: '65px' }}
+                                        title="Nhập hệ số chức vụ (VD: 1.5 hoặc 2.0)"
+                                      />
+                                      <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>x</span>
+                                    </div>
+                                  ) : (
+                                    <span className="prd-mono-val" style={{ fontSize: '12.5px' }}>
+                                      {pos.position_coefficient ? `${Number(pos.position_coefficient).toFixed(1)}x` : '1.0x'}
+                                    </span>
+                                  )}
+                                </td>
+                                <td style={{ textAlign: 'right' }}>
+                                  {isEditingPos ? (
+                                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', width: '100%', justifyContent: 'flex-end' }}>
+                                      <input
+                                        type="text"
+                                        value={editPosAllowanceText}
+                                        onChange={(e) => setEditPosAllowanceText(e.target.value)}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') handleSavePositionAllowance(pos.position_id)
+                                          if (e.key === 'Escape') setEditingPosId(null)
+                                        }}
+                                        className="form-input"
+                                        style={{ textAlign: 'right', padding: '4px 8px', fontSize: '12.5px', width: '130px' }}
+                                        autoFocus
+                                      />
+                                      <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>đ</span>
+                                    </div>
+                                  ) : (
+                                    <span className="prd-mono-val" style={{ color: Number(pos.position_allowance) > 0 ? 'var(--status-success, #0f9d58)' : 'var(--text-tertiary)' }}>
+                                      {formatCurrency(pos.position_allowance)}
+                                    </span>
+                                  )}
+                                </td>
+                                {isHrOrAdmin && (
+                                  <td style={{ textAlign: 'center' }}>
+                                    {isEditingPos ? (
+                                      <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                                        <button
+                                          type="button"
+                                          className="btn btn-primary"
+                                          style={{ padding: '3px 8px', fontSize: '11px', height: '26px' }}
+                                          onClick={() => handleSavePositionAllowance(pos.position_id)}
+                                          disabled={savingPosId === pos.position_id}
+                                        >
+                                          Lưu
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="btn btn-secondary"
+                                          style={{ padding: '3px 8px', fontSize: '11px', height: '26px' }}
+                                          onClick={() => setEditingPosId(null)}
+                                          disabled={savingPosId === pos.position_id}
+                                        >
+                                          Hủy
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        className="btn btn-secondary"
+                                        style={{ padding: '3px 10px', fontSize: '11.5px', height: '26px' }}
+                                        onClick={() => handleStartEditPosition(pos)}
+                                      >
+                                        Chỉnh sửa
+                                      </button>
+                                    )}
+                                  </td>
+                                )}
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               )}
             </>
@@ -1281,7 +1530,7 @@ export function PayrollRegulationDialog({ onClose, initialTab }: PayrollRegulati
                 </div>
 
                 <div className="prd-rule-formula">
-                  Tổng Phụ Cấp = Phụ Cấp Cơm Xe + Phụ Cấp Chức Vụ + Σ Phụ Cấp Vai Trò Dự Án
+                  Tổng Phụ Cấp = Phụ Cấp Cơm Xe + Phụ Cấp Chức Vụ + Phụ Cấp Thâm Niên + Σ Phụ Cấp Vai Trò Dự Án
                 </div>
 
                 <div className="prd-rule-list">
@@ -1291,11 +1540,15 @@ export function PayrollRegulationDialog({ onClose, initialTab }: PayrollRegulati
                   </div>
                   <div className="prd-rule-item">
                     <span className="dot">•</span>
-                    <span><strong>Phụ cấp Chức vụ:</strong> Cửa hàng trưởng (1.500.000 đ/tháng) • Phó CHT (800.000 đ/tháng) • Trưởng nhóm (500.000 đ/tháng).</span>
+                    <span><strong>Phụ cấp Chức vụ (Trách nhiệm):</strong> Giám đốc (10.000.000 đ) • TP Nhân sự (3.000.000 đ) • Cửa hàng trưởng (2.500.000 đ) • Quản trị viên (2.000.000 đ) • Trưởng nhóm (1.500.000 đ) • CV Tiền lương & Kỹ thuật viên (1.000.000 đ) • Tư vấn & Thu ngân (500.000 đ).</span>
                   </div>
                   <div className="prd-rule-item">
                     <span className="dot">•</span>
-                    <span><strong>Phụ cấp Dự án Công nghệ:</strong> Tra cứu theo vai trò thành viên dự án (PM: 2.000.000 đ • Tech Lead: 1.500.000 đ • Nòng cốt: 1.000.000 đ • Hỗ trợ: 500.000 đ).</span>
+                    <span><strong>Phụ cấp Thâm niên cống hiến:</strong> Dưới 1 năm (0 đ) • Từ 1 đến dưới 3 năm (500.000 đ/tháng) • Từ 3 đến dưới 5 năm (1.000.000 đ/tháng) • Từ đủ 5 năm trở lên (1.500.000 đ/tháng).</span>
+                  </div>
+                  <div className="prd-rule-item">
+                    <span className="dot">•</span>
+                    <span><strong>Phụ cấp Dự án Công nghệ:</strong> Tra cứu theo vai trò thành viên dự án (Project Lead: 2.000.000 đ • Tech Lead: 1.500.000 đ • Nòng cốt: 1.000.000 đ • Hỗ trợ: 500.000 đ).</span>
                   </div>
                 </div>
               </div>

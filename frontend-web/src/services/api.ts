@@ -696,6 +696,7 @@ import type {
   ProjectRole,
   ProjectRoleAllowance,
   PayrollPolicySetting,
+  PositionAllowance,
   PayrollPeriodBonus,
   PublicHoliday,
   PayrollPeriodWorkingDays,
@@ -790,6 +791,14 @@ export const payrollApi = {
 
   removeProjectMember: async (memberId: number): Promise<any> => {
     return api.delete(`/payrolls/projects/members/${memberId}`);
+  },
+
+  getPositionAllowances: async (): Promise<PositionAllowance[]> => {
+    return api.get<PositionAllowance[]>('/payrolls/policies/position-allowances');
+  },
+
+  updatePositionAllowance: async (positionId: number, data: { position_allowance: number; position_coefficient?: number }): Promise<PositionAllowance> => {
+    return api.put<PositionAllowance>(`/payrolls/policies/position-allowances/${positionId}`, data);
   },
 
   getPolicySettings: async (): Promise<PayrollPolicySetting[]> => {

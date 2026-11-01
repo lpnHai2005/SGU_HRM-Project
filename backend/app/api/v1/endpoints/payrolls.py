@@ -29,7 +29,8 @@ from app.schemas.schemas import (
     PayrollPolicySettingOut, PayrollPolicySettingUpdate,
     PayrollPeriodBonusCreate, PayrollPeriodBonusUpdate, PayrollPeriodBonusOut,
     PublicHolidayCreate, PublicHolidayUpdate, PublicHolidayOut,
-    PayrollPeriodOverrideCreate, PayrollPeriodWorkingDaysOut
+    PayrollPeriodOverrideCreate, PayrollPeriodWorkingDaysOut,
+    PositionAllowanceOut, PositionAllowanceUpdate
 )
 
 logger = logging.getLogger("techzone_hrm.payrolls")
@@ -113,10 +114,23 @@ def populate_payroll_breakdown_from_details(pr_dict: dict, details_list: list):
     pr_dict["bonus_amount"] = total_bonus_val
     pr_dict["penalty_deduction"] = det_map.get("PENALTY", 0.0)
     pr_dict["personal_income_tax"] = det_map.get("PIT", 0.0)
+    
+    # Bóc tách chính xác các khoản bảo hiểm
     tot_ins = float(pr_dict.get("total_insurance") or 0.0)
-    pr_dict["bhxh_amount"] = round(tot_ins * 8.0 / 10.5, 2) if tot_ins > 0 else 0.0
-    pr_dict["bhyt_amount"] = round(tot_ins * 1.5 / 10.5, 2) if tot_ins > 0 else 0.0
-    pr_dict["bhtn_amount"] = round(tot_ins * 1.0 / 10.5, 2) if tot_ins > 0 else 0.0
+    bhxh_val = det_map.get("BHXH")
+    bhyt_val = det_map.get("BHYT")
+    bhtn_val = det_map.get("BHTN")
+    
+    if bhxh_val is not None or bhyt_val is not None or bhtn_val is not None:
+        pr_dict["bhxh_amount"] = bhxh_val if bhxh_val is not None else 0.0
+        pr_dict["bhyt_amount"] = bhyt_val if bhyt_val is not None else 0.0
+        pr_dict["bhtn_amount"] = bhtn_val if bhtn_val is not None else 0.0
+    else:
+        # Fallback tỷ lệ chuẩn
+        pr_dict["bhxh_amount"] = round(tot_ins * 8.0 / 10.5, 2) if tot_ins > 0 else 0.0
+        pr_dict["bhyt_amount"] = round(tot_ins * 1.5 / 10.5, 2) if tot_ins > 0 else 0.0
+        pr_dict["bhtn_amount"] = round(tot_ins * 1.0 / 10.5, 2) if tot_ins > 0 else 0.0
+
     pr_dict["total_deductions"] = float(pr_dict.get("total_deductions") or 0.0)
     pr_dict["total_deduction"] = pr_dict["total_deductions"]
     return pr_dict
@@ -1212,12 +1226,18 @@ async def update_payroll_policy_setting(
     old_val = float(current_setting["numeric_value"])
     desc_to_set = req.description if req.description is not None else current_setting["description"]
 
+    # Chuẩn hóa nếu người dùng nhập số phần trăm (VD nhập 1 là 1% -> 0.01, nhập 3.5 là 3.5% -> 0.035, nhập 1.5 là 1.5% -> 0.015)
+    val_to_set = float(req.numeric_value)
+    if current_setting["unit"] == "TY_LE":
+        if val_to_set >= 0.1:
+            val_to_set = val_to_set / 100.0
+
     res = await db.execute(text("""
         UPDATE payroll_policy_settings
         SET numeric_value = :val, description = :desc, updated_at = CURRENT_TIMESTAMP, updated_by = :uid
         WHERE setting_key = :key
         RETURNING setting_id, setting_key, setting_name, setting_group, numeric_value, unit, description, is_active, updated_at
-    """), {"val": req.numeric_value, "desc": desc_to_set, "uid": current_user["user_id"], "key": setting_key})
+    """), {"val": val_to_set, "desc": desc_to_set, "uid": current_user["user_id"], "key": setting_key})
     row = res.mappings().first()
 
     import json
@@ -1228,12 +1248,87 @@ async def update_payroll_policy_setting(
         "uid": current_user["user_id"],
         "eid": setting_key,
         "old": json.dumps({"numeric_value": old_val, "description": current_setting["description"]}),
-        "new": json.dumps({"numeric_value": req.numeric_value, "description": desc_to_set})
+        "new": json.dumps({"numeric_value": val_to_set, "description": desc_to_set})
     })
+
+    # Tự động tính lại các kỳ lương nháp để phiếu lương nháp lập tức cập nhật chỉ số mới
+    draft_periods_res = await db.execute(text("""
+        SELECT DISTINCT salary_period FROM payrolls WHERE payment_status IN ('DRAFT', 'NEEDS_RECALCULATION')
+    """))
+    draft_periods = [r[0] for r in draft_periods_res.fetchall()]
+    for dp in draft_periods:
+        try:
+            await db.execute(text("CALL sp_generate_monthly_payroll(:period, :hr_id)"), {"period": dp, "hr_id": current_user["user_id"]})
+        except Exception as e:
+            logger.warning(f"Auto-recalculation for draft period {dp} failed: {e}")
 
     await db.commit()
     return dict(row)
 
+
+
+
+@router.get("/policies/position-allowances", response_model=List[PositionAllowanceOut], summary="Danh sách định mức phụ cấp chức vụ theo vị trí công việc")
+async def list_position_allowances(
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
+    db: AsyncSession = Depends(get_db)
+):
+    res = await db.execute(text("""
+        SELECT position_id, position_name, position_allowance, position_coefficient
+        FROM positions
+        ORDER BY position_id ASC
+    """))
+    return res.mappings().all()
+
+
+@router.put("/policies/position-allowances/{position_id}", response_model=PositionAllowanceOut, summary="Cập nhật định mức phụ cấp chức vụ")
+async def update_position_allowance(
+    position_id: int,
+    req: PositionAllowanceUpdate,
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
+    db: AsyncSession = Depends(get_db)
+):
+    pos_res = await db.execute(text("SELECT * FROM positions WHERE position_id = :pid"), {"pid": position_id})
+    current_pos = pos_res.mappings().first()
+    if not current_pos:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy chức vụ ID {position_id}")
+
+    old_allowance = float(current_pos["position_allowance"] or 0)
+    old_coef = float(current_pos["position_coefficient"] or 1.0)
+    new_coef = req.position_coefficient if req.position_coefficient is not None else old_coef
+
+    res = await db.execute(text("""
+        UPDATE positions
+        SET position_allowance = :allowance, position_coefficient = :coef
+        WHERE position_id = :pid
+        RETURNING position_id, position_name, position_allowance, position_coefficient
+    """), {"allowance": req.position_allowance, "coef": new_coef, "pid": position_id})
+    updated_row = res.mappings().first()
+
+    import json
+    await db.execute(text("""
+        INSERT INTO audit_logs (user_id, action, entity_name, entity_id, old_values, new_values)
+        VALUES (:uid, 'UPDATE_POSITION_ALLOWANCE', 'positions', :eid, CAST(:old AS jsonb), CAST(:new AS jsonb))
+    """), {
+        "uid": current_user["user_id"],
+        "eid": str(position_id),
+        "old": json.dumps({"position_allowance": old_allowance, "position_coefficient": old_coef}),
+        "new": json.dumps({"position_allowance": req.position_allowance, "position_coefficient": new_coef})
+    })
+
+    # Tự động tính toán lại các kỳ lương nháp để phiếu lương nháp lập tức cập nhật phụ cấp chức vụ mới
+    draft_periods_res = await db.execute(text("""
+        SELECT DISTINCT salary_period FROM payrolls WHERE payment_status IN ('DRAFT', 'NEEDS_RECALCULATION')
+    """))
+    draft_periods = [r[0] for r in draft_periods_res.fetchall()]
+    for dp in draft_periods:
+        try:
+            await db.execute(text("CALL sp_generate_monthly_payroll(:period, :hr_id)"), {"period": dp, "hr_id": current_user["user_id"]})
+        except Exception as e:
+            logger.warning(f"Auto-recalculation for draft period {dp} failed: {e}")
+
+    await db.commit()
+    return dict(updated_row)
 
 @router.get("/policies/period-bonuses", response_model=List[PayrollPeriodBonusOut], summary="Danh sách các khoản thưởng Lễ, Tết & Sự kiện theo kỳ")
 async def list_payroll_period_bonuses(
@@ -1986,35 +2081,50 @@ async def get_printable_payslip(
 
     # Nếu có bảo hiểm và chưa được bóc tách riêng từng dòng
     tot_ins = float(row.get("total_insurance") or 0)
-    if (not has_broken_insurance or has_lumped_insurance) and tot_ins > 0:
-        bhxh = float(row.get("bhxh_amount") or round(tot_ins * 8.0 / 10.5, 2))
-        bhyt = float(row.get("bhyt_amount") or round(tot_ins * 1.5 / 10.5, 2))
-        bhtn = float(row.get("bhtn_amount") or round(tot_ins * 1.0 / 10.5, 2))
+    if not has_broken_insurance and tot_ins > 0:
+        bhyt_rate_val = 0.015
+        bhxh_rate_val = 0.08
+        bhtn_rate_val = 0.01
+        try:
+            rates_res = await db.execute(text("""
+                SELECT setting_key, numeric_value FROM payroll_policy_settings 
+                WHERE setting_key IN ('BHXH_EMPLOYEE_RATE', 'BHYT_EMPLOYEE_RATE', 'BHTN_EMPLOYEE_RATE') AND is_active = TRUE
+            """))
+            for rk in rates_res.fetchall():
+                if rk[0] == 'BHYT_EMPLOYEE_RATE': bhyt_rate_val = float(rk[1])
+                elif rk[0] == 'BHXH_EMPLOYEE_RATE': bhxh_rate_val = float(rk[1])
+                elif rk[0] == 'BHTN_EMPLOYEE_RATE': bhtn_rate_val = float(rk[1])
+        except Exception:
+            pass
+        tot_rate = bhxh_rate_val + bhyt_rate_val + bhtn_rate_val or 0.105
+        bhxh = round(tot_ins * bhxh_rate_val / tot_rate, 2)
+        bhyt = round(tot_ins * bhyt_rate_val / tot_rate, 2)
+        bhtn = round(tot_ins * bhtn_rate_val / tot_rate, 2)
         if bhxh > 0:
             final_deductions.append({
                 "item_code": "BHXH",
-                "item_name": "Bảo hiểm Xã hội (BHXH 8%)",
-                "name": "Bảo hiểm Xã hội (BHXH 8%)",
+                "item_name": f"Bảo hiểm Xã hội (BHXH {bhxh_rate_val*100:.1f}%)",
+                "name": f"Bảo hiểm Xã hội (BHXH {bhxh_rate_val*100:.1f}%)",
                 "item_type": "DEDUCTION",
-                "calculation_formula": "8.0% lương đóng bảo hiểm bắt buộc",
+                "calculation_formula": f"{bhxh_rate_val*100:.1f}% lương đóng bảo hiểm bắt buộc",
                 "amount": bhxh
             })
         if bhyt > 0:
             final_deductions.append({
                 "item_code": "BHYT",
-                "item_name": "Bảo hiểm Y tế (BHYT 1.5%)",
-                "name": "Bảo hiểm Y tế (BHYT 1.5%)",
+                "item_name": f"Bảo hiểm Y tế (BHYT {bhyt_rate_val*100:.1f}%)",
+                "name": f"Bảo hiểm Y tế (BHYT {bhyt_rate_val*100:.1f}%)",
                 "item_type": "DEDUCTION",
-                "calculation_formula": "1.5% lương đóng bảo hiểm bắt buộc",
+                "calculation_formula": f"{bhyt_rate_val*100:.1f}% lương đóng bảo hiểm bắt buộc",
                 "amount": bhyt
             })
         if bhtn > 0:
             final_deductions.append({
                 "item_code": "BHTN",
-                "item_name": "Bảo hiểm Thất nghiệp (BHTN 1%)",
-                "name": "Bảo hiểm Thất nghiệp (BHTN 1%)",
+                "item_name": f"Bảo hiểm Thất nghiệp (BHTN {bhtn_rate_val*100:.1f}%)",
+                "name": f"Bảo hiểm Thất nghiệp (BHTN {bhtn_rate_val*100:.1f}%)",
                 "item_type": "DEDUCTION",
-                "calculation_formula": "1.0% lương đóng bảo hiểm bắt buộc",
+                "calculation_formula": f"{bhtn_rate_val*100:.1f}% lương đóng bảo hiểm bắt buộc",
                 "amount": bhtn
             })
 
