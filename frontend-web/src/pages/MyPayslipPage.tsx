@@ -828,21 +828,27 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
                         <table className="table" style={{ width: '100%', fontSize: '12.5px', margin: 0 }}>
                           <tbody>
                             <tr>
-                              <td style={{ padding: '8px 12px' }}>Bảo hiểm Xã hội (BHXH 8%)</td>
+                              <td style={{ padding: '8px 12px' }}>
+                                {displayPayroll?.details?.find(d => d.item_code === 'BHXH')?.item_name || 'Bảo hiểm Xã hội (BHXH)'}
+                              </td>
                               <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--status-error)' }}>
-                                -{formatCurrency(displayPayroll.bhxh_amount)}
+                                -{formatCurrency(displayPayroll?.details?.find(d => d.item_code === 'BHXH')?.amount ?? displayPayroll.bhxh_amount)}
                               </td>
                             </tr>
                             <tr>
-                              <td style={{ padding: '8px 12px' }}>Bảo hiểm Y tế (BHYT 1.5%)</td>
+                              <td style={{ padding: '8px 12px' }}>
+                                {displayPayroll?.details?.find(d => d.item_code === 'BHYT')?.item_name || 'Bảo hiểm Y tế (BHYT)'}
+                              </td>
                               <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--status-error)' }}>
-                                -{formatCurrency(displayPayroll.bhyt_amount)}
+                                -{formatCurrency(displayPayroll?.details?.find(d => d.item_code === 'BHYT')?.amount ?? displayPayroll.bhyt_amount)}
                               </td>
                             </tr>
                             <tr>
-                              <td style={{ padding: '8px 12px' }}>Bảo hiểm Thất nghiệp (BHTN 1%)</td>
+                              <td style={{ padding: '8px 12px' }}>
+                                {displayPayroll?.details?.find(d => d.item_code === 'BHTN')?.item_name || 'Bảo hiểm Thất nghiệp (BHTN)'}
+                              </td>
                               <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--status-error)' }}>
-                                -{formatCurrency(displayPayroll.bhtn_amount)}
+                                -{formatCurrency(displayPayroll?.details?.find(d => d.item_code === 'BHTN')?.amount ?? displayPayroll.bhtn_amount)}
                               </td>
                             </tr>
                             {(displayPayroll.personal_income_tax || 0) > 0 && (

@@ -1037,6 +1037,20 @@ class PayrollPolicySettingUpdate(BaseModel):
     numeric_value: float = Field(..., description="Giá trị tham số mới")
     description: Optional[str] = None
 
+class PositionAllowanceOut(BaseModel):
+    position_id: int
+    position_name: str
+    position_allowance: float
+    position_coefficient: Optional[float] = 1.0
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PositionAllowanceUpdate(BaseModel):
+    position_allowance: float = Field(..., ge=0, description="Định mức phụ cấp chức vụ mới (VNĐ)")
+    position_coefficient: Optional[float] = Field(None, ge=0.5, description="Hệ số chức vụ")
+
+
 
 class PayrollPeriodBonusCreate(BaseModel):
     salary_period: str = Field(..., pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$", description="Kỳ lương 'YYYY-MM'")
