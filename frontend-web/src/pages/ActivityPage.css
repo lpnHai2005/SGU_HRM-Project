@@ -20,9 +20,41 @@
 .operations-page .stat-grid-4 .card::before {content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--action-primary);opacity:.75;}
 .operations-page .stat-grid-4 .card span {font-size:12px;color:var(--text-secondary);font-weight:600;line-height:1.4;}
 .operations-page .stat-grid-4 h2 {font-size:24px;line-height:1.15;}
-.operations-toolbar {display:flex;flex-wrap:wrap;gap:12px;align-items:end;margin:0;}
-.operations-toolbar label {display:grid;gap:6px;min-width:170px;color:var(--text-secondary);font-size:12px;font-weight:600;}
-.operations-toolbar .form-select {min-height:38px;}
+.operations-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  margin: 10px 0 0;
+  padding: 14px 18px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+.operations-toolbar > * {
+  min-width: 0;
+}
+.operations-toolbar label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 200px;
+  flex: 1 1 200px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  margin: 0;
+}
+.operations-toolbar .form-input,
+.operations-toolbar .form-select {
+  box-sizing: border-box;
+  width: 100%;
+  height: 38px;
+  min-height: 38px;
+  font-size: 13px;
+  font-family: inherit;
+}
 .operations-page > section.card {border:1px solid var(--border-default);box-shadow:var(--shadow-card);overflow:hidden;}
 .operations-page > section.card > h3 {margin:0 0 12px;padding-bottom:12px;border-bottom:1px solid var(--border-subtle);font-size:16px;}
 .operations-page details {border:1px solid var(--border-subtle);border-radius:var(--radius-sm);margin-top:8px;overflow:hidden;}
@@ -72,3 +104,486 @@
 @media(max-width:600px){.operations-filters{grid-template-columns:1fr;padding:16px}.operations-page{gap:16px}.operations-page > h1{font-size:21px}}
 @media(max-width:600px){.operations-page .stat-grid-4 .card{min-height:82px}.operations-page .stat-grid-4 h2{font-size:21px}.operations-toolbar label{flex:1 1 150px;min-width:0}}
 @media(max-width:760px){.activity-proof-content{grid-template-columns:1fr;gap:12px;padding:12px}.activity-proof-image-pane img{max-height:48dvh}.activity-proof-details dl{grid-template-columns:minmax(105px,.45fr) minmax(0,1fr);gap:7px 10px}.activity-proof-details dt{margin-top:0}.activity-proof-dialog > footer{flex-wrap:wrap;padding:10px}.activity-proof-dialog > footer .btn{flex:1 1 auto}.activity-proof-overlay{padding:8px}.activity-proof-dialog{width:100%;max-height:calc(100dvh - 16px)}}
+
+
+/* --- ATT-UI-03 ENHANCEMENTS --- */
+.badge-quality-normal {
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.badge-quality-short {
+  background: rgba(245, 158, 11, 0.12);
+  color: #d97706;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.badge-quality-review {
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.badge-quality-outside {
+  background: rgba(139, 92, 246, 0.12);
+  color: #7c3aed;
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.badge-quality-open {
+  background: rgba(59, 130, 246, 0.12);
+  color: #2563eb;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.person-flag-badge {
+  background: var(--status-warning-bg, rgba(245, 158, 11, 0.12));
+  color: var(--status-warning, #d97706);
+  border: 1px solid var(--status-warning-border, rgba(245, 158, 11, 0.3));
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  margin-left: 6px;
+  white-space: nowrap;
+}
+
+.scheduled-shift-box {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.scheduled-shift-title {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.scheduled-shift-time {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.duration-primary {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.duration-sub {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.outside-schedule-val {
+  color: #7c3aed;
+  font-weight: 600;
+}
+
+/* --- ATT-UI-05: 8-CARD KPI GRID --- */
+.kpi-8-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+.kpi-card {
+  position: relative;
+  overflow: hidden;
+  padding: 12px 16px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 84px;
+  transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+  cursor: pointer;
+}
+.kpi-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--primary-color, #2563eb);
+  box-shadow: var(--shadow-md);
+}
+.kpi-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3.5px;
+  background: var(--kpi-accent, var(--action-primary));
+  opacity: 0.85;
+}
+.kpi-card-title {
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  font-weight: 600;
+  line-height: 1.3;
+}
+.kpi-card-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 4px 0 2px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.kpi-card-unit {
+  font-size: 11.5px;
+  font-weight: normal;
+  color: var(--text-tertiary);
+}
+.kpi-card-subtext {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-top: 2px;
+}
+
+/* --- ATT-UI-05: DATE FILTER CONTROLS --- */
+.activity-filter-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 20px;
+}
+.date-preset-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.date-preset-btn {
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-default);
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.date-preset-btn:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+.date-preset-btn.is-active {
+  background: var(--action-primary);
+  border-color: var(--action-primary);
+  color: var(--action-primary-text);
+}
+.date-inputs-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+.date-inputs-row > * {
+  min-width: 0;
+}
+.date-inputs-row .work-date-field,
+.date-inputs-row .filter-select-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  min-width: 170px;
+  flex: 1 1 170px;
+}
+.date-inputs-row .form-label {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.date-inputs-row .form-input,
+.date-inputs-row .form-select {
+  box-sizing: border-box;
+  width: 100%;
+  height: 38px;
+  min-height: 38px;
+  font-size: 13px;
+  font-family: inherit;
+}
+.date-inputs-row .btn {
+  box-sizing: border-box;
+  height: 38px;
+  min-height: 38px;
+  white-space: nowrap;
+  font-family: inherit;
+  font-size: 13px;
+  padding: 0 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* --- ATT-UI-05: THREE INDEPENDENT ASSESSMENT BADGES --- */
+/* Nhóm A: Đối chiếu ca (Shift Reconciliation) */
+.badge-reconc {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.badge-reconc-matched {
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+.badge-reconc-mismatch {
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+.badge-reconc-unscheduled {
+  background: rgba(245, 158, 11, 0.12);
+  color: #d97706;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+.badge-reconc-reassigned {
+  background: rgba(59, 130, 246, 0.12);
+  color: #2563eb;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+.badge-reconc-unknown {
+  background: rgba(148, 163, 184, 0.15);
+  color: #64748b;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+/* Nhóm B: Đánh giá giờ vào/ra (Entry/Exit Evaluation) */
+.badge-eval {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.badge-eval-ontime {
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+}
+.badge-eval-late {
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+  font-weight: 700;
+}
+.badge-eval-grace {
+  background: rgba(16, 185, 129, 0.1);
+  color: #059669;
+}
+.badge-eval-early {
+  background: rgba(245, 158, 11, 0.12);
+  color: #d97706;
+}
+.badge-eval-mixed {
+  background: rgba(239, 68, 68, 0.1);
+  color: #b91c1c;
+  font-weight: 700;
+}
+.badge-eval-open {
+  background: rgba(59, 130, 246, 0.12);
+  color: #2563eb;
+}
+.badge-eval-none {
+  color: var(--text-tertiary);
+}
+
+/* OT Verified Badge */
+.badge-ot-verified {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  background: rgba(16, 185, 129, 0.15);
+  color: #047857;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.badge-ot-pending {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  background: rgba(245, 158, 11, 0.12);
+  color: #b45309;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Cột thời lượng chi tiết */
+.duration-box {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.duration-raw {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.duration-work {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.duration-break {
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+}
+
+/* Date group section */
+.activity-date-group-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--surface-subtle);
+  border-radius: var(--radius-sm);
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+  border: 1px solid var(--border-subtle);
+}
+
+/* Biến thể chất lượng phiên khi có vi phạm giờ vào/ra */
+.badge-quality-late {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+.badge-quality-early {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: rgba(245, 158, 11, 0.12);
+  color: #d97706;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+.badge-quality-grace {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: rgba(16, 185, 129, 0.1);
+  color: #059669;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+/* Minh chứng: Chấm qua thẻ / Thiếu minh chứng */
+.activity-card-proof-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm, 6px);
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.activity-missing-proof-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm, 6px);
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #dc2626;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* Nút HR Xử lý cho phiên bất thường */
+.hr-resolve-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: var(--radius-xs, 4px);
+  cursor: pointer;
+  background: var(--status-warning-bg);
+  color: var(--status-warning);
+  border: 1px solid var(--status-warning-border);
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  margin-top: 4px;
+}
+.hr-resolve-action-btn:hover {
+  background: var(--status-warning);
+  color: #fff;
+  border-color: var(--status-warning);
+}
+
