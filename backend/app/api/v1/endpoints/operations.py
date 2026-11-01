@@ -1152,13 +1152,15 @@ async def resolve_attendance_session(
     if decision == 'SHIFT_REASSIGNED' and not body.new_shift_id:
         raise HTTPException(400, "Vui lòng chọn ca làm việc thay thế.")
 
-    # RBAC Check: HR_MANAGER, ADMIN, DIRECTOR, or STORE_MANAGER (store-scoped)
+    # RBAC Check: Only HR_MANAGER, ADMIN, DIRECTOR can edit/resolve attendance sessions.
+    # STORE_MANAGER is strictly forbidden from editing and will receive 403.
     user_roles = user.get("roles") or []
+    username = (user.get("username") or "").lower()
     is_hr_or_admin = any(r in user_roles for r in ('ADMIN', 'HR_MANAGER', 'DIRECTOR'))
-    is_sm = 'STORE_MANAGER' in user_roles
+    is_sm = 'STORE_MANAGER' in user_roles or username.startswith("store_mgr")
 
-    if not is_hr_or_admin and not is_sm:
-        raise HTTPException(403, "Bạn không có quyền xử lý phiên chấm công này.")
+    if is_sm or not is_hr_or_admin:
+        raise HTTPException(403, "Bạn không có quyền thao tác chức năng này.")
 
     # Fetch session with lock
     row = (await db.execute(text('''
@@ -1179,12 +1181,6 @@ async def resolve_attendance_session(
         raise HTTPException(404, "Không tìm thấy phiên chấm công.")
 
     session_dict = dict(row)
-
-    # Store manager scope check
-    if not is_hr_or_admin and is_sm:
-        user_store_id = user.get("store_id")
-        if session_dict.get("store_id") != user_store_id:
-            raise HTTPException(403, "Cửa hàng trưởng chỉ được xử lý phiên thuộc cửa hàng của mình.")
 
     # Optimistic Concurrency Check
     ctx = session_dict.get("attendance_context") or {}

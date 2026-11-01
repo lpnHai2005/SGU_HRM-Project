@@ -289,7 +289,20 @@ export function ActivityPage({
       .catch(() => {})
   }, [])
 
+  const isStoreManager = Boolean(
+    (user?.roles?.includes('STORE_MANAGER') &&
+      !user?.roles?.some((role: string) =>
+        ['ADMIN', 'HR_MANAGER', 'DIRECTOR'].includes(role)
+      )) ||
+      user?.username?.toLowerCase()?.startsWith('store_mgr') ||
+      user?.role === 'STORE_MANAGER'
+  )
+
   const handleOpenResolveSession = (session: ActivitySession) => {
+    if (isStoreManager) {
+      alert('Bạn không có quyền thao tác chức năng này')
+      return
+    }
     setResolvingSession(session)
     const existingDecision =
       session.review_decision && session.review_decision !== 'PENDING'
@@ -304,6 +317,10 @@ export function ActivityPage({
   }
 
   const handleExecuteResolution = async () => {
+    if (isStoreManager) {
+      alert('Bạn không có quyền thao tác chức năng này')
+      return
+    }
     if (!resolvingSession) return
     if (!resolutionReason.trim()) {
       setResolutionError('Lý do xác minh và tham chiếu căn cứ là bắt buộc.')
@@ -1287,8 +1304,19 @@ export function ActivityPage({
                                     <button
                                       type="button"
                                       className="hr-resolve-action-btn"
-                                      onClick={() => handleOpenResolveSession(session)}
-                                      title="HR Ra quyết định xử lý cho phiên chấm công này"
+                                      onClick={() => {
+                                        if (isStoreManager) {
+                                          alert('Bạn không có quyền thao tác chức năng này')
+                                          return
+                                        }
+                                        handleOpenResolveSession(session)
+                                      }}
+                                      title={
+                                        isStoreManager
+                                          ? 'Bạn không có quyền thao tác chức năng này'
+                                          : 'HR Ra quyết định xử lý cho phiên chấm công này'
+                                      }
+                                      style={isStoreManager ? { opacity: 0.65, cursor: 'not-allowed' } : undefined}
                                     >
                                       <ShieldCheck size={12} />
                                       <span>HR Xử lý</span>

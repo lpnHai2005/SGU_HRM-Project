@@ -131,6 +131,8 @@ interface EmployeeAttendanceDetailModalProps {
   employee: EmployeeSummary
   period: string
   isAdmin?: boolean
+  isStoreManager?: boolean
+  currentUser?: any
   onClose: () => void
   onOpenPrint: () => void
   onViewRawSession: (session: AttendanceSession) => void
@@ -618,6 +620,7 @@ function AttendanceSessionTableRow({
   session,
   isFirstLateInDay,
   isAdmin,
+  isStoreManager,
   onOpenResolve,
   onViewRawSession,
   onOpenAuditHistory,
@@ -625,6 +628,7 @@ function AttendanceSessionTableRow({
   session: AttendanceSession
   isFirstLateInDay: boolean
   isAdmin?: boolean
+  isStoreManager?: boolean
   onOpenResolve: (s: AttendanceSession) => void
   onViewRawSession: (s: AttendanceSession) => void
   onOpenAuditHistory: (s: AttendanceSession) => void
@@ -886,7 +890,13 @@ function AttendanceSessionTableRow({
                 ? 'btn-primary'
                 : 'btn-secondary'
             }`}
-            onClick={() => onOpenResolve(session)}
+            onClick={() => {
+              if (isStoreManager) {
+                alert('Bạn không có quyền thao tác chức năng này')
+                return
+              }
+              onOpenResolve(session)
+            }}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -894,9 +904,13 @@ function AttendanceSessionTableRow({
               padding: '3px 7px',
               fontSize: '11px',
               whiteSpace: 'nowrap',
+              cursor: isStoreManager ? 'not-allowed' : 'pointer',
+              opacity: isStoreManager ? 0.65 : 1,
             }}
             title={
-              isReviewed
+              isStoreManager
+                ? 'Bạn không có quyền thao tác chức năng này'
+                : isReviewed
                 ? 'Xem lại hoặc điều chỉnh quyết định HR'
                 : 'Xác minh và xử lý phiên bất thường'
             }
@@ -953,11 +967,23 @@ export function EmployeeAttendanceDetailModal({
   employee,
   period,
   isAdmin,
+  isStoreManager,
+  currentUser,
   onClose,
   onOpenPrint,
   onViewRawSession,
   onSessionResolved,
 }: EmployeeAttendanceDetailModalProps) {
+  const userIsStoreManager = Boolean(
+    isStoreManager ||
+      (currentUser?.roles?.includes('STORE_MANAGER') &&
+        !currentUser?.roles?.some((r: string) =>
+          ['ADMIN', 'HR_MANAGER', 'DIRECTOR'].includes(r)
+        )) ||
+      currentUser?.username?.toLowerCase()?.startsWith('store_mgr') ||
+      currentUser?.role === 'STORE_MANAGER'
+  )
+
   const [activeTab, setActiveTab] = useState<TabType>('ALL')
   const [sessions, setSessions] = useState<AttendanceSession[]>(employee.sessions || [])
 
@@ -1015,6 +1041,10 @@ export function EmployeeAttendanceDetailModal({
   }, [])
 
   const handleOpenResolve = (s: AttendanceSession) => {
+    if (userIsStoreManager) {
+      alert('Bạn không có quyền thao tác chức năng này')
+      return
+    }
     setResolvingSession(s)
     const existingDecision =
       s.review_decision && s.review_decision !== 'PENDING'
@@ -1030,6 +1060,10 @@ export function EmployeeAttendanceDetailModal({
   }
 
   const handleExecuteResolution = async () => {
+    if (userIsStoreManager) {
+      alert('Bạn không có quyền thao tác chức năng này')
+      return
+    }
     if (!resolvingSession) return
     if (!resolutionReason.trim()) {
       setResolutionError('Lý do xác minh và tham chiếu căn cứ là bắt buộc.')
@@ -1359,6 +1393,7 @@ export function EmployeeAttendanceDetailModal({
                         session={s}
                         isFirstLateInDay={isFirstLate}
                         isAdmin={isAdmin}
+                        isStoreManager={userIsStoreManager}
                         onOpenResolve={handleOpenResolve}
                         onViewRawSession={onViewRawSession}
                         onOpenAuditHistory={setAuditViewingSession}
