@@ -3,6 +3,8 @@ import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import {
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   Animated,
   Modal,
   Pressable,
@@ -12,7 +14,6 @@ import {
 } from 'react-native';
 import { Button, Card, Input, Label, styles, usePalette } from '@/components/attendance-ui';
 import { LoadingBar } from '@/components/loading-bar';
-import { EyeIcon } from '@/components/eye-icon';
 import { useSession } from '@/contexts/session';
 import { useNotifications } from '@/contexts/notifications';
 import { ApiError, request } from '@/services/attendance';
@@ -278,7 +279,7 @@ export default function RequestsScreen() {
   const [rejectionReasonInput, setRejectionReasonInput] = useState('');
 
   // 8. Notifications & Alerts State
-  const { unreadCount, setCenterOpen, dispatchNotification } = useNotifications();
+  const { dispatchNotification } = useNotifications();
   const previousStatusMap = useRef<Record<number, string>>({});
   const isFirstLoad = useRef(true);
   const lock = useRef(false);
@@ -762,86 +763,41 @@ export default function RequestsScreen() {
     const isChtRejected = isRejected && (item.rejected_by_role === 'Cửa hàng trưởng' || (!item.store_approved_at && !item.hr_approved_at && item.rejected_by_name && item.rejected_by_role !== 'Phòng Nhân sự'));
     const isHrRejected = isRejected && !isChtRejected;
 
+    type Step = 'done' | 'rejected' | 'waiting' | 'idle';
+    const cht: Step = isStoreApproved ? 'done' : isChtRejected ? 'rejected' : item.status === 'PENDING' ? 'waiting' : 'idle';
+    const hr: Step = isHrApproved ? 'done' : isHrRejected ? 'rejected' : item.status === 'STORE_APPROVED' ? 'waiting' : 'idle';
+    const tone = (s: Step) => (s === 'done' ? p.emerald : s === 'rejected' ? p.danger : s === 'waiting' ? p.amber : p.surfaceHigh);
+    const dot = (s: Step, label: string) => (
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: s === 'waiting' ? 'transparent' : tone(s), borderWidth: s === 'waiting' ? 1.5 : 0, borderColor: tone(s) }} />
+        <Text style={{ fontFamily: 'BeVietnam', fontSize: 10, color: p.muted }}>{label}</Text>
+      </View>
+    );
+    const bar = (s: Step) => <View style={{ flex: 1, height: 1, backgroundColor: s === 'done' ? p.emerald : p.line }} />;
+
+    // One line describing the latest step: who acted and when.
+    const detail = isCancelled
+      ? 'Đơn đã bị hủy bởi người nộp.'
+      : isRejected
+      ? `${item.rejected_by_name || (isChtRejected ? 'CHT' : 'Phòng Nhân sự')} từ chối${item.rejected_at ? ` · ${formatDateTimeDMY(item.rejected_at)}` : ''}`
+      : isHrApproved
+      ? `HR ${item.hr_approver_name || 'Phòng Nhân sự'} đã duyệt${item.hr_approved_at ? ` · ${formatDateTimeDMY(item.hr_approved_at)}` : ''}`
+      : isStoreApproved
+      ? `CHT ${item.store_manager_name || ''} đã duyệt${item.store_approved_at ? ` · ${formatDateTimeDMY(item.store_approved_at)}` : ''} · chờ HR cấp 2`
+      : 'Đang chờ cửa hàng trưởng duyệt cấp 1';
+
     return (
-      <View
-        style={{
-          backgroundColor: p.bg,
-          borderRadius: 8,
-          padding: 8,
-          gap: 6,
-          borderWidth: 1,
-          borderColor: p.line,
-          marginTop: 4,
-        }}
-      >
-        {/* Cấp 1: Cửa hàng trưởng (CHT) */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
-            <Text style={{ fontSize: 11, fontWeight: '700', color: isStoreApproved ? '#16a34a' : isChtRejected ? '#dc2626' : item.status === 'PENDING' ? '#d97706' : p.muted }}>
-              {isStoreApproved ? 'CHT' : isChtRejected ? 'CHT' : '⏳ CHT'}:
-            </Text>
-            <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.text, flex: 1 }} numberOfLines={1}>
-              {item.store_approved_at
-                ? (item.store_manager_name || 'Cửa hàng trưởng')
-                : isChtRejected
-                ? `${item.rejected_by_name || 'CHT'} (Từ chối)`
-                : item.status === 'PENDING'
-                ? 'Đang chờ CHT duyệt Cấp 1'
-                : 'Không qua CHT'}
-            </Text>
-          </View>
-          {item.store_approved_at ? (
-            <Text style={{ fontSize: 11, color: p.muted, fontFamily: 'BeVietnam' }}>
-              {formatDateTimeDMY(item.store_approved_at)}
-            </Text>
-          ) : isChtRejected && item.rejected_at ? (
-            <Text style={{ fontSize: 11, color: '#dc2626', fontFamily: 'BeVietnam' }}>
-              {formatDateTimeDMY(item.rejected_at)}
-            </Text>
-          ) : null}
+      <View style={{ gap: 6, marginTop: 2 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          {dot(isCancelled ? 'idle' : 'done', 'Nộp')}
+          {bar(cht)}
+          {dot(cht, 'CHT')}
+          {bar(hr)}
+          {dot(hr, 'HR')}
         </View>
-
-        {/* Cấp 2: Phòng Nhân sự (HR) */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
-            <Text style={{ fontSize: 11, fontWeight: '700', color: isHrApproved ? '#16a34a' : isHrRejected ? '#dc2626' : item.status === 'STORE_APPROVED' ? '#2563eb' : p.muted }}>
-              {isHrApproved ? 'HR' : isHrRejected ? 'HR' : '⏳ HR'}:
-            </Text>
-            <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.text, flex: 1 }} numberOfLines={1}>
-              {item.hr_approved_at
-                ? (item.hr_approver_name || 'Phòng Nhân sự')
-                : isHrRejected
-                ? `${item.rejected_by_name || 'Phòng Nhân sự'} (Từ chối)`
-                : item.status === 'STORE_APPROVED'
-                ? 'Đang chờ HR phê duyệt Cấp 2'
-                : item.status === 'PENDING'
-                ? 'Chờ hoàn tất Cấp 1'
-                : '—'}
-            </Text>
-          </View>
-          {item.hr_approved_at ? (
-            <Text style={{ fontSize: 11, color: p.muted, fontFamily: 'BeVietnam' }}>
-              {formatDateTimeDMY(item.hr_approved_at)}
-            </Text>
-          ) : isHrRejected && item.rejected_at ? (
-            <Text style={{ fontSize: 11, color: '#dc2626', fontFamily: 'BeVietnam' }}>
-              {formatDateTimeDMY(item.rejected_at)}
-            </Text>
-          ) : null}
-        </View>
-
-        {/* Rejection reason snippet if rejected */}
+        <Text numberOfLines={1} style={{ fontFamily: 'BeVietnam', fontSize: 11, color: isRejected ? p.dangerText : p.muted }}>{detail}</Text>
         {isRejected && !!item.rejection_reason && (
-          <Text style={{ fontSize: 11, color: '#dc2626', fontFamily: 'BeVietnam', fontStyle: 'italic' }} numberOfLines={2}>
-            Lý do: {item.rejection_reason}
-          </Text>
-        )}
-
-        {/* Cancelled note */}
-        {isCancelled && (
-          <Text style={{ fontSize: 11, color: p.muted, fontFamily: 'BeVietnam', fontStyle: 'italic' }}>
-            Đơn đã bị hủy bởi người nộp.
-          </Text>
+          <Text numberOfLines={2} style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.body }}>Lý do: {item.rejection_reason}</Text>
         )}
       </View>
     );
@@ -849,203 +805,36 @@ export default function RequestsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: p.bg }}>
-      <ScrollView
+      <ScrollView automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled"
         style={{ flex: 1, backgroundColor: p.bg }}
         contentContainerStyle={[styles.content, { paddingBottom: 100 }]}
-        keyboardShouldPersistTaps="handled"
       >
-      {/* HEADER WITH NOTIFICATION BELL */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <View style={{ flex: 1 }}>
-          <Label large>Quản lý Đơn & Tăng ca (OT)</Label>
-          <Label muted>{profile?.full_name || 'Nhân viên TechZone'} · {storeLabel(profile?.department_name || profile?.store_name)}</Label>
-        </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Xem thông báo trạng thái đơn"
-          onPress={() => setCenterOpen(true)}
-          style={{
-            padding: 10,
-            borderRadius: 12,
-            backgroundColor: p.card,
-            borderWidth: 1,
-            borderColor: p.line,
-            position: 'relative',
-          }}
-        >
-          <AppIcon name="notifications-outline" style={{ fontSize: 20 }} />
-          {unreadCount > 0 && (
-            <View
-              style={{
-                position: 'absolute',
-                top: 4,
-                right: 4,
-                backgroundColor: '#dc2626',
-                borderRadius: 8,
-                minWidth: 16,
-                height: 16,
-                alignItems: 'center',
-                justifyContent: 'center',
-                paddingHorizontal: 2,
-              }}
-            >
-              <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>
-                {unreadCount > 9 ? '9+' : unreadCount}
-              </Text>
-            </View>
-          )}
-        </Pressable>
-      </View>
-
-      {/* NHÓM TAB NGOÀI: [ Đơn từ & Nghỉ phép ] vs [ Tăng ca (OT) ] */}
-      <View
-        style={{
-          flexDirection: 'row',
-          backgroundColor: p.card,
-          borderRadius: 14,
-          padding: 4,
-          borderWidth: 1,
-          borderColor: p.line,
-          gap: 4,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 1 },
-          shadowOpacity: p.dark ? 0.2 : 0.04,
-          shadowRadius: 3,
-          elevation: 2,
-        }}
-      >
-        <Pressable
-          accessibilityRole="tab"
-          accessibilityState={{ selected: domainTab === 'leaves' }}
-          onPress={() => setDomainTab('leaves')}
-          style={{
-            flex: 1,
-            paddingVertical: 10,
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexDirection: 'row',
-            gap: 6,
-            borderRadius: 10,
-            backgroundColor: domainTab === 'leaves' ? p.brand : 'transparent',
-          }}
-        >
-          <AppIcon
-            name="document-text-outline"
-            style={{
-              fontSize: 16,
-              color: domainTab === 'leaves' ? '#ffffff' : p.muted,
-            }}
-          />
-          <Text
-            style={{
-              fontFamily: 'BeVietnamBold',
-              fontSize: 13,
-              color: domainTab === 'leaves' ? '#ffffff' : p.text,
-            }}
+      {/* One segmented control: Nghỉ phép · Tăng ca · Duyệt đơn (managers) */}
+      <View accessibilityRole="tablist" style={{ flexDirection: 'row', gap: 4, padding: 3, borderRadius: 6, backgroundColor: p.surfaceLow }}>
+        {([
+          ['mine', 'Nghỉ phép', domainTab === 'leaves' && activeTab === 'my_leaves', () => { setDomainTab('leaves'); setActiveTab('my_leaves'); }],
+          ['ot', 'Tăng ca', domainTab === 'overtime', () => setDomainTab('overtime')],
+          ...(isManager ? [['approve', 'Duyệt đơn', domainTab === 'leaves' && activeTab === 'manager_approvals', () => { setDomainTab('leaves'); setActiveTab('manager_approvals'); }] as const] : []),
+        ] as const).map(([key, label, active, select]) => (
+          <Pressable
+            key={key}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: active }}
+            onPress={select}
+            style={{ flex: 1, height: 36, borderRadius: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1, borderColor: active ? p.line : 'transparent', backgroundColor: active ? p.card : 'transparent' }}
           >
-            Đơn từ & Nghỉ phép
-          </Text>
-        </Pressable>
-
-        <Pressable
-          accessibilityRole="tab"
-          accessibilityState={{ selected: domainTab === 'overtime' }}
-          onPress={() => setDomainTab('overtime')}
-          style={{
-            flex: 1,
-            paddingVertical: 10,
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexDirection: 'row',
-            gap: 6,
-            borderRadius: 10,
-            backgroundColor: domainTab === 'overtime' ? p.brand : 'transparent',
-          }}
-        >
-          <AppIcon
-            name="time-outline"
-            style={{
-              fontSize: 16,
-              color: domainTab === 'overtime' ? '#ffffff' : p.muted,
-            }}
-          />
-          <Text
-            style={{
-              fontFamily: 'BeVietnamBold',
-              fontSize: 13,
-              color: domainTab === 'overtime' ? '#ffffff' : p.text,
-            }}
-          >
-            Tăng ca (OT)
-          </Text>
-        </Pressable>
+            <Text style={{ fontFamily: active ? 'BeVietnamBold' : 'BeVietnam', fontSize: 13, color: active ? p.text : p.muted }}>{label}</Text>
+            {key === 'approve' && pendingApprovalCount > 0 && (
+              <View style={{ minWidth: 18, paddingHorizontal: 5, height: 18, borderRadius: 4, backgroundColor: p.brand, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontFamily: 'MonoBold', fontSize: 11, color: p.onBrand }}>{pendingApprovalCount}</Text>
+              </View>
+            )}
+          </Pressable>
+        ))}
       </View>
 
       {domainTab === 'leaves' ? (
         <>
-          {/* MANAGER TAB SWITCHER (IF USER IS MANAGER) */}
-      {isManager && (
-        <View style={{ flexDirection: 'row', backgroundColor: p.card, borderRadius: 12, padding: 4, borderWidth: 1, borderColor: p.line }}>
-          <Pressable
-            accessibilityRole="tab"
-            onPress={() => setActiveTab('my_leaves')}
-            style={{
-              flex: 1,
-              paddingVertical: 10,
-              alignItems: 'center',
-              borderRadius: 8,
-              backgroundColor: activeTab === 'my_leaves' ? p.accent : 'transparent',
-            }}
-          >
-            <Text
-              style={{
-                fontFamily: 'BeVietnamBold',
-                fontSize: 13,
-                color: activeTab === 'my_leaves' ? (p.dark ? '#09090b' : '#fff') : p.text,
-              }}
-            >
-              Đơn của tôi
-            </Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="tab"
-            onPress={() => setActiveTab('manager_approvals')}
-            style={{
-              flex: 1,
-              paddingVertical: 10,
-              alignItems: 'center',
-              borderRadius: 8,
-              backgroundColor: activeTab === 'manager_approvals' ? p.accent : 'transparent',
-              flexDirection: 'row',
-              justifyContent: 'center',
-              gap: 6,
-            }}
-          >
-            <Text
-              style={{
-                fontFamily: 'BeVietnamBold',
-                fontSize: 13,
-                color: activeTab === 'manager_approvals' ? (p.dark ? '#09090b' : '#fff') : p.text,
-              }}
-            >
-              Quản lý duyệt đơn
-            </Text>
-            {pendingApprovalCount > 0 && (
-              <View
-                style={{
-                  backgroundColor: '#dc2626',
-                  borderRadius: 10,
-                  paddingHorizontal: 6,
-                  paddingVertical: 1,
-                }}
-              >
-                <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>{pendingApprovalCount}</Text>
-              </View>
-            )}
-          </Pressable>
-        </View>
-      )}
-
       {/* FEEDBACK MESSAGES & LOADING */}
       <LoadingBar active={loading || profileLoading || actionBusy} label="Đang đồng bộ dữ liệu nghỉ phép…" />
       {!!error && (
@@ -1065,73 +854,37 @@ export default function RequestsScreen() {
       {/* ============================================================== */}
       {activeTab === 'my_leaves' && (
         <>
-          {/* 1. LEAVE BALANCE DISPLAY CARDS */}
-          <Label large>Số dư phép năm & Quỹ nghỉ</Label>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-            {/* CARD 1: CÒN LẠI (HIGHLIGHTED) */}
-            <View style={{ flexBasis: '48%', flexGrow: 1 }}>
-              <Card>
-                <Label muted>Phép năm còn lại</Label>
-                <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 26, color: '#16a34a' }}>
-                  {balance ? Number(balance.annual_leave_remaining).toFixed(1) : '—'}{' '}
-                  <Text style={{ fontSize: 14, fontWeight: '400', color: p.muted }}>ngày</Text>
+          {/* 1. LEAVE BALANCE */}
+          {(() => {
+            const total = balance ? Number(balance.annual_leave_total) : 12;
+            const used = balance ? Number(balance.annual_leave_used) : 0;
+            const pendingDays = balance ? Number(balance.pending_leave_days) : 0;
+            const pct = (v: number) => `${total > 0 ? Math.min(100, (v / total) * 100) : 0}%` as const;
+            const others = balance ? [['Ốm BHXH', balance.sick_leave_used], ['Không lương', balance.unpaid_leave_used], ['Thai sản', balance.maternity_leave_used]].filter(([, v]) => Number(v) > 0) : [];
+            return (
+              <Card style={{ gap: 12 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                  <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 10, letterSpacing: 0.8, textTransform: 'uppercase', color: p.muted }}>Số dư phép năm {new Date().getFullYear()}</Text>
+                  <Text style={{ fontFamily: 'BeVietnam', fontSize: 11, color: p.muted }}>
+                    Tiêu chuẩn <Text style={{ fontFamily: 'Mono', fontSize: 11, color: p.muted }}>{total}</Text> ngày{balance && balance.seniority_bonus_days > 0 ? ` (+${balance.seniority_bonus_days} thâm niên)` : ''}
+                  </Text>
+                </View>
+                <Text style={{ fontFamily: 'MonoBold', fontSize: 32, lineHeight: 38, letterSpacing: -1, color: p.text }}>
+                  {balance ? Number(balance.annual_leave_remaining).toFixed(1) : '—'}
+                  <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.body, letterSpacing: 0 }}>  ngày khả dụng</Text>
                 </Text>
-                <Label muted>Khả dụng đăng ký</Label>
+                <View style={{ flexDirection: 'row', height: 6, borderRadius: 3, overflow: 'hidden', backgroundColor: p.surfaceHigh }}>
+                  <View style={{ width: pct(used), backgroundColor: p.text }} />
+                  <View style={{ width: pct(pendingDays), backgroundColor: p.amber }} />
+                </View>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16 }}>
+                  <Legend color={p.text} label="Đã nghỉ" value={used.toFixed(1)} />
+                  <Legend color={p.amber} label="Chờ duyệt" value={pendingDays.toFixed(1)} />
+                  {others.map(([k, v]) => <Legend key={String(k)} color={p.surfaceHigh} label={String(k)} value={String(v)} />)}
+                </View>
               </Card>
-            </View>
-
-            {/* CARD 2: TỔNG TIÊU CHUẨN */}
-            <View style={{ flexBasis: '48%', flexGrow: 1 }}>
-              <Card>
-                <Label muted>Tiêu chuẩn năm</Label>
-                <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 26, color: p.text }}>
-                  {balance ? Number(balance.annual_leave_total).toFixed(1) : '12.0'}{' '}
-                  <Text style={{ fontSize: 14, fontWeight: '400', color: p.muted }}>ngày</Text>
-                </Text>
-                <Label muted>
-                  {balance && balance.seniority_bonus_days > 0
-                    ? `+${balance.seniority_bonus_days} ngày thâm niên`
-                    : '12 ngày cơ bản BLLĐ'}
-                </Label>
-              </Card>
-            </View>
-
-            {/* CARD 3: ĐÃ SỬ DỤNG */}
-            <View style={{ flexBasis: '48%', flexGrow: 1 }}>
-              <Card>
-                <Label muted>Đã nghỉ (Duyệt)</Label>
-                <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 24, color: p.text }}>
-                  {balance ? Number(balance.annual_leave_used).toFixed(1) : '0.0'}{' '}
-                  <Text style={{ fontSize: 14, fontWeight: '400', color: p.muted }}>ngày</Text>
-                </Text>
-                <Label muted>Đã trừ vào số dư</Label>
-              </Card>
-            </View>
-
-            {/* CARD 4: ĐANG CHỜ DUYỆT */}
-            <View style={{ flexBasis: '48%', flexGrow: 1 }}>
-              <Card>
-                <Label muted>Đang chờ duyệt</Label>
-                <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 24, color: '#d97706' }}>
-                  {balance ? Number(balance.pending_leave_days).toFixed(1) : '0.0'}{' '}
-                  <Text style={{ fontSize: 14, fontWeight: '400', color: p.muted }}>ngày</Text>
-                </Text>
-                <Label muted>Đơn PENDING/STORE</Label>
-              </Card>
-            </View>
-          </View>
-
-          {/* SECONDARY LEAVE QUOTA INFO */}
-          {balance && (balance.sick_leave_used > 0 || balance.unpaid_leave_used > 0 || balance.maternity_leave_used > 0) && (
-            <Card>
-              <Label muted>THỐNG KÊ NGHỈ CHẾ ĐỘ KHÁC NĂM {new Date().getFullYear()}</Label>
-              <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.muted }}>
-                • Nghỉ ốm BHXH: <Text style={{ color: p.text, fontWeight: '700' }}>{balance.sick_leave_used} ngày</Text> | 
-                • Nghỉ không lương: <Text style={{ color: p.text, fontWeight: '700' }}>{balance.unpaid_leave_used} ngày</Text>
-                {balance.maternity_leave_used > 0 && ` | • Thai sản: ${balance.maternity_leave_used} ngày`}
-              </Text>
-            </Card>
-          )}
+            );
+          })()}
 
           {/* 2. BUTTON TO OPEN POPUP OVERLAY */}
           <Button
@@ -1155,7 +908,7 @@ export default function RequestsScreen() {
                 flexDirection: 'row',
                 alignItems: 'center',
                 backgroundColor: p.card,
-                borderRadius: 12,
+                borderRadius: 8,
                 borderWidth: 1,
                 borderColor: p.line,
                 paddingHorizontal: 12,
@@ -1184,7 +937,7 @@ export default function RequestsScreen() {
             </View>
 
             {/* Horizontal Month Scroll Pills */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingVertical: 2 }}>
+            <ScrollView automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled" horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingVertical: 2 }}>
               {monthOptions.map(opt => {
                 const isSelected = selectedMonth === opt.value;
                 return (
@@ -1194,7 +947,7 @@ export default function RequestsScreen() {
                     style={{
                       paddingVertical: 6,
                       paddingHorizontal: 13,
-                      borderRadius: 16,
+                      borderRadius: 8,
                       backgroundColor: isSelected ? p.accent : p.card,
                       borderWidth: 1,
                       borderColor: isSelected ? p.accent : p.line,
@@ -1204,7 +957,7 @@ export default function RequestsScreen() {
                       style={{
                         fontFamily: isSelected ? 'BeVietnamBold' : 'BeVietnam',
                         fontSize: 12,
-                        color: isSelected ? (p.dark ? '#09090b' : '#fff') : p.text,
+                        color: isSelected ? p.onBrand : p.text,
                       }}
                     >
                       {opt.label}
@@ -1231,7 +984,7 @@ export default function RequestsScreen() {
                   style={{
                     paddingVertical: 6,
                     paddingHorizontal: 12,
-                    borderRadius: 16,
+                    borderRadius: 8,
                     backgroundColor: selected ? p.accent : p.card,
                     borderWidth: 1,
                     borderColor: selected ? p.accent : p.line,
@@ -1241,7 +994,7 @@ export default function RequestsScreen() {
                     style={{
                       fontFamily: selected ? 'BeVietnamBold' : 'BeVietnam',
                       fontSize: 12,
-                      color: selected ? (p.dark ? '#09090b' : '#fff') : p.text,
+                      color: selected ? p.onBrand : p.text,
                     }}
                   >
                     {labelText}
@@ -1251,7 +1004,7 @@ export default function RequestsScreen() {
             })}
           </View>
 
-          {/* REFINED COMPACT LEAVE REQUEST CARDS WITH STEP APPROVER & MINIMAL EYE BUTTON */}
+          {/* My leave requests: whole card opens the detail sheet */}
           {filteredMyLeaves.map(item => {
             const meta = leaveStatusMeta[item.status] || {
               label: item.status,
@@ -1262,83 +1015,32 @@ export default function RequestsScreen() {
             const canCancel = item.status === 'PENDING';
 
             return (
-              <Card key={item.request_id}>
-                {/* Header Row: Title & Status Badge */}
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                  <Text
-                    style={{
-                      fontFamily: 'BeVietnamBold',
-                      fontSize: 15,
-                      color: p.text,
-                      flex: 1,
-                    }}
-                    numberOfLines={1}
-                  >
+              <Card key={item.request_id} style={{ gap: 8 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                  <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 15, color: p.text, flex: 1 }} numberOfLines={1}>
                     {item.leave_type_name}
                   </Text>
-                  <View
-                    style={{
-                      backgroundColor: meta.bg,
-                      paddingHorizontal: 8,
-                      paddingVertical: 3,
-                      borderRadius: 10,
-                      flexShrink: 0,
-                    }}
-                  >
-                    <Text style={{ color: meta.color, fontSize: 11, fontWeight: '700' }}>
-                      {meta.label}
-                    </Text>
+                  <View style={{ backgroundColor: meta.bg, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4, flexShrink: 0 }}>
+                    <Text style={{ fontFamily: 'BeVietnamBold', color: meta.color, fontSize: 11 }}>{meta.label}</Text>
                   </View>
                 </View>
-
-                {/* Date range in dd-mm-yyyy and total days */}
-                <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.muted }}>
-                  <AppIcon name="calendar-outline" size={14} /> {formatDateDMY(item.start_date)} → {formatDateDMY(item.end_date)} ·{' '}
-                  <Text style={{ color: p.text, fontWeight: '700' }}>{item.total_days} ngày</Text>
+                <Text style={{ fontFamily: 'Mono', fontSize: 12, color: p.body }}>
+                  {formatDateDMY(item.start_date)} → {formatDateDMY(item.end_date)} · {item.total_days} ngày
                 </Text>
-
-                {/* Approval Stage Box: Cấp 1, Cấp 2, Approver & Timestamp */}
                 {renderApprovalProgressBox(item)}
-
-                {/* Bottom Row: Minimal Eye Button and Actions */}
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
-                  {/* Minimal Eye Icon Button (matches web design, not default emoji) */}
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`Xem chi tiết đơn #${item.request_id}`}
-                    onPress={() => setDetailItem(item)}
-                    style={({ pressed }) => ({
-                      width: 30,
-                      height: 30,
-                      borderRadius: 6,
-                      backgroundColor: p.bg,
-                      borderWidth: 1,
-                      borderColor: p.line,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      opacity: pressed ? 0.6 : 1,
-                    })}
-                  >
-                    <EyeIcon size={15} color={p.muted} />
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
+                  <Pressable accessibilityRole="button" accessibilityLabel={`Xem chi tiết đơn #${item.request_id}`} hitSlop={10} onPress={() => setDetailItem(item)}>
+                    <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: p.emeraldText }}>Xem chi tiết →</Text>
                   </Pressable>
-
-                  {/* Cancel Button if eligible */}
                   {canCancel && (
                     <Pressable
                       accessibilityRole="button"
+                      accessibilityLabel={`Hủy đơn #${item.request_id}`}
                       onPress={() => handleCancelLeave(item)}
-                      style={{
-                        paddingVertical: 6,
-                        paddingHorizontal: 12,
-                        borderRadius: 8,
-                        backgroundColor: '#fee2e2',
-                        borderWidth: 1,
-                        borderColor: '#fca5a5',
-                      }}
+                      hitSlop={8}
+                      style={({ pressed }) => ({ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 6, borderWidth: 1, borderColor: p.line, backgroundColor: pressed ? p.dangerBg : p.card })}
                     >
-                      <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: '#dc2626' }}>
-                        <AppIcon name="close-outline" size={14} /> Hủy đơn
-                      </Text>
+                      <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: p.dangerText }}>Hủy đơn</Text>
                     </Pressable>
                   )}
                 </View>
@@ -1373,7 +1075,7 @@ export default function RequestsScreen() {
                 flexDirection: 'row',
                 alignItems: 'center',
                 backgroundColor: p.card,
-                borderRadius: 12,
+                borderRadius: 8,
                 borderWidth: 1,
                 borderColor: p.line,
                 paddingHorizontal: 12,
@@ -1401,7 +1103,7 @@ export default function RequestsScreen() {
               )}
             </View>
 
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingVertical: 2 }}>
+            <ScrollView automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled" horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingVertical: 2 }}>
               {monthOptions.map(opt => {
                 const isSelected = selectedMonth === opt.value;
                 return (
@@ -1411,7 +1113,7 @@ export default function RequestsScreen() {
                     style={{
                       paddingVertical: 6,
                       paddingHorizontal: 13,
-                      borderRadius: 16,
+                      borderRadius: 8,
                       backgroundColor: isSelected ? p.accent : p.card,
                       borderWidth: 1,
                       borderColor: isSelected ? p.accent : p.line,
@@ -1421,7 +1123,7 @@ export default function RequestsScreen() {
                       style={{
                         fontFamily: isSelected ? 'BeVietnamBold' : 'BeVietnam',
                         fontSize: 12,
-                        color: isSelected ? (p.dark ? '#09090b' : '#fff') : p.text,
+                        color: isSelected ? p.onBrand : p.text,
                       }}
                     >
                       {opt.label}
@@ -1447,7 +1149,7 @@ export default function RequestsScreen() {
                   style={{
                     paddingVertical: 6,
                     paddingHorizontal: 12,
-                    borderRadius: 16,
+                    borderRadius: 8,
                     backgroundColor: selected ? p.accent : p.card,
                     borderWidth: 1,
                     borderColor: selected ? p.accent : p.line,
@@ -1457,7 +1159,7 @@ export default function RequestsScreen() {
                     style={{
                       fontFamily: selected ? 'BeVietnamBold' : 'BeVietnam',
                       fontSize: 12,
-                      color: selected ? (p.dark ? '#09090b' : '#fff') : p.text,
+                      color: selected ? p.onBrand : p.text,
                     }}
                   >
                     {labelText}
@@ -1467,7 +1169,7 @@ export default function RequestsScreen() {
             })}
           </View>
 
-          {/* Compact Manager Request List with Eye Icon */}
+          {/* Requests awaiting this manager: tap the card for details, act with the two buttons */}
           {filteredManagerLeaves.map(item => {
             const meta = leaveStatusMeta[item.status] || {
               label: item.status,
@@ -1480,105 +1182,76 @@ export default function RequestsScreen() {
             const canApprove =
               (isStoreManager && isPendingStore) ||
               ((isHrManager || isAdmin) && (isPendingStore || isPendingHr));
+            const initials = (item.employee_name || 'NV').split(' ').slice(-2).map(w => w[0]).join('').toUpperCase();
+            const cells: [string, string, boolean][] = [
+              ['Loại', item.leave_type_name, false],
+              ['Thời gian', item.start_date === item.end_date ? formatDateDMY(item.start_date).slice(0, 5) : `${formatDateDMY(item.start_date).slice(0, 5)}–${formatDateDMY(item.end_date).slice(0, 5)}`, true],
+              ['Số ngày', String(item.total_days), true],
+            ];
 
             return (
-              <Card key={item.request_id}>
-                {/* Employee Info & Status Badge */}
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 15, color: p.text }} numberOfLines={1}>
-                      {item.employee_name || 'Nhân viên'}
-                    </Text>
-                    <Label muted>
-                      {item.employee_code || `#${item.employee_id}`} · {storeLabel(item.store_name || item.department_name)}
-                    </Label>
+              <Card key={item.request_id} style={{ gap: 10 }}>
+                <Pressable accessibilityRole="button" accessibilityLabel={`Xem chi tiết đơn của ${item.employee_name || 'nhân viên'}`} onPress={() => setDetailItem(item)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: p.surfaceLow, borderWidth: 1, borderColor: p.line, alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: p.text }}>{initials}</Text>
                   </View>
-                  <View style={{ backgroundColor: meta.bg, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, flexShrink: 0 }}>
-                    <Text style={{ color: meta.color, fontSize: 11, fontWeight: '700' }}>
-                      {meta.label}
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 14, color: p.text }} numberOfLines={1}>{item.employee_name || 'Nhân viên'}</Text>
+                    <Text numberOfLines={1} style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.muted }}>
+                      <Text style={{ fontFamily: 'Mono', fontSize: 12, color: p.muted }}>{item.employee_code || `#${item.employee_id}`}</Text> · {storeLabel(item.store_name || item.department_name)}
                     </Text>
                   </View>
+                  <View style={{ backgroundColor: meta.bg, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4, flexShrink: 0 }}>
+                    <Text style={{ fontFamily: 'BeVietnamBold', color: meta.color, fontSize: 11 }}>{meta.label}</Text>
+                  </View>
+                  <AppIcon name="chevron-forward" size={14} color={p.muted} />
+                </Pressable>
+
+                <View style={{ flexDirection: 'row', borderWidth: 1, borderColor: p.line, borderRadius: 6 }}>
+                  {cells.map(([k, v, mono], i) => (
+                    <View key={k} style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 10, borderLeftWidth: i ? 1 : 0, borderLeftColor: p.line }}>
+                      <Text style={{ fontFamily: 'BeVietnam', fontSize: 11, color: p.muted }}>{k}</Text>
+                      <Text numberOfLines={1} style={{ fontFamily: mono ? 'MonoBold' : 'BeVietnamBold', fontSize: 13, color: p.text, marginTop: 2 }}>{v}</Text>
+                    </View>
+                  ))}
                 </View>
 
-                {/* Leave details & dd-mm-yyyy dates */}
-                <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.muted }}>
-                  {item.leave_type_name} · <AppIcon name="calendar-outline" size={14} /> {formatDateDMY(item.start_date)} → {formatDateDMY(item.end_date)} ({item.total_days} ngày)
-                </Text>
+                {!!item.reason && <Text numberOfLines={2} style={{ fontFamily: 'BeVietnam', fontSize: 13, lineHeight: 19, color: p.body }}>{item.reason}</Text>}
 
-                {/* Approval Stage Box: Cấp 1, Cấp 2, Approver & Timestamp */}
                 {renderApprovalProgressBox(item)}
 
-                {/* Manager Compact Actions Row with Minimal Eye Button */}
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
-                  {/* Minimal Eye Icon Button (matches web design, not default emoji) */}
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Xem chi tiết đơn"
-                    onPress={() => setDetailItem(item)}
-                    style={({ pressed }) => ({
-                      width: 30,
-                      height: 30,
-                      borderRadius: 6,
-                      backgroundColor: p.bg,
-                      borderWidth: 1,
-                      borderColor: p.line,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      opacity: pressed ? 0.6 : 1,
-                    })}
-                  >
-                    <EyeIcon size={15} color={p.muted} />
-                  </Pressable>
-
-                  {/* Quick Manager Actions */}
-                  {canApprove && (
-                    <View style={{ flexDirection: 'row', gap: 8 }}>
-                      <Pressable
-                        accessibilityRole="button"
-                        onPress={() => {
-                          setSelectedRequest(item);
-                          setActionNote(
-                            isStoreManager
-                              ? 'Cửa hàng trưởng đã kiểm tra ca kíp và duyệt Cấp 1.'
-                              : 'Phòng Nhân sự đã phê duyệt chính thức.'
-                          );
-                          setModalMode('approve');
-                        }}
-                        style={{
-                          paddingVertical: 6,
-                          paddingHorizontal: 12,
-                          borderRadius: 8,
-                          backgroundColor: '#dcfce7',
-                          borderWidth: 1,
-                          borderColor: '#86efac',
-                          alignItems: 'center',
-                        }}
-                      >
-                        <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: '#16a34a' }}><AppIcon name="checkmark-outline" size={14} /> Duyệt</Text>
-                      </Pressable>
-
-                      <Pressable
-                        accessibilityRole="button"
-                        onPress={() => {
-                          setSelectedRequest(item);
-                          setRejectionReasonInput('');
-                          setModalMode('reject');
-                        }}
-                        style={{
-                          paddingVertical: 6,
-                          paddingHorizontal: 12,
-                          borderRadius: 8,
-                          backgroundColor: '#fee2e2',
-                          borderWidth: 1,
-                          borderColor: '#fca5a5',
-                          alignItems: 'center',
-                        }}
-                      >
-                        <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: '#dc2626' }}><AppIcon name="close-outline" size={14} /> Từ chối</Text>
-                      </Pressable>
-                    </View>
-                  )}
-                </View>
+                {canApprove && (
+                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 2 }}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Từ chối đơn của ${item.employee_name || 'nhân viên'}`}
+                      onPress={() => {
+                        setSelectedRequest(item);
+                        setRejectionReasonInput('');
+                        setModalMode('reject');
+                      }}
+                      style={({ pressed }) => ({ flex: 1, height: 42, borderRadius: 6, borderWidth: 1, borderColor: p.line, backgroundColor: pressed ? p.dangerBg : p.card, alignItems: 'center', justifyContent: 'center' })}
+                    >
+                      <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 13, color: p.dangerText }}>Từ chối</Text>
+                    </Pressable>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Duyệt đơn của ${item.employee_name || 'nhân viên'}`}
+                      onPress={() => {
+                        setSelectedRequest(item);
+                        setActionNote(
+                          isStoreManager
+                            ? 'Cửa hàng trưởng đã kiểm tra ca kíp và duyệt Cấp 1.'
+                            : 'Phòng Nhân sự đã phê duyệt chính thức.'
+                        );
+                        setModalMode('approve');
+                      }}
+                      style={({ pressed }) => ({ flex: 1, height: 42, borderRadius: 6, backgroundColor: p.brand, opacity: pressed ? 0.85 : 1, alignItems: 'center', justifyContent: 'center' })}
+                    >
+                      <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 13, color: p.onBrand }}>{isPendingHr ? 'Duyệt cấp 2' : 'Duyệt'}</Text>
+                    </Pressable>
+                  </View>
+                )}
               </Card>
             );
           })}
@@ -1614,22 +1287,23 @@ export default function RequestsScreen() {
 
       {/* 9. POPUP OVERLAY TẠO ĐƠN NGHỈ PHÉP MỚI (CREATE LEAVE MODAL)   */}
       {/* ============================================================== */}
-      <Modal visible={showCreateModal} transparent animationType="fade" onRequestClose={() => setShowCreateModal(false)}>
+      <Modal visible={showCreateModal} transparent animationType="slide" onRequestClose={() => setShowCreateModal(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <View
           style={{
             flex: 1,
-            backgroundColor: 'rgba(0, 0, 0, 0.6)',
-            justifyContent: 'center',
-            alignItems: 'center',
-            padding: 16,
+            backgroundColor: 'rgba(9,9,11,0.5)',
+            justifyContent: 'flex-end',
+            alignItems: 'stretch',
+            padding: 0,
           }}
         >
           <View
             style={{
               width: '100%',
-              maxWidth: 540,
+              maxWidth: undefined,
               backgroundColor: p.card,
-              borderRadius: 20,
+              borderTopLeftRadius: 14, borderTopRightRadius: 14, borderBottomWidth: 0,
               maxHeight: '90%',
               borderWidth: 1,
               borderColor: p.line,
@@ -1675,7 +1349,7 @@ export default function RequestsScreen() {
               </Pressable>
             </View>
 
-            <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }} keyboardShouldPersistTaps="handled">
+            <ScrollView automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20, gap: 14 }} >
               {/* Leave Type Selector Chips */}
               <Label>1. Chọn loại đơn xin nghỉ</Label>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
@@ -1689,7 +1363,7 @@ export default function RequestsScreen() {
                       style={{
                         paddingVertical: 8,
                         paddingHorizontal: 12,
-                        borderRadius: 20,
+                        borderRadius: 8,
                         backgroundColor: isSelected ? p.accent : p.bg,
                         borderWidth: 1,
                         borderColor: isSelected ? p.accent : p.line,
@@ -1699,7 +1373,7 @@ export default function RequestsScreen() {
                         style={{
                           fontFamily: isSelected ? 'BeVietnamBold' : 'BeVietnam',
                           fontSize: 13,
-                          color: isSelected ? (p.dark ? '#09090b' : '#fff') : p.text,
+                          color: isSelected ? p.onBrand : p.text,
                         }}
                       >
                         {t.type_name}
@@ -1713,18 +1387,18 @@ export default function RequestsScreen() {
               {selectedTypeInfo && (
                 <View
                   style={{
-                    backgroundColor: selectedTypeInfo.is_paid ? '#f0fdf4' : '#fffbeb',
+                    backgroundColor: selectedTypeInfo.is_paid ? p.emeraldBg : p.amberBg,
                     padding: 12,
-                    borderRadius: 10,
+                    borderRadius: 6,
                     borderWidth: 1,
-                    borderColor: selectedTypeInfo.is_paid ? '#bbf7d0' : '#fef3c7',
+                    borderColor: selectedTypeInfo.is_paid ? p.emeraldBg : p.amberBg,
                     gap: 4,
                   }}
                 >
-                  <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 13, color: selectedTypeInfo.is_paid ? '#166534' : '#92400e' }}>
+                  <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 13, color: selectedTypeInfo.is_paid ? p.emeraldText : p.amberText }}>
                     {selectedTypeInfo.is_paid ? 'Chế độ hưởng nguyên lương' : 'Nghỉ không hưởng lương (trừ vào lương tháng)'}
                   </Text>
-                  <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: selectedTypeInfo.is_paid ? '#14532d' : '#78350f' }}>
+                  <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: selectedTypeInfo.is_paid ? p.emeraldText : p.amberText }}>
                     {selectedTypeInfo.type_code === 'PHEP_NAM'
                       ? `Số dư phép năm khả dụng: ${balance ? Number(balance.annual_leave_remaining).toFixed(1) : 12} ngày.`
                       : selectedTypeInfo.max_days_allowed && selectedTypeInfo.max_days_allowed > 0
@@ -1732,7 +1406,7 @@ export default function RequestsScreen() {
                       : 'Không giới hạn ngày theo khung chuẩn.'}
                   </Text>
                   {selectedTypeInfo.requires_attachment && (
-                    <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: '#b91c1c' }}>
+                    <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: p.dangerText }}>
                       * Bắt buộc đính kèm link tài liệu minh chứng (Giấy viện, Giấy kết hôn, Đơn thôi việc).
                     </Text>
                   )}
@@ -1750,7 +1424,7 @@ export default function RequestsScreen() {
                   style={{
                     flex: 1,
                     paddingVertical: 9,
-                    borderRadius: 10,
+                    borderRadius: 6,
                     backgroundColor: p.bg,
                     borderWidth: 1,
                     borderColor: p.line,
@@ -1766,7 +1440,7 @@ export default function RequestsScreen() {
                   style={{
                     flex: 1,
                     paddingVertical: 9,
-                    borderRadius: 10,
+                    borderRadius: 6,
                     backgroundColor: p.bg,
                     borderWidth: 1,
                     borderColor: p.line,
@@ -1782,7 +1456,7 @@ export default function RequestsScreen() {
                   style={{
                     flex: 1,
                     paddingVertical: 9,
-                    borderRadius: 10,
+                    borderRadius: 6,
                     backgroundColor: p.bg,
                     borderWidth: 1,
                     borderColor: p.line,
@@ -1798,7 +1472,7 @@ export default function RequestsScreen() {
               <View
                 style={{
                   backgroundColor: p.bg,
-                  borderRadius: 14,
+                  borderRadius: 8,
                   borderWidth: 1,
                   borderColor: p.line,
                   padding: 12,
@@ -1879,7 +1553,7 @@ export default function RequestsScreen() {
                       paddingVertical: 7,
                       paddingHorizontal: 10,
                       borderRadius: 8,
-                      backgroundColor: calTarget === 'start' ? (p.dark ? '#1e293b' : '#eff6ff') : p.card,
+                      backgroundColor: calTarget === 'start' ? p.surfaceLow : p.card,
                       borderWidth: 1.5,
                       borderColor: calTarget === 'start' ? p.accent : p.line,
                       flexDirection: 'row',
@@ -1906,7 +1580,7 @@ export default function RequestsScreen() {
                       paddingVertical: 7,
                       paddingHorizontal: 10,
                       borderRadius: 8,
-                      backgroundColor: calTarget === 'end' ? (p.dark ? '#1e293b' : '#eff6ff') : p.card,
+                      backgroundColor: calTarget === 'end' ? p.surfaceLow : p.card,
                       borderWidth: 1.5,
                       borderColor: calTarget === 'end' ? p.accent : p.line,
                       flexDirection: 'row',
@@ -1934,7 +1608,7 @@ export default function RequestsScreen() {
                         style={{
                           fontSize: 11,
                           fontFamily: 'BeVietnamBold',
-                          color: idx >= 5 ? '#f97316' : p.muted,
+                          color: idx >= 5 ? p.amberText : p.muted,
                         }}
                       >
                         {w}
@@ -1974,9 +1648,9 @@ export default function RequestsScreen() {
                           alignItems: 'center',
                           justifyContent: 'center',
                           backgroundColor: isInRange
-                            ? (p.dark ? 'rgba(59, 130, 246, 0.22)' : '#e0e7ff')
+                            ? p.surfaceHigh
                             : isSelected && !isSingle
-                            ? (p.dark ? 'rgba(59, 130, 246, 0.22)' : '#e0e7ff')
+                            ? p.surfaceHigh
                             : 'transparent',
                           borderTopLeftRadius: isStart ? 19 : 0,
                           borderBottomLeftRadius: isStart ? 19 : 0,
@@ -2001,9 +1675,9 @@ export default function RequestsScreen() {
                               fontFamily: isSelected ? 'BeVietnamBold' : 'BeVietnam',
                               fontSize: 12,
                               color: isSelected
-                                ? '#ffffff'
+                                ? p.onBrand
                                 : isInRange
-                                ? (p.dark ? '#93c5fd' : '#1d4ed8')
+                                ? p.brandText
                                 : p.text,
                             }}
                           >
@@ -2086,27 +1760,29 @@ export default function RequestsScreen() {
             </ScrollView>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ============================================================== */}
       {/* 10. MODAL XEM CHI TIẾT ĐƠN (REFINED LAYOUT & ALIGNMENT)        */}
       {/* ============================================================== */}
-      <Modal visible={!!detailItem} transparent animationType="fade" onRequestClose={() => setDetailItem(null)}>
+      <Modal visible={!!detailItem} transparent animationType="slide" onRequestClose={() => setDetailItem(null)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <View
           style={{
             flex: 1,
-            backgroundColor: 'rgba(0, 0, 0, 0.6)',
-            justifyContent: 'center',
-            alignItems: 'center',
-            padding: 16,
+            backgroundColor: 'rgba(9,9,11,0.5)',
+            justifyContent: 'flex-end',
+            alignItems: 'stretch',
+            padding: 0,
           }}
         >
           <View
             style={{
               width: '100%',
-              maxWidth: 540,
+              maxWidth: undefined,
               backgroundColor: p.card,
-              borderRadius: 20,
+              borderTopLeftRadius: 14, borderTopRightRadius: 14, borderBottomWidth: 0,
               maxHeight: '90%',
               borderWidth: 1,
               borderColor: p.line,
@@ -2152,7 +1828,7 @@ export default function RequestsScreen() {
               </Pressable>
             </View>
 
-            <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }} keyboardShouldPersistTaps="handled">
+            <ScrollView automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20, gap: 14 }} >
               {detailItem && (
                 <>
                   {/* Status Banner */}
@@ -2167,7 +1843,7 @@ export default function RequestsScreen() {
                         style={{
                           backgroundColor: meta.bg,
                           padding: 14,
-                          borderRadius: 12,
+                          borderRadius: 8,
                           borderWidth: 1,
                           borderColor: meta.color + '40',
                         }}
@@ -2196,19 +1872,19 @@ export default function RequestsScreen() {
                       Thông tin kỳ nghỉ
                     </Text>
                     <View style={{ flexDirection: 'row', gap: 10 }}>
-                      <View style={{ flex: 1, backgroundColor: p.bg, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: p.line }}>
+                      <View style={{ flex: 1, backgroundColor: p.bg, padding: 12, borderRadius: 6, borderWidth: 1, borderColor: p.line }}>
                         <Text style={{ fontSize: 11, color: p.muted, fontFamily: 'BeVietnam' }}>Loại đơn nghỉ</Text>
                         <Text style={{ fontSize: 14, fontFamily: 'BeVietnamBold', color: p.text, marginTop: 3 }}>
                           {detailItem.leave_type_name}
                         </Text>
                         <Text style={{ fontSize: 11, color: p.muted, marginTop: 2 }}>Mã đơn: #{detailItem.request_id}</Text>
                       </View>
-                      <View style={{ flex: 1, backgroundColor: p.bg, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: p.line }}>
+                      <View style={{ flex: 1, backgroundColor: p.bg, padding: 12, borderRadius: 6, borderWidth: 1, borderColor: p.line }}>
                         <Text style={{ fontSize: 11, color: p.muted, fontFamily: 'BeVietnam' }}>Tổng thời gian</Text>
                         <Text style={{ fontSize: 14, fontFamily: 'BeVietnamBold', color: p.accent, marginTop: 3 }}>
                           {detailItem.total_days} ngày
                         </Text>
-                        <Text style={{ fontSize: 11, color: '#16a34a', fontFamily: 'BeVietnamBold', marginTop: 2 }}>
+                        <Text style={{ fontSize: 11, color: p.emeraldText, fontFamily: 'BeVietnamBold', marginTop: 2 }}>
                           {formatDateDMY(detailItem.start_date)} → {formatDateDMY(detailItem.end_date)}
                         </Text>
                       </View>
@@ -2221,7 +1897,7 @@ export default function RequestsScreen() {
                       Thông tin nhân sự
                     </Text>
                     <View style={{ flexDirection: 'row', gap: 10 }}>
-                      <View style={{ flex: 1, backgroundColor: p.bg, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: p.line }}>
+                      <View style={{ flex: 1, backgroundColor: p.bg, padding: 12, borderRadius: 6, borderWidth: 1, borderColor: p.line }}>
                         <Text style={{ fontSize: 11, color: p.muted, fontFamily: 'BeVietnam' }}>Họ và tên</Text>
                         <Text style={{ fontSize: 14, fontFamily: 'BeVietnamBold', color: p.text, marginTop: 3 }}>
                           {detailItem.employee_name}
@@ -2230,7 +1906,7 @@ export default function RequestsScreen() {
                           {detailItem.employee_code || `NV-#${detailItem.employee_id}`}
                         </Text>
                       </View>
-                      <View style={{ flex: 1, backgroundColor: p.bg, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: p.line }}>
+                      <View style={{ flex: 1, backgroundColor: p.bg, padding: 12, borderRadius: 6, borderWidth: 1, borderColor: p.line }}>
                         <Text style={{ fontSize: 11, color: p.muted, fontFamily: 'BeVietnam' }}>Đơn vị / Chi nhánh</Text>
                         <Text style={{ fontSize: 14, fontFamily: 'BeVietnamBold', color: p.text, marginTop: 3 }}>
                           {storeLabel(detailItem.store_name || detailItem.department_name)}
@@ -2247,7 +1923,7 @@ export default function RequestsScreen() {
                     <Text style={{ fontSize: 12, fontFamily: 'BeVietnamBold', color: p.muted, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                       Lý do xin nghỉ
                     </Text>
-                    <View style={{ backgroundColor: p.bg, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: p.line }}>
+                    <View style={{ backgroundColor: p.bg, padding: 12, borderRadius: 6, borderWidth: 1, borderColor: p.line }}>
                       <Text style={{ fontSize: 13, color: p.text, fontFamily: 'BeVietnam', lineHeight: 20 }}>
                         {detailItem.reason || 'Không có ghi chú lý do.'}
                       </Text>
@@ -2260,8 +1936,8 @@ export default function RequestsScreen() {
                       <Text style={{ fontSize: 12, fontFamily: 'BeVietnamBold', color: p.muted, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                         Tài liệu minh chứng
                       </Text>
-                      <View style={{ backgroundColor: p.bg, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: p.line }}>
-                        <Text style={{ fontSize: 13, color: '#2563eb', fontFamily: 'BeVietnamBold' }}>
+                      <View style={{ backgroundColor: p.bg, padding: 12, borderRadius: 6, borderWidth: 1, borderColor: p.line }}>
+                        <Text style={{ fontSize: 13, color: p.indigoText, fontFamily: 'BeVietnamBold' }}>
                           <AppIcon name="link-outline" size={14} /> {detailItem.attachment_url}
                         </Text>
                       </View>
@@ -2273,7 +1949,7 @@ export default function RequestsScreen() {
                     <Text style={{ fontSize: 12, fontFamily: 'BeVietnamBold', color: p.muted, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                       Tiến trình phê duyệt 2 Cấp
                     </Text>
-                    <View style={{ backgroundColor: p.bg, borderRadius: 12, borderWidth: 1, borderColor: p.line, padding: 14, gap: 12 }}>
+                    <View style={{ backgroundColor: p.bg, borderRadius: 8, borderWidth: 1, borderColor: p.line, padding: 14, gap: 12 }}>
                       {/* Step 1: CHT */}
                       <View style={{ gap: 4 }}>
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -2282,7 +1958,7 @@ export default function RequestsScreen() {
                           </Text>
                           <View
                             style={{
-                              backgroundColor: detailItem.store_approved_at ? '#dcfce7' : detailItem.status === 'REJECTED' && detailItem.rejected_by_role === 'Cửa hàng trưởng' ? '#fee2e2' : '#fef3c7',
+                              backgroundColor: detailItem.store_approved_at ? p.emeraldBg : detailItem.status === 'REJECTED' && detailItem.rejected_by_role === 'Cửa hàng trưởng' ? p.dangerBg : p.amberBg,
                               paddingHorizontal: 8,
                               paddingVertical: 3,
                               borderRadius: 8,
@@ -2293,7 +1969,7 @@ export default function RequestsScreen() {
                               style={{
                                 fontSize: 11,
                                 fontWeight: '700',
-                                color: detailItem.store_approved_at ? '#16a34a' : detailItem.status === 'REJECTED' && detailItem.rejected_by_role === 'Cửa hàng trưởng' ? '#991b1b' : '#854d0e',
+                                color: detailItem.store_approved_at ? p.emeraldText : detailItem.status === 'REJECTED' && detailItem.rejected_by_role === 'Cửa hàng trưởng' ? p.dangerText : p.amberText,
                               }}
                             >
                               {detailItem.store_approved_at ? 'Đã duyệt' : detailItem.status === 'REJECTED' && detailItem.rejected_by_role === 'Cửa hàng trưởng' ? 'Từ chối' : '⏳ Chờ duyệt'}
@@ -2331,7 +2007,7 @@ export default function RequestsScreen() {
                           </Text>
                           <View
                             style={{
-                              backgroundColor: detailItem.hr_approved_at ? '#dcfce7' : detailItem.status === 'REJECTED' && detailItem.rejected_by_role !== 'Cửa hàng trưởng' ? '#fee2e2' : '#fef3c7',
+                              backgroundColor: detailItem.hr_approved_at ? p.emeraldBg : detailItem.status === 'REJECTED' && detailItem.rejected_by_role !== 'Cửa hàng trưởng' ? p.dangerBg : p.amberBg,
                               paddingHorizontal: 8,
                               paddingVertical: 3,
                               borderRadius: 8,
@@ -2342,7 +2018,7 @@ export default function RequestsScreen() {
                               style={{
                                 fontSize: 11,
                                 fontWeight: '700',
-                                color: detailItem.hr_approved_at ? '#16a34a' : detailItem.status === 'REJECTED' && detailItem.rejected_by_role !== 'Cửa hàng trưởng' ? '#991b1b' : '#854d0e',
+                                color: detailItem.hr_approved_at ? p.emeraldText : detailItem.status === 'REJECTED' && detailItem.rejected_by_role !== 'Cửa hàng trưởng' ? p.dangerText : p.amberText,
                               }}
                             >
                               {detailItem.hr_approved_at ? 'Đã duyệt' : detailItem.status === 'REJECTED' && detailItem.rejected_by_role !== 'Cửa hàng trưởng' ? 'Từ chối' : '⏳ Chờ duyệt'}
@@ -2369,14 +2045,14 @@ export default function RequestsScreen() {
 
                   {/* THÔNG TIN TỪ CHỐI (NẾU CÓ) */}
                   {!!detailItem.rejection_reason && (
-                    <View style={{ backgroundColor: '#fee2e2', padding: 14, borderRadius: 12, gap: 6, borderWidth: 1, borderColor: '#fca5a5' }}>
-                      <Text style={{ color: '#991b1b', fontFamily: 'BeVietnamBold', fontSize: 13 }}>
+                    <View style={{ backgroundColor: p.dangerBg, padding: 14, borderRadius: 8, gap: 6, borderWidth: 1, borderColor: p.dangerBg }}>
+                      <Text style={{ color: p.dangerText, fontFamily: 'BeVietnamBold', fontSize: 13 }}>
                         <AppIcon name="warning-outline" size={14} /> LÝ DO TỪ CHỐI ĐƠN
                       </Text>
-                      <Text style={{ color: '#7f1d1d', fontFamily: 'BeVietnam', fontSize: 13, lineHeight: 18 }}>
+                      <Text style={{ color: p.dangerText, fontFamily: 'BeVietnam', fontSize: 13, lineHeight: 18 }}>
                         {detailItem.rejection_reason}
                       </Text>
-                      <Text style={{ color: '#991b1b', fontSize: 12 }}>
+                      <Text style={{ color: p.dangerText, fontSize: 12 }}>
                         Người từ chối: {detailItem.rejected_by_name || 'Quản lý'} ({detailItem.rejected_by_role || 'Cấp duyệt'}) lúc {formatDateTimeDMY(detailItem.rejected_at)}
                       </Text>
                     </View>
@@ -2425,16 +2101,16 @@ export default function RequestsScreen() {
                           style={({ pressed }) => ({
                             paddingVertical: 13,
                             paddingHorizontal: 16,
-                            borderRadius: 12,
-                            backgroundColor: '#fee2e2',
+                            borderRadius: 8,
+                            backgroundColor: p.dangerBg,
                             borderWidth: 1,
-                            borderColor: '#fca5a5',
+                            borderColor: p.dangerBg,
                             alignItems: 'center',
                             justifyContent: 'center',
                             opacity: actionBusy ? 0.4 : pressed ? 0.7 : 1,
                           })}
                         >
-                          <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 13, color: '#dc2626', fontWeight: '700' }}>
+                          <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 13, color: p.dangerText, fontWeight: '700' }}>
                             <AppIcon name="close-outline" size={14} /> Hủy đơn
                           </Text>
                         </Pressable>
@@ -2453,27 +2129,29 @@ export default function RequestsScreen() {
             </ScrollView>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ============================================================== */}
       {/* 11. APPROVAL MODAL (FOR MANAGERS)                              */}
       {/* ============================================================== */}
-      <Modal visible={modalMode === 'approve'} transparent animationType="fade" onRequestClose={() => setModalMode(null)}>
+      <Modal visible={modalMode === 'approve'} transparent animationType="slide" onRequestClose={() => setModalMode(null)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <View
           style={{
             flex: 1,
-            backgroundColor: 'rgba(0, 0, 0, 0.6)',
-            justifyContent: 'center',
-            alignItems: 'center',
-            padding: 16,
+            backgroundColor: 'rgba(9,9,11,0.5)',
+            justifyContent: 'flex-end',
+            alignItems: 'stretch',
+            padding: 0,
           }}
         >
           <View
             style={{
               width: '100%',
-              maxWidth: 480,
+              maxWidth: undefined,
               backgroundColor: p.card,
-              borderRadius: 20,
+              borderTopLeftRadius: 14, borderTopRightRadius: 14, borderBottomWidth: 0,
               padding: 20,
               gap: 14,
               borderWidth: 1,
@@ -2506,10 +2184,10 @@ export default function RequestsScreen() {
             </View>
 
             {selectedRequest && (
-              <View style={{ backgroundColor: p.bg, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: p.line }}>
+              <View style={{ backgroundColor: p.bg, padding: 12, borderRadius: 6, borderWidth: 1, borderColor: p.line }}>
                 <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.text }}>
                   Phê duyệt đơn nghỉ <Text style={{ fontFamily: 'BeVietnamBold' }}>{selectedRequest.leave_type_name}</Text> của nhân viên{' '}
-                  <Text style={{ fontFamily: 'BeVietnamBold', color: '#16a34a' }}>{selectedRequest.employee_name}</Text> (
+                  <Text style={{ fontFamily: 'BeVietnamBold', color: p.emeraldText }}>{selectedRequest.employee_name}</Text> (
                   {formatDateDMY(selectedRequest.start_date)} → {formatDateDMY(selectedRequest.end_date)}, {selectedRequest.total_days} ngày).
                 </Text>
               </View>
@@ -2530,27 +2208,29 @@ export default function RequestsScreen() {
             <Button title="Đóng" secondary onPress={() => setModalMode(null)} disabled={actionBusy} />
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ============================================================== */}
       {/* 12. REJECTION MODAL (FOR MANAGERS)                             */}
       {/* ============================================================== */}
-      <Modal visible={modalMode === 'reject'} transparent animationType="fade" onRequestClose={() => setModalMode(null)}>
+      <Modal visible={modalMode === 'reject'} transparent animationType="slide" onRequestClose={() => setModalMode(null)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <View
           style={{
             flex: 1,
-            backgroundColor: 'rgba(0, 0, 0, 0.6)',
-            justifyContent: 'center',
-            alignItems: 'center',
-            padding: 16,
+            backgroundColor: 'rgba(9,9,11,0.5)',
+            justifyContent: 'flex-end',
+            alignItems: 'stretch',
+            padding: 0,
           }}
         >
           <View
             style={{
               width: '100%',
-              maxWidth: 480,
+              maxWidth: undefined,
               backgroundColor: p.card,
-              borderRadius: 20,
+              borderTopLeftRadius: 14, borderTopRightRadius: 14, borderBottomWidth: 0,
               padding: 20,
               gap: 14,
               borderWidth: 1,
@@ -2583,10 +2263,10 @@ export default function RequestsScreen() {
             </View>
 
             {selectedRequest && (
-              <View style={{ backgroundColor: '#fee2e2', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#fca5a5' }}>
-                <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: '#7f1d1d' }}>
+              <View style={{ backgroundColor: p.dangerBg, padding: 12, borderRadius: 6, borderWidth: 1, borderColor: p.dangerBg }}>
+                <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.dangerText }}>
                   Từ chối đơn nghỉ của nhân viên{' '}
-                  <Text style={{ fontFamily: 'BeVietnamBold', color: '#991b1b' }}>{selectedRequest.employee_name}</Text> (
+                  <Text style={{ fontFamily: 'BeVietnamBold', color: p.dangerText }}>{selectedRequest.employee_name}</Text> (
                   {selectedRequest.leave_type_name}, {formatDateDMY(selectedRequest.start_date)} → {formatDateDMY(selectedRequest.end_date)}).
                 </Text>
               </View>
@@ -2608,6 +2288,7 @@ export default function RequestsScreen() {
             <Button title="Hủy bỏ" secondary onPress={() => setModalMode(null)} disabled={actionBusy} />
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
     </ScrollView>
@@ -2632,10 +2313,10 @@ export default function RequestsScreen() {
               flexDirection: 'row',
               alignItems: 'center',
               gap: 6,
-              backgroundColor: '#16a34a',
+              backgroundColor: p.brand,
               paddingVertical: 12,
               paddingHorizontal: 18,
-              borderRadius: 24,
+              borderRadius: 8,
               shadowColor: '#000',
               shadowOffset: { width: 0, height: 4 },
               shadowOpacity: 0.3,
@@ -2643,13 +2324,25 @@ export default function RequestsScreen() {
               elevation: 8,
             }}
           >
-            <AppIcon name="add-outline" style={{ fontSize: 20, color: '#ffffff' }} />
-            <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 13, color: '#ffffff' }}>
+            <AppIcon name="add-outline" style={{ fontSize: 20, color: p.onBrand }} />
+            <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 13, color: p.onBrand }}>
               Đăng ký OT
             </Text>
           </Pressable>
         </Animated.View>
       )}
+    </View>
+  );
+}
+
+function Legend({ color, label, value }: { color: string; label: string; value: string }) {
+  const p = usePalette();
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+      <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: color }} />
+      <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.body }}>
+        {label} <Text style={{ fontFamily: 'MonoBold', fontSize: 12, color: p.text }}>{value}</Text>
+      </Text>
     </View>
   );
 }

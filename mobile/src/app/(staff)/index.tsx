@@ -1,31 +1,21 @@
 import { AttendanceAction } from '@/components/attendance-action';
 import { AppIcon, AppText as Text, type AppIconName } from '@/components/app-icon';
-import { useCallback, useState, useEffect } from 'react';
+import { useCallback, useState, useEffect, type ReactNode } from 'react';
 import { Modal, Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { router, useFocusEffect, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import {
-  Button,
-  Card,
-  Label,
-  styles,
-  usePalette,
-  Badge,
-  ProgressBar,
-  MetricBox,
-} from '@/components/attendance-ui';
+import { Button, Card, styles, usePalette, Badge, ProgressBar, MetricBox } from '@/components/attendance-ui';
 import { LoadingBar } from '@/components/loading-bar';
 import { useResource } from '@/hooks/use-resource';
 import { useSession } from '@/contexts/session';
 import { usePreferences } from '@/contexts/preferences';
-import { shortcuts, type Profile, type Schedule } from '@/services/staff';
+import { shortcuts, statusLabels, type Profile, type Schedule } from '@/services/staff';
 import { assignedShift, shiftProgress, storeLabel } from '@/services/presentation';
-import { displayTime, vietnamPeriod, type Today } from '@/services/attendance';
-import {
-  type EmployeeSummaryData,
-  type ManagerDashboardKpis,
-} from '@/services/dashboard';
+import { clockTime, vietnamPeriod, type Today } from '@/services/attendance';
+import { type EmployeeSummaryData, type ManagerDashboardKpis } from '@/services/dashboard';
 import { useNotifications } from '@/contexts/notifications';
+
+const TZ = 'Asia/Ho_Chi_Minh';
 
 export default function Home() {
   const p = usePalette();
@@ -37,20 +27,12 @@ export default function Home() {
   const today = useResource<Today>('/attendances/today-status', 30000);
   const schedules = useResource<Schedule[]>(`/mobile-attendance/my-schedules?period=${currentPeriod}`, 30000);
 
-  // Role determination
   const userRoles = profile.data?.roles || [];
   const isStoreManager = userRoles.includes('STORE_MANAGER');
-  const isHrManager = userRoles.includes('HR_MANAGER');
-  const isAdmin = userRoles.includes('ADMIN');
-  const isManager = isStoreManager || isHrManager || isAdmin;
+  const isManager = isStoreManager || userRoles.includes('HR_MANAGER') || userRoles.includes('ADMIN');
 
-  // Embedded Dashboard resources for Home Quick Utilities Tab
-  const [quickTab, setQuickTab] = useState<'shortcuts' | 'dashboard'>('shortcuts');
   const summary = useResource<EmployeeSummaryData>(`/attendances/my-summary?period=${currentPeriod}`, 30000);
-  const managerStats = useResource<ManagerDashboardKpis>(
-    isManager ? '/reports/dashboard-kpis' : null,
-    30000
-  );
+  const managerStats = useResource<ManagerDashboardKpis>(isManager ? '/reports/dashboard-kpis' : null, 30000);
 
   const { notifications, unreadCount, setCenterOpen, dispatchNotification } = useNotifications();
 
@@ -59,12 +41,9 @@ export default function Home() {
     if (isManager && managerStats.data?.pending_leaves && managerStats.data.pending_leaves > 0) {
       const count = managerStats.data.pending_leaves;
       const batchKey = `pending-leaves-batch-${count}`;
-
-      // Do NOT push if already in notification list or already read
       const alreadyHandled = notifications.some(
         n => n.data?.batchKey === batchKey || (n.data?.pendingCount === count && n.read)
       );
-
       if (!alreadyHandled) {
         void dispatchNotification({
           type: 'leave_approval',
@@ -82,18 +61,20 @@ export default function Home() {
   const [clock, setClock] = useState(Date.now);
   useFocusEffect(useCallback(() => { const tick = setInterval(() => setClock(Date.now()), 30000); return () => clearInterval(tick); }, []));
 
-  const date = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
+  const date = new Date().toLocaleDateString('en-CA', { timeZone: TZ });
   const initials = profile.data?.full_name?.split(' ').slice(-2).map(v => v[0]).join('') || 'TZ';
 
-  const menu: [AppIconName, string, Href][] = [
-    ["person-outline", 'Thông tin cá nhân', '/(staff)/account'],
-    ["bar-chart-outline", 'Báo cáo tổng hợp & KPI', '/(staff)/dashboard'],
-    ["analytics-outline", 'Nhật ký làm việc & Hoạt động', '/(staff)/activity'],
-    ["calendar-outline", 'Lịch ca & Phân công', '/(staff)/schedules'],
-    ["clipboard-outline", 'Bảng công cá nhân', '/(staff)/summary'],
-    ["document-text-outline", 'Quản lý nghỉ phép & Đơn từ', '/(staff)/requests'],
-    ["settings-outline", 'Cấu hình ứng dụng', '/(staff)/settings'],
-    ["lock-closed-outline", 'Đổi mật khẩu', '/(staff)/password'],
+  const operations: [AppIconName, string, Href][] = [
+    ['calendar-outline', 'Lịch ca & Phân công', '/(staff)/schedules'],
+    ['analytics-outline', 'Nhật ký làm việc & Hoạt động', '/(staff)/activity'],
+    ['clipboard-outline', 'Bảng công cá nhân', '/(staff)/summary'],
+    ['document-text-outline', 'Quản lý nghỉ phép & Đơn từ', '/(staff)/requests'],
+    ['bar-chart-outline', 'Báo cáo tổng hợp & KPI', '/(staff)/dashboard'],
+  ];
+  const account: [AppIconName, string, Href][] = [
+    ['person-outline', 'Thông tin cá nhân', '/(staff)/account'],
+    ['settings-outline', 'Cấu hình ứng dụng', '/(staff)/settings'],
+    ['lock-closed-outline', 'Đổi mật khẩu', '/(staff)/password'],
   ];
 
   function navigate(href: Href) {
@@ -101,737 +82,327 @@ export default function Home() {
     router.push(href);
   }
 
-  // Calculate approximate progress if in shift
   const isWorking = !!today.data?.can_check_out;
+  const finished = !isWorking && !!today.data?.check_out_time;
   const assigned = assignedShift(today.data, schedules.data || [], date);
   const storeDisplay = storeLabel(profile.data?.store_name);
   const progress = isWorking ? shiftProgress(today.data?.check_in_time, today.data?.attendance_context?.actual.work_hours, clock) : null;
+  const statusText = today.data?.check_in_time ? statusLabels[today.data.status] || today.data.status : '—';
+  const statusTone = today.data?.status === 'NORMAL' ? p.emeraldText : today.data?.check_in_time ? p.amberText : p.muted;
+  const pendingLeaves = isManager ? managerStats.data?.pending_leaves || 0 : 0;
+  const enabledShortcuts = shortcuts.filter(item => prefs.shortcuts.includes(item.key));
+  const anyError = profile.error || today.error || schedules.error || (isManager && managerStats.error) || error;
+  const reloadAll = () => { profile.reload(); today.reload(); schedules.reload(); summary.reload(); managerStats.reload(); };
 
   return (
     <View style={{ flex: 1, backgroundColor: p.bg }}>
-      <ScrollView refreshControl={<RefreshControl refreshing={profile.loading || today.loading || schedules.loading || summary.loading || managerStats.loading} onRefresh={() => { profile.reload(); today.reload(); schedules.reload(); summary.reload(); managerStats.reload(); }} />} contentContainerStyle={[styles.content, { paddingTop: insets.top + 16 }]}>
-        {/* User Greeting & Profile Quick Header */}
-        <Card low style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Mở menu nhân viên"
-              onPress={() => setDrawer(true)}
-              style={{
-                width: 52,
-                height: 52,
-                borderRadius: 26,
-                backgroundColor: p.brand,
-                alignItems: 'center',
-                justifyContent: 'center',
-                position: 'relative',
-                shadowColor: p.brand,
-                shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.3,
-                shadowRadius: 4,
-                elevation: 3,
-              }}
-            >
-              <Text style={{ color: '#fff', fontFamily: 'BeVietnamBold', fontSize: 18, fontWeight: '700' }}>
-                {initials}
-              </Text>
-              <View
-                style={{
-                  position: 'absolute',
-                  bottom: 0,
-                  right: 0,
-                  width: 14,
-                  height: 14,
-                  borderRadius: 7,
-                  backgroundColor: p.emerald,
-                  borderWidth: 2,
-                  borderColor: p.card,
-                }}
-              />
+      <ScrollView
+        refreshControl={<RefreshControl refreshing={profile.loading || today.loading || schedules.loading || summary.loading || managerStats.loading} onRefresh={reloadAll} />}
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + 8, gap: 16 }]}
+      >
+        {/* Top bar: menu · brand · notifications · avatar */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: -10 }}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Cài đặt menu" onPress={() => setDrawer(true)} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
+              <AppIcon name="menu-outline" size={22} color={p.text} />
             </Pressable>
-
-            <View style={{ flex: 1, gap: 2 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.muted }}>Xin chào,</Text>
-                <Badge label={profile.data?.employee_code || 'NV-TZ'} variant="neutral" size="sm" />
-              </View>
-              <Text
-                numberOfLines={1}
-                style={{
-                  fontFamily: 'BeVietnamBold',
-                  fontSize: 17,
-                  fontWeight: '700',
-                  color: p.text,
-                }}
-              >
-                {profile.data?.full_name || 'Nhân viên TechZone'}
-              </Text>
-              <Text
-                numberOfLines={1}
-                style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.muted }}
-              >
-                {profile.data?.position_name || 'Nhân viên'} • {storeDisplay}
-              </Text>
-            </View>
+            <Brand />
           </View>
-
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <Pressable
               accessibilityLabel="Xem thông báo"
               accessibilityRole="button"
               onPress={() => setCenterOpen(true)}
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 12,
-                backgroundColor: p.card,
-                borderWidth: 1,
-                borderColor: p.line,
-                alignItems: 'center',
-                justifyContent: 'center',
-                position: 'relative',
-              }}
+              style={{ width: 44, height: 44, borderRadius: 8, backgroundColor: p.card, borderWidth: 1, borderColor: p.line, alignItems: 'center', justifyContent: 'center' }}
             >
-              <AppIcon name="notifications-outline" style={{ fontSize: 18 }} />
+              <AppIcon name="notifications-outline" size={18} color={p.text} />
               {unreadCount > 0 && (
-                <View
-                  style={{
-                    position: 'absolute',
-                    top: -2,
-                    right: -2,
-                    backgroundColor: '#ef4444',
-                    minWidth: 18,
-                    height: 18,
-                    borderRadius: 9,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    paddingHorizontal: 4,
-                    borderWidth: 2,
-                    borderColor: p.card,
-                  }}
-                >
-                  <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>
-                    {unreadCount > 9 ? '9+' : unreadCount}
-                  </Text>
+                <View style={{ position: 'absolute', top: 6, right: 6, minWidth: 16, height: 16, paddingHorizontal: 3, borderRadius: 8, backgroundColor: p.danger, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: p.card }}>
+                  <Text style={{ color: '#fff', fontSize: 9, fontFamily: 'BeVietnamBold' }}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
                 </View>
               )}
             </Pressable>
-
             <Pressable
-              accessibilityLabel="Cài đặt menu"
               accessibilityRole="button"
-              onPress={() => setDrawer(true)}
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 12,
-                backgroundColor: p.card,
-                borderWidth: 1,
-                borderColor: p.line,
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
+              accessibilityLabel="Hồ sơ cá nhân"
+              onPress={() => router.push('/(staff)/account')}
+              style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: p.brand, alignItems: 'center', justifyContent: 'center' }}
             >
-              <AppIcon name="menu-outline" style={{ fontSize: 18, color: p.text }} />
+              <Text style={{ color: p.onBrand, fontFamily: 'BeVietnamBold', fontSize: 14 }}>{initials}</Text>
             </Pressable>
           </View>
-        </Card>
+        </View>
 
-        {/* Date line */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 4 }}>
-          <AppIcon name="calendar-outline" style={{ fontSize: 13, color: p.muted }} />
-          <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.muted }}>
-            {new Date().toLocaleDateString('vi-VN', {
-              timeZone: 'Asia/Ho_Chi_Minh',
-              weekday: 'long',
-              day: 'numeric',
-              month: 'long',
-              year: 'numeric',
-            })}
+        {/* Greeting */}
+        <View>
+          <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.muted }}>Xin chào,</Text>
+          <Text numberOfLines={1} style={{ fontFamily: 'BeVietnamBold', fontSize: 24, lineHeight: 30, color: p.text, letterSpacing: -0.5 }}>
+            {profile.data?.full_name || 'Nhân viên TechZone'}
+          </Text>
+          <Text numberOfLines={1} style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.muted, marginTop: 2 }}>
+            {profile.data?.position_name || 'Nhân viên'} · <Text style={{ fontFamily: 'Mono', fontSize: 12, color: p.muted }}>{profile.data?.employee_code || 'TZ'}</Text> · {storeDisplay}
           </Text>
         </View>
 
-        <LoadingBar
-          active={profile.loading || today.loading || schedules.loading || (quickTab === 'dashboard' && managerStats.loading)}
-          label="Đang đồng bộ trang chủ…"
-        />
+        <LoadingBar active={profile.loading || today.loading || schedules.loading} label="Đang đồng bộ trang chủ…" />
 
-        {!!(profile.error || today.error || schedules.error || (quickTab === 'dashboard' && managerStats.error) || error) && (
+        {!!anyError && (
           <Card style={{ backgroundColor: p.dangerBg, borderColor: p.danger }}>
-            <Text style={{ color: p.dangerText, fontFamily: 'BeVietnam', fontSize: 13 }}>
-              {profile.error || today.error || schedules.error || (quickTab === 'dashboard' && managerStats.error) || error}
-            </Text>
-            <Button
-              title="Thử tải lại dữ liệu"
-              secondary
-              onPress={() => {
-                profile.reload();
-                today.reload();
-                schedules.reload();
-                managerStats.reload();
-              }}
-            />
+            <Text style={{ color: p.dangerText, fontFamily: 'BeVietnam', fontSize: 13 }}>{anyError}</Text>
+            <Button title="Thử tải lại dữ liệu" secondary onPress={reloadAll} />
           </Card>
         )}
 
-        {/* Active Shift Card (Hero Operational Container) */}
+        {/* Today's shift */}
         <Card style={{ gap: 14 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <View style={{ gap: 4, flex: 1 }}>
-              {isWorking ? (
-                <Badge label="ĐANG DIỄN RA" variant="success" pulse size="sm" />
-              ) : (
-                <Badge label="CHƯA VÀO CA" variant="neutral" size="sm" />
-              )}
-              <Text
-                style={{
-                  fontFamily: 'BeVietnamBold',
-                  fontSize: 18,
-                  fontWeight: '700',
-                  color: p.text,
-                  marginTop: 4,
-                }}
-              >
-                {assigned?.shift_name || 'Hôm nay chưa có lịch ca'}
-              </Text>
-              <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.muted }}>
-                <AppIcon name="storefront-outline" size={14} /> {storeDisplay}
-              </Text>
-              {!!assigned?.store_name && assigned.store_name !== profile.data?.store_name && <Label muted>{isWorking ? 'Cửa hàng của lượt đang mở' : 'Cửa hàng trong lịch phân ca'}: {storeLabel(assigned.store_name)}</Label>}
-            </View>
-
-            <View
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: 12,
-                backgroundColor: p.surfaceLow,
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <AppIcon name="time-outline" style={{ fontSize: 22 }} />
-            </View>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Eyebrow>
+              Hôm nay · {new Date().toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', timeZone: TZ })}
+            </Eyebrow>
+            {isWorking ? <Badge label="Đang diễn ra" variant="success" pulse size="sm" />
+              : finished ? <Badge label="Đã kết thúc" size="sm" />
+              : <Badge label="Chưa vào ca" size="sm" />}
           </View>
-
-          {/* Shift Details & Progress */}
-          <View
-            style={{
-              backgroundColor: p.surfaceLow,
-              padding: 12,
-              borderRadius: 12,
-              gap: 8,
-              borderWidth: 1,
-              borderColor: p.line,
-            }}
-          >
-            {isWorking ? (
-              <>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.emeraldText, fontWeight: '600' }}>
-                    <AppIcon name="checkmark-outline" size={14} /> Đã vào ca: {displayTime(today.data?.check_in_time || null)}
-                  </Text>
-                  <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: p.muted }}>
-                    Đã ghi nhận
-                  </Text>
-                </View>
-                {progress && <ProgressBar progress={progress.percent} color={p.emerald} />}
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <Text style={{ fontFamily: 'BeVietnam', fontSize: 11, color: p.muted }}>
-                    {progress ? `Đã làm ${progress.elapsed.toFixed(1)} giờ` : 'Giờ vào do máy chủ ghi nhận'}
-                  </Text>
-                  <Text style={{ fontFamily: 'BeVietnam', fontSize: 11, color: p.muted }}>
-                    {progress ? `Còn ${progress.remaining.toFixed(1)} giờ theo ca` : 'Xem chi tiết trong nhật ký'}
-                  </Text>
-                </View>
-              </>
-            ) : assigned?.start_time && assigned.end_time ? (
-              <View style={{ gap: 4 }}>
-                <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.text }}>
-                  Khung giờ: {assigned.start_time.slice(0, 5)} – {assigned.end_time.slice(0, 5)}
-                </Text>
-                <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.muted }}>
-                  Chuẩn bị kiểm tra GPS và chụp ảnh trước khi vào ca.
-                </Text>
-              </View>
-            ) : (
-              <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.muted }}>
-                Chưa có ca được phân công hôm nay. Vui lòng liên hệ cửa hàng trưởng.
+          <View style={{ gap: 2 }}>
+            <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 18, color: p.text }}>
+              {assigned?.shift_name || 'Hôm nay chưa có lịch ca'}
+            </Text>
+            {!!(assigned?.start_time && assigned.end_time) && (
+              <Text style={{ fontFamily: 'Mono', fontSize: 13, color: p.body }}>
+                {assigned.start_time.slice(0, 5)} – {assigned.end_time.slice(0, 5)}
               </Text>
             )}
+            <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.muted, marginTop: 4 }}>
+              {isWorking ? 'Cửa hàng của lượt đang mở' : 'Cửa hàng trong lịch phân ca'}: {storeLabel(assigned?.store_name || profile.data?.store_name)}
+            </Text>
           </View>
 
-          {/* Action Button */}
+          <View style={{ flexDirection: 'row', borderWidth: 1, borderColor: p.line, borderRadius: 6 }}>
+            <Cell label="Giờ vào" value={today.data?.check_in_time ? clockTime(today.data.check_in_time) : '--:--'} mono muted={!today.data?.check_in_time} />
+            <Cell label="Trạng thái" value={statusText} color={statusTone} divider />
+            <Cell label="Giờ ra" value={today.data?.check_out_time ? clockTime(today.data.check_out_time) : '--:--'} mono muted={!today.data?.check_out_time} divider />
+          </View>
+
+          {progress && (
+            <View style={{ gap: 6 }}>
+              <ProgressBar progress={progress.percent} color={p.emerald} />
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ fontFamily: 'BeVietnam', fontSize: 11, color: p.muted }}>Đã làm <Text style={{ fontFamily: 'Mono', fontSize: 11, color: p.muted }}>{progress.elapsed.toFixed(1)}h</Text></Text>
+                <Text style={{ fontFamily: 'BeVietnam', fontSize: 11, color: p.muted }}>Còn <Text style={{ fontFamily: 'Mono', fontSize: 11, color: p.muted }}>{progress.remaining.toFixed(1)}h</Text> theo ca</Text>
+              </View>
+            </View>
+          )}
+
           <AttendanceAction checkOut={isWorking} disabled={!assigned || today.loading || schedules.loading || !!today.error || !!schedules.error} onPress={() => router.push('/(staff)/attendance')} />
+          <Text style={{ fontFamily: 'BeVietnam', fontSize: 11, color: p.muted }}>
+            {assigned ? 'Giờ vào do máy chủ ghi nhận' : 'Chưa có ca được phân công hôm nay. Vui lòng liên hệ cửa hàng trưởng.'}
+          </Text>
         </Card>
 
-        {/* Weekly Schedule Strip */}
-        <Card style={{ gap: 12 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Label variant="subtitle">Lịch biểu tuần này</Label>
-              <Badge label={`T${vietnamPeriod().slice(5)}/${vietnamPeriod().slice(0, 4)}`} size="sm" />
-            </View>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => router.push('/(staff)/schedules')}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}
-            >
-              <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.brand }}>Chi tiết →</Text>
-            </Pressable>
-          </View>
+        {/* Pending approvals callout */}
+        {pendingLeaves > 0 && (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push('/(staff)/requests')}
+            style={{ flexDirection: 'row', gap: 10, padding: 14, borderRadius: 8, backgroundColor: p.emeraldBg, borderWidth: 1, borderColor: p.dark ? 'rgba(16,185,129,0.25)' : 'rgba(16,185,129,0.22)' }}
+          >
+            <Text style={{ color: p.emeraldText, fontSize: 14, lineHeight: 20 }}>✦</Text>
+            <Text style={{ flex: 1, fontFamily: 'BeVietnam', fontSize: 13, lineHeight: 20, color: p.text }}>
+              Có <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 13, color: p.text }}>{pendingLeaves} đơn nghỉ phép</Text> đang chờ bạn duyệt.{' '}
+              <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 13, color: p.emeraldText }}>Duyệt ngay →</Text>
+            </Text>
+          </Pressable>
+        )}
 
-          {/* 7 Days Quick Scroller */}
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+        {/* Month / chain metrics */}
+        {isManager ? (
+          <View style={{ gap: 8 }}>
+            <SectionTitle title={isStoreManager ? storeDisplay : 'Toàn chuỗi TechZone'} action="Dashboard →" onPress={() => router.push('/(staff)/dashboard')} />
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <MetricBox label="Tổng nhân sự" value={managerStats.data?.active_employees ?? '—'} subtext="Biên chế" />
+              <MetricBox label="Đang làm hôm nay" value={managerStats.data?.attendance_today?.working ?? '—'} subtext={managerStats.data?.active_employees ? `Có mặt ${Math.round(((managerStats.data.attendance_today.checked_in || 0) / managerStats.data.active_employees) * 100)}%` : undefined} variant="success" />
+            </View>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <MetricBox label="Đi muộn hôm nay" value={managerStats.data?.attendance_today?.late ?? '—'} subtext="Trong ngày" variant={managerStats.data?.attendance_today?.late ? 'warning' : 'neutral'} />
+              <MetricBox label="Đơn chờ duyệt" value={managerStats.data?.pending_leaves ?? '—'} subtext="Cần xử lý" onPress={() => router.push('/(staff)/requests')} />
+            </View>
+          </View>
+        ) : (
+          <View style={{ gap: 8 }}>
+            <SectionTitle title={`Tháng ${currentPeriod.slice(5)}/${currentPeriod.slice(0, 4)}`} action="Chi tiết →" onPress={() => router.push('/(staff)/summary')} />
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <MetricBox label="Tổng ngày công" value={`${summary.data?.working_days.actual_days ?? 0} / ${summary.data?.working_days.standard_days ?? 26}`} subtext="Ngày công thực tế" />
+              <MetricBox label="Tổng giờ làm" value={`${summary.data?.working_days.total_hours ?? 0}h`} subtext="Tích lũy tháng" />
+            </View>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <MetricBox label="Đi muộn" value={`${summary.data?.late_arrivals.count ?? 0} lần`} subtext={summary.data?.late_arrivals.minutes ? `Tổng ${summary.data.late_arrivals.minutes} phút` : 'Đúng giờ'} variant={summary.data?.late_arrivals.count ? 'warning' : 'neutral'} />
+              <MetricBox label="Đã nghỉ phép" value={`${summary.data?.leave_quota.used_leave ?? 0} ngày`} subtext={`Còn ${summary.data?.leave_quota.remaining_leave ?? 0} ngày phép`} />
+            </View>
+          </View>
+        )}
+
+        {/* Week strip */}
+        <Card style={{ gap: 12 }}>
+          <SectionTitle title="Lịch biểu tuần này" action="Xem lịch →" onPress={() => router.push('/(staff)/schedules')} />
+          <View style={{ flexDirection: 'row', gap: 4 }}>
             {Array.from({ length: 7 }, (_, i) => {
               const d = new Date(`${date}T12:00:00+07:00`);
               d.setUTCDate(d.getUTCDate() + i - 3);
-              const key = d.toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
+              const key = d.toLocaleDateString('en-CA', { timeZone: TZ });
               const selected = key === date;
-              const hasShift = schedules.data?.some(s => s.work_date === key);
-
+              const shift = schedules.data?.find(s => s.work_date === key);
+              const fg = selected ? p.onBrand : shift ? p.text : p.muted;
               return (
                 <Pressable
                   key={key}
                   accessibilityRole="button"
                   accessibilityLabel={`Xem lịch ${key}`}
                   onPress={() => router.push('/(staff)/schedules')}
-                  style={{
-                    flex: 1,
-                    maxWidth: 44,
-                    alignItems: 'center',
-                    paddingVertical: 10,
-                    borderRadius: 14,
-                    backgroundColor: selected ? p.brand : p.surfaceLow,
-                    borderWidth: 1,
-                    borderColor: selected ? p.brand : p.line,
-                    gap: 6,
-                  }}
+                  style={{ flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 6, gap: 2, backgroundColor: selected ? p.brand : 'transparent', borderWidth: 1, borderColor: selected ? p.brand : p.line, borderStyle: shift || selected ? 'solid' : 'dashed' }}
                 >
-                  <Text
-                    style={{
-                      fontFamily: 'BeVietnam',
-                      fontSize: 11,
-                      color: selected ? '#ffffff' : p.muted,
-                      fontWeight: selected ? '600' : '400',
-                    }}
-                  >
-                    {d.toLocaleDateString('vi-VN', { weekday: 'short', timeZone: 'Asia/Ho_Chi_Minh' })}
+                  <Text style={{ fontFamily: 'BeVietnam', fontSize: 10, color: selected ? p.onBrand : p.muted }}>
+                    {d.toLocaleDateString('vi-VN', { weekday: 'short', timeZone: TZ }).replace('Th ', 'T')}
                   </Text>
-                  <Text
-                    style={{
-                      fontFamily: 'BeVietnamBold',
-                      fontSize: 14,
-                      color: selected ? '#ffffff' : p.text,
-                      fontWeight: '700',
-                    }}
-                  >
-                    {key.slice(-2)}
+                  <Text style={{ fontFamily: 'MonoBold', fontSize: 13, color: fg }}>{key.slice(-2)}</Text>
+                  <Text numberOfLines={1} style={{ fontFamily: 'BeVietnam', fontSize: 9, color: selected ? p.onBrand : p.muted }}>
+                    {shift ? shift.shift_name.replace(/^Ca\s+/i, '') : 'Nghỉ'}
                   </Text>
-                  <View
-                    style={{
-                      width: 5,
-                      height: 5,
-                      borderRadius: 3,
-                      backgroundColor: selected
-                        ? '#ffffff'
-                        : hasShift
-                        ? p.emerald
-                        : p.line,
-                    }}
-                  />
                 </Pressable>
               );
             })}
           </View>
-
-          <View style={{ flexDirection: 'row', justifyContent: 'space-around', paddingTop: 2 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: p.emerald }} />
-              <Text style={{ fontFamily: 'BeVietnam', fontSize: 11, color: p.muted }}>Có ca trực</Text>
-            </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: p.brand }} />
-              <Text style={{ fontFamily: 'BeVietnam', fontSize: 11, color: p.muted }}>Hôm nay</Text>
-            </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: p.line }} />
-              <Text style={{ fontFamily: 'BeVietnam', fontSize: 11, color: p.muted }}>Chưa có lịch</Text>
-            </View>
-          </View>
         </Card>
 
-        {/* Quick Utilities & Integrated Dashboard Tab */}
-        <Card style={{ gap: 12 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-            <View style={{ flex: 1 }}>
-              <Label variant="subtitle" numberOfLines={1}>Tiện ích & Báo cáo</Label>
-              <Text numberOfLines={1} style={{ fontFamily: 'BeVietnam', fontSize: 11, color: p.muted }}>
-                Nghiệp vụ thường ngày & Báo cáo tổng hợp
-              </Text>
-            </View>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => router.push('/(staff)/settings?section=shortcuts')}
-              style={{
-                backgroundColor: p.surfaceLow,
-                paddingHorizontal: 10,
-                paddingVertical: 5,
-                borderRadius: 8,
-                flexShrink: 0,
-              }}
-            >
-              <Text style={{ fontFamily: 'BeVietnam', fontSize: 11, color: p.text }}>Tùy biến</Text>
+        {/* Utilities list */}
+        <View style={{ gap: 8 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Eyebrow>Tiện ích & Báo cáo</Eyebrow>
+            <Pressable accessibilityRole="button" hitSlop={10} onPress={() => router.push('/(staff)/settings?section=shortcuts')}>
+              <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: p.emeraldText }}>Tùy biến</Text>
             </Pressable>
           </View>
-
-          {/* Segmented Tab Switcher */}
-          <View
-            style={{
-              flexDirection: 'row',
-              backgroundColor: p.surfaceLow,
-              borderRadius: 12,
-              padding: 3,
-              borderWidth: 1,
-              borderColor: p.line,
-            }}
-          >
-            <Pressable
-              accessibilityRole="tab"
-              accessibilityState={{ selected: quickTab === 'shortcuts' }}
-              onPress={() => setQuickTab('shortcuts')}
-              style={{
-                flex: 1,
-                paddingVertical: 7,
-                paddingHorizontal: 4,
-                borderRadius: 9,
-                backgroundColor: quickTab === 'shortcuts' ? p.brand : 'transparent',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexDirection: 'row',
-                gap: 5,
-              }}
-            >
-              <AppIcon name="flash-outline" style={{ fontSize: 13 }} />
-              <Text
-                numberOfLines={1}
-                style={{
-                  fontFamily: 'BeVietnamBold',
-                  fontSize: 12,
-                  color: quickTab === 'shortcuts' ? '#ffffff' : p.muted,
-                  fontWeight: '700',
-                }}
-              >
-                Tiện ích
-              </Text>
-            </Pressable>
-
-            <Pressable
-              accessibilityRole="tab"
-              accessibilityState={{ selected: quickTab === 'dashboard' }}
-              onPress={() => setQuickTab('dashboard')}
-              style={{
-                flex: 1,
-                paddingVertical: 7,
-                paddingHorizontal: 4,
-                borderRadius: 9,
-                backgroundColor: quickTab === 'dashboard' ? p.brand : 'transparent',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexDirection: 'row',
-                gap: 5,
-              }}
-            >
-              <AppIcon name="bar-chart-outline" style={{ fontSize: 13 }} />
-              <Text
-                numberOfLines={1}
-                style={{
-                  fontFamily: 'BeVietnamBold',
-                  fontSize: 12,
-                  color: quickTab === 'dashboard' ? '#ffffff' : p.muted,
-                  fontWeight: '700',
-                }}
-              >
-                Báo cáo KPI
-              </Text>
-            </Pressable>
-          </View>
-
-          {/* TAB 1: Shortcuts Grid */}
-          {quickTab === 'shortcuts' && (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-              {shortcuts
-                .filter(item => prefs.shortcuts.includes(item.key))
-                .map(item => (
-                  <Card
-                    key={item.key}
-                    onPress={() => router.push(item.href as Href)}
-                    low
-                    style={{ flexBasis: '46%', flexGrow: 1 }}
-                  >
-                    <AppIcon name={item.icon} style={{ fontSize: 26, color: p.brand }} />
-                    <Label variant="bold">{item.title}</Label>
-                    <Label muted variant="caption">Mở chức năng →</Label>
-                  </Card>
-                ))}
-            </View>
-          )}
-
-          {/* TAB 2: Embedded Dashboard Summary */}
-          {quickTab === 'dashboard' && (
-            <View style={{ gap: 12 }}>
-              {isManager ? (
-                // Manager Inline Summary
-                <>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
-                      <AppIcon name={isStoreManager ? 'storefront-outline' : 'business-outline'} style={{ fontSize: 13 }} />
-                      <Text numberOfLines={1} style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: p.text, flex: 1 }}>
-                        {isStoreManager ? storeDisplay : 'Toàn chuỗi TechZone'}
-                      </Text>
-                    </View>
-                    <Badge label={`T${currentPeriod.slice(5)}/${currentPeriod.slice(0, 4)}`} size="sm" variant="brand" />
-                  </View>
-
-                  <View style={{ flexDirection: 'row', gap: 10 }}>
-                    <MetricBox
-                      label="Tổng nhân sự"
-                      value={managerStats.data?.active_employees ?? '—'}
-                      subtext="Biên chế"
-                      icon="people-outline"
-                      variant="brand"
-                    />
-                    <MetricBox
-                      label="Đang làm hôm nay"
-                      value={managerStats.data?.attendance_today?.working ?? '—'}
-                      subtext={
-                        managerStats.data?.active_employees
-                          ? `Tỷ lệ ${Math.round(
-                              ((managerStats.data.attendance_today.checked_in || 0) /
-                                managerStats.data.active_employees) *
-                                100
-                            )}%`
-                          : undefined
-                      }
-                      icon="radio-button-on"
-                      variant="success"
-                    />
-                  </View>
-
-                  <View style={{ flexDirection: 'row', gap: 10 }}>
-                    <MetricBox
-                      label="Đi muộn hôm nay"
-                      value={managerStats.data ? `${managerStats.data.attendance_today.late} người` : '—'}
-                      subtext="Trong ngày"
-                      icon="time-outline"
-                      variant={managerStats.data?.attendance_today?.late ? 'warning' : 'neutral'}
-                    />
-                    <MetricBox
-                      label="Đơn chờ duyệt"
-                      value={managerStats.data ? `${managerStats.data.pending_leaves} đơn` : '—'}
-                      subtext="Cần xử lý"
-                      icon="document-text-outline"
-                      variant={managerStats.data?.pending_leaves ? 'warning' : 'neutral'}
-                    />
-                  </View>
-
-                  <Button
-                    title="Mở Dashboard quản lý toàn chuỗi →"
-                    variant="brand"
-                    onPress={() => router.push('/(staff)/dashboard')}
-                  />
-                </>
-              ) : (
-                // Employee Inline Summary
-                <>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                    <Text numberOfLines={1} style={{ fontFamily: 'BeVietnamBold', fontSize: 13, color: p.text, flex: 1 }}>
-                      Tiến độ Tháng {currentPeriod.slice(5)}/{currentPeriod.slice(0, 4)}
-                    </Text>
-                    {summary.data && (
-                      <Badge
-                        label={`${Math.min(100, Math.round((summary.data.working_days.actual_days / (summary.data.working_days.standard_days || 26)) * 100))}% công`}
-                        size="sm"
-                        variant="brand"
-                      />
-                    )}
-                  </View>
-
-                  <View style={{ flexDirection: 'row', gap: 10 }}>
-                    <Card low style={{ flex: 1, gap: 4, padding: 12 }}>
-                      <Text style={{ fontFamily: 'BeVietnam', fontSize: 11, color: p.muted }}>Tổng ngày công</Text>
-                      <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 17, color: p.brandText }}>
-                        {summary.data?.working_days.actual_days ?? 0} / {summary.data?.working_days.standard_days ?? 26}
-                      </Text>
-                      <ProgressBar
-                        progress={
-                          summary.data
-                            ? (summary.data.working_days.actual_days /
-                                (summary.data.working_days.standard_days || 26)) *
-                              100
-                            : 0
-                        }
-                        color={p.brand}
-                      />
-                    </Card>
-
-                    <MetricBox
-                      label="Tổng giờ làm"
-                      value={`${summary.data?.working_days.total_hours ?? 0}h`}
-                      subtext="Tích lũy tháng"
-                      icon="time-outline"
-                      variant="brand"
-                    />
-                  </View>
-
-                  <View style={{ flexDirection: 'row', gap: 10 }}>
-                    <MetricBox
-                      label="Đi muộn"
-                      value={`${summary.data?.late_arrivals.count ?? 0} lần`}
-                      subtext={
-                        summary.data?.late_arrivals.minutes
-                          ? `${summary.data.late_arrivals.minutes} phút`
-                          : 'Đúng giờ'
-                      }
-                      icon="warning-outline"
-                      variant={summary.data?.late_arrivals.count ? 'warning' : 'neutral'}
-                    />
-                    <MetricBox
-                      label="Đã nghỉ phép"
-                      value={`${summary.data?.leave_quota.used_leave ?? 0} ngày`}
-                      subtext={`Còn ${summary.data?.leave_quota.remaining_leave ?? 0} ngày phép`}
-                      icon="sunny-outline"
-                      variant="success"
-                    />
-                  </View>
-
-                  <Button
-                    title="Xem biểu đồ & phân tích chi tiết →"
-                    variant="brand"
-                    onPress={() => router.push('/(staff)/dashboard')}
-                  />
-                </>
-              )}
-            </View>
-          )}
-        </Card>
-
-        {/* Security Mini Banner */}
-        <Card low style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12 }}>
-          <AppIcon name="shield-checkmark-outline" style={{ fontSize: 20 }} />
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: p.text, fontWeight: '600' }}>
-              Quyền riêng tư
-            </Text>
-            <Text style={{ fontFamily: 'BeVietnam', fontSize: 11, color: p.muted }}>
-              Chỉ lấy vị trí khi chấm công. Ảnh dùng làm minh chứng, không nhận diện khuôn mặt.
-            </Text>
-          </View>
-        </Card>
+          <Card style={{ padding: 0, gap: 0, overflow: 'hidden' }}>
+            {enabledShortcuts.map((item, i) => (
+              <Row key={item.key} icon={item.icon} title={item.title} last={i === enabledShortcuts.length - 1} onPress={() => router.push(item.href as Href)} />
+            ))}
+            {!enabledShortcuts.length && (
+              <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.muted, padding: 14 }}>Chưa chọn lối tắt nào. Bấm “Tùy biến” để thêm.</Text>
+            )}
+          </Card>
+        </View>
       </ScrollView>
 
-      {/* Drawer Modal */}
+      {/* Drawer */}
       <Modal visible={drawer} transparent animationType="fade" onRequestClose={() => setDrawer(false)}>
-        <View style={{ flex: 1, flexDirection: 'row', backgroundColor: '#0008' }}>
-          <ScrollView
-            accessibilityViewIsModal
-            style={{
-              width: '82%',
-              maxWidth: 340,
-              backgroundColor: p.card,
-              borderRightWidth: 1,
-              borderColor: p.line,
-            }}
-            contentContainerStyle={{
-              padding: 20,
-              paddingTop: insets.top + 20,
-              gap: 16,
-            }}
-          >
-            <View style={{ gap: 4, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: p.line }}>
-              <Label large>{profile.data?.full_name || 'TechZone'}</Label>
-              <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.muted }}>
-                Mã NV: {profile.data?.employee_code || profile.data?.username}
-              </Text>
-              <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.brand }}>
-                {storeDisplay}
-              </Text>
-            </View>
-
-            <View style={{ gap: 4 }}>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => {
-                  setDrawer(false);
-                  setCenterOpen(true);
-                }}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 12,
-                  paddingVertical: 12,
-                  paddingHorizontal: 8,
-                  borderRadius: 10,
-                }}
-              >
-                <AppIcon name="notifications-outline" style={{ fontSize: 18 }} />
-                <Text style={{ fontFamily: 'BeVietnam', fontSize: 14, color: p.text, flex: 1 }}>
-                  Trung tâm thông báo
-                </Text>
-                {unreadCount > 0 ? (
-                  <Badge label={`${unreadCount}`} variant="danger" size="sm" />
-                ) : (
-                  <AppIcon name="chevron-forward" style={{ color: p.muted, fontSize: 14 }} />
-                )}
+        <View style={{ flex: 1, flexDirection: 'row', backgroundColor: 'rgba(9,9,11,0.5)' }}>
+          <View accessibilityViewIsModal style={{ width: '80%', maxWidth: 320, backgroundColor: p.card, borderRightWidth: 1, borderColor: p.line, paddingTop: insets.top + 8, paddingBottom: insets.bottom + 16, paddingHorizontal: 12 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingLeft: 12 }}>
+              <Brand />
+              <Pressable accessibilityRole="button" accessibilityLabel="Đóng menu" onPress={() => setDrawer(false)} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
+                <AppIcon name="close" size={20} color={p.muted} />
               </Pressable>
-
-              {menu.map(([icon, title, href]) => (
-                <Pressable
-                  key={title}
-                  accessibilityRole="button"
-                  onPress={() => navigate(href)}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 12,
-                    paddingVertical: 12,
-                    paddingHorizontal: 8,
-                    borderRadius: 10,
-                  }}
-                >
-                  <AppIcon name={icon} style={{ fontSize: 18 }} />
-                  <Text style={{ fontFamily: 'BeVietnam', fontSize: 14, color: p.text, flex: 1 }}>
-                    {title}
-                  </Text>
-                  <AppIcon name="chevron-forward" style={{ color: p.muted, fontSize: 14 }} />
-                </Pressable>
-              ))}
             </View>
 
-            <View style={{ gap: 10, paddingTop: 12, borderTopWidth: 1, borderTopColor: p.line }}>
-              <Button
-                title="Đăng xuất"
-                variant="danger"
-                onPress={() => {
-                  setDrawer(false);
-                  void signOut().catch(e => setError(e.message));
-                }}
-              />
-              <Button title="Đóng menu" secondary onPress={() => setDrawer(false)} />
-              <Text style={{ fontFamily: 'BeVietnam', fontSize: 11, color: p.muted, textAlign: 'center' }}>
-                TECHZONE HRM Mobile
-              </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12, marginBottom: 16, padding: 10, borderWidth: 1, borderColor: p.line, borderRadius: 8 }}>
+              <View style={{ width: 34, height: 34, borderRadius: 6, backgroundColor: p.brand, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ color: p.onBrand, fontFamily: 'BeVietnamBold', fontSize: 12 }}>{initials}</Text>
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text numberOfLines={1} style={{ fontFamily: 'BeVietnamBold', fontSize: 13, color: p.text }}>{profile.data?.full_name || 'TechZone'}</Text>
+                <Text numberOfLines={1} style={{ fontFamily: 'BeVietnam', fontSize: 11, color: p.muted }}>
+                  <Text style={{ fontFamily: 'Mono', fontSize: 11, color: p.muted }}>{profile.data?.employee_code || profile.data?.username}</Text> · {storeDisplay}
+                </Text>
+              </View>
             </View>
-          </ScrollView>
 
-          <Pressable
-            accessibilityLabel="Đóng menu"
-            accessibilityRole="button"
-            onPress={() => setDrawer(false)}
-            style={{ flex: 1 }}
-          />
+            <ScrollView contentContainerStyle={{ gap: 2 }}>
+              <DrawerItem icon="notifications-outline" title="Trung tâm thông báo" badge={unreadCount} onPress={() => { setDrawer(false); setCenterOpen(true); }} />
+              <Eyebrow style={{ marginTop: 14, marginBottom: 4, paddingHorizontal: 12 }}>Vận hành</Eyebrow>
+              {operations.map(([icon, title, href]) => <DrawerItem key={title} icon={icon} title={title} onPress={() => navigate(href)} />)}
+              <Eyebrow style={{ marginTop: 14, marginBottom: 4, paddingHorizontal: 12 }}>Tài khoản</Eyebrow>
+              {account.map(([icon, title, href]) => <DrawerItem key={title} icon={icon} title={title} onPress={() => navigate(href)} />)}
+            </ScrollView>
+
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => { setDrawer(false); void signOut().catch(e => setError(e.message)); }}
+              style={({ pressed }) => ({ height: 44, borderRadius: 8, borderWidth: 1, borderColor: p.dangerBg, backgroundColor: pressed ? p.dangerBg : 'transparent', alignItems: 'center', justifyContent: 'center' })}
+            >
+              <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 14, color: p.dangerText }}>Đăng xuất</Text>
+            </Pressable>
+          </View>
+          <Pressable accessibilityLabel="Đóng menu" accessibilityRole="button" onPress={() => setDrawer(false)} style={{ flex: 1 }} />
         </View>
       </Modal>
     </View>
+  );
+}
+
+function Brand() {
+  const p = usePalette();
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+      <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 17, color: p.text, letterSpacing: -0.4 }}>techzone</Text>
+      <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: p.emerald }} />
+    </View>
+  );
+}
+
+function Eyebrow({ children, style }: { children: ReactNode; style?: object }) {
+  const p = usePalette();
+  return <Text style={[{ fontFamily: 'BeVietnamBold', fontSize: 10, letterSpacing: 0.8, textTransform: 'uppercase', color: p.muted }, style]}>{children}</Text>;
+}
+
+function SectionTitle({ title, action, onPress }: { title: string; action: string; onPress: () => void }) {
+  const p = usePalette();
+  return (
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+      <Text numberOfLines={1} style={{ flex: 1, fontFamily: 'BeVietnamBold', fontSize: 15, color: p.text }}>{title}</Text>
+      <Pressable accessibilityRole="button" hitSlop={10} onPress={onPress}>
+        <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: p.emeraldText }}>{action}</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function Cell({ label, value, mono, muted, color, divider }: { label: string; value: string; mono?: boolean; muted?: boolean; color?: string; divider?: boolean }) {
+  const p = usePalette();
+  return (
+    <View style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 12, borderLeftWidth: divider ? 1 : 0, borderLeftColor: p.line }}>
+      <Text style={{ fontFamily: 'BeVietnam', fontSize: 11, color: p.muted }}>{label}</Text>
+      <Text numberOfLines={1} style={{ fontFamily: mono ? 'MonoBold' : 'BeVietnamBold', fontSize: mono ? 15 : 13, marginTop: 3, color: color || (muted ? p.muted : p.text) }}>{value}</Text>
+    </View>
+  );
+}
+
+function Row({ icon, title, last, onPress }: { icon: AppIconName; title: string; last?: boolean; onPress: () => void }) {
+  const p = usePalette();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, minHeight: 56, borderBottomWidth: last ? 0 : 1, borderBottomColor: p.line, backgroundColor: pressed ? p.surfaceLow : 'transparent' })}
+    >
+      <View style={{ width: 32, height: 32, borderRadius: 6, backgroundColor: p.surfaceLow, alignItems: 'center', justifyContent: 'center' }}>
+        <AppIcon name={icon} size={16} color={p.text} />
+      </View>
+      <Text style={{ flex: 1, fontFamily: 'BeVietnam', fontSize: 14, color: p.text }}>{title}</Text>
+      <AppIcon name="chevron-forward" size={14} color={p.muted} />
+    </Pressable>
+  );
+}
+
+function DrawerItem({ icon, title, badge, onPress }: { icon: AppIconName; title: string; badge?: number; onPress: () => void }) {
+  const p = usePalette();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, height: 44, paddingHorizontal: 12, borderRadius: 6, backgroundColor: pressed ? p.surfaceLow : 'transparent' })}
+    >
+      <AppIcon name={icon} size={18} color={p.muted} />
+      <Text numberOfLines={1} style={{ flex: 1, fontFamily: 'BeVietnam', fontSize: 14, color: p.text }}>{title}</Text>
+      {!!badge && <Badge label={`${badge}`} variant="danger" size="sm" />}
+    </Pressable>
   );
 }

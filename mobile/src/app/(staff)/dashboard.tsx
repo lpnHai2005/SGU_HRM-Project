@@ -158,143 +158,50 @@ export default function DashboardScreen() {
       contentContainerStyle={[styles.content, { paddingBottom: 40 }]}
       refreshControl={<RefreshControl refreshing={loading} onRefresh={loadData} />}
     >
-      {/* Header Banner */}
-      <View style={{ gap: 4 }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Label variant="title">Báo cáo & Dashboard</Label>
-          <Badge
-            label={isManager ? (isStoreManager ? 'Cửa hàng trưởng' : 'HR Quản trị') : 'Nhân viên'}
-            variant="brand"
-            size="sm"
-          />
-        </View>
-        <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.muted }}>
-          {isManager && viewMode === 'manager'
-            ? isStoreManager
-              ? `Tình hình nhân sự chi nhánh: ${storeDisplay}`
-              : 'Nắm bắt chỉ số nhân sự & phát hiện vấn đề toàn chuỗi'
-            : `Đối soát dữ liệu công tác của ${profile.data?.full_name || 'bạn'}`}
-        </Text>
-      </View>
-
-      {/* Mode Switcher for Managers */}
+      {/* View switch (managers) */}
       {isManager && (
-        <View
-          style={{
-            flexDirection: 'row',
-            backgroundColor: p.surfaceLow,
-            borderRadius: 14,
-            padding: 4,
-            borderWidth: 1,
-            borderColor: p.line,
-          }}
-        >
-          <Pressable
-            accessibilityRole="tab"
-            accessibilityState={{ selected: viewMode === 'manager' }}
-            onPress={() => setViewMode('manager')}
-            style={{
-              flex: 1,
-              paddingVertical: 10,
-              borderRadius: 10,
-              backgroundColor: viewMode === 'manager' ? p.brand : 'transparent',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexDirection: 'row',
-              gap: 6,
-            }}
-          >
-            <Text style={{ fontSize: 14 }}><AppIcon name="briefcase-outline" size={14} /></Text>
-            <Text
-              style={{
-                fontFamily: 'BeVietnamBold',
-                fontSize: 12,
-                color: viewMode === 'manager' ? '#ffffff' : p.muted,
-                fontWeight: '700',
-              }}
-            >
-              {isStoreManager ? 'Quản lý Chi nhánh' : 'Quản lý Chuỗi (HR)'}
-            </Text>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="tab"
-            accessibilityState={{ selected: viewMode === 'personal' }}
-            onPress={() => setViewMode('personal')}
-            style={{
-              flex: 1,
-              paddingVertical: 10,
-              borderRadius: 10,
-              backgroundColor: viewMode === 'personal' ? p.brand : 'transparent',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexDirection: 'row',
-              gap: 6,
-            }}
-          >
-            <AppIcon name="person-outline" style={{ fontSize: 14 }} />
-            <Text
-              style={{
-                fontFamily: 'BeVietnamBold',
-                fontSize: 12,
-                color: viewMode === 'personal' ? '#ffffff' : p.muted,
-                fontWeight: '700',
-              }}
-            >
-              Cá nhân của tôi
-            </Text>
-          </Pressable>
-        </View>
-      )}
-
-      {/* Month Filter Scroller */}
-      <View style={{ gap: 6 }}>
-        <Label variant="caption">Chọn kỳ thống kê</Label>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ gap: 8, paddingVertical: 2 }}
-        >
-          {periodOptions.map(opt => {
-            const active = opt.value === period;
+        <View accessibilityRole="tablist" style={{ flexDirection: 'row', gap: 4, padding: 3, borderRadius: 6, backgroundColor: p.surfaceLow }}>
+          {([['manager', isStoreManager ? 'Chi nhánh' : 'Toàn chuỗi'], ['personal', 'Cá nhân']] as const).map(([key, label]) => {
+            const active = viewMode === key;
             return (
               <Pressable
-                key={opt.value}
-                accessibilityRole="button"
-                accessibilityLabel={`Chọn ${opt.label}`}
-                onPress={() => setPeriod(opt.value)}
-                style={{
-                  paddingHorizontal: 14,
-                  paddingVertical: 7,
-                  borderRadius: 20,
-                  backgroundColor: active ? p.brand : p.card,
-                  borderWidth: 1,
-                  borderColor: active ? p.brand : p.line,
-                }}
+                key={key}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: active }}
+                onPress={() => setViewMode(key)}
+                style={{ flex: 1, height: 34, borderRadius: 4, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: active ? p.line : 'transparent', backgroundColor: active ? p.card : 'transparent' }}
               >
-                <Text
-                  style={{
-                    fontFamily: active ? 'BeVietnamBold' : 'BeVietnam',
-                    fontSize: 12,
-                    color: active ? '#ffffff' : p.text,
-                    fontWeight: active ? '700' : '500',
-                  }}
-                >
-                  {opt.label}
-                </Text>
+                <Text style={{ fontFamily: active ? 'BeVietnamBold' : 'BeVietnam', fontSize: 13, color: active ? p.text : p.muted }}>{label}</Text>
               </Pressable>
             );
           })}
-        </ScrollView>
-      </View>
+        </View>
+      )}
+
+      {/* Period chips */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+        {periodOptions.map(opt => {
+          const active = opt.value === period;
+          return (
+            <Pressable
+              key={opt.value}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={`Chọn ${opt.label}`}
+              onPress={() => setPeriod(opt.value)}
+              style={{ height: 32, paddingHorizontal: 12, borderRadius: 6, justifyContent: 'center', backgroundColor: active ? p.brand : p.card, borderWidth: 1, borderColor: active ? p.brand : p.line }}
+            >
+              <Text style={{ fontFamily: active ? 'BeVietnamBold' : 'BeVietnam', fontSize: 12, color: active ? p.onBrand : p.text }}>{opt.label}</Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
 
       <LoadingBar active={loading} label="Đang đối soát số liệu báo cáo từ máy chủ…" />
 
       {!!(error || profile.error) && (
         <Card style={{ backgroundColor: p.dangerBg, borderColor: p.danger }}>
-          <Text style={{ color: p.dangerText, fontFamily: 'BeVietnam', fontSize: 13 }}>
-            <AppIcon name="warning-outline" size={14} /> {error || profile.error}
-          </Text>
+          <Text style={{ color: p.dangerText, fontFamily: 'BeVietnam', fontSize: 13 }}>{error || profile.error}</Text>
           <Button title="Tải lại số liệu" secondary onPress={() => { profile.reload(); void loadData(); }} />
         </Card>
       )}
@@ -304,65 +211,32 @@ export default function DashboardScreen() {
       {/* ========================================================================= */}
       {isManager && viewMode === 'manager' && (
         <>
-          {/* Executive Scope Card */}
-          <Card low style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <View style={{ gap: 2, flex: 1 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <AppIcon name={isStoreManager ? 'storefront-outline' : 'business-outline'} style={{ fontSize: 14 }} />
-                <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 14, color: p.text }}>
-                  {isStoreManager ? `Chi nhánh: ${storeDisplay}` : 'Phạm vi: Toàn chuỗi TechZone'}
-                </Text>
-              </View>
-              <Text style={{ fontFamily: 'BeVietnam', fontSize: 11, color: p.muted }}>
-                Hôm nay: {checkedIn}/{activeEmp} nhân sự có mặt ({attendanceRate}%)
+          {/* Scope line */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+            <View style={{ flex: 1 }}>
+              <Text numberOfLines={1} style={{ fontFamily: 'BeVietnamBold', fontSize: 15, color: p.text }}>
+                {isStoreManager ? storeDisplay : 'Toàn chuỗi TechZone'}
+              </Text>
+              <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.muted, marginTop: 2 }}>
+                Hôm nay có mặt <Text style={{ fontFamily: 'MonoBold', fontSize: 12, color: p.text }}>{checkedIn}/{activeEmp}</Text> · {attendanceRate}%
               </Text>
             </View>
-            <Badge label="ONLINE" variant="success" pulse size="sm" />
-          </Card>
+            <Badge label="Trực tiếp" variant="success" pulse size="sm" />
+          </View>
 
-          {/* Quick Problem Detector / Action Items Banner */}
+          {/* Action needed */}
           {pendingLeaves > 0 && (
-            <Card style={{ backgroundColor: p.amberBg, borderColor: p.amber, gap: 8 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <AppIcon name="warning-outline" style={{ fontSize: 16 }} />
-                <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 13, color: p.amberText }}>
-                  Vấn đề cần lưu ý trong ngày
-                </Text>
-              </View>
-              {pendingLeaves > 0 && (
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: 10,
-                    paddingTop: 2,
-                  }}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.amberText, lineHeight: 18 }}>
-                      • Có <Text style={{ fontFamily: 'BeVietnamBold', color: p.amberText }}>{pendingLeaves} đơn</Text> nghỉ phép đang chờ {isStoreManager ? 'cửa hàng trưởng duyệt' : 'HR xử lý'}
-                    </Text>
-                  </View>
-                  <Pressable
-                    accessibilityRole="button"
-                    onPress={() => router.push('/(staff)/requests')}
-                    style={{
-                      backgroundColor: p.amber,
-                      paddingHorizontal: 12,
-                      paddingVertical: 6,
-                      borderRadius: 8,
-                      alignSelf: 'center',
-                      flexShrink: 0,
-                    }}
-                  >
-                    <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 11, color: '#ffffff' }}>
-                      Duyệt ngay →
-                    </Text>
-                  </Pressable>
-                </View>
-              )}
-            </Card>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.push('/(staff)/requests')}
+              style={{ flexDirection: 'row', gap: 10, padding: 12, borderRadius: 8, backgroundColor: p.amberBg, borderWidth: 1, borderColor: p.amberBg }}
+            >
+              <AppIcon name="alert-circle-outline" size={18} color={p.amberText} />
+              <Text style={{ flex: 1, fontFamily: 'BeVietnam', fontSize: 13, lineHeight: 20, color: p.text }}>
+                Có <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 13, color: p.text }}>{pendingLeaves} đơn nghỉ phép</Text> đang chờ {isStoreManager ? 'cửa hàng trưởng duyệt' : 'HR xử lý'}.{' '}
+                <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 13, color: p.amberText }}>Duyệt ngay →</Text>
+              </Text>
+            </Pressable>
           )}
 
           {/* Core 4 Executive KPI Cards */}
@@ -472,7 +346,7 @@ export default function DashboardScreen() {
                 <View
                   style={{
                     backgroundColor: p.surfaceLow,
-                    borderRadius: 12,
+                    borderRadius: 8,
                     padding: 12,
                     flexDirection: 'row',
                     justifyContent: 'space-between',

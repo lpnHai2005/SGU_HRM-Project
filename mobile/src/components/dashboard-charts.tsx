@@ -47,7 +47,7 @@ export function DailyHoursBarChart({
         <View
           style={{
             backgroundColor: p.surfaceLow,
-            borderRadius: 12,
+            borderRadius: 8,
             padding: 10,
             borderWidth: 1,
             borderColor: p.brand,

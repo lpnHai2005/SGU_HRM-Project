@@ -4,7 +4,7 @@ import type { Profile } from '@/services/staff';
 import { AppIcon, AppText as Text } from '@/components/app-icon';
 import { storeLabel } from '@/services/presentation';
 import { useCallback, useRef, useState } from 'react';
-import { FlatList, Modal, Pressable, ScrollView, View } from 'react-native';
+import { FlatList, Modal, Pressable, View } from 'react-native';
 import { Redirect, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSession } from '@/contexts/session';
 import {
@@ -19,7 +19,7 @@ import {
 import { LoadingBar } from '@/components/loading-bar';
 import {
   ApiError,
-  displayTime,
+  clockTime,
   request,
   scheduleLabels,
   vietnamPeriod,
@@ -73,126 +73,70 @@ function HistoryScreen() {
 
   return (
     <>
-      {/* Detail Modal */}
-      <Modal
-        visible={!!selected}
-        animationType="slide"
-        onRequestClose={() => setSelected(null)}
-      >
-        <ScrollView
-          style={{ backgroundColor: p.bg }}
-          contentContainerStyle={[styles.content, { paddingTop: 48 }]}
-        >
-          <Label variant="title">Chi tiết lượt chấm công</Label>
-          {selected && (
-            <Card style={{ gap: 14 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Badge
-                  label={statusLabels[selected.status] || 'Đã ghi nhận'}
-                  variant={
-                    selected.status === 'VALID' || selected.status === 'APPROVED'
-                      ? 'success'
-                      : selected.status === 'LATE' || selected.status === 'EARLY'
-                      ? 'warning'
-                      : 'neutral'
-                  }
-                />
-                <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.muted }}>
-                  {selected.work_date}
+      {/* Detail sheet */}
+      <Modal visible={!!selected} transparent animationType="slide" onRequestClose={() => setSelected(null)}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Đóng chi tiết" onPress={() => setSelected(null)} style={{ flex: 1, backgroundColor: 'rgba(9,9,11,0.5)' }} />
+        {selected && (
+          <View style={{ backgroundColor: p.card, borderTopLeftRadius: 14, borderTopRightRadius: 14, borderTopWidth: 1, borderColor: p.line, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 28, gap: 14 }}>
+            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: p.surfaceHigh, alignSelf: 'center' }} />
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 16, color: p.text }}>Chi tiết lượt chấm công</Text>
+                <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.muted, marginTop: 2 }}>
+                  {selected.shift_name || 'Ca làm việc thực tế'} · <Text style={{ fontFamily: 'Mono', fontSize: 12, color: p.muted }}>{selected.work_date.split('-').reverse().join('/')}</Text> · {storeLabel(selected.store_name)}
                 </Text>
               </View>
+              <Badge
+                label={statusLabels[selected.status] || 'Đã ghi nhận'}
+                variant={['LATE', 'EARLY', 'LATE_AND_EARLY'].includes(selected.status) ? 'warning' : selected.check_out_time ? 'success' : 'info'}
+                size="sm"
+              />
+            </View>
 
-              <View style={{ gap: 4 }}>
-                <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 16, fontWeight: '700', color: p.text }}>
-                  {selected.shift_name || 'Ca làm việc thực tế'}
-                </Text>
-                <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.brand }}>
-                  <AppIcon name="storefront-outline" size={14} /> {storeLabel(selected.store_name)}
-                </Text>
-              </View>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', borderWidth: 1, borderColor: p.line, borderRadius: 6 }}>
+              {([
+                ['Giờ vào', clockTime(selected.check_in_time)],
+                ['Giờ ra', selected.check_out_time ? clockTime(selected.check_out_time) : '--:--'],
+                ['Đi muộn / Về sớm', `${selected.late_minutes || 0}′ / ${selected.early_minutes || 0}′`],
+                ['Tổng giờ công', `${Number(selected.actual_work_hours || 0).toFixed(2)}h`],
+              ] as const).map(([k, v], i) => (
+                <View key={k} style={{ width: '50%', padding: 12, borderLeftWidth: i % 2 ? 1 : 0, borderTopWidth: i > 1 ? 1 : 0, borderColor: p.line }}>
+                  <Text style={{ fontFamily: 'BeVietnam', fontSize: 11, color: p.muted }}>{k}</Text>
+                  <Text style={{ fontFamily: 'MonoBold', fontSize: 15, color: p.text, marginTop: 3 }}>{v}</Text>
+                </View>
+              ))}
+            </View>
 
-              {selected.attendance_context?.actual && (
-                <View
-                  style={{
-                    backgroundColor: p.surfaceLow,
-                    padding: 12,
-                    borderRadius: 10,
-                    gap: 4,
-                  }}
-                >
-                  <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: p.text }}>
-                    Bản chụp ca lúc check-in:
-                  </Text>
-                  <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.muted }}>
-                    Khung giờ: {selected.attendance_context.actual.start_time.slice(0, 5)} –{' '}
-                    {selected.attendance_context.actual.end_time.slice(0, 5)} • Chuẩn{' '}
-                    {selected.attendance_context.actual.work_hours} giờ
-                  </Text>
+            <View style={{ gap: 0 }}>
+              {([
+                ['Giờ ngoài ca ghi nhận', `+${selected.overtime_hours || 0}h`],
+                ['Khung ca lúc vào', selected.attendance_context?.actual ? `${selected.attendance_context.actual.start_time.slice(0, 5)} – ${selected.attendance_context.actual.end_time.slice(0, 5)} · ${selected.attendance_context.actual.work_hours}h` : '—'],
+                ['Đối soát lịch', scheduleLabels[selected.schedule_status] || 'Đã đối soát'],
+              ] as const).map(([k, v], i, all) => (
+                <View key={k} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingVertical: 10, borderBottomWidth: i === all.length - 1 ? 0 : 1, borderBottomColor: p.line }}>
+                  <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.muted }}>{k}</Text>
+                  <Text style={{ fontFamily: i < 2 ? 'MonoBold' : 'BeVietnamBold', fontSize: 13, color: p.text }}>{v}</Text>
                 </View>
-              )}
-
-              <View style={{ gap: 8 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.muted }}>Giờ vào:</Text>
-                  <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 13, color: p.text }}>
-                    {displayTime(selected.check_in_time)}
-                  </Text>
-                </View>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.muted }}>Giờ ra:</Text>
-                  <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 13, color: p.text }}>
-                    {displayTime(selected.check_out_time)}
-                  </Text>
-                </View>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.muted }}>Tổng giờ công:</Text>
-                  <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 14, color: p.emeraldText }}>
-                    {Number(selected.actual_work_hours || 0).toFixed(2)} giờ
-                  </Text>
-                </View>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.muted }}>Đi muộn / Về sớm:</Text>
-                  <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.text }}>
-                    Muộn {selected.late_minutes || 0}m • Sớm {selected.early_minutes || 0}m
-                  </Text>
-                </View>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.muted }}>Giờ ngoài ca ghi nhận:</Text>
-                  <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 13, color: p.brandText }}>
-                    +{selected.overtime_hours || 0} giờ
-                  </Text>
-                </View>
-              </View>
-
-              <Text style={{ fontFamily: 'BeVietnam', fontSize: 11, color: p.muted }}>
-                Đối soát lịch: {scheduleLabels[selected.schedule_status] || 'Đã đối soát'}
-              </Text>
-            </Card>
-          )}
-          <Button title="Đóng chi tiết" secondary onPress={() => setSelected(null)} />
-        </ScrollView>
+              ))}
+            </View>
+            <Button title="Đóng" secondary onPress={() => setSelected(null)} />
+          </View>
+        )}
       </Modal>
 
       {/* Main List */}
       <FlatList
         style={{ backgroundColor: p.bg }}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { gap: 8 }]}
         data={rows}
         keyExtractor={item => String(item.attendance_id)}
         refreshing={loading}
         onRefresh={load}
         ListHeaderComponent={
-          <View style={{ gap: 14 }}>
+          <View style={{ gap: 12, marginBottom: 4 }}>
             <LoadingBar active={loading} label="Đang tải lịch sử chấm công…" />
-            <View style={{ gap: 4 }}>
-              <Label variant="title">Nhật ký làm việc</Label>
-              <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.muted }}>
-                Từng ca độc lập • Thời gian thực • Kỳ {applied}
-              </Text>
-            </View>
-
-            <Card low style={{ gap: 10 }}>
-              <Label variant="caption">Bộ lọc tháng tra cứu (YYYY-MM)</Label>
+            <View style={{ gap: 6 }}>
+              <Label variant="caption" muted>Tháng tra cứu (YYYY-MM)</Label>
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 <View style={{ flex: 1 }}>
                   <Input
@@ -203,11 +147,13 @@ function HistoryScreen() {
                     keyboardType="numbers-and-punctuation"
                     maxLength={7}
                     leftIcon="calendar-outline"
+                    style={{ fontFamily: 'Mono', paddingVertical: 11 }}
                   />
                 </View>
                 <Button
                   title="Lọc"
-                  variant="brand"
+                  variant="secondary"
+                  style={{ paddingVertical: 11 }}
                   onPress={() => {
                     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(period)) {
                       setError('Vui lòng nhập định dạng năm-tháng hợp lệ (YYYY-MM).');
@@ -221,75 +167,66 @@ function HistoryScreen() {
                   disabled={loading}
                 />
               </View>
-            </Card>
+            </View>
 
             {!!error && (
               <Card style={{ backgroundColor: p.dangerBg, borderColor: p.danger }}>
-                <Text accessibilityRole="alert" style={{ color: p.dangerText, fontFamily: 'BeVietnam', fontSize: 13 }}>
-                  <AppIcon name="warning-outline" size={14} /> {error}
-                </Text>
+                <Text accessibilityRole="alert" style={{ color: p.dangerText, fontFamily: 'BeVietnam', fontSize: 13 }}>{error}</Text>
               </Card>
             )}
 
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4 }}>
-              <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 13, color: p.text }}>
-                {rows.length} lượt chấm công
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 10, letterSpacing: 0.8, textTransform: 'uppercase', color: p.muted }}>
+                Kỳ {applied.slice(5)}/{applied.slice(0, 4)}
               </Text>
               <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.muted }}>
-                {new Set(rows.map(r => r.work_date)).size} ngày có mặt
+                <Text style={{ fontFamily: 'MonoBold', fontSize: 12, color: p.text }}>{rows.length}</Text> lượt · <Text style={{ fontFamily: 'MonoBold', fontSize: 12, color: p.text }}>{new Set(rows.map(r => r.work_date)).size}</Text> ngày có mặt
               </Text>
             </View>
           </View>
         }
         ListEmptyComponent={
           !loading && !error ? (
-            <Card style={{ alignItems: 'center', paddingVertical: 28 }}>
-              <AppIcon name="clipboard-outline" style={{ fontSize: 28, marginBottom: 8 }} />
-              <Label variant="subtitle">Chưa có lượt chấm công</Label>
-              <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.muted, textAlign: 'center', marginTop: 4 }}>
-                Chưa có dữ liệu chấm công cho tháng {applied}.
-              </Text>
+            <Card style={{ alignItems: 'center', paddingVertical: 28, gap: 6 }}>
+              <View style={{ width: 44, height: 44, borderRadius: 10, borderWidth: 1, borderStyle: 'dashed', borderColor: p.surfaceHigh, alignItems: 'center', justifyContent: 'center' }}>
+                <AppIcon name="clipboard-outline" size={20} color={p.muted} />
+              </View>
+              <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 14, color: p.text }}>Chưa có lượt chấm công</Text>
+              <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.muted, textAlign: 'center' }}>Chưa có dữ liệu chấm công cho tháng {applied}.</Text>
             </Card>
           ) : undefined
         }
         renderItem={({ item }) => {
-          const storeName = storeLabel(item.store_name);
+          const working = !item.check_out_time;
+          const late = ['LATE', 'EARLY', 'LATE_AND_EARLY'].includes(item.status);
+          const weekday = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'][new Date(`${item.work_date}T12:00:00Z`).getUTCDay()];
           return (
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`Chi tiết lượt ngày ${item.work_date}`}
               onPress={() => setSelected(item)}
+              style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 8, borderWidth: 1, borderColor: p.line, backgroundColor: pressed ? p.surfaceLow : p.card })}
             >
-              <Card style={{ gap: 10 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 15, fontWeight: '700', color: p.text }}>
-                    {item.work_date}
-                  </Text>
+              <View style={{ width: 40, alignItems: 'center' }}>
+                <Text style={{ fontFamily: 'MonoBold', fontSize: 17, color: p.text }}>{item.work_date.slice(8, 10)}</Text>
+                <Text style={{ fontFamily: 'BeVietnam', fontSize: 10, color: p.muted }}>{weekday}</Text>
+              </View>
+              <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <Text numberOfLines={1} style={{ flex: 1, fontFamily: 'BeVietnamBold', fontSize: 14, color: p.text }}>{item.shift_name || 'Ca làm việc'}</Text>
                   <Badge
-                    label={statusLabels[item.status] || (item.check_out_time ? 'Hoàn thành' : 'Đang làm')}
-                    variant={item.check_out_time ? 'success' : 'brand'}
+                    label={working ? 'Đang làm' : late && item.late_minutes ? `Muộn ${item.late_minutes}′` : statusLabels[item.status] || 'Hoàn thành'}
+                    variant={working ? 'info' : late ? 'warning' : 'success'}
                     size="sm"
                   />
                 </View>
-
-                <View style={{ gap: 2 }}>
-                  <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.text }}>
-                    {item.shift_name || 'Ca làm việc'} • {storeName}
-                  </Text>
-                  <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.muted }}>
-                    Vào {displayTime(item.check_in_time)} → Ra {displayTime(item.check_out_time)}
-                  </Text>
-                </View>
-
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 4 }}>
-                  <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 13, color: p.emeraldText }}>
-                    {Number(item.actual_work_hours || 0).toFixed(2)} giờ công
-                  </Text>
-                  <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.brand }}>
-                    Xem chi tiết ›
-                  </Text>
-                </View>
-              </Card>
+                <Text numberOfLines={1} style={{ fontFamily: 'Mono', fontSize: 12, color: p.body }}>
+                  {clockTime(item.check_in_time)} → {item.check_out_time ? clockTime(item.check_out_time) : '--:--'}
+                  {!working && ` · ${Number(item.actual_work_hours || 0).toFixed(1)}h`}
+                </Text>
+                <Text numberOfLines={1} style={{ fontFamily: 'BeVietnam', fontSize: 11, color: p.muted }}>{storeLabel(item.store_name)}</Text>
+              </View>
+              <AppIcon name="chevron-forward" size={14} color={p.muted} />
             </Pressable>
           );
         }}
@@ -297,7 +234,6 @@ function HistoryScreen() {
     </>
   );
 }
-
 export default function ActivityScreen() {
  const {kind}=useLocalSearchParams<{kind?:string}>();
  const {data,error}=useResource<Profile>('/auth/me');

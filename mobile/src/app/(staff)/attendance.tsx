@@ -20,7 +20,6 @@ import {
   styles,
   usePalette,
   Badge,
-  MetricBox,
 } from '@/components/attendance-ui';
 import { LoadingBar } from '@/components/loading-bar';
 import { distanceMeters } from '@/services/geofence';
@@ -31,7 +30,7 @@ import { AttendanceMap } from '@/components/attendance-map';
 import { ensureLocationPermission } from '@/services/location-permission';
 import {
   ApiError,
-  displayTime,
+  clockTime,
   request,
   scheduleLabels,
   type Fence,
@@ -327,35 +326,113 @@ export default function AttendanceScreen() {
   const actionDisabled = busy || !pendingReady || !fresh || !fence || remaining > 0 || (!selectedShift || (!today?.can_check_out && !today?.can_check_in));
   if (!ready) return <ActivityIndicator style={{ margin: 40 }} />;
   if (!token) return <Redirect href="/login" />;
+  const outside = distance !== null && !!fence && distance > fence.radius_meters;
+  const working = !!today?.can_check_out;
   return <>
     <ScrollView style={{ backgroundColor: p.bg }} contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setError(''); void refresh(); }} />}>
-      <View style={{ alignItems: 'center', gap: 8, paddingVertical: 16 }}>
-        <Badge label={today?.can_check_out ? 'ĐANG LÀM VIỆC' : 'CHẤM CÔNG HÔM NAY'} variant="brand" />
-        <Label variant="display" style={{ fontSize: 36, lineHeight: 46, fontVariant: ['tabular-nums'] }}>{new Date(clock).toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}</Label>
-        <Label muted>{new Date(clock).toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })}</Label>
-      </View>
       <LoadingBar active={busy || refreshing} label={busy ? stage : 'Đang đồng bộ chấm công…'} />
-      {!!error && <Card style={{ backgroundColor: p.dangerBg }}><Label style={{ color: p.dangerText }}>{error}</Label><Button title="Thử tải lại" secondary disabled={busy} onPress={() => { setError(''); void refresh(); }} /></Card>}
+      {!!error && <Card style={{ backgroundColor: p.dangerBg, borderColor: p.danger }}><Label style={{ color: p.dangerText }}>{error}</Label><Button title="Thử tải lại" secondary disabled={busy} onPress={() => { setError(''); void refresh(); }} /></Card>}
       {needsSettings && <Button title="Mở Cài đặt cấp quyền vị trí" secondary onPress={() => void Linking.openSettings().catch(onError)} />}
-      {!!notice && <Card><Label style={{ color: p.emeraldText }}>{notice}</Label></Card>}
-      <Card><View style={[styles.row, { justifyContent: 'space-between', flexWrap: 'wrap' }]}><Label variant="subtitle">{profile?.full_name || 'Nhân viên'}</Label><Badge label={profile?.employee_code || 'TECHZONE'} /></View><Label muted>{storeLabel(profile?.store_name)}</Label>
-        {!!selectedShift?.store_name && selectedShift.store_name !== profile?.store_name && <Label muted>{today?.can_check_out ? 'Cửa hàng của lượt đang mở' : 'Cửa hàng trong lịch phân ca'}: {storeLabel(selectedShift.store_name)}</Label>}
-        <Label variant="bold">{selectedShift?.shift_name || 'Chưa được phân ca hôm nay'}</Label>
-        {selectedShift?.start_time && selectedShift.end_time && <Label muted>{selectedShift.start_time.slice(0,5)} – {selectedShift.end_time.slice(0,5)}</Label>}
-        <View style={styles.row}><MetricBox label="Giờ vào" value={displayTime(today?.check_in_time || null)} /><MetricBox label="Giờ ra" value={displayTime(today?.check_out_time || null)} /></View>
-        {today?.can_check_out && <Label muted>Đã làm {elapsed.toFixed(2)} giờ · Giờ công cuối cùng do máy chủ tính</Label>}
+
+      {/* Shift */}
+      <Card style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14 }}>
+        <View style={{ flex: 1, gap: 2 }}>
+          <Label variant="bold" style={{ fontSize: 15 }}>
+            {selectedShift?.shift_name || 'Chưa được phân ca hôm nay'}
+            {!!(selectedShift?.start_time && selectedShift.end_time) && <Label style={{ fontFamily: 'Mono', fontSize: 14 }}>{'  '}{selectedShift.start_time.slice(0, 5)} – {selectedShift.end_time.slice(0, 5)}</Label>}
+          </Label>
+          <Label muted variant="caption">{storeLabel(selectedShift?.store_name || profile?.store_name)}{fence?.store_address ? ` · ${fence.store_address}` : ''}</Label>
+        </View>
+        {working ? <Badge label="Đã vào ca" variant="success" pulse size="sm" /> : today?.check_out_time ? <Badge label="Đã kết thúc" size="sm" /> : <Badge label="Chưa vào ca" size="sm" />}
       </Card>
-      {!selectedShift && <Label muted>Chưa có ca được phân công hôm nay. Vui lòng liên hệ cửa hàng trưởng.</Label>}
-      {pending ? <Card><Label style={{ color: p.amberText }}>Đang chờ xác định kết quả lần trước.</Label><Button title="Kiểm tra / thử lại yêu cầu" disabled={busy} onPress={() => void handleSubmit(false, true)} /></Card> : <AttendanceAction checkOut={!!today?.can_check_out} disabled={actionDisabled} onPress={() => void handleSubmit(!!today?.can_check_out)} />}
-      {remaining > 0 && <Label muted>Vui lòng chờ {remaining} giây để chấm công tiếp.</Label>}
+
+      {/* Location */}
+      <Card style={{ padding: 0, gap: 0, overflow: 'hidden' }}>
+        {fence && position ? <AttendanceMap fence={fence} position={position} /> : (
+          <View style={{ height: 150, backgroundColor: p.surfaceLow, alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+            <View style={{ width: 96, height: 96, borderRadius: 48, borderWidth: 1.5, borderStyle: 'dashed', borderColor: p.emerald, backgroundColor: p.emeraldBg, alignItems: 'center', justifyContent: 'center' }}>
+              <View style={{ width: 12, height: 12, borderRadius: 3, backgroundColor: p.text, borderWidth: 2, borderColor: p.card }} />
+            </View>
+            <Label muted variant="caption">{fence ? `Vùng chấm công · ${storeLabel(fence.store_name)}` : 'Chưa tải được vùng chấm công cửa hàng.'}</Label>
+          </View>
+        )}
+        <View style={{ flexDirection: 'row', borderTopWidth: 1, borderTopColor: p.line }}>
+          <Stat label="Khoảng cách" value={distance !== null ? `${distance.toFixed(0)}m` : '—'} color={outside ? p.dangerText : undefined} />
+          <Stat label="Bán kính" value={fence ? `${fence.radius_meters}m` : '—'} divider />
+          <Stat label="Độ chính xác" value={gpsAccuracy !== null ? `±${gpsAccuracy.toFixed(0)}m` : '—'} divider />
+        </View>
+      </Card>
+
+      {!!notice && <Callout tone={outside ? 'danger' : 'success'} text={notice} />}
+      {!notice && distance !== null && <Callout tone={outside ? 'danger' : 'success'} text={outside ? 'Vị trí GPS ngoài phạm vi cửa hàng. Đến đúng cửa hàng được phân công và lấy lại vị trí.' : 'Vị trí hợp lệ. Bạn đang trong phạm vi cửa hàng được phân công.'} />}
+      {!selectedShift && <Callout tone="neutral" text="Chưa có ca được phân công hôm nay. Vui lòng liên hệ cửa hàng trưởng." />}
+
+      {/* Actions */}
+      <View style={{ gap: 8 }}>
+        {pending
+          ? <Card style={{ backgroundColor: p.amberBg, borderColor: p.amber }}><Label style={{ color: p.amberText }}>Đang chờ xác định kết quả lần trước.</Label><Button title="Kiểm tra / thử lại yêu cầu" disabled={busy} onPress={() => void handleSubmit(false, true)} /></Card>
+          : <AttendanceAction checkOut={working} disabled={actionDisabled} onPress={() => void handleSubmit(working)} />}
+        {!!fence && <Button title="Lấy lại vị trí" icon="refresh-outline" secondary disabled={busy} onPress={() => void relocate()} />}
+      </View>
+      {remaining > 0 && <Label muted variant="caption">Vui lòng chờ <Label style={{ fontFamily: 'Mono', fontSize: 12 }}>{remaining}</Label> giây để chấm công tiếp.</Label>}
+
+      {/* Current result */}
+      <Card style={{ gap: 0 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+          <Label style={{ fontFamily: 'BeVietnamBold', fontSize: 10, letterSpacing: 0.8, textTransform: 'uppercase', color: p.muted }}>Kết quả lượt hiện tại</Label>
+          <Label style={{ fontFamily: 'Mono', fontSize: 12, color: p.muted }}>{new Date(clock).toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}</Label>
+        </View>
+        <Line label="Giờ vào" value={today?.check_in_time ? `${clockTime(today.check_in_time)} · ${statusLabels[today.status] || today.status}` : 'Chưa ghi nhận'} mono={!!today?.check_in_time} />
+        <Line label="Giờ ra" value={today?.check_out_time ? clockTime(today.check_out_time) : 'Chưa ghi nhận'} mono={!!today?.check_out_time} />
+        {working && <Line label="Đã làm" value={`${elapsed.toFixed(2)}h`} mono />}
+        {!!today?.check_in_time && <Line label="Muộn / Sớm" value={`${today.late_minutes || 0}′ / ${today.early_minutes || 0}′`} mono />}
+        {!!today?.check_in_time && <Line label="Đối chiếu lịch" value={scheduleLabels[today.schedule_status] || 'Chưa đối chiếu'} last />}
+        {!today?.check_in_time && <Line label="Trạng thái" value="Chưa chấm công" last />}
+        <Button title="Xem nhật ký chấm công →" variant="secondary" style={{ marginTop: 12 }} onPress={() => router.push('/(staff)/activity')} />
+      </Card>
       <Label variant="caption" muted>GPS được chuẩn bị khi mở màn hình này nếu đã cấp quyền; tự dừng khi rời màn hình hoặc chuyển app sang nền.</Label>
-      {today?.check_in_time && <Card><Label variant="subtitle">Kết quả lượt hiện tại</Label><Badge label={statusLabels[today.status] || today.status} variant="info" /><Label muted>{scheduleLabels[today.schedule_status] || 'Chưa đối chiếu'}</Label><Label>Muộn {today.late_minutes || 0} phút · Sớm {today.early_minutes || 0} phút</Label><Label>Giờ công {Number(today.actual_work_hours || 0).toFixed(2)} · Ngoài ca ghi nhận {today.overtime_hours || 0} giờ</Label><Button title="Xem nhật ký chấm công" secondary onPress={() => router.push('/(staff)/activity')} /></Card>}
     </ScrollView>
+
+    {/* GPS check sheet (shown when the server rejects the location) */}
     <Modal visible={showGps && !!fence && !!position} animationType="slide" onRequestClose={() => setShowGps(false)}><ScrollView style={{ backgroundColor: p.bg }} contentContainerStyle={[styles.content, { paddingTop: 56 }]}>
-      <Badge label="KIỂM TRA VỊ TRÍ" variant="danger" /><Label variant="title">{distance !== null && fence && distance > fence.radius_meters ? 'GPS của bạn đang ngoài vùng cho phép' : 'Kiểm tra độ chính xác GPS'}</Label>
+      <Badge label="Kiểm tra vị trí" variant="danger" /><Label variant="title">{outside ? 'GPS của bạn đang ngoài vùng cho phép' : 'Kiểm tra độ chính xác GPS'}</Label>
       <Label muted>Đến đúng cửa hàng được phân công và lấy lại vị trí.</Label>
-      <Card>{fence && <AttendanceMap fence={fence} position={position} />}<Label variant="subtitle">{storeLabel(fence?.store_name)}</Label><Label muted>{fence?.store_address || 'Địa chỉ chưa cập nhật'}</Label><View style={styles.row}><MetricBox label="Khoảng cách" value={`${distance?.toFixed(0) ?? '—'} m`} variant="danger" /><MetricBox label="Bán kính" value={`${fence?.radius_meters ?? '—'} m`} /></View><Label muted>GPS của bạn: {position?.latitude.toFixed(6)}, {position?.longitude.toFixed(6)}</Label><Label muted>Độ chính xác: ±{gpsAccuracy?.toFixed(0) ?? '—'} m</Label></Card>
-      <LoadingBar active={busy} label="Đang lấy lại vị trí…" />{!!error && <Label style={{ color: p.dangerText }}>{error}</Label>}<Button title="Lấy lại vị trí" disabled={busy} onPress={() => void relocate()} /><Button title="Quay lại chấm công" secondary disabled={busy} onPress={() => setShowGps(false)} />
+      <Card style={{ padding: 0, gap: 0, overflow: 'hidden' }}>
+        {fence && <AttendanceMap fence={fence} position={position} />}
+        <View style={{ flexDirection: 'row', borderTopWidth: 1, borderTopColor: p.line }}>
+          <Stat label="Khoảng cách" value={distance !== null ? `${distance.toFixed(0)}m` : '—'} color={outside ? p.dangerText : undefined} />
+          <Stat label="Bán kính" value={fence ? `${fence.radius_meters}m` : '—'} divider />
+          <Stat label="Độ chính xác" value={gpsAccuracy !== null ? `±${gpsAccuracy.toFixed(0)}m` : '—'} divider />
+        </View>
+        <View style={{ padding: 14, gap: 2 }}>
+          <Label variant="bold">{storeLabel(fence?.store_name)}</Label>
+          <Label muted variant="caption">{fence?.store_address || 'Địa chỉ chưa cập nhật'}</Label>
+          <Label muted variant="caption">GPS của bạn: <Label style={{ fontFamily: 'Mono', fontSize: 12, color: p.muted }}>{position?.latitude.toFixed(6)}, {position?.longitude.toFixed(6)}</Label></Label>
+        </View>
+      </Card>
+      <LoadingBar active={busy} label="Đang lấy lại vị trí…" />{!!error && <Callout tone="danger" text={error} />}
+      <Button title="Lấy lại vị trí" disabled={busy} onPress={() => void relocate()} /><Button title="Quay lại chấm công" secondary disabled={busy} onPress={() => setShowGps(false)} />
     </ScrollView></Modal>
   </>;
+
+  function Stat({ label, value, color, divider }: { label: string; value: string; color?: string; divider?: boolean }) {
+    return <View style={{ flex: 1, padding: 12, borderLeftWidth: divider ? 1 : 0, borderLeftColor: p.line }}>
+      <Label muted variant="caption">{label}</Label>
+      <Label style={{ fontFamily: 'MonoBold', fontSize: 16, marginTop: 2, color: color || p.text }}>{value}</Label>
+    </View>;
+  }
+  function Line({ label, value, mono, last }: { label: string; value: string; mono?: boolean; last?: boolean }) {
+    return <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingVertical: 9, borderBottomWidth: last ? 0 : 1, borderBottomColor: p.line }}>
+      <Label muted style={{ fontSize: 13 }}>{label}</Label>
+      <Label style={{ fontSize: 13, fontFamily: mono ? 'MonoBold' : 'BeVietnamBold', flexShrink: 1, textAlign: 'right' }}>{value}</Label>
+    </View>;
+  }
+  function Callout({ tone, text }: { tone: 'success' | 'danger' | 'neutral'; text: string }) {
+    const bg = tone === 'success' ? p.emeraldBg : tone === 'danger' ? p.dangerBg : p.surfaceLow;
+    const fg = tone === 'success' ? p.emeraldText : tone === 'danger' ? p.dangerText : p.muted;
+    return <View style={{ flexDirection: 'row', gap: 10, padding: 12, borderRadius: 8, backgroundColor: bg, borderWidth: 1, borderColor: tone === 'neutral' ? p.line : bg }}>
+      <Label style={{ color: fg, fontFamily: 'BeVietnamBold' }}>{tone === 'success' ? '✓' : tone === 'danger' ? '!' : 'i'}</Label>
+      <Label style={{ flex: 1, fontSize: 13, lineHeight: 20, color: p.text }}>{text}</Label>
+    </View>;
+  }
 }

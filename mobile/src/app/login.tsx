@@ -1,18 +1,14 @@
 import { AppIcon, AppText as Text } from '@/components/app-icon';
 import { useRef, useState } from 'react';
-import {
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  View,
-  Pressable,
-} from 'react-native';
-import { Button, Card, Input, Label, usePalette, Badge } from '@/components/attendance-ui';
+import { KeyboardAvoidingView, Platform, ScrollView, View, Pressable } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Button, Input, Label, usePalette } from '@/components/attendance-ui';
 import { LoadingBar } from '@/components/loading-bar';
 import { useSession } from '@/contexts/session';
 
 export default function Login() {
   const p = usePalette();
+  const insets = useSafeAreaInsets();
   const { signIn } = useSession();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -42,112 +38,27 @@ export default function Login() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: p.bg }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: p.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{
-          flexGrow: 1,
-          justifyContent: 'center',
-          padding: 20,
-          paddingVertical: 40,
-          maxWidth: 480,
-          width: '100%',
-          alignSelf: 'center',
-          gap: 20,
-        }}
+        contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingTop: insets.top + 40, paddingBottom: insets.bottom + 28, maxWidth: 480, width: '100%', alignSelf: 'center' }}
       >
-        {/* Brand & Identity Header */}
-        <View style={{ alignItems: 'center', gap: 8 }}>
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 10,
-              backgroundColor: p.surfaceLow,
-              paddingHorizontal: 16,
-              paddingVertical: 8,
-              borderRadius: 9999,
-              borderWidth: 1,
-              borderColor: p.line,
-            }}
-          >
-            <View
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: 8,
-                backgroundColor: p.brand,
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <AppIcon name="flash-outline" style={{ color: '#fff', fontSize: 16, fontWeight: '700' }} />
-            </View>
-            <Text
-              style={{
-                fontFamily: 'BeVietnamBold',
-                fontSize: 16,
-                fontWeight: '700',
-                color: p.text,
-                letterSpacing: 1,
-              }}
-            >
-              TECHZONE
-            </Text>
-            <Badge label="HRM" variant="neutral" size="sm" />
-          </View>
-
-          <Label variant="title" style={{ marginTop: 6 }}>
-            Chào mừng trở lại!
-          </Label>
-          <Label muted style={{ textAlign: 'center' }}>
-            Hệ thống quản trị nhân sự & chấm công nội bộ
-          </Label>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 20, color: p.text, letterSpacing: -0.4 }}>techzone</Text>
+          <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: p.emerald }} />
         </View>
 
-        {/* Main Login Card */}
-        <Card style={{ gap: 14 }}>
-          {/* Store Operational Badge */}
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              backgroundColor: p.surfaceLow,
-              paddingHorizontal: 12,
-              paddingVertical: 8,
-              borderRadius: 10,
-            }}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <View
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: 4,
-                  backgroundColor: p.emerald,
-                }}
-              />
-              <Text
-                style={{
-                  fontFamily: 'BeVietnam',
-                  fontSize: 12,
-                  color: p.text,
-                  fontWeight: '500',
-                }}
-              >
-                TECHZONE Store
-              </Text>
-            </View>
-            <Text style={{ fontSize: 12, color: p.muted }}>Cổng nhân sự</Text>
-          </View>
+        <View style={{ marginTop: 48, gap: 8 }}>
+          <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 10, letterSpacing: 0.8, textTransform: 'uppercase', color: p.muted }}>Cổng nhân sự · HRM</Text>
+          <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 28, lineHeight: 34, color: p.text, letterSpacing: -0.8 }}>Đăng nhập</Text>
+          <Text style={{ fontFamily: 'BeVietnam', fontSize: 14, lineHeight: 21, color: p.body }}>
+            Dùng tài khoản được phòng nhân sự cấp để chấm công, xem lịch ca và nộp đơn.
+          </Text>
+        </View>
 
-          {/* Employee ID / Email */}
+        <View style={{ marginTop: 32, gap: 16 }}>
           <View style={{ gap: 6 }}>
-            <Label variant="caption">Tên đăng nhập / Mã nhân viên</Label>
+            <Label variant="bold" style={{ fontSize: 13 }}>Tên đăng nhập / Mã nhân viên</Label>
             <Input
               accessibilityLabel="Tên đăng nhập"
               placeholder="Nhập tài khoản được cấp"
@@ -159,92 +70,49 @@ export default function Login() {
             />
           </View>
 
-          {/* Password */}
           <View style={{ gap: 6 }}>
-            <Label variant="caption">Mật khẩu bảo mật</Label>
-            <Input
-              accessibilityLabel="Mật khẩu"
-              placeholder="Nhập mật khẩu của bạn"
-              secureTextEntry={!visible}
-              value={password}
-              onChangeText={setPassword}
-              onSubmitEditing={() => {
-                if (username.trim() && password) void submit();
-              }}
-              leftIcon="lock-closed-outline"
-            />
-          </View>
-
-          {/* Options Row */}
-          <View
-            style={{
-              flexDirection: 'row',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-            }}
-          >
-            <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.muted }}>{Platform.OS === 'web' ? 'Phiên đăng nhập trên trình duyệt' : 'Phiên được lưu an toàn trên thiết bị'}</Text>
-
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setVisible(v => !v)}
-              style={{ paddingVertical: 4 }}
-            >
-              <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.brand }}>
-                {visible ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
-              </Text>
-            </Pressable>
+            <Label variant="bold" style={{ fontSize: 13 }}>Mật khẩu bảo mật</Label>
+            <View>
+              <Input
+                accessibilityLabel="Mật khẩu"
+                placeholder="Nhập mật khẩu của bạn"
+                secureTextEntry={!visible}
+                value={password}
+                onChangeText={setPassword}
+                onSubmitEditing={() => { if (username.trim() && password) void submit(); }}
+                leftIcon="lock-closed-outline"
+                style={{ paddingRight: 40 }}
+              />
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={visible ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                onPress={() => setVisible(v => !v)}
+                style={{ position: 'absolute', right: 1, top: 1, bottom: 1, width: 44, alignItems: 'center', justifyContent: 'center' }}
+              >
+                <AppIcon name={visible ? 'eye-off-outline' : 'eye-outline'} size={18} color={p.muted} />
+              </Pressable>
+            </View>
           </View>
 
           <LoadingBar active={busy} label="Đang xác thực thông tin…" />
 
           {!!error && (
-            <View
-              style={{
-                backgroundColor: p.dangerBg,
-                padding: 10,
-                borderRadius: 10,
-                borderWidth: 1,
-                borderColor: p.danger,
-              }}
-            >
-              <Text
-                accessibilityRole="alert"
-                style={{
-                  color: p.dangerText,
-                  fontFamily: 'BeVietnam',
-                  fontSize: 13,
-                }}
-              >
-                {error}
-              </Text>
+            <View style={{ backgroundColor: p.dangerBg, padding: 12, borderRadius: 6, borderWidth: 1, borderColor: p.dangerBg }}>
+              <Text accessibilityRole="alert" style={{ color: p.dangerText, fontFamily: 'BeVietnam', fontSize: 13, lineHeight: 19 }}>{error}</Text>
             </View>
           )}
 
-          <Button
-            title="Đăng nhập"
-            variant="brand"
-            icon="arrow-forward"
-            onPress={() => void submit()}
-            disabled={busy || !username.trim() || !password}
-          />
-        </Card>
+          <Button title="Đăng nhập" variant="brand" onPress={() => void submit()} disabled={busy || !username.trim() || !password} />
+        </View>
 
-        {/* Security Badge */}
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 8,
-            paddingVertical: 8,
-          }}
-        >
-          <AppIcon name="shield-checkmark-outline" style={{ fontSize: 14, color: p.emerald }} />
+        <View style={{ flex: 1, minHeight: 32 }} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+          <AppIcon name="lock-closed-outline" size={13} color={p.muted} />
           <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.muted }}>
-            Tài khoản và quyền truy cập được xác thực bởi máy chủ
+            {Platform.OS === 'web' ? 'Phiên đăng nhập trên trình duyệt' : 'Phiên được lưu an toàn trên thiết bị'}
           </Text>
         </View>
+        <Text style={{ fontFamily: 'Mono', fontSize: 11, color: p.muted, textAlign: 'center', marginTop: 6 }}>TechZone HRM</Text>
       </ScrollView>
     </KeyboardAvoidingView>
   );

@@ -2,13 +2,15 @@ import { AppIcon, AppText as Text } from '@/components/app-icon';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   Modal,
   Pressable,
   ScrollView,
   TextInput,
   View,
 } from 'react-native';
-import { Button, Card, Input, Label, usePalette } from '@/components/attendance-ui';
+import { Button, Card, Input, Label, MetricBox, usePalette } from '@/components/attendance-ui';
 import { LoadingBar } from '@/components/loading-bar';
 import { EyeIcon } from '@/components/eye-icon';
 import type { Profile } from '@/services/staff';
@@ -552,88 +554,45 @@ export function OvertimeManagement({
     const isStep2Rejected = item.status === 'REJECTED';
     const isCancelled = item.status === 'CANCELLED';
 
+    type Step = 'done' | 'rejected' | 'waiting' | 'idle';
+    const s1: Step = isStep1Done ? 'done' : isStep1Declined ? 'rejected' : isStep1Waiting ? 'waiting' : 'idle';
+    const s2: Step = isStep2Done ? 'done' : isStep2Rejected ? 'rejected' : isStep2Waiting ? 'waiting' : 'idle';
+    const tone = (s: Step) => (s === 'done' ? p.emerald : s === 'rejected' ? p.danger : s === 'waiting' ? p.amber : p.surfaceHigh);
+    const dot = (s: Step, label: string) => (
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: s === 'waiting' ? 'transparent' : tone(s), borderWidth: s === 'waiting' ? 1.5 : 0, borderColor: tone(s) }} />
+        <Text style={{ fontFamily: 'BeVietnam', fontSize: 10, color: p.muted }}>{label}</Text>
+      </View>
+    );
+    const bar = (s: Step) => <View style={{ flex: 1, height: 1, backgroundColor: s === 'done' ? p.emerald : p.line }} />;
+
+    // One line for the latest step: who acted and when.
+    const detail = isCancelled
+      ? 'Đơn tăng ca đã được hủy.'
+      : isStep2Done
+      ? `Đã duyệt${item.reviewer_name ? ` · ${item.reviewer_name}` : ''}${item.reviewed_at ? ` · ${formatDateTimeDMY(item.reviewed_at)}` : ''}`
+      : isStep2Rejected
+      ? `Quản lý / HR đã từ chối${item.reviewed_at ? ` · ${formatDateTimeDMY(item.reviewed_at)}` : ''}`
+      : isStep2Waiting
+      ? `Nhân viên đã xác nhận${item.employee_confirmed_at ? ` · ${formatDateTimeDMY(item.employee_confirmed_at)}` : ''} · chờ Quản lý / HR`
+      : isStep1Declined
+      ? 'Nhân viên đã từ chối đề xuất'
+      : isStep1Waiting
+      ? 'Chờ nhân viên xác nhận đề xuất'
+      : 'Bản nháp chưa gửi';
+
     return (
-      <View
-        style={{
-          backgroundColor: p.bg,
-          borderRadius: 10,
-          padding: 10,
-          gap: 6,
-          borderWidth: 1,
-          borderColor: p.line,
-          marginTop: 6,
-        }}
-      >
-        {/* Cấp 1: Nhân viên xác nhận / CHT đề xuất */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
-            <Text
-              style={{
-                fontFamily: 'BeVietnamBold',
-                fontSize: 11,
-                color: isStep1Done ? '#16a34a' : isStep1Declined ? '#dc2626' : isStep1Waiting ? '#d97706' : p.muted,
-              }}
-            >
-              {isStep1Done ? 'CẤP 1' : isStep1Declined ? 'CẤP 1' : '⏳ CẤP 1'}:
-            </Text>
-            <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.text, flex: 1 }} numberOfLines={1}>
-              {isStep1Done
-                ? 'Nhân viên đã xác nhận ca OT'
-                : isStep1Declined
-                ? 'Nhân viên đã từ chối'
-                : isStep1Waiting
-                ? 'Chờ nhân viên xác nhận đề xuất'
-                : 'Bản nháp chưa gửi'}
-            </Text>
-          </View>
-          {item.employee_confirmed_at ? (
-            <Text style={{ fontSize: 11, color: p.muted, fontFamily: 'BeVietnam' }}>
-              {formatDateTimeDMY(item.employee_confirmed_at)}
-            </Text>
-          ) : null}
+      <View style={{ gap: 6, marginTop: 4 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          {dot(isCancelled ? 'idle' : 'done', 'Gửi')}
+          {bar(s1)}
+          {dot(s1, 'Xác nhận')}
+          {bar(s2)}
+          {dot(s2, 'Duyệt')}
         </View>
-
-        {/* Cấp 2: Quản lý / Phòng Nhân sự phê duyệt */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
-            <Text
-              style={{
-                fontFamily: 'BeVietnamBold',
-                fontSize: 11,
-                color: isStep2Done ? '#16a34a' : isStep2Rejected ? '#dc2626' : isStep2Waiting ? '#2563eb' : p.muted,
-              }}
-            >
-              {isStep2Done ? 'CẤP 2' : isStep2Rejected ? 'CẤP 2' : '⏳ CẤP 2'}:
-            </Text>
-            <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.text, flex: 1 }} numberOfLines={1}>
-              {isStep2Done
-                ? `HR đã duyệt ${item.reviewer_name ? `(${item.reviewer_name})` : ''}`
-                : isStep2Rejected
-                ? 'HR / Quản lý đã từ chối'
-                : isStep2Waiting
-                ? 'Đang chờ Quản lý / HR phê duyệt'
-                : 'Chờ hoàn tất Cấp 1'}
-            </Text>
-          </View>
-          {item.reviewed_at ? (
-            <Text style={{ fontSize: 11, color: isStep2Done ? p.muted : '#dc2626', fontFamily: 'BeVietnam' }}>
-              {formatDateTimeDMY(item.reviewed_at)}
-            </Text>
-          ) : null}
-        </View>
-
-        {/* Rejection Note */}
+        <Text numberOfLines={1} style={{ fontFamily: 'BeVietnam', fontSize: 11, color: isStep2Rejected || isStep1Declined ? p.dangerText : p.muted }}>{detail}</Text>
         {isStep2Rejected && !!item.rejection_reason && (
-          <Text style={{ fontSize: 11, color: '#dc2626', fontFamily: 'BeVietnam', fontStyle: 'italic' }} numberOfLines={2}>
-            Lý do từ chối: {item.rejection_reason}
-          </Text>
-        )}
-
-        {/* Cancelled Note */}
-        {isCancelled && (
-          <Text style={{ fontSize: 11, color: p.muted, fontFamily: 'BeVietnam', fontStyle: 'italic' }}>
-            Đơn tăng ca đã được hủy.
-          </Text>
+          <Text numberOfLines={2} style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.body }}>Lý do từ chối: {item.rejection_reason}</Text>
         )}
       </View>
     );
@@ -641,78 +600,28 @@ export function OvertimeManagement({
 
   return (
     <View style={{ gap: 12 }}>
-      {/* 1. NAV TRONG: [ Đơn của tôi ] vs [ Quản lý duyệt ] */}
+      {/* 1. Scope switch: my OT vs approving OT (managers only) */}
       {isManager && (
-        <View
-          style={{
-            flexDirection: 'row',
-            backgroundColor: p.card,
-            borderRadius: 12,
-            padding: 4,
-            borderWidth: 1,
-            borderColor: p.line,
-          }}
-        >
-          <Pressable
-            accessibilityRole="tab"
-            onPress={() => setActiveScopeTab('my_ot')}
-            style={{
-              flex: 1,
-              paddingVertical: 10,
-              alignItems: 'center',
-              borderRadius: 8,
-              backgroundColor: activeScopeTab === 'my_ot' ? p.accent : 'transparent',
-            }}
-          >
-            <Text
-              style={{
-                fontFamily: 'BeVietnamBold',
-                fontSize: 13,
-                color: activeScopeTab === 'my_ot' ? (p.dark ? '#09090b' : '#fff') : p.text,
-              }}
-            >
-              Đơn OT của tôi
-            </Text>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="tab"
-            onPress={() => setActiveScopeTab('manager_ot')}
-            style={{
-              flex: 1,
-              paddingVertical: 10,
-              alignItems: 'center',
-              borderRadius: 8,
-              backgroundColor: activeScopeTab === 'manager_ot' ? p.accent : 'transparent',
-              flexDirection: 'row',
-              justifyContent: 'center',
-              gap: 6,
-            }}
-          >
-            <Text
-              style={{
-                fontFamily: 'BeVietnamBold',
-                fontSize: 13,
-                color: activeScopeTab === 'manager_ot' ? (p.dark ? '#09090b' : '#fff') : p.text,
-              }}
-            >
-              Quản lý duyệt OT
-            </Text>
-            {pendingOtApprovalCount > 0 && (
-              <View
-                style={{
-                  backgroundColor: '#dc2626',
-                  borderRadius: 10,
-                  paddingHorizontal: 6,
-                  paddingVertical: 1,
-                }}
+        <View accessibilityRole="tablist" style={{ flexDirection: 'row', gap: 4, padding: 3, borderRadius: 6, backgroundColor: p.surfaceLow }}>
+          {([['my_ot', 'Đơn OT của tôi'], ['manager_ot', 'Duyệt OT']] as const).map(([key, label]) => {
+            const active = activeScopeTab === key;
+            return (
+              <Pressable
+                key={key}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: active }}
+                onPress={() => setActiveScopeTab(key)}
+                style={{ flex: 1, height: 34, borderRadius: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1, borderColor: active ? p.line : 'transparent', backgroundColor: active ? p.card : 'transparent' }}
               >
-                <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>
-                  {pendingOtApprovalCount}
-                </Text>
-              </View>
-            )}
-          </Pressable>
+                <Text style={{ fontFamily: active ? 'BeVietnamBold' : 'BeVietnam', fontSize: 13, color: active ? p.text : p.muted }}>{label}</Text>
+                {key === 'manager_ot' && pendingOtApprovalCount > 0 && (
+                  <View style={{ minWidth: 18, paddingHorizontal: 5, height: 18, borderRadius: 4, backgroundColor: p.brand, alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ fontFamily: 'MonoBold', fontSize: 11, color: p.onBrand }}>{pendingOtApprovalCount}</Text>
+                  </View>
+                )}
+              </Pressable>
+            );
+          })}
         </View>
       )}
 
@@ -736,29 +645,19 @@ export function OvertimeManagement({
       {activeScopeTab === 'my_ot' && (
         <>
           {/* Quick Metrics Summary */}
-          <Label large>Thống kê giờ tăng ca ({selectedMonth === 'ALL' ? 'Tất cả' : selectedMonth})</Label>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-            <View style={{ flexBasis: '48%', flexGrow: 1 }}>
-              <Card>
-                <Label muted>Giờ OT đã đối soát</Label>
-                <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 26, color: '#16a34a' }}>
-                  {myOtStats.totalHours.toFixed(2)}{' '}
-                  <Text style={{ fontSize: 14, fontWeight: '400', color: p.muted }}>giờ</Text>
-                </Text>
-                <Label muted>Hợp lệ được tính trả lương</Label>
-              </Card>
-            </View>
-
-            <View style={{ flexBasis: '48%', flexGrow: 1 }}>
-              <Card>
-                <Label muted>Đang chờ duyệt</Label>
-                <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 26, color: '#d97706' }}>
-                  {myOtStats.pendingCount}{' '}
-                  <Text style={{ fontSize: 14, fontWeight: '400', color: p.muted }}>đơn</Text>
-                </Text>
-                <Label muted>Tiến trình Cấp 1–Cấp 2</Label>
-              </Card>
-            </View>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <MetricBox
+              label="Giờ OT đã đối soát"
+              value={`${myOtStats.totalHours.toFixed(1)}h`}
+              subtext={`Hợp lệ tính lương · ${selectedMonth === 'ALL' ? 'tất cả' : selectedMonth}`}
+              variant="success"
+            />
+            <MetricBox
+              label="Đang chờ duyệt"
+              value={`${myOtStats.pendingCount} đơn`}
+              subtext="Tiến trình cấp 1–cấp 2"
+              variant={myOtStats.pendingCount ? 'warning' : 'neutral'}
+            />
           </View>
 
           {/* Header & Count */}
@@ -776,7 +675,7 @@ export function OvertimeManagement({
                 flexDirection: 'row',
                 alignItems: 'center',
                 backgroundColor: p.card,
-                borderRadius: 12,
+                borderRadius: 8,
                 borderWidth: 1,
                 borderColor: p.line,
                 paddingHorizontal: 12,
@@ -805,7 +704,7 @@ export function OvertimeManagement({
             </View>
 
             {/* Horizontal Month Scroll Pills */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingVertical: 2 }}>
+            <ScrollView automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled" horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingVertical: 2 }}>
               {monthOptions.map(opt => {
                 const isSelected = selectedMonth === opt.value;
                 return (
@@ -815,7 +714,7 @@ export function OvertimeManagement({
                     style={{
                       paddingVertical: 6,
                       paddingHorizontal: 13,
-                      borderRadius: 16,
+                      borderRadius: 8,
                       backgroundColor: isSelected ? p.accent : p.card,
                       borderWidth: 1,
                       borderColor: isSelected ? p.accent : p.line,
@@ -825,7 +724,7 @@ export function OvertimeManagement({
                       style={{
                         fontFamily: isSelected ? 'BeVietnamBold' : 'BeVietnam',
                         fontSize: 12,
-                        color: isSelected ? (p.dark ? '#09090b' : '#fff') : p.text,
+                        color: isSelected ? p.onBrand : p.text,
                       }}
                     >
                       {opt.label}
@@ -852,7 +751,7 @@ export function OvertimeManagement({
                   style={{
                     paddingVertical: 6,
                     paddingHorizontal: 12,
-                    borderRadius: 16,
+                    borderRadius: 8,
                     backgroundColor: selected ? p.accent : p.card,
                     borderWidth: 1,
                     borderColor: selected ? p.accent : p.line,
@@ -862,7 +761,7 @@ export function OvertimeManagement({
                     style={{
                       fontFamily: selected ? 'BeVietnamBold' : 'BeVietnam',
                       fontSize: 12,
-                      color: selected ? (p.dark ? '#09090b' : '#fff') : p.text,
+                      color: selected ? p.onBrand : p.text,
                     }}
                   >
                     {labelText}
@@ -943,11 +842,11 @@ export function OvertimeManagement({
                       return (
                         <View
                           style={{
-                            backgroundColor: 'rgba(22, 163, 74, 0.08)',
+                            backgroundColor: p.emeraldBg,
                             padding: 8,
                             borderRadius: 8,
                             borderWidth: 1,
-                            borderColor: 'rgba(22, 163, 74, 0.25)',
+                            borderColor: p.emerald,
                             flexDirection: 'row',
                             justifyContent: 'space-between',
                             alignItems: 'center',
@@ -956,8 +855,8 @@ export function OvertimeManagement({
                           }}
                         >
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                            <AppIcon name="checkmark-circle" style={{ fontSize: 15, color: '#16a34a' }} />
-                            <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: '#16a34a' }}>
+                            <AppIcon name="checkmark-circle" style={{ fontSize: 15, color: p.emeraldText }} />
+                            <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: p.emeraldText }}>
                               Đã đối soát: {verifiedFmt.minutesText} ({verifiedFmt.hoursText})
                             </Text>
                           </View>
@@ -984,11 +883,11 @@ export function OvertimeManagement({
                       return (
                         <View
                           style={{
-                            backgroundColor: 'rgba(217, 119, 6, 0.08)',
+                            backgroundColor: p.amberBg,
                             padding: 8,
                             borderRadius: 8,
                             borderWidth: 1,
-                            borderColor: 'rgba(217, 119, 6, 0.2)',
+                            borderColor: p.amber,
                             flexDirection: 'row',
                             justifyContent: 'space-between',
                             alignItems: 'center',
@@ -997,8 +896,8 @@ export function OvertimeManagement({
                           }}
                         >
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                            <AppIcon name="hourglass-outline" style={{ fontSize: 14, color: '#d97706' }} />
-                            <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: '#d97706' }}>
+                            <AppIcon name="hourglass-outline" style={{ fontSize: 14, color: p.amberText }} />
+                            <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.amberText }}>
                               Chờ HR đối soát giờ công
                             </Text>
                           </View>
@@ -1065,11 +964,11 @@ export function OvertimeManagement({
                             paddingHorizontal: 12,
                             borderRadius: 8,
                             borderWidth: 1.5,
-                            borderColor: '#dc2626',
+                            borderColor: p.dangerText,
                             backgroundColor: 'transparent',
                           }}
                         >
-                          <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: '#dc2626' }}>
+                          <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: p.dangerText }}>
                             Từ chối
                           </Text>
                         </Pressable>
@@ -1079,10 +978,10 @@ export function OvertimeManagement({
                             paddingVertical: 6,
                             paddingHorizontal: 12,
                             borderRadius: 8,
-                            backgroundColor: '#16a34a',
+                            backgroundColor: p.brand,
                           }}
                         >
-                          <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: '#fff' }}>
+                          <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: p.onBrand }}>
                             Xác nhận OT
                           </Text>
                         </Pressable>
@@ -1134,7 +1033,7 @@ export function OvertimeManagement({
                 flexDirection: 'row',
                 alignItems: 'center',
                 backgroundColor: p.card,
-                borderRadius: 12,
+                borderRadius: 8,
                 borderWidth: 1,
                 borderColor: p.line,
                 paddingHorizontal: 12,
@@ -1163,7 +1062,7 @@ export function OvertimeManagement({
             </View>
 
             {/* Horizontal Month Scroll Pills */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingVertical: 2 }}>
+            <ScrollView automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled" horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingVertical: 2 }}>
               {monthOptions.map(opt => {
                 const isSelected = selectedMonth === opt.value;
                 return (
@@ -1173,7 +1072,7 @@ export function OvertimeManagement({
                     style={{
                       paddingVertical: 6,
                       paddingHorizontal: 13,
-                      borderRadius: 16,
+                      borderRadius: 8,
                       backgroundColor: isSelected ? p.accent : p.card,
                       borderWidth: 1,
                       borderColor: isSelected ? p.accent : p.line,
@@ -1183,7 +1082,7 @@ export function OvertimeManagement({
                       style={{
                         fontFamily: isSelected ? 'BeVietnamBold' : 'BeVietnam',
                         fontSize: 12,
-                        color: isSelected ? (p.dark ? '#09090b' : '#fff') : p.text,
+                        color: isSelected ? p.onBrand : p.text,
                       }}
                     >
                       {opt.label}
@@ -1209,7 +1108,7 @@ export function OvertimeManagement({
                   style={{
                     paddingVertical: 6,
                     paddingHorizontal: 12,
-                    borderRadius: 16,
+                    borderRadius: 8,
                     backgroundColor: selected ? p.accent : p.card,
                     borderWidth: 1,
                     borderColor: selected ? p.accent : p.line,
@@ -1219,7 +1118,7 @@ export function OvertimeManagement({
                     style={{
                       fontFamily: selected ? 'BeVietnamBold' : 'BeVietnam',
                       fontSize: 12,
-                      color: selected ? (p.dark ? '#09090b' : '#fff') : p.text,
+                      color: selected ? p.onBrand : p.text,
                     }}
                   >
                     {labelText}
@@ -1233,7 +1132,7 @@ export function OvertimeManagement({
           {filteredManagerOtList.length === 0 ? (
             <Card>
               <View style={{ paddingVertical: 24, alignItems: 'center', gap: 6 }}>
-                <AppIcon name="checkmark-done-circle-outline" style={{ fontSize: 32, color: '#16a34a' }} />
+                <AppIcon name="checkmark-done-circle-outline" style={{ fontSize: 32, color: p.emeraldText }} />
                 <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 14, color: p.text }}>
                   Không có đơn OT cần xử lý
                 </Text>
@@ -1301,11 +1200,11 @@ export function OvertimeManagement({
                       return (
                         <View
                           style={{
-                            backgroundColor: 'rgba(22, 163, 74, 0.08)',
+                            backgroundColor: p.emeraldBg,
                             padding: 8,
                             borderRadius: 8,
                             borderWidth: 1,
-                            borderColor: 'rgba(22, 163, 74, 0.25)',
+                            borderColor: p.emerald,
                             flexDirection: 'row',
                             justifyContent: 'space-between',
                             alignItems: 'center',
@@ -1314,8 +1213,8 @@ export function OvertimeManagement({
                           }}
                         >
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                            <AppIcon name="checkmark-circle" style={{ fontSize: 15, color: '#16a34a' }} />
-                            <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: '#16a34a' }}>
+                            <AppIcon name="checkmark-circle" style={{ fontSize: 15, color: p.emeraldText }} />
+                            <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: p.emeraldText }}>
                               Đã đối soát: {verifiedFmt.minutesText} ({verifiedFmt.hoursText})
                             </Text>
                           </View>
@@ -1342,11 +1241,11 @@ export function OvertimeManagement({
                       return (
                         <View
                           style={{
-                            backgroundColor: 'rgba(217, 119, 6, 0.08)',
+                            backgroundColor: p.amberBg,
                             padding: 8,
                             borderRadius: 8,
                             borderWidth: 1,
-                            borderColor: 'rgba(217, 119, 6, 0.2)',
+                            borderColor: p.amber,
                             flexDirection: 'row',
                             justifyContent: 'space-between',
                             alignItems: 'center',
@@ -1355,8 +1254,8 @@ export function OvertimeManagement({
                           }}
                         >
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                            <AppIcon name="hourglass-outline" style={{ fontSize: 14, color: '#d97706' }} />
-                            <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: '#d97706' }}>
+                            <AppIcon name="hourglass-outline" style={{ fontSize: 14, color: p.amberText }} />
+                            <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.amberText }}>
                               Chờ HR đối soát giờ công
                             </Text>
                           </View>
@@ -1433,12 +1332,12 @@ export function OvertimeManagement({
                             paddingHorizontal: 14,
                             borderRadius: 8,
                             borderWidth: 1.5,
-                            borderColor: '#dc2626',
+                            borderColor: p.dangerText,
                             backgroundColor: 'transparent',
                           }}
                         >
-                          <AppIcon name="close-outline" style={{ fontSize: 14, color: '#dc2626' }} />
-                          <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: '#dc2626' }}>
+                          <AppIcon name="close-outline" style={{ fontSize: 14, color: p.dangerText }} />
+                          <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: p.dangerText }}>
                             Từ chối
                           </Text>
                         </Pressable>
@@ -1456,16 +1355,16 @@ export function OvertimeManagement({
                             paddingVertical: 7,
                             paddingHorizontal: 16,
                             borderRadius: 8,
-                            backgroundColor: '#16a34a',
-                            shadowColor: '#16a34a',
+                            backgroundColor: p.brand,
+                            shadowColor: 'transparent',
                             shadowOffset: { width: 0, height: 2 },
                             shadowOpacity: 0.2,
                             shadowRadius: 4,
                             elevation: 2,
                           }}
                         >
-                          <AppIcon name="checkmark-outline" style={{ fontSize: 14, color: '#ffffff' }} />
-                          <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: '#ffffff' }}>
+                          <AppIcon name="checkmark-outline" style={{ fontSize: 14, color: p.onBrand }} />
+                          <Text style={{ fontFamily: 'BeVietnamBold', fontSize: 12, color: p.onBrand }}>
                             Duyệt
                           </Text>
                         </Pressable>
@@ -1489,10 +1388,11 @@ export function OvertimeManagement({
       {/* MODAL 1: FORM TẠO ĐƠN ĐĂNG KÝ TĂNG CA (OT)                      */}
       {/* ============================================================== */}
       <Modal visible={showCreateModal} transparent animationType="slide" onRequestClose={() => setShowCreateModal(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <View
           style={{
             flex: 1,
-            backgroundColor: 'rgba(0,0,0,0.5)',
+            backgroundColor: 'rgba(9,9,11,0.5)',
             justifyContent: 'flex-end',
           }}
         >
@@ -1529,7 +1429,7 @@ export function OvertimeManagement({
               </Pressable>
             </View>
 
-            <ScrollView contentContainerStyle={{ gap: 12, paddingBottom: 20 }}>
+            <ScrollView automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 12, paddingBottom: 20 }}>
               {/* Nhân viên áp dụng: Nếu ở Quản lý duyệt OT thì có dropdown dấu (V) chọn nhân viên */}
               {activeScopeTab === 'manager_ot' && isManager ? (
                 <View style={{ gap: 6 }}>
@@ -1544,7 +1444,7 @@ export function OvertimeManagement({
                       justifyContent: 'space-between',
                       backgroundColor: p.bg,
                       padding: 12,
-                      borderRadius: 10,
+                      borderRadius: 6,
                       borderWidth: 1.5,
                       borderColor: employeePickerOpen ? p.brand : p.line,
                     }}
@@ -1584,7 +1484,7 @@ export function OvertimeManagement({
                         name="chevron-down-outline"
                         style={{
                           fontSize: 16,
-                          color: employeePickerOpen ? '#ffffff' : p.text,
+                          color: employeePickerOpen ? p.onBrand : p.text,
                         }}
                       />
                     </View>
@@ -1595,7 +1495,7 @@ export function OvertimeManagement({
                     <View
                       style={{
                         backgroundColor: p.card,
-                        borderRadius: 12,
+                        borderRadius: 8,
                         borderWidth: 1,
                         borderColor: p.brand,
                         padding: 8,
@@ -1642,7 +1542,7 @@ export function OvertimeManagement({
                       </View>
 
                       {/* Danh sách cuộn nhân viên */}
-                      <ScrollView nestedScrollEnabled style={{ maxHeight: 180 }}>
+                      <ScrollView automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled" nestedScrollEnabled style={{ maxHeight: 180 }}>
                         {employeeLoading ? (
                           <Text style={{ fontFamily: 'BeVietnam', fontSize: 12, color: p.muted, padding: 8, textAlign: 'center' }}>
                             Đang tải danh sách nhân viên...
@@ -1732,7 +1632,7 @@ export function OvertimeManagement({
               {/* Banner dự kiến số giờ OT */}
               <View
                 style={{
-                  backgroundColor: estimatedHours > 0 ? 'rgba(22, 163, 74, 0.1)' : 'rgba(234, 88, 12, 0.1)',
+                  backgroundColor: estimatedHours > 0 ? p.emeraldBg : p.amberBg,
                   padding: 10,
                   borderRadius: 8,
                   flexDirection: 'row',
@@ -1747,7 +1647,7 @@ export function OvertimeManagement({
                   style={{
                     fontFamily: 'BeVietnamBold',
                     fontSize: 14,
-                    color: estimatedHours > 0 ? '#16a34a' : '#ea580c',
+                    color: estimatedHours > 0 ? p.emeraldText : p.amberText,
                   }}
                 >
                   {estimatedHours > 0 ? `${estimatedHours.toFixed(2)} giờ` : 'Giờ chưa hợp lệ'}
@@ -1781,27 +1681,29 @@ export function OvertimeManagement({
             </ScrollView>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ============================================================== */}
       {/* MODAL 2: XEM CHI TIẾT ĐƠN TĂNG CA (OT)                         */}
       {/* ============================================================== */}
-      <Modal visible={!!detailItem} transparent animationType="fade" onRequestClose={() => setDetailItem(null)}>
+      <Modal visible={!!detailItem} transparent animationType="slide" onRequestClose={() => setDetailItem(null)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <View
           style={{
             flex: 1,
-            backgroundColor: 'rgba(0,0,0,0.5)',
-            justifyContent: 'center',
-            alignItems: 'center',
-            padding: 16,
+            backgroundColor: 'rgba(9,9,11,0.5)',
+            justifyContent: 'flex-end',
+            alignItems: 'stretch',
+            padding: 0,
           }}
         >
           <View
             style={{
               width: '100%',
-              maxWidth: 480,
+              maxWidth: undefined,
               backgroundColor: p.card,
-              borderRadius: 20,
+              borderTopLeftRadius: 14, borderTopRightRadius: 14, borderBottomWidth: 0,
               padding: 20,
               gap: 12,
               borderWidth: 1,
@@ -1831,13 +1733,13 @@ export function OvertimeManagement({
             </View>
 
             {detailItem && (
-              <ScrollView contentContainerStyle={{ gap: 10 }}>
+              <ScrollView automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 10 }}>
                 {/* Status Badge Banner */}
                 <View
                   style={{
                     backgroundColor: overtimeStatusMeta[detailItem.status]?.bg || p.bg,
                     padding: 12,
-                    borderRadius: 10,
+                    borderRadius: 6,
                     flexDirection: 'row',
                     justifyContent: 'space-between',
                     alignItems: 'center',
@@ -1897,14 +1799,14 @@ export function OvertimeManagement({
                   <View
                     style={{
                       backgroundColor: detailItem.reconciliation_status === 'VERIFIED'
-                        ? 'rgba(22, 163, 74, 0.07)'
-                        : 'rgba(37, 99, 235, 0.05)',
+                        ? p.emeraldBg
+                        : p.indigoBg,
                       padding: 14,
-                      borderRadius: 12,
+                      borderRadius: 8,
                       borderWidth: 1,
                       borderColor: detailItem.reconciliation_status === 'VERIFIED'
-                        ? 'rgba(22, 163, 74, 0.3)'
-                        : 'rgba(37, 99, 235, 0.2)',
+                        ? p.emerald
+                        : p.line,
                       gap: 8,
                     }}
                   >
@@ -1916,8 +1818,8 @@ export function OvertimeManagement({
                         const recStatus = detailItem.reconciliation_status || 'PENDING_RECONCILIATION';
                         const recMeta = reconciliationStatusMeta[recStatus] || {
                           label: 'Chờ đối soát',
-                          color: '#d97706',
-                          bg: 'rgba(217, 119, 6, 0.12)',
+                          color: p.amberText,
+                          bg: p.amberBg,
                         };
                         return (
                           <View
@@ -1955,7 +1857,7 @@ export function OvertimeManagement({
                               style={{
                                 fontFamily: 'BeVietnamBold',
                                 fontSize: 15,
-                                color: isVerified ? '#16a34a' : p.muted,
+                                color: isVerified ? p.emeraldText : p.muted,
                               }}
                             >
                               {isVerified ? `${verifiedFmt.minutesText} (${verifiedFmt.hoursText})` : 'Chưa đối soát'}
@@ -2036,27 +1938,29 @@ export function OvertimeManagement({
             )}
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ============================================================== */}
       {/* MODAL 3: XÁC NHẬN DUYỆT ĐƠN OT (QUẢN LÝ)                       */}
       {/* ============================================================== */}
-      <Modal visible={!!confirmApproveItem} transparent animationType="fade" onRequestClose={() => setConfirmApproveItem(null)}>
+      <Modal visible={!!confirmApproveItem} transparent animationType="slide" onRequestClose={() => setConfirmApproveItem(null)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <View
           style={{
             flex: 1,
-            backgroundColor: 'rgba(0,0,0,0.5)',
-            justifyContent: 'center',
-            alignItems: 'center',
-            padding: 16,
+            backgroundColor: 'rgba(9,9,11,0.5)',
+            justifyContent: 'flex-end',
+            alignItems: 'stretch',
+            padding: 0,
           }}
         >
           <View
             style={{
               width: '100%',
-              maxWidth: 440,
+              maxWidth: undefined,
               backgroundColor: p.card,
-              borderRadius: 20,
+              borderTopLeftRadius: 14, borderTopRightRadius: 14, borderBottomWidth: 0,
               padding: 20,
               gap: 14,
               borderWidth: 1,
@@ -2065,8 +1969,8 @@ export function OvertimeManagement({
           >
             <Label large>Xác nhận phê duyệt OT</Label>
             {confirmApproveItem && (
-              <View style={{ backgroundColor: 'rgba(22, 163, 74, 0.1)', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(22, 163, 74, 0.2)' }}>
-                <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: '#166534' }}>
+              <View style={{ backgroundColor: p.emeraldBg, padding: 12, borderRadius: 6, borderWidth: 1, borderColor: p.emerald }}>
+                <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.emeraldText }}>
                   Phê duyệt đơn OT #{confirmApproveItem.request_id} của nhân viên{' '}
                   <Text style={{ fontFamily: 'BeVietnamBold' }}>{confirmApproveItem.employee_name}</Text>
                   {'\n'}Ngày: {formatDateDMY(confirmApproveItem.work_date)} ({formatTimeHHmm(confirmApproveItem.starts_at)} → {formatTimeHHmm(confirmApproveItem.ends_at)} - {calculateOvertimeHours(confirmApproveItem.starts_at, confirmApproveItem.ends_at).toFixed(1)}h).
@@ -2085,27 +1989,29 @@ export function OvertimeManagement({
             <Button title="Quay lại" secondary onPress={() => setConfirmApproveItem(null)} disabled={actionBusy} />
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ============================================================== */}
       {/* MODAL 4: TỪ CHỐI ĐƠN OT (QUẢN LÝ)                              */}
       {/* ============================================================== */}
-      <Modal visible={!!rejectItem} transparent animationType="fade" onRequestClose={() => setRejectItem(null)}>
+      <Modal visible={!!rejectItem} transparent animationType="slide" onRequestClose={() => setRejectItem(null)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <View
           style={{
             flex: 1,
-            backgroundColor: 'rgba(0,0,0,0.5)',
-            justifyContent: 'center',
-            alignItems: 'center',
-            padding: 16,
+            backgroundColor: 'rgba(9,9,11,0.5)',
+            justifyContent: 'flex-end',
+            alignItems: 'stretch',
+            padding: 0,
           }}
         >
           <View
             style={{
               width: '100%',
-              maxWidth: 440,
+              maxWidth: undefined,
               backgroundColor: p.card,
-              borderRadius: 20,
+              borderTopLeftRadius: 14, borderTopRightRadius: 14, borderBottomWidth: 0,
               padding: 20,
               gap: 14,
               borderWidth: 1,
@@ -2133,10 +2039,10 @@ export function OvertimeManagement({
             </View>
 
             {rejectItem && (
-              <View style={{ backgroundColor: '#fee2e2', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#fca5a5' }}>
-                <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: '#7f1d1d' }}>
+              <View style={{ backgroundColor: p.dangerBg, padding: 12, borderRadius: 6, borderWidth: 1, borderColor: p.dangerBg }}>
+                <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.dangerText }}>
                   Từ chối đơn OT #{rejectItem.request_id} của nhân viên{' '}
-                  <Text style={{ fontFamily: 'BeVietnamBold', color: '#991b1b' }}>{rejectItem.employee_name}</Text> (
+                  <Text style={{ fontFamily: 'BeVietnamBold', color: p.dangerText }}>{rejectItem.employee_name}</Text> (
                   {formatDateDMY(rejectItem.work_date)}, {formatTimeHHmm(rejectItem.starts_at)} → {formatTimeHHmm(rejectItem.ends_at)}).
                 </Text>
               </View>
@@ -2159,6 +2065,7 @@ export function OvertimeManagement({
             <Button title="Hủy bỏ" secondary onPress={() => setRejectItem(null)} disabled={actionBusy} />
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
