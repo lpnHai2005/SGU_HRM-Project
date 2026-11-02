@@ -145,7 +145,6 @@ SGU_HRM-Project/
 │   ├── data/
 │   │   ├── knowledge_base_pdfs/       # Tập tài liệu quy chế nội bộ PDF phục vụ Vector Store RAG
 │   │   └── ragas_evaluation_report.json # Kết quả đánh giá định lượng năng lực AI bằng Ragas
-│   ├── fixtures/                      # Các kịch bản fixture kiểm thử nâng cao và đối soát OT
 │   ├── migrations/                    # 30 tập tin SQL Migration DDL cập nhật lược đồ CSDL
 │   ├── scripts/
 │   │   ├── generate_knowledge_pdfs.py # Script sinh văn bản pháp quy, nội quy lao động PDF chuẩn A4
@@ -528,13 +527,14 @@ python run.py
 
 #### Bước 1: Khởi chạy Backend (FastAPI)
 ```bash
-cd backend
+# venv đặt ở thư mục gốc repo (start_all.bat, run.py và các script .ps1 đều dùng venv này)
 python -m venv venv
 # Kích hoạt venv (Windows):
 .\venv\Scripts\activate
 # Kích hoạt venv (Linux/macOS):
 source venv/bin/activate
 
+cd backend
 pip install -r requirements.txt
 copy .env.example .env   # Trên Windows (Linux: cp .env.example .env)
 python run.py
@@ -578,8 +578,8 @@ pytest tests -v
 - `tests/test_phase1_security.py`: Kiểm thử xác thực JWT, mã hóa mật khẩu và phân quyền RBAC theo vai trò.
 - `tests/test_phase1b_to_5.py`: Kiểm thử bộ máy LangGraph AI Chatbot, cơ chế Hybrid Retrieval, bảo mật Guardrails và Tool Calling.
 - `tests/test_production_readiness.py`: Kiểm thử bộ nhớ đệm Policy Cache, tỷ lệ chịu lỗi và độ trễ phản hồi.
-- `test_leaves_workflow.py`: Kiểm thử vòng đời đơn nghỉ phép 2 cấp (Store duyệt $\rightarrow$ HR duyệt $\rightarrow$ Hoàn công).
-- `test_payrolls_workflow.py`: Kiểm thử tự động tính lương doanh số bán lẻ, hoa hồng phụ kiện và trích nộp bảo hiểm.
+- `tests/test_leaves_workflow.py`: Kiểm thử vòng đời đơn nghỉ phép 2 cấp (Store duyệt $\rightarrow$ HR duyệt $\rightarrow$ Hoàn công).
+- `tests/test_payrolls_workflow.py`: Kiểm thử tự động tính lương doanh số bán lẻ, hoa hồng phụ kiện và trích nộp bảo hiểm.
 
 ---
 

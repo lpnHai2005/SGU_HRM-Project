@@ -35,6 +35,9 @@ SGU-HRM-Project/
 │   │   │   └── entities.py    # SQLAlchemy ORM models
 │   │   └── schemas/
 │   │       └── schemas.py     # Pydantic schemas
+│   ├── migrations/            # SQL migrations, đặt tên YYYYMMDD_<mô_tả>.sql
+│   ├── tests/                 # TẤT CẢ test pytest đặt ở đây (không để ở gốc backend/)
+│   ├── scripts/               # Script vận hành/migrate chạy tay: python scripts/<file>.py
 │   ├── .env                   # Config (không commit)
 │   ├── requirements.txt
 │   └── run.py
@@ -42,6 +45,8 @@ SGU-HRM-Project/
 │   ├── src/
 │   ├── .env                   # VITE_API_URL=http://localhost:8000/api/v1
 │   └── package.json
+├── mobile/                    # React Native (Expo)
+├── docs/                      # Tài liệu: specs/, knowledge_base_sources/
 └── CLAUDE.md                 # File này - context cho Claude Code
 ```
 

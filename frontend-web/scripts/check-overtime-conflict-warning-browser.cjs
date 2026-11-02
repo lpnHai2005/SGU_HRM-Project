@@ -6,7 +6,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 
 const appOrigin = process.env.OT_UI_BASE_URL || 'http://127.0.0.1:3176'
-const evidencePath = path.resolve(__dirname, '../../backend/fixtures/evidence/mission9-cp49-conflict-warning-browser.json')
+const evidencePath = path.resolve(__dirname, '../../tmp/evidence/mission9-cp49-conflict-warning-browser.json')
 const user = {
   user_id: 40,
   username: 'synthetic_hr',
