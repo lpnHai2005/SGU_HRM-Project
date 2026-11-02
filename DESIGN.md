@@ -2,78 +2,111 @@
 
 <!-- impeccable:design-schema -->
 
+Nguồn sự thật: `frontend-web/src/index.css` (tokens + component gốc) và `frontend-web/src/App.css` (layout shell, bảng, badge). Khi file này và code lệch nhau, code thắng — hãy cập nhật file này.
+
 ## Design Mode
 
-**Operate** — High-density, precision-engineered B2B HRM & retail operations platform. Scanability, razor-sharp information hierarchy, hairline 1px borders, and muted semantic status pastels inspired by Linear, Attio, and Vercel.
+**Operate** — High-density B2B HRM & retail operations platform. Scanability, sharp information hierarchy, hairline 1px borders, muted semantic pastels inspired by Linear, Attio, and Vercel.
 
 ---
 
 ## Visual Direction
 
-### Voice & Tone
-
-- **Obsidian Charcoal & Paper Crisp Minimalist** — Curated neutral obsidian charcoal dark theme (`#0d0d0e`, `#151517`, `#222225`) and crisp paper light theme (`#f6f6f8`, `#ffffff`, `#e4e4e7`).
-- **Precision Typography** — `Be Vietnam Pro` (with custom Vietnamese diacritics) for human readability + `JetBrains Mono` for tabular figures (`tnum`, zero-slashed currency and timestamps).
-- **Hairline Precision** — Restrained radii (`4px - 8px`), crisp 1px borders, zero fuzzy neon glow, soft muted pastel badges.
-- **Stark Primary Buttons & Emerald AI Accent** — Stark black/white primary action buttons paired with emerald-tinted AI Assistant triggers (`✦ Trợ lý AI`).
+- **Obsidian Charcoal & Paper Crisp** — neutral charcoal dark theme (`#0d0d0e`, `#151517`, `#222225`) and crisp paper light theme (`#f6f6f8`, `#ffffff`, `#e4e4e7`).
+- **Typography** — `Be Vietnam Pro` (Google Fonts, 400–800) for UI text; `JetBrains Mono` with `font-feature-settings: 'tnum' 1` for metrics, currency, timestamps.
+- **Hairline precision** — radii `4px–10px`, 1px borders, near-invisible shadows, no glow.
+- **Stark primary + emerald AI accent** — black/white primary buttons; emerald-tinted `✦ Trợ lý AI` button.
 
 ---
 
-## Dual-Theme Architecture
+## Theme Architecture
 
-The system provides instantaneous toggle between **Dark (Obsidian Charcoal)** and **Light (Paper Crisp)** themes via `[data-theme="dark"]` and `[data-theme="light"]`.
+- Themes: `[data-theme="light"]` (also `:root` default) and `[data-theme="dark"]`, set on `<html>`.
+- `App.tsx` stores the choice in `localStorage['techzone_theme']`, **default `light`**. A `prefers-color-scheme: dark` fallback exists in CSS but is overridden once `data-theme` is set.
 
-| Token | Dark (Obsidian Charcoal) | Light (Paper Crisp) | Usage |
-|-------|--------------------------|---------------------|-------|
-| `--surface-ground` | `#0d0d0e` | `#f6f6f8` | Page ground canvas |
-| `--surface-card` | `#151517` | `#ffffff` | Primary cards & tables |
-| `--surface-subtle` | `#1a1a1d` | `#f0f0f3` | Subtle containers & table headers |
-| `--border-default` | `#222225` | `#e4e4e7` | Hairline card & input borders |
-| `--border-subtle` | `#1a1a1d` | `#eeeeef` | Row dividers & subtle borders |
-| `--action-primary` | `#ffffff` (text `#09090b`) | `#09090b` (text `#ffffff`) | Stark contrast primary button |
-| `--ai-btn-bg` | `rgba(16, 185, 129, 0.12)` | `rgba(16, 185, 129, 0.09)` | Emerald AI Assistant button |
-| `--ai-btn-text` | `#34d399` | `#059669` | AI Assistant text & icon |
+### Surface, border, action tokens
+
+| Token | Light (Paper Crisp) | Dark (Obsidian Charcoal) | Usage |
+|-------|---------------------|--------------------------|-------|
+| `--surface-ground` | `#f6f6f8` | `#0d0d0e` | Page canvas |
+| `--surface-card` | `#ffffff` | `#151517` | Cards, tables |
+| `--surface-subtle` | `#f0f0f3` | `#1a1a1d` | Table headers, subtle containers |
+| `--surface-elevated` | `#ffffff` | `#1e1e22` | Popovers, modals |
+| `--sidebar-bg` | `#fafafa` | `#09090b` | Sidebar |
+| `--topbar-bg` | `#ffffff` | `#0d0d0e` | Topbar |
+| `--border-default` | `#e4e4e7` | `#222225` | Card & input borders |
+| `--border-subtle` | `#eeeeef` | `#1a1a1d` | Row dividers |
+| `--border-strong` | `#d4d4d8` | `#2e2e33` | Emphasized borders |
+| `--text-primary` / `-secondary` / `-muted` | `#09090b` / `#52525b` / `#a1a1aa` | `#f4f4f5` / `#a1a1aa` / `#71717a` | Text |
+| `--action-primary` (+ `-text`) | `#09090b` (text `#fff`) | `#ffffff` (text `#09090b`) | Primary button |
+| `--ai-btn-bg` / `--ai-btn-text` | `rgba(16,185,129,.09)` / `#059669` | `rgba(16,185,129,.12)` / `#34d399` | AI button |
+
+### Semantic status tokens
+
+`--status-{success|warning|error|info|neutral}` plus `-bg` and `-border` variants. Light text: `#059669 / #d97706 / #dc2626 / #0284c7 / #52525b`; dark text: `#34d399 / #fbbf24 / #f87171 / #38bdf8 / #a1a1aa`. Backgrounds are the same hue at 10–12% alpha.
+
+### Role badge tokens
+
+`--role-{admin|director|hr|manager|employee}-{bg|text|border}`: ADMIN = stark black/charcoal, DIRECTOR = violet, HR_MANAGER = sky, STORE_MANAGER = emerald, EMPLOYEE = neutral gray.
+
+### Scales
+
+| Group | Values |
+|-------|--------|
+| Font size | `--text-2xs` 11 · `xs` 12 · `sm` 13 · `base` 14 · `md` 15 · `lg` 17 · `xl` 20 · `2xl` 24 · `3xl` 28 (px) |
+| Spacing | `--space-1..8`: 4 · 8 · 12 · 16 · 20 · 24 · 32 (px) |
+| Radius | `--radius-xs` 4 · `sm` 6 · `md` 8 · `lg` 10 · `full` 9999 (px) |
+| Motion | `--duration-fast` 120ms · `base` 180ms · `slow` 240ms · `--ease-out` `cubic-bezier(0.16,1,0.3,1)` |
+| Layout | `--sidebar-width` 240px · `--sidebar-collapsed` 60px · `--topbar-height` 52px · `--content-max-width` 1440px |
 
 ---
 
 ## Component Specifications
 
-### 1. Vero Sidebar Shell
-- **Brand**: `techzone •` with glowing emerald micro-dot.
-- **Workspace Selector Card**: `[ T ] TechZone Retail / Hệ thống · 18 nhân sự ⌄`.
-- **Nav Groups**: Uppercase 10px tracking (`VẬN HÀNH`, `QUẢN TRỊ`, `HỆ THỐNG`).
-- **Nav Items**: Sleek rounded rect `rgba(255,255,255,0.08)` active state without chunky pills. Right-aligned numerical badges (`18`, `2`, `18`).
-- **Sidebar Footer**: User profile card `[ NV ] Nguyễn Văn An / Quản trị viên ⋯`.
+### 1. Sidebar (`components/layout/Sidebar.tsx`)
+- **Brand**: `techzone` + emerald dot; collapsed mode shows the TechZone icon only.
+- **Workspace selector**: `[ T ] TechZone Retail ⌄` — links to `/`.
+- **Nav sections**: generated from `constants/navigation.ts` by role. Section titles are 10px uppercase, `letter-spacing: 0.08em`. Sections include `Trang chủ`, `Quản trị hệ thống`, `Nhân sự`, `Vận hành`, `Kinh doanh & Tài chính`, `Báo cáo`, `Cá nhân` (managers) and `Công việc của tôi`, `Thu nhập` (employees).
+- **Nav items**: rounded rect, active = `--sidebar-active-bg`. Expandable parent items with a rotating chevron and sub-items (e.g. `Quản lý đơn từ → Đơn nghỉ phép / Đơn OT`).
+- **Footer**: user card (avatar or initials, full name, role label, `⋯`) linking to `/account`, plus collapse/expand toggle.
+- **Mobile (≤768px)**: sidebar becomes an off-canvas drawer with backdrop.
 
-### 2. Vero Topbar
-- **Breadcrumb**: `TechZone > [Page Title]` with clean `>` separator.
-- **Action Cluster**: Search icon, Theme toggle (Sun/Moon), `✦ Trợ lý AI` button, Stark primary action button (`+ Thêm mới`), and Logout.
+### 2. Topbar (`components/layout/Topbar.tsx`)
+- **Left**: mobile menu button + breadcrumb `TechZone > [Page title]`.
+- **Right cluster**: search icon, theme toggle (sun/moon), `✦ Trợ lý AI` (opens `AiChatbotWidget`; shows `AI` on mobile), primary `+ Thêm mới` (→ `/employees`), divider, `NotificationBell`, user chip with role badge (→ `/account`), logout icon button.
 
-### 3. Vero Stat Cards
-- 4-part layout:
-  1. Small muted label (`12px`)
-  2. Bold tabular metric (`26px`, font-feature-settings: 'tnum' 1)
-  3. Trend indicator (`↗ +14.2%` green or `⚠ 2 vắng` amber)
-  4. Subtle sync note (`Đồng bộ phòng nhân sự · 08:30`)
+### 3. Bottom Nav (`components/layout/BottomNav.tsx`, mobile only)
+- 4 role-based shortcuts + `Thêm` (opens sidebar drawer). Managers: Trang chủ, Bảng công, Đơn từ, Nhân sự. Employees: Trang chủ, Bảng công, Đơn từ, Lương.
 
-### 4. Notice Callout Banner
-- Emerald tinted callout (`rgba(16, 185, 129, 0.08)`) with action link `Chi tiết quy định →`.
+### 4. Stat Card (`components/common/StatCard.tsx`)
+- Header: muted label (12px) + optional icon chip (`blue | green | amber | red`).
+- Value: `1.75rem` (28px), JetBrains Mono, `tnum`, `letter-spacing: -0.03em`.
+- Optional trend row: `↗` up / `↘` down / `⚠` warning.
+- Optional footer note.
+- Clickable variant with keyboard support and `.is-active` state (used as filter tiles). Grid: `.stat-grid-4`.
 
-### 5. Vero Data Tables
-- Lead / Employee Cell: Avatar circle with initials + bold employee name + subtitle.
-- Status Pills: Soft muted pastels (`Running`, `Working`, `Paused`, `Late`, `Nurture`, `Rejected`).
-- Score Line: Progress indicator bar with monospace score value (`80` - `98`).
-- Table Pagination: `Hiển thị X trên Y nhân sự` + `Trước` / `Tiếp`.
+### 5. Data Tables & Status Badges
+- Employee cell: initials avatar + bold name + muted subtitle.
+- `badge-status` (App.css) — muted pastel pills. Domain statuses map to visual classes: `running` = active/approved (emerald), `paused` = draft/pending (amber), `scheduled` = cancelled/neutral (gray), `rejected` = rejected/terminated (red). See `types/contract.ts`, `types/resignation.ts`.
+- `status-pill` (index.css) — `active|success`, `pending|warning`, `rejected|error`, `neutral`, plus attendance-specific `is-late-day`, `is-grace`, `is-excluded`, ...
+- Footer: record count (`Hiển thị X / Y bản ghi`) + pagination.
 
-### 6. Bottom Breakdown Cards
-- Card 1: `Phân bổ chi phí & Quỹ lương` (`Where the funds & hours went`).
-- Card 2: `Hiệu suất phòng ban & Ca làm việc` (`Department efficiency progress bars`).
+### 6. Home page (`pages/OverviewPage.tsx`)
+- Managers see tabs: `Quản lý báo cáo tổng hợp` with 4-up metrics, `Tỷ lệ hiện diện hôm nay`, `Cơ cấu xử lý đơn từ & nghỉ phép`, `Quỹ lương & Doanh số`. Employees see the attendance hero + personal attendance.
 
 ---
 
-## Anti-Patterns Enforced
-- ❌ No generic blue corporate palettes.
+## Rules
+
+- ❌ No generic blue corporate palette.
 - ❌ No clichéd fonts (Inter, Roboto, Plus Jakarta Sans, Fraunces).
-- ❌ No chunky neon pills.
-- ❌ No hardcoded colors bypassing CSS variables.
-- ❌ Full responsive support with mobile drawer and bottom navigation.
+- ❌ No chunky neon pills or glow.
+- ❌ No hardcoded colors in new code — use tokens above.
+- ✅ Responsive: drawer sidebar + bottom nav on mobile; breakpoints 1024 / 768 / 640 / 480px; dedicated `@media print` styles for payslips, leave forms and reports.
+
+## Known Debt (code chưa tuân thủ rule)
+
+- ~900 hardcoded hex colors outside `index.css` (App.css, page CSS, inline styles), including `badge-status` colors — migrate to `--status-*` tokens when touching those files.
+- `--primary-color` (blue `#2563eb` / `#3b82f6`) is a legacy compatibility alias still used in ~30 places; contradicts the no-blue rule — replace with `--action-primary` or a status token.
+- `.nav-item-badge` CSS exists but the sidebar renders no count badges.
+- `DashboardPage.tsx` only supplies `AttendanceHero` and its props type; its other dashboard sections (e.g. `Phân bổ chi phí & Quỹ lương`) are not rendered anywhere.

@@ -1,9 +1,10 @@
+import os
 import sys
 import asyncio
 from uuid import uuid4
 from httpx import AsyncClient, ASGITransport
 
-sys.path.insert(0, "backend")
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
 

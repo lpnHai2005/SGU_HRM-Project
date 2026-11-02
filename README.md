@@ -95,11 +95,11 @@ Báo cáo kiểm thử định lượng năng lực AI bằng Ragas: **[`backend
 SGU_HRM-Project/
 ├── README.md                          # Tài liệu chính giới thiệu dự án (File này)
 ├── run.py                             # Script Python điều phối kiểm tra phụ thuộc và chạy song song Web + API
-├── requirements.txt                   # Phụ thuộc Python ở cấp thư mục gốc (-r backend/requirements.txt)
-├── TECHZONE_HRM_MASTER_CONTEXT.md     # Ngữ cảnh Master toàn dự án (Quy định lương, kiến trúc, phân công)
 ├── PRODUCT.md                         # Đặc tả sản phẩm, vai trò, nghiệp vụ và quy định thương hiệu
-├── HRM-Project-Workflow.md            # Kế hoạch thực thi 5 tuần, thiết kế DB và ma trận RBAC ban đầu
-├── Nhóm HTTT.docx                     # Đề cương đồ án môn học nhóm HTTT (SGU)
+├── docs/
+│   ├── specs/                         # Đặc tả: MASTER_CONTEXT, Workflow, chấm công, nghỉ phép, lương
+│   ├── knowledge_base_sources/        # Nguồn tài liệu quy chế cho AI Chatbot
+│   └── Nhóm HTTT.docx                 # Đề cương đồ án môn học nhóm HTTT (SGU)
 ├── LICENSE                            # Giấy phép bản quyền mã nguồn mở MIT
 │
 ├── backend/                           # Phân hệ Backend FastAPI
@@ -145,13 +145,13 @@ SGU_HRM-Project/
 │   ├── data/
 │   │   ├── knowledge_base_pdfs/       # Tập tài liệu quy chế nội bộ PDF phục vụ Vector Store RAG
 │   │   └── ragas_evaluation_report.json # Kết quả đánh giá định lượng năng lực AI bằng Ragas
-│   ├── migrations/                    # 30 tập tin SQL Migration DDL cập nhật lược đồ CSDL
+│   ├── migrations/                    # SQL Migration, đặt tên YYYYMMDD_<mô_tả>.sql cập nhật lược đồ CSDL
 │   ├── scripts/
 │   │   ├── generate_knowledge_pdfs.py # Script sinh văn bản pháp quy, nội quy lao động PDF chuẩn A4
 │   │   ├── ingest_pdfs_to_vectorstore.py # Script nạp dữ liệu tri thức vào Vector Store Supabase
 │   │   ├── evaluate_ragas.py          # Kịch bản kiểm thử tự động bộ số liệu Benchmark Ragas
 │   │   └── load_test_chatbot.py       # Script kiểm thử tải chịu lực và độ trễ AI Chatbot
-│   ├── tests/                         # Thư mục kiểm thử tự động pytest (35 test suites hoàn tất)
+│   ├── tests/                         # TẤT CẢ test pytest (chạy: cd backend && pytest)
 │   ├── Dockerfile                     # Cấu hình đóng gói container Docker cho Backend
 │   ├── requirements.txt               # Danh sách thư viện Python phụ thuộc của Backend
 │   └── run.py                         # File thực thi máy chủ Uvicorn
