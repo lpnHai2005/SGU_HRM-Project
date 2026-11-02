@@ -700,6 +700,11 @@ import type {
   PayrollPeriodBonus,
   PublicHoliday,
   PayrollPeriodWorkingDays,
+  PayrollImportRecord,
+  PayrollImportPreviewResponse,
+  PayrollImportConfirmRequest,
+  PayrollImportConfirmResponse,
+  PayrollImportStatusResponse,
 } from '../types';
 
 export const payrollApi = {
@@ -934,6 +939,29 @@ export const payrollApi = {
     });
     if (!response.ok) throw new Error('Không thể tải file Excel bảng lương năm');
     return response.blob();
+  },
+
+  downloadImportTemplate: async (period: string): Promise<Blob> => {
+    return api.getBlob('/payrolls/import/template', { period });
+  },
+
+  previewImport: async (period: string, file: File): Promise<PayrollImportPreviewResponse> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('period', period);
+    return api.upload<PayrollImportPreviewResponse>('/payrolls/import/preview', formData);
+  },
+
+  confirmImport: async (data: PayrollImportConfirmRequest): Promise<PayrollImportConfirmResponse> => {
+    return api.post<PayrollImportConfirmResponse>('/payrolls/import/confirm', data);
+  },
+
+  revertImport: async (period: string): Promise<{ message: string; salary_period: string; removed_count: number }> => {
+    return api.post('/payrolls/import/revert', { salary_period: period });
+  },
+
+  getImportStatus: async (period: string): Promise<PayrollImportStatusResponse> => {
+    return api.get<PayrollImportStatusResponse>('/payrolls/import/status', { period });
   },
 };
 

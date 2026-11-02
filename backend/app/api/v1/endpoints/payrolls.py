@@ -1,13 +1,21 @@
 import io
 import csv
+import json
 import re
 from datetime import date, datetime
-from typing import Optional, List
+from typing import Optional, List, Annotated, Tuple, Dict, Any
 from pydantic import BaseModel, Field
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form, Body, status
 from fastapi.responses import StreamingResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side, Protection
+
+from app.core.payroll_import import (
+    ImportFileError, MAX_FILE_BYTES, MAX_ROWS, FIRST_DATA_ROW, EXPECTED_HEADERS,
+    sanitize_file_name, parse_import_workbook, classify_import_rows, get_approved_ot_hours,
+)
 
 from app.core.database import get_db
 from app.core.config import settings
@@ -41,22 +49,21 @@ async def lock_payroll_period(db, period):
     await db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:key))"), {"key": f"payroll:{period}"})
 
 
+async def _payroll_procedure_code(db) -> str:
+    body = (await db.execute(text("""SELECT pg_get_functiondef(p.oid) FROM pg_proc p
+        WHERE p.proname='sp_generate_monthly_payroll' AND p.prokind='p' AND p.pronargs=2
+          AND pg_function_is_visible(p.oid) LIMIT 1"""))).scalar_one_or_none() or ""
+    body = re.sub(r"/\*.*?\*/", "", body, flags=re.S)
+    body = re.sub(r"--[^\n]*", "", body)
+    return re.sub(r"\s+", " ", body.lower())
+
+
 async def ensure_payroll_ot_procedure_is_approval_gated(db):
     """Fail closed before payroll writes if the installed procedure pays raw attendance OT."""
-    body = (await db.execute(text("""SELECT pg_get_functiondef(p.oid)
-        FROM pg_proc p
-        WHERE p.proname='sp_generate_monthly_payroll' AND p.prokind='p' AND p.pronargs=2
-          AND pg_function_is_visible(p.oid)
-        LIMIT 1"""))).scalar_one_or_none()
-    normalized = re.sub(r"\s+", " ", (body or "").lower())
-    approved_ot_expression = re.search(
-        r"sum\s*\(\s*case\s+when\s+ota\.decision\s*=\s*'approved'\s+"
-        r"then\s+ota\.approved_hours\s+else\s+0\s+end\s*\)\s+as\s+total_ot_hours",
-        normalized,
-    )
-    if ("attendance_overtime_approvals" not in normalized
-            or "overtime_requests" in normalized
-            or not approved_ot_expression):
+    code = await _payroll_procedure_code(db)
+    if ("attendance_overtime_approvals" not in code
+            or not re.search(r"\bdecision\s*=\s*'approved'", code)
+            or "overtime_requests" in code):
         raise HTTPException(
             status_code=409,
             detail=(
@@ -65,6 +72,21 @@ async def ensure_payroll_ot_procedure_is_approval_gated(db):
                 "Không có dữ liệu lương nào được thay đổi."
             ),
         )
+
+
+async def ensure_payroll_procedure_supports_import(db):
+    if "payroll_import_overrides" not in await _payroll_procedure_code(db):
+        raise HTTPException(409, "Chưa thể Import: CSDL chưa chạy migration 20261103_payroll_excel_import.sql.")
+
+
+async def ensure_period_not_finalized(db, period: str):
+    finalized = (await db.execute(text("SELECT 1 FROM payrolls WHERE salary_period=:period AND payment_status IN ('CONFIRMED','PAID') LIMIT 1"), {"period": period})).first()
+    if finalized:
+        raise HTTPException(409, "Kỳ lương đã duyệt/chi trả. Không được tính lại; cần quy trình điều chỉnh có phê duyệt riêng.")
+
+
+def payroll_actor(current_user: dict) -> Tuple[int, int]:
+    return current_user["user_id"], current_user.get("employee_id") or 2
 
 async def ensure_fresh_payroll(db,period):
     await ensure_ot_period_policy(db, period)
@@ -113,6 +135,8 @@ def populate_payroll_breakdown_from_details(pr_dict: dict, details_list: list):
     total_bonus_val = sum(float(d.get("amount") or 0) for d in details_list if d.get("item_type") == "BONUS")
     pr_dict["bonus_amount"] = total_bonus_val
     pr_dict["penalty_deduction"] = det_map.get("PENALTY", 0.0)
+    pr_dict["extra_allowance_amount"] = det_map.get("EXTRA_ALLOWANCE", 0.0)
+    pr_dict["extra_penalty_amount"] = det_map.get("EXTRA_PENALTY", 0.0)
     pr_dict["personal_income_tax"] = det_map.get("PIT", 0.0)
     
     # Bóc tách chính xác các khoản bảo hiểm
@@ -352,28 +376,9 @@ async def list_payrolls(
 # 2. PAYROLL CALCULATION ENGINE & BATCH WORKFLOW
 # ===================================================================================
 
-@router.post("/calculate", summary="Chốt công và tự động tính bảng lương toàn chuỗi (Rubric III.3.1.7)")
-async def calculate_payroll(
-    req: CalculatePayrollRequest,
-    current_user: dict = Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Chạy Stored Procedure tính lương tự động cho toàn bộ nhân sự chuỗi TechZone:
-    1. Gọi sp_calculate_monthly_commission: Tính hoa hồng 1% ĐT/Laptop + 3% Phụ kiện + Thưởng nóng KPI.
-    2. Dọn dẹp bản ghi cũ nếu tính lại để đảm bảo tính idempotent.
-    3. Gọi sp_generate_monthly_payroll: Tính lương trừ thời gian, 3 phụ cấp, 2 thưởng, bảo hiểm 10.5%.
-    4. Tự động sinh 12 dòng giải trình cấu phần chi tiết vào payroll_details.
-    """
-    hr_id = current_user.get("employee_id") or 2
-    period = req.salary_period
-
+async def execute_payroll_calculation(db, period: str, hr_id: int):
     await lock_payroll_period(db, period)
-    finalized = (await db.execute(text("SELECT 1 FROM payrolls WHERE salary_period=:period AND payment_status IN ('CONFIRMED','PAID') LIMIT 1"), {"period": period})).first()
-    if finalized:
-        raise HTTPException(409, "Kỳ lương đã duyệt/chi trả. Không được tính lại; cần quy trình điều chỉnh có phê duyệt riêng.")
-
-    # Verify the installed database procedure before commission calculation or draft deletion.
+    await ensure_period_not_finalized(db, period)
     await ensure_payroll_ot_procedure_is_approval_gated(db)
     await ensure_ot_period_policy(db, period)
 
@@ -392,10 +397,22 @@ async def calculate_payroll(
 
     # 2. Gọi Stored Procedure chính
     await db.execute(text("CALL sp_generate_monthly_payroll(:period, :hr_id)"), {"period": period, "hr_id": hr_id})
-    await reapply_payroll_adjustments(db,period,saved_adjustments)
+    await reapply_payroll_adjustments(db, period, saved_adjustments)
     await db.execute(text('''INSERT INTO payroll_calculation_runs(salary_period,calculated_at)
         VALUES(:period,clock_timestamp()) ON CONFLICT(salary_period) DO UPDATE
         SET calculated_at=EXCLUDED.calculated_at'''),{'period':period})
+
+
+@router.post("/calculate", summary="Chốt công và tự động tính bảng lương toàn chuỗi (Rubric III.3.1.7)")
+async def calculate_payroll(
+    req: CalculatePayrollRequest,
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
+    db: AsyncSession = Depends(get_db)
+):
+    _, hr_id = payroll_actor(current_user)
+    period = req.salary_period
+
+    await execute_payroll_calculation(db, period, hr_id)
     await db.commit()
 
     count_res = await db.execute(text("SELECT count(*), COALESCE(SUM(gross_income), 0), COALESCE(SUM(net_salary), 0) FROM payrolls WHERE salary_period = :period"), {"period": period})
@@ -1257,11 +1274,13 @@ async def update_payroll_policy_setting(
         SELECT DISTINCT salary_period FROM payrolls WHERE payment_status IN ('DRAFT', 'NEEDS_RECALCULATION')
     """))
     draft_periods = [r[0] for r in draft_periods_res.fetchall()]
+    _, hr_id = payroll_actor(current_user)
     for dp in draft_periods:
         try:
-            await db.execute(text("CALL sp_generate_monthly_payroll(:period, :hr_id)"), {"period": dp, "hr_id": current_user["user_id"]})
+            async with db.begin_nested():
+                await execute_payroll_calculation(db, dp, hr_id)
         except Exception as e:
-            logger.warning(f"Auto-recalculation for draft period {dp} failed: {e}")
+            logger.warning("Bỏ qua tự tính lại kỳ %s: %s", dp, getattr(e, "detail", e))
 
     await db.commit()
     return dict(row)
@@ -1322,11 +1341,13 @@ async def update_position_allowance(
         SELECT DISTINCT salary_period FROM payrolls WHERE payment_status IN ('DRAFT', 'NEEDS_RECALCULATION')
     """))
     draft_periods = [r[0] for r in draft_periods_res.fetchall()]
+    _, hr_id = payroll_actor(current_user)
     for dp in draft_periods:
         try:
-            await db.execute(text("CALL sp_generate_monthly_payroll(:period, :hr_id)"), {"period": dp, "hr_id": current_user["user_id"]})
+            async with db.begin_nested():
+                await execute_payroll_calculation(db, dp, hr_id)
         except Exception as e:
-            logger.warning(f"Auto-recalculation for draft period {dp} failed: {e}")
+            logger.warning("Bỏ qua tự tính lại kỳ %s: %s", dp, getattr(e, "detail", e))
 
     await db.commit()
     return dict(updated_row)
@@ -1753,6 +1774,611 @@ async def delete_public_holiday(
 # 5. EXPORT PAYROLL DATA (XUẤT EXCEL & CSV BẢNG LƯƠNG)
 # ===================================================================================
 
+
+# =========================================================================
+# EXCEL PAYROLL IMPORT SUPPORT (Rubric III.3.1.7 & Kế hoạch 20261103)
+# =========================================================================
+
+Money = Annotated[float, Field(ge=0, le=100_000_000, allow_inf_nan=False)]
+Days = Annotated[float, Field(ge=0, le=31, allow_inf_nan=False)]
+
+class PayrollImportRecord(BaseModel):
+    row_index: Optional[int] = Field(None, ge=4)
+    employee_code: str = Field(pattern=r"^TZ-\d{3,}$")
+    actual_working_days: Optional[Days] = None
+    paid_leave_days: Optional[Days] = None
+    extra_commission: Money = 0
+    extra_bonus: Money = 0
+    extra_allowance: Money = 0
+    extra_penalty: Money = 0
+    note: Optional[str] = Field(None, max_length=255)
+
+class PayrollImportConfirm(BaseModel):
+    salary_period: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
+    file_name: str = Field(max_length=255)
+    template_stamp: str = Field(max_length=64)
+    records: List[PayrollImportRecord] = Field(min_length=1, max_length=500)
+
+class PayrollImportRevertRequest(BaseModel):
+    salary_period: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
+
+
+async def get_import_stamp(db, period: str) -> str:
+    ts = (await db.execute(text("""
+        SELECT MAX(GREATEST(imported_at, COALESCE(reverted_at, imported_at)))
+        FROM public.payroll_import_batches WHERE salary_period=:period
+    """), {"period": period})).scalar_one_or_none()
+    return ts.isoformat() if ts else "none"
+
+
+async def ensure_import_stamp_current(db, period: str, stamp: str):
+    current = await get_import_stamp(db, period)
+    if stamp != current:
+        raise HTTPException(
+            status_code=409,
+            detail="Dữ liệu import của kỳ đã thay đổi sau khi bạn tải file mẫu (có người vừa nạp hoặc khôi phục). Hãy tải file mẫu mới rồi nhập lại."
+        )
+
+
+@router.get("/import/template", summary="Tải file mẫu Excel nhập công và khoản bổ sung")
+async def download_payroll_import_template(
+    period: str = Query(..., pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
+    db: AsyncSession = Depends(get_db)
+):
+    await ensure_payroll_procedure_supports_import(db)
+
+    emp_res = await db.execute(text("""
+        SELECT e.employee_id, e.employee_code, e.full_name,
+               s.store_name, pos.position_name,
+               COALESCE(c.basic_salary, 8000000) AS contract_salary
+        FROM employees e
+        LEFT JOIN stores s ON e.store_id = s.store_id
+        LEFT JOIN positions pos ON e.position_id = pos.position_id
+        LEFT JOIN contracts c ON e.employee_id = c.employee_id AND c.status = 'ACTIVE'
+        WHERE e.employment_status IN ('ACTIVE', 'PROBATION')
+        ORDER BY e.employee_code ASC
+    """))
+    employees = emp_res.mappings().all()
+    if len(employees) > 500:
+        raise HTTPException(409, "Quá 500 nhân viên, cần tách file theo cửa hàng")
+
+    std_val = (await db.execute(text("SELECT public.fn_payroll_standard_days(:period)"), {"period": period})).scalar_one_or_none()
+    std = float(std_val or 26.0)
+
+    ot_map = await get_approved_ot_hours(db, period)
+
+    pr_res = await db.execute(text("""
+        SELECT employee_id, actual_working_days
+        FROM payrolls
+        WHERE salary_period = :period
+    """), {"period": period})
+    pr_map = {r[0]: float(r[1]) if r[1] is not None else None for r in pr_res.fetchall()}
+
+    ov_res = await db.execute(text("""
+        SELECT employee_id, unpaid_leave_days, paid_leave_days,
+               extra_commission, extra_bonus, extra_allowance, extra_penalty, note
+        FROM public.payroll_import_overrides
+        WHERE salary_period = :period
+    """), {"period": period})
+    ov_map = {r[0]: dict(r._mapping) for r in ov_res.fetchall()}
+
+    stamp = await get_import_stamp(db, period)
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "TechZone_Import"
+
+    font_title = Font(name="Segoe UI", size=13, bold=True, color="1A365D")
+    font_bold = Font(name="Segoe UI", size=10, bold=True)
+    font_normal = Font(name="Segoe UI", size=10)
+    font_instruction = Font(name="Segoe UI", size=9, italic=True, color="555555")
+
+    fill_header = PatternFill(start_color="1A365D", end_color="1A365D", fill_type="solid")
+    font_header = Font(name="Segoe UI", size=10, bold=True, color="FFFFFF")
+    fill_gray = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+
+    border_thin = Border(
+        left=Side(style="thin", color="CCCCCC"),
+        right=Side(style="thin", color="CCCCCC"),
+        top=Side(style="thin", color="CCCCCC"),
+        bottom=Side(style="thin", color="CCCCCC")
+    )
+
+    # Row 1
+    c_a1 = ws.cell(row=1, column=1, value="TECHZONE HRM - NHẬP CÔNG & KHOẢN BỔ SUNG")
+    c_a1.font = font_title
+    c_a1.data_type = "s"
+
+    c_b1 = ws.cell(row=1, column=2, value=f"Kỳ lương: {period}")
+    c_b1.font = font_bold
+    c_b1.data_type = "s"
+
+    c_c1 = ws.cell(row=1, column=3, value=f"Mốc dữ liệu: {stamp}")
+    c_c1.font = font_bold
+    c_c1.data_type = "s"
+    c_c1.protection = Protection(locked=True)
+
+    # Row 2
+    c_ins = ws.cell(row=2, column=1, value="Để trống Công thực tế & Phép = tính theo chấm công. Xóa trắng cả dòng = bỏ dữ liệu import của NV. Cột xám chỉ để xem.")
+    c_ins.font = font_instruction
+
+    # Row 3 (Headers)
+    for c_idx, h in enumerate(EXPECTED_HEADERS, start=1):
+        cell = ws.cell(row=3, column=c_idx, value=h)
+        cell.font = font_header
+        cell.fill = fill_header
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        cell.border = border_thin
+        cell.data_type = "s"
+
+    row_num = 4
+    for emp in employees:
+        eid = emp["employee_id"]
+        pr_actual = pr_map.get(eid)
+        ov = ov_map.get(eid)
+        ot_info = ot_map.get(eid, (0.0, 0.0, 0.0))
+
+        code_val = emp["employee_code"]
+        name_val = emp["full_name"]
+        store_val = emp["store_name"] or "Trụ sở"
+        pos_val = emp["position_name"] or ""
+        sal_val = float(emp["contract_salary"] or 0)
+
+        cong_ov = (std - float(ov["unpaid_leave_days"])) if (ov and ov.get("unpaid_leave_days") is not None) else None
+        phep_ov = float(ov["paid_leave_days"]) if (ov and ov.get("paid_leave_days") is not None) else None
+
+        extra_comm = float(ov["extra_commission"]) if (ov and float(ov.get("extra_commission") or 0) > 0) else None
+        extra_bon = float(ov["extra_bonus"]) if (ov and float(ov.get("extra_bonus") or 0) > 0) else None
+        extra_all = float(ov["extra_allowance"]) if (ov and float(ov.get("extra_allowance") or 0) > 0) else None
+        extra_pen = float(ov["extra_penalty"]) if (ov and float(ov.get("extra_penalty") or 0) > 0) else None
+        note_val = ov.get("note") if ov else None
+
+        row_data = [
+            (code_val, "s", True, None, "center"),
+            (name_val, "s", True, None, "left"),
+            (store_val, "s", True, None, "left"),
+            (pos_val, "s", True, None, "left"),
+            (sal_val, "n", True, "#,##0", "right"),
+            (std, "n", True, "0.0", "center"),
+            (pr_actual, "n", True, "0.0", "center", True),
+            (cong_ov, "n", False, "0.0", "center"),
+            (phep_ov, "n", False, "0.0", "center"),
+            (ot_info[0] if ot_info[0] > 0 else 0, "n", True, "0.0", "center", True),
+            (ot_info[1] if ot_info[1] > 0 else 0, "n", True, "0.0", "center", True),
+            (ot_info[2] if ot_info[2] > 0 else 0, "n", True, "0.0", "center", True),
+            (extra_comm, "n", False, "#,##0", "right"),
+            (extra_bon, "n", False, "#,##0", "right"),
+            (extra_all, "n", False, "#,##0", "right"),
+            (extra_pen, "n", False, "#,##0", "right"),
+            (note_val, "s", False, None, "left"),
+        ]
+
+        for col_idx, item in enumerate(row_data, start=1):
+            val, dtype, locked, num_format, align_h = item[0], item[1], item[2], item[3], item[4]
+            is_gray = len(item) > 5 and item[5]
+            cell = ws.cell(row=row_num, column=col_idx, value=val)
+            cell.font = font_normal
+            cell.border = border_thin
+            cell.alignment = Alignment(horizontal=align_h, vertical="center")
+            if dtype == "s":
+                cell.data_type = "s"
+            if num_format and val is not None:
+                cell.number_format = num_format
+            if is_gray:
+                cell.fill = fill_gray
+            cell.protection = Protection(locked=locked)
+
+        row_num += 1
+
+    col_widths = [14, 24, 20, 18, 16, 14, 14, 14, 14, 14, 16, 16, 18, 16, 16, 22, 28]
+    for i, w in enumerate(col_widths, start=1):
+        col_letter = openpyxl.utils.get_column_letter(i)
+        ws.column_dimensions[col_letter].width = w
+
+    ws.protection.sheet = True
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    filename = f"Mau_Nhap_Luong_TechZone_{period}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+
+@router.post("/import/preview", summary="Xem trước kết quả nhập Excel bảng lương")
+async def preview_payroll_import(
+    period: str = Form(..., pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
+    file: UploadFile = File(...),
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
+    db: AsyncSession = Depends(get_db)
+):
+    user_id, hr_id = payroll_actor(current_user)
+    await lock_payroll_period(db, period)
+    await ensure_period_not_finalized(db, period)
+    await ensure_payroll_procedure_supports_import(db)
+
+    content = await file.read(MAX_FILE_BYTES + 1)
+    if len(content) > MAX_FILE_BYTES:
+        raise HTTPException(413, "Dung lượng file vượt quá giới hạn cho phép (10 MB)")
+
+    try:
+        template_stamp, rows, parser_errors = parse_import_workbook(content, period)
+    except ImportFileError as e:
+        raise HTTPException(400, str(e))
+
+    await ensure_import_stamp_current(db, period, template_stamp)
+
+    classify_res = await classify_import_rows(db, period, rows)
+    all_invalid = parser_errors + classify_res["invalid_records"]
+    actions = classify_res["actions"]
+    warnings = classify_res["warnings"]
+
+    affected_actions = [a for a in actions if a["action"] in ("CREATE", "UPDATE", "DELETE")]
+    affected_emp_ids = [a["employee_id"] for a in affected_actions]
+
+    net_before_map = {}
+    if affected_emp_ids:
+        cur_pr_res = await db.execute(text("""
+            SELECT employee_id, net_salary
+            FROM payrolls
+            WHERE salary_period = :period AND employee_id = ANY(:ids)
+        """), {"period": period, "ids": affected_emp_ids})
+        net_before_map = {r[0]: float(r[1] or 0) for r in cur_pr_res.fetchall()}
+
+    net_after_map = {}
+    import_summary = {"employees": len(affected_emp_ids), "total_gross": 0.0, "total_insurance": 0.0, "total_net": 0.0}
+    period_summary = {"employees": 0, "total_gross": 0.0, "total_insurance": 0.0, "total_net": 0.0}
+
+    try:
+        if affected_actions:
+            for a in affected_actions:
+                eid = a["employee_id"]
+                if a["action"] in ("CREATE", "UPDATE"):
+                    await db.execute(text("""
+                        INSERT INTO public.payroll_import_overrides (
+                            salary_period, employee_id, batch_id, unpaid_leave_days, paid_leave_days,
+                            extra_commission, extra_bonus, extra_allowance, extra_penalty, note,
+                            imported_by, imported_at
+                        ) VALUES (
+                            :period, :eid, NULL, :unpaid, :paid,
+                            :extra_comm, :extra_bon, :extra_allow, :extra_pen, :note,
+                            :user_id, clock_timestamp()
+                        )
+                        ON CONFLICT (salary_period, employee_id) DO UPDATE SET
+                            batch_id = NULL,
+                            unpaid_leave_days = EXCLUDED.unpaid_leave_days,
+                            paid_leave_days = EXCLUDED.paid_leave_days,
+                            extra_commission = EXCLUDED.extra_commission,
+                            extra_bonus = EXCLUDED.extra_bonus,
+                            extra_allowance = EXCLUDED.extra_allowance,
+                            extra_penalty = EXCLUDED.extra_penalty,
+                            note = EXCLUDED.note,
+                            imported_by = EXCLUDED.imported_by,
+                            imported_at = EXCLUDED.imported_at
+                    """), {
+                        "period": period, "eid": eid,
+                        "unpaid": a["unpaid_leave_days"], "paid": a["paid_leave_days"],
+                        "extra_comm": a["extra_commission"], "extra_bon": a["extra_bonus"],
+                        "extra_allow": a["extra_allowance"], "extra_pen": a["extra_penalty"],
+                        "note": a["note"], "user_id": user_id
+                    })
+                elif a["action"] == "DELETE":
+                    await db.execute(text("""
+                        DELETE FROM public.payroll_import_overrides
+                        WHERE salary_period = :period AND employee_id = :eid
+                    """), {"period": period, "eid": eid})
+
+            await execute_payroll_calculation(db, period, hr_id)
+
+            after_pr_res = await db.execute(text("""
+                SELECT employee_id, net_salary, gross_income, total_insurance
+                FROM payrolls
+                WHERE salary_period = :period AND employee_id = ANY(:ids)
+            """), {"period": period, "ids": affected_emp_ids})
+            for r in after_pr_res.fetchall():
+                net_after_map[r[0]] = float(r[1] or 0)
+                import_summary["total_net"] += float(r[1] or 0)
+                import_summary["total_gross"] += float(r[2] or 0)
+                import_summary["total_insurance"] += float(r[3] or 0)
+
+        tot_res = await db.execute(text("""
+            SELECT count(*), COALESCE(SUM(gross_income), 0), COALESCE(SUM(total_insurance), 0), COALESCE(SUM(net_salary), 0)
+            FROM payrolls WHERE salary_period = :period
+        """), {"period": period})
+        tot_row = tot_res.first()
+        if tot_row:
+            period_summary["employees"] = tot_row[0]
+            period_summary["total_gross"] = float(tot_row[1])
+            period_summary["total_insurance"] = float(tot_row[2])
+            period_summary["total_net"] = float(tot_row[3])
+    finally:
+        await db.rollback()
+
+    records_output = []
+    counts = {"create": 0, "update": 0, "delete": 0, "unchanged": 0, "invalid": len(all_invalid)}
+    for a in actions:
+        act = a["action"]
+        if act == "CREATE":
+            counts["create"] += 1
+        elif act == "UPDATE":
+            counts["update"] += 1
+        elif act == "DELETE":
+            counts["delete"] += 1
+        elif act == "UNCHANGED":
+            counts["unchanged"] += 1
+
+        eid = a["employee_id"]
+        records_output.append({
+            "row_index": a["row_index"],
+            "employee_code": a["employee_code"],
+            "full_name": a["full_name"],
+            "action": act,
+            "actual_working_days": a["actual_working_days"],
+            "paid_leave_days": a["paid_leave_days"],
+            "extra_commission": a["extra_commission"],
+            "extra_bonus": a["extra_bonus"],
+            "extra_allowance": a["extra_allowance"],
+            "extra_penalty": a["extra_penalty"],
+            "note": a["note"],
+            "net_before": net_before_map.get(eid),
+            "net_after": net_after_map.get(eid) if act in ("CREATE", "UPDATE", "DELETE") else net_before_map.get(eid)
+        })
+
+    return {
+        "salary_period": period,
+        "file_name": sanitize_file_name(file.filename),
+        "standard_working_days": classify_res["standard_working_days"],
+        "template_stamp": template_stamp,
+        "counts": counts,
+        "records": records_output,
+        "invalid_records": all_invalid,
+        "warnings": warnings,
+        "import_summary": import_summary,
+        "period_summary": period_summary
+    }
+
+
+@router.post("/import/confirm", summary="Xác nhận nạp dữ liệu import vào bảng lương")
+async def confirm_payroll_import(
+    body: PayrollImportConfirm,
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
+    db: AsyncSession = Depends(get_db)
+):
+    user_id, hr_id = payroll_actor(current_user)
+    period = body.salary_period
+    file_name = sanitize_file_name(body.file_name)
+
+    await lock_payroll_period(db, period)
+    await ensure_period_not_finalized(db, period)
+    await ensure_payroll_procedure_supports_import(db)
+    await ensure_import_stamp_current(db, period, body.template_stamp)
+
+    parsed_rows = [r.model_dump() for r in body.records]
+    classify_res = await classify_import_rows(db, period, parsed_rows)
+    if classify_res["invalid_records"]:
+        raise HTTPException(
+            status_code=422,
+            detail={"message": "Dữ liệu vẫn còn bản ghi không hợp lệ", "invalid_records": classify_res["invalid_records"]}
+        )
+
+    actions = classify_res["actions"]
+    affected_actions = [a for a in actions if a["action"] in ("CREATE", "UPDATE", "DELETE")]
+    if not affected_actions:
+        raise HTTPException(409, "File không có thay đổi so với dữ liệu hiện tại.")
+
+    created_count = sum(1 for a in affected_actions if a["action"] == "CREATE")
+    updated_count = sum(1 for a in affected_actions if a["action"] == "UPDATE")
+    deleted_count = sum(1 for a in affected_actions if a["action"] == "DELETE")
+
+    affected_emp_ids = [a["employee_id"] for a in affected_actions]
+
+    old_ov_res = await db.execute(text("""
+        SELECT employee_id, unpaid_leave_days, paid_leave_days,
+               extra_commission, extra_bonus, extra_allowance, extra_penalty, note
+        FROM public.payroll_import_overrides
+        WHERE salary_period = :period AND employee_id = ANY(:ids)
+    """), {"period": period, "ids": affected_emp_ids})
+    old_overrides = [dict(r._mapping) for r in old_ov_res.fetchall()]
+
+    batch_res = await db.execute(text("""
+        INSERT INTO public.payroll_import_batches (
+            salary_period, file_name, imported_by, created_count, updated_count, deleted_count, status
+        ) VALUES (
+            :period, :file_name, :user_id, :c_cnt, :u_cnt, :d_cnt, 'ACTIVE'
+        ) RETURNING batch_id
+    """), {
+        "period": period, "file_name": file_name, "user_id": user_id,
+        "c_cnt": created_count, "u_cnt": updated_count, "d_cnt": deleted_count
+    })
+    batch_id = batch_res.scalar_one()
+
+    for a in affected_actions:
+        eid = a["employee_id"]
+        if a["action"] in ("CREATE", "UPDATE"):
+            await db.execute(text("""
+                INSERT INTO public.payroll_import_overrides (
+                    salary_period, employee_id, batch_id, unpaid_leave_days, paid_leave_days,
+                    extra_commission, extra_bonus, extra_allowance, extra_penalty, note,
+                    imported_by, imported_at
+                ) VALUES (
+                    :period, :eid, :batch_id, :unpaid, :paid,
+                    :extra_comm, :extra_bon, :extra_allow, :extra_pen, :note,
+                    :user_id, clock_timestamp()
+                )
+                ON CONFLICT (salary_period, employee_id) DO UPDATE SET
+                    batch_id = EXCLUDED.batch_id,
+                    unpaid_leave_days = EXCLUDED.unpaid_leave_days,
+                    paid_leave_days = EXCLUDED.paid_leave_days,
+                    extra_commission = EXCLUDED.extra_commission,
+                    extra_bonus = EXCLUDED.extra_bonus,
+                    extra_allowance = EXCLUDED.extra_allowance,
+                    extra_penalty = EXCLUDED.extra_penalty,
+                    note = EXCLUDED.note,
+                    imported_by = EXCLUDED.imported_by,
+                    imported_at = EXCLUDED.imported_at
+            """), {
+                "period": period, "eid": eid, "batch_id": batch_id,
+                "unpaid": a["unpaid_leave_days"], "paid": a["paid_leave_days"],
+                "extra_comm": a["extra_commission"], "extra_bon": a["extra_bonus"],
+                "extra_allow": a["extra_allowance"], "extra_pen": a["extra_penalty"],
+                "note": a["note"], "user_id": user_id
+            })
+        elif a["action"] == "DELETE":
+            await db.execute(text("""
+                DELETE FROM public.payroll_import_overrides
+                WHERE salary_period = :period AND employee_id = :eid
+            """), {"period": period, "eid": eid})
+
+    await execute_payroll_calculation(db, period, hr_id)
+
+    totals_res = await db.execute(text("""
+        SELECT COALESCE(SUM(gross_income), 0), COALESCE(SUM(net_salary), 0), COALESCE(SUM(total_insurance), 0)
+        FROM payrolls
+        WHERE salary_period = :period AND employee_id = ANY(:ids)
+    """), {"period": period, "ids": affected_emp_ids})
+    tot_row = totals_res.first()
+    t_gross, t_net, t_ins = float(tot_row[0]), float(tot_row[1]), float(tot_row[2])
+
+    await db.execute(text("""
+        UPDATE public.payroll_import_batches
+        SET total_gross = :tg, total_net = :tn, total_insurance = :ti
+        WHERE batch_id = :bid
+    """), {"tg": t_gross, "tn": t_net, "ti": t_ins, "bid": batch_id})
+
+    await db.execute(text("""
+        INSERT INTO audit_logs (user_id, action, entity_name, entity_id, old_values, new_values)
+        VALUES (:uid, 'IMPORT_PAYROLL_EXCEL', 'payroll_import_batches', :eid, CAST(:old_vals AS jsonb), CAST(:new_vals AS jsonb))
+    """), {
+        "uid": user_id,
+        "eid": str(batch_id),
+        "old_vals": json.dumps({"period": period, "overrides": old_overrides}, default=str),
+        "new_vals": json.dumps({
+            "period": period, "file_name": file_name,
+            "actions": [{"employee_code": a["employee_code"], "action": a["action"]} for a in affected_actions],
+            "totals": {"gross": t_gross, "net": t_net, "insurance": t_ins}
+        }, default=str)
+    })
+
+    await db.commit()
+
+    return {
+        "message": f"Nạp thành công {len(affected_actions)} bản ghi vào kỳ lương {period}!",
+        "batch_id": batch_id,
+        "counts": {"create": created_count, "update": updated_count, "delete": deleted_count},
+        "totals": {"gross": t_gross, "net": t_net, "insurance": t_ins}
+    }
+
+
+@router.post("/import/revert", summary="Khôi phục dữ liệu chấm công gốc (xóa toàn bộ override của kỳ)")
+async def revert_payroll_import(
+    body: PayrollImportRevertRequest,
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
+    db: AsyncSession = Depends(get_db)
+):
+    user_id, hr_id = payroll_actor(current_user)
+    period = body.salary_period
+
+    await lock_payroll_period(db, period)
+    await ensure_period_not_finalized(db, period)
+    await ensure_payroll_procedure_supports_import(db)
+
+    cur_ov_res = await db.execute(text("""
+        SELECT employee_id, unpaid_leave_days, paid_leave_days,
+               extra_commission, extra_bonus, extra_allowance, extra_penalty, note
+        FROM public.payroll_import_overrides
+        WHERE salary_period = :period
+    """), {"period": period})
+    current_overrides = [dict(r._mapping) for r in cur_ov_res.fetchall()]
+    if not current_overrides:
+        raise HTTPException(409, "Kỳ không có dữ liệu import.")
+
+    await db.execute(text("""
+        UPDATE public.payroll_import_batches
+        SET status = 'REVERTED', reverted_at = clock_timestamp(), reverted_by = :uid
+        WHERE salary_period = :period AND status = 'ACTIVE'
+    """), {"period": period, "uid": user_id})
+
+    await db.execute(text("""
+        DELETE FROM public.payroll_import_overrides WHERE salary_period = :period
+    """), {"period": period})
+
+    await execute_payroll_calculation(db, period, hr_id)
+
+    await db.execute(text("""
+        INSERT INTO audit_logs (user_id, action, entity_name, entity_id, old_values, new_values)
+        VALUES (:uid, 'REVERT_PAYROLL_IMPORT', 'payroll_import_overrides', :eid, CAST(:old_vals AS jsonb), CAST(:new_vals AS jsonb))
+    """), {
+        "uid": user_id,
+        "eid": period,
+        "old_vals": json.dumps({"overrides": current_overrides}, default=str),
+        "new_vals": json.dumps({"removed_count": len(current_overrides)}, default=str)
+    })
+
+    await db.commit()
+
+    return {
+        "message": f"Đã khôi phục chấm công gốc kỳ {period} thành công! (Đã hủy {len(current_overrides)} bản ghi override)",
+        "salary_period": period,
+        "reverted_count": len(current_overrides)
+    }
+
+
+@router.get("/import/status", summary="Lấy trạng thái và lịch sử import bảng lương của kỳ")
+async def get_payroll_import_status(
+    period: str = Query(..., pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
+    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
+    db: AsyncSession = Depends(get_db)
+):
+    has_table = (await db.execute(text("SELECT to_regclass('public.payroll_import_overrides')"))).scalar_one_or_none()
+    if not has_table:
+        return {"override_count": 0, "latest_batch": None, "batches": []}
+
+    ov_cnt = (await db.execute(text("SELECT count(*) FROM public.payroll_import_overrides WHERE salary_period = :period"), {"period": period})).scalar_one_or_none() or 0
+
+    batches_res = await db.execute(text("""
+        SELECT b.batch_id, b.salary_period, b.file_name, b.imported_at,
+               COALESCE(e.full_name, u.username, 'Hệ thống') AS imported_by_name,
+               b.created_count, b.updated_count, b.deleted_count,
+               b.total_gross, b.total_net, b.total_insurance,
+               b.status, b.reverted_at
+        FROM public.payroll_import_batches b
+        LEFT JOIN public.users u ON b.imported_by = u.user_id
+        LEFT JOIN public.employees e ON u.employee_id = e.employee_id
+        WHERE b.salary_period = :period
+        ORDER BY b.batch_id DESC
+        LIMIT 10
+    """), {"period": period})
+
+    batches = []
+    for r in batches_res.fetchall():
+        batches.append({
+            "batch_id": r[0],
+            "salary_period": r[1],
+            "file_name": r[2],
+            "imported_at": r[3].isoformat() if r[3] else None,
+            "imported_by_name": r[4],
+            "created_count": r[5],
+            "updated_count": r[6],
+            "deleted_count": r[7],
+            "total_gross": float(r[8] or 0),
+            "total_net": float(r[9] or 0),
+            "total_insurance": float(r[10] or 0),
+            "status": r[11],
+            "reverted_at": r[12].isoformat() if r[12] else None
+        })
+
+    latest_batch = batches[0] if batches else None
+
+    return {
+        "override_count": ov_cnt,
+        "latest_batch": latest_batch,
+        "batches": batches
+    }
+
 @router.get("/export/excel", summary="Xuất bảng lương tháng ra file Excel (.xlsx) chuẩn TechZone (Rubric III.3.1.7)")
 async def export_payroll_excel(
     period: Optional[str] = Query("2026-09", description="Kỳ lương (YYYY-MM)"),
@@ -1780,12 +2406,14 @@ async def export_payroll_excel(
         {"key": "seniority_allowance", "title": "PC Thâm niên", "width": 15, "format": "currency"},
         {"key": "meal_transport_allowance", "title": "PC Cơm xe", "width": 15, "format": "currency"},
         {"key": "project_allowance", "title": "PC Dự án", "width": 15, "format": "currency"},
+        {"key": "extra_allowance_amount", "title": "PC đặc thù", "width": 16, "format": "currency"},
         {"key": "commission_amount", "title": "Hoa hồng", "width": 16, "format": "currency"},
         {"key": "bonus_amount", "title": "Tổng tiền thưởng", "width": 17, "format": "currency"},
         {"key": "overtime_salary", "title": "Lương tăng ca (OT)", "width": 18, "format": "currency"},
         {"key": "gross_income", "title": "TỔNG GROSS", "width": 20, "format": "currency"},
         {"key": "total_insurance", "title": "Bảo hiểm (10.5%)", "width": 18, "format": "currency"},
         {"key": "penalty_deduction", "title": "Phạt trễ", "width": 14, "format": "currency"},
+        {"key": "extra_penalty_amount", "title": "Khấu trừ vi phạm", "width": 18, "format": "currency"},
         {"key": "total_deduction", "title": "Tổng giảm trừ", "width": 18, "format": "currency"},
         {"key": "net_salary", "title": "THỰC LĨNH (NET)", "width": 22, "format": "currency"},
         {"key": "payment_status_label", "title": "Trạng thái", "width": 14, "align": "center"}
@@ -1793,9 +2421,9 @@ async def export_payroll_excel(
 
     total_keys = [
         "contract_salary", "time_deduction_amount", "actual_base_salary",
-        "position_allowance", "seniority_allowance", "meal_transport_allowance", "project_allowance",
+        "position_allowance", "seniority_allowance", "meal_transport_allowance", "project_allowance", "extra_allowance_amount",
         "commission_amount", "bonus_amount", "overtime_salary",
-        "gross_income", "total_insurance", "penalty_deduction", "total_deduction", "net_salary"
+        "gross_income", "total_insurance", "penalty_deduction", "extra_penalty_amount", "total_deduction", "net_salary"
     ]
 
     excel_data = []
@@ -1987,8 +2615,8 @@ async def export_payroll_csv(
     writer.writerow([
         "Mã NV", "Họ và Tên", "Cửa hàng", "Chức vụ", "Kỳ lương",
         "Lương HĐ", "Trừ thời gian", "Lương CB thực", "Phụ cấp CV",
-        "Phụ cấp Thâm niên", "Phụ cấp Dự án", "Phụ cấp Cơm xe", "Hoa hồng",
-        "Tổng thưởng", "Lương Gross", "Bảo hiểm 10.5%", "Phạt trễ", "Tổng khấu trừ",
+        "Phụ cấp Thâm niên", "Phụ cấp Dự án", "PC đặc thù", "Phụ cấp Cơm xe", "Hoa hồng",
+        "Tổng thưởng", "Lương Gross", "Bảo hiểm 10.5%", "Phạt trễ", "Khấu trừ vi phạm", "Tổng khấu trừ",
         "Thực lĩnh Net", "Trạng thái"
     ])
 
@@ -1998,9 +2626,9 @@ async def export_payroll_csv(
             p_dict.get("employee_code"), p_dict.get("employee_name"), p_dict.get("store_name") or "Trụ sở",
             p_dict.get("position_name"), p_dict.get("salary_period"),
             p_dict.get("contract_salary"), p_dict.get("time_deduction_amount"), p_dict.get("actual_base_salary"),
-            p_dict.get("position_allowance"), p_dict.get("seniority_allowance"), p_dict.get("project_allowance"),
+            p_dict.get("position_allowance"), p_dict.get("seniority_allowance"), p_dict.get("project_allowance"), p_dict.get("extra_allowance_amount"),
             p_dict.get("meal_transport_allowance"), p_dict.get("commission_amount"), p_dict.get("bonus_amount"),
-            p_dict.get("gross_income"), p_dict.get("total_insurance"), p_dict.get("penalty_deduction"),
+            p_dict.get("gross_income"), p_dict.get("total_insurance"), p_dict.get("penalty_deduction"), p_dict.get("extra_penalty_amount"),
             p_dict.get("total_deduction"), p_dict.get("net_salary"), p_dict.get("payment_status")
         ])
 
