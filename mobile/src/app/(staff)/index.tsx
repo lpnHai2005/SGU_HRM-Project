@@ -29,10 +29,11 @@ export default function Home() {
 
   const userRoles = profile.data?.roles || [];
   const isStoreManager = userRoles.includes('STORE_MANAGER');
-  const isManager = isStoreManager || userRoles.includes('HR_MANAGER') || userRoles.includes('ADMIN');
+  const isManager = isStoreManager || ['HR_MANAGER', 'DIRECTOR', 'ADMIN'].some(r => userRoles.includes(r));
+  const canSeeReports = ['HR_MANAGER', 'DIRECTOR'].some(r => userRoles.includes(r));
 
   const summary = useResource<EmployeeSummaryData>(`/attendances/my-summary?period=${currentPeriod}`, 30000);
-  const managerStats = useResource<ManagerDashboardKpis>(isManager ? '/reports/dashboard-kpis' : null, 30000);
+  const managerStats = useResource<ManagerDashboardKpis>(canSeeReports ? '/reports/dashboard-kpis' : null, 30000);
 
   const { notifications, unreadCount, setCenterOpen, dispatchNotification } = useNotifications();
 
@@ -91,7 +92,7 @@ export default function Home() {
   const statusTone = today.data?.status === 'NORMAL' ? p.emeraldText : today.data?.check_in_time ? p.amberText : p.muted;
   const pendingLeaves = isManager ? managerStats.data?.pending_leaves || 0 : 0;
   const enabledShortcuts = shortcuts.filter(item => prefs.shortcuts.includes(item.key));
-  const anyError = profile.error || today.error || schedules.error || (isManager && managerStats.error) || error;
+  const anyError = profile.error || today.error || schedules.error || (canSeeReports && managerStats.error) || error;
   const reloadAll = () => { profile.reload(); today.reload(); schedules.reload(); summary.reload(); managerStats.reload(); };
 
   return (

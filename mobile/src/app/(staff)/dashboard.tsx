@@ -59,7 +59,10 @@ export default function DashboardScreen() {
   const isStoreManager = userRoles.includes('STORE_MANAGER');
   const isHrManager = userRoles.includes('HR_MANAGER');
   const isAdmin = userRoles.includes('ADMIN');
-  const isManager = isStoreManager || isHrManager || isAdmin;
+  const isDirector = userRoles.includes('DIRECTOR');
+  const isManager = isStoreManager || isHrManager || isDirector || isAdmin;
+  // /reports/* chỉ cho HR/Giám đốc (require_strict_roles), giống trang Báo cáo trên web.
+  const canSeeReports = isHrManager || isDirector;
 
   // View mode switcher for managers: 'manager' vs 'personal'
   const [viewMode, setViewMode] = useState<'manager' | 'personal'>('manager');
@@ -93,17 +96,15 @@ export default function DashboardScreen() {
         );
       }
       if (isManager && viewMode === 'manager') {
-        loads.push(
-          { name: 'Bốn chỉ số Dashboard', task: fetchDashboardKpis(token).then(setManagerStats).catch(error => { setManagerStats(null); throw error; }) },
-          { name: 'Thống kê đơn từ', task: fetchLeaveSummaryStats(token).then(setLeaveStats).catch(error => { setLeaveStats(null); throw error; }) }
-        );
-        loads.push({ name: 'Quỹ lương & doanh số', task: fetchDashboardStats(period, token)
+        loads.push({ name: 'Thống kê đơn từ', task: fetchLeaveSummaryStats(token).then(setLeaveStats).catch(error => { setLeaveStats(null); throw error; }) });
+        if (canSeeReports) loads.push({ name: 'Bốn chỉ số Dashboard', task: fetchDashboardKpis(token).then(setManagerStats).catch(error => { setManagerStats(null); throw error; }) });
+        if (canSeeReports) loads.push({ name: 'Quỹ lương & doanh số', task: fetchDashboardStats(period, token)
           .then(data => { setFinanceStats(data); setFinanceError(''); })
           .catch(cause => {
             setFinanceStats(null);
             setFinanceError(cause instanceof Error ? cause.message : 'Không tải được quỹ lương và doanh số.');
           }) });
-        if (isAdmin || isHrManager) {
+        if (canSeeReports) {
           loads.push({ name: 'Quỹ lương', task: fetchPayrollFundSummary(period, token).then(setPayrollFund).catch(error => { setPayrollFund(null); throw error; }) });
         }
       }
@@ -118,7 +119,7 @@ export default function DashboardScreen() {
     } finally {
       setLoading(false);
     }
-  }, [token, profile.data, period, isManager, isAdmin, isHrManager, viewMode]);
+  }, [token, profile.data, period, isManager, canSeeReports, viewMode]);
 
   useFocusEffect(
     useCallback(() => {
@@ -375,7 +376,7 @@ export default function DashboardScreen() {
           )}
 
           {/* Unit Comparison Chart (For Admin / HR Manager) */}
-          {(isAdmin || isHrManager) && payrollFund && payrollFund.by_unit && payrollFund.by_unit.length > 0 && (
+          {canSeeReports && payrollFund && payrollFund.by_unit && payrollFund.by_unit.length > 0 && (
             <Card style={{ gap: 14 }}>
               <View style={{ gap: 2 }}>
                 <Label variant="subtitle" numberOfLines={1}>Phân bổ chi phí theo chi nhánh</Label>

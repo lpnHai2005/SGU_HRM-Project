@@ -12,9 +12,11 @@ import type { Project, ProjectRole, ProjectRoleAllowance, Employee } from '../ty
 export function ProjectsPage({ personal = false }: { personal?: boolean }) {
   const { user } = useAuth()
   const userRoles = useMemo(() => user?.roles || [], [user])
-  const canManage = userRoles.some(r => ['ADMIN', 'HR_MANAGER', 'DIRECTOR'].includes(r))
+  // ADMIN chỉ xem (cả ngân sách); tạo/sửa dự án dành cho HR và Giám đốc.
+  const canView = userRoles.some(r => ['ADMIN', 'HR_MANAGER', 'DIRECTOR'].includes(r))
+  const canManage = userRoles.some(r => ['HR_MANAGER', 'DIRECTOR'].includes(r))
   const isStoreManager = userRoles.includes('STORE_MANAGER')
-  const hasManagementView = canManage || isStoreManager
+  const hasManagementView = canView || isStoreManager
   const currentEmployeeId = user?.employee_id
 
   // View: nếu personal=true thì cố định là 'my' (Dự án của tôi); nếu personal=false thì là 'manage' (Quản lý dự án)
@@ -649,8 +651,8 @@ export function ProjectsPage({ personal = false }: { personal?: boolean }) {
               icon={Icons.chart}
               iconColor="amber"
               label="TỔNG NGÂN SÁCH"
-              value={canManage && metrics.totalBudget > 0 ? formatCurrency(metrics.totalBudget) : (canManage ? '0 ₫' : 'Bảo mật')}
-              footerNote={canManage ? 'Hạn mức ngân sách các dự án' : 'Quyền hạn bảo mật'}
+              value={canView && metrics.totalBudget > 0 ? formatCurrency(metrics.totalBudget) : (canView ? '0 ₫' : 'Bảo mật')}
+              footerNote={canView ? 'Hạn mức ngân sách các dự án' : 'Quyền hạn bảo mật'}
             />
           </div>
 

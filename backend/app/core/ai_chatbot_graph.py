@@ -20,7 +20,7 @@ from sqlalchemy import text
 
 from app.core.config import settings
 from app.core.ai_chatbot_tools import (
-    HRM_TOOLS_REGISTRY, is_hr_or_admin, is_store_manager, is_accountant
+    HRM_TOOLS_REGISTRY, is_hr_or_admin, is_store_manager
 )
 from app.core.ai_chatbot_db import (
     save_chat_message, save_turn, resolve_thread_id, create_action_proposal
@@ -732,7 +732,7 @@ DANH SÁCH TOOL VÀ CHỨC NĂNG:
 19. `get_employee_profile`: Dành cho Quản lý/HR xem hồ sơ của một nhân viên cụ thể (args: employee_code hoặc employee_id).
 20. `get_employee_attendance`: Dành cho Quản lý/HR xem chấm công của một nhân viên cụ thể (args: employee_id hoặc employee_code).
 21. `get_employee_work_schedule`: Dành cho Quản lý/HR xem lịch làm việc của một nhân viên cụ thể (args: employee_id hoặc employee_code).
-22. `get_employee_payroll`: Dành cho Kế toán/HR xem bảng lương của một nhân viên cụ thể (args: employee_id hoặc employee_code).
+22. `get_employee_payroll`: Dành cho HR/Ban Giám đốc/Cửa hàng trưởng (chỉ nhân viên cửa hàng mình, phiếu đã duyệt) xem bảng lương của một nhân viên cụ thể (args: employee_id hoặc employee_code).
 
 YÊU CẦU ĐẦU RA:
 Chỉ trả về JSON hợp lệ:
@@ -832,9 +832,14 @@ def verify_planned_tool_authorization(planned: Dict[str, Any], user: dict) -> tu
             return False, "Truy cập bị từ chối: Nhân viên thông thường chỉ có quyền truy cập dữ liệu của chính mình."
         return True, None
 
-    if t_name in ["get_employee_payroll", "get_payroll_period"]:
-        if not (is_accountant(user) or is_hr_or_admin(user)):
-            return False, "Truy cập bị từ chối: Chỉ Kế toán hoặc Ban Quản trị mới có quyền truy cập dữ liệu bảng lương này."
+    if t_name == "get_employee_payroll":
+        if not (is_hr_or_admin(user) or is_store_manager(user)):
+            return False, "Truy cập bị từ chối: Chỉ HR, Ban Giám đốc hoặc Cửa hàng trưởng mới có quyền tra cứu lương nhân viên khác."
+        return True, None
+
+    if t_name == "get_payroll_period":
+        if not is_hr_or_admin(user):
+            return False, "Truy cập bị từ chối: Chỉ HR hoặc Ban Giám đốc mới có quyền xem tổng hợp kỳ lương."
         return True, None
 
     if t_name == "get_project_detail":

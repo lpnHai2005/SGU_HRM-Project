@@ -76,8 +76,12 @@ export function ResignationManagementPage({ user }: ResignationManagementPagePro
 
   // RBAC
   const userRoles = useMemo(() => user?.roles || [], [user])
-  const canManage = useMemo(() => {
+  // ADMIN chỉ xem; tạo/duyệt/từ chối/hủy đơn dành cho HR và Giám đốc.
+  const canView = useMemo(() => {
     return userRoles.includes('ADMIN') || userRoles.includes('HR_MANAGER') || userRoles.includes('DIRECTOR')
+  }, [userRoles])
+  const canManage = useMemo(() => {
+    return userRoles.includes('HR_MANAGER') || userRoles.includes('DIRECTOR')
   }, [userRoles])
 
   // Helper kiểm tra đơn thôi việc của HR/Admin (cần Giám đốc duyệt)
@@ -101,14 +105,13 @@ export function ResignationManagementPage({ user }: ResignationManagementPagePro
     const isHrOrAdmin = isApplicantHrOrAdmin(item)
     const isDirector = userRoles.includes('DIRECTOR')
     const isHrManager = userRoles.includes('HR_MANAGER')
-    const isAdmin = userRoles.includes('ADMIN')
 
     if (isHrOrAdmin) {
       // Đơn của HR/Admin BẮT BUỘC do Giám đốc duyệt
       return isDirector
     }
-    // Đơn của nhân viên/CHT do HR hoặc Admin duyệt
-    return isHrManager || isAdmin
+    // Đơn của nhân viên/CHT do HR duyệt
+    return isHrManager
   }, [user?.employee_id, userRoles, isApplicantHrOrAdmin])
 
   // Từ chối đơn thôi việc (Tuân thủ nguyên tắc No Self-Approval)
@@ -120,12 +123,11 @@ export function ResignationManagementPage({ user }: ResignationManagementPagePro
     const isHrOrAdmin = isApplicantHrOrAdmin(item)
     const isDirector = userRoles.includes('DIRECTOR')
     const isHrManager = userRoles.includes('HR_MANAGER')
-    const isAdmin = userRoles.includes('ADMIN')
 
     if (isHrOrAdmin) {
       return isDirector
     }
-    return isHrManager || isAdmin
+    return isHrManager
   }, [user?.employee_id, userRoles, isApplicantHrOrAdmin])
 
   // Hủy đơn (người nộp hoặc người tạo trước khi được duyệt)
@@ -133,8 +135,7 @@ export function ResignationManagementPage({ user }: ResignationManagementPagePro
     if (!item || item.status !== 'PENDING') return false
     const isOwner = Boolean(user?.employee_id && item.employee_id === user.employee_id)
     const isCreator = Boolean(user?.user_id && item.created_by === user.user_id)
-    const isAdmin = userRoles.includes('ADMIN')
-    return isOwner || isCreator || isAdmin
+    return isOwner || isCreator
   }, [user?.employee_id, user?.user_id, userRoles])
 
   // Close floating action menu on outside click or scroll
@@ -383,7 +384,7 @@ export function ResignationManagementPage({ user }: ResignationManagementPagePro
           </p>
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          {canManage && (
+          {canView && (
             <button
               type="button"
               className="btn btn-secondary btn-sm"
@@ -705,7 +706,7 @@ export function ResignationManagementPage({ user }: ResignationManagementPagePro
                             >
                               {Icons.eye}
                             </button>
-                            {canManage && (
+                            {canView && (
                               <button
                                 type="button"
                                 className={`btn btn-secondary btn-sm btn-icon ${openMenuId === item.resignation_id ? 'active' : ''}`}

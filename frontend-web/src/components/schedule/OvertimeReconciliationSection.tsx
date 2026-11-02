@@ -275,8 +275,8 @@ export function OvertimeReconciliationSection({ request, user, highlightCaseId }
   const approved = requestApproved &&
     !(request.revoke_requested_at && !request.revoke_decided_at)
   const roles = user.roles || []
-  const canPreview = approved && (roles.includes('HR_MANAGER') || roles.includes('ADMIN'))
-  const canDecide = approved && (roles.includes('HR_MANAGER') || roles.includes('ADMIN')) && request.employee_id !== user.employee_id &&
+  const canPreview = approved && (roles.includes('HR_MANAGER') || roles.includes('ADMIN') || roles.includes('DIRECTOR'))
+  const canDecide = approved && (roles.includes('HR_MANAGER') || roles.includes('DIRECTOR')) && request.employee_id !== user.employee_id &&
     request.created_by !== user.user_id
   const isAssignedEmployee = request.employee_id === user.employee_id
   const actionable = result && !refreshFailed && result.version > 0 && result.source_current &&
@@ -315,7 +315,7 @@ export function OvertimeReconciliationSection({ request, user, highlightCaseId }
           const detail = issueDetails[issue]
           return <li key={issue}><strong>{detail?.title || 'Vấn đề dữ liệu nguồn'}</strong><small>Mã: {issue} · Mức: {detail?.severity || 'Cần rà soát'}</small><span>{detail?.reason || 'Cần kiểm tra dữ liệu nguồn.'}</span><span>{detail?.action || 'Không xác nhận OT khi nguồn chưa rõ.'}</span><small>Phụ trách: {detail?.owner || 'HR/Admin và Attendance owner.'}</small></li>
         })}</ul></div>}
-        {roles.includes('ADMIN') && !roles.includes('HR_MANAGER') && <div className="overtime-reconciliation-readonly-note" role="note">Admin dùng quyền đối soát hiện có; thao tác bị chặn nếu đơn do chính tài khoản tạo hoặc dành cho chính nhân viên đó.</div>}
+        {roles.includes('ADMIN') && !roles.includes('HR_MANAGER') && <div className="overtime-reconciliation-readonly-note" role="note">Admin chỉ được xem đối soát; xác nhận, từ chối và yêu cầu giải trình do HR hoặc Giám đốc thực hiện.</div>}
         {notice && <div className="overtime-no-conflict" role="status">{notice}</div>}
         {error && <div className="overtime-conflict-warning" role="alert">{error}</div>}
         <div className="overtime-reconciliation-metrics">

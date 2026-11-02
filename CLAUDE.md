@@ -55,7 +55,7 @@ SGU-HRM-Project/
 ### 1. RBAC - Phân quyền
 | Table | Columns | Mô tả |
 |-------|---------|--------|
-| `roles` | role_id, role_code, role_name, description | Các vai trò: ADMIN, HR_MANAGER, STORE_MANAGER, EMPLOYEE |
+| `roles` | role_id, role_code, role_name, description | Các vai trò: ADMIN, DIRECTOR, HR_MANAGER, STORE_MANAGER, EMPLOYEE |
 | `permissions` | permission_id, permission_code, permission_name, module | Quyền chi tiết theo module |
 | `role_permissions` | role_id, permission_id | Map vai trò ↔ quyền |
 | `user_roles` | user_id, role_id, assigned_at | Map user ↔ vai trò |
@@ -157,7 +157,7 @@ SGU-HRM-Project/
 | `/payrolls/annual-summary/{emp_id}` | GET | ✅ | - | Tổng hợp thu nhập năm |
 | **Roles & Permissions** ||||
 | `/roles` | GET | ✅ | - | Danh sách roles |
-| `/roles/rbac-matrix` | GET | ✅ | ADMIN | Ma trận RBAC |
+| `/roles/matrix` | GET | ✅ | ADMIN, DIRECTOR, HR_MANAGER | Ma trận RBAC |
 
 ## Quy ước Code
 
@@ -188,7 +188,8 @@ SGU-HRM-Project/
 ### RBAC Roles
 | Role | Mô tả | Quyền |
 |------|-------|-------|
-| ADMIN | Quản trị hệ thống | Toàn quyền |
+| ADMIN | Quản trị hệ thống (kỹ thuật) | Quản lý tài khoản, phân quyền, nhật ký, cửa hàng; CHỈ XEM ở nghiệp vụ (không duyệt/tạo/sửa) |
+| DIRECTOR | Giám đốc | Duyệt đơn của HR/Admin, duyệt tăng ca, xem báo cáo toàn công ty |
 | HR_MANAGER | Quản lý nhân sự | Quản lý nhân sự, duyệt nghỉ cấp 2, tính lương |
 | STORE_MANAGER | Cửa hàng trưởng | Quản lý cửa hàng, duyệt nghỉ cấp 1 |
 | EMPLOYEE | Nhân viên | Xem thông tin cá nhân, nộp đơn nghỉ, check-in/out |

@@ -1155,11 +1155,7 @@ async def resolve_attendance_session(
     # RBAC Check: Only HR_MANAGER, ADMIN, DIRECTOR can edit/resolve attendance sessions.
     # STORE_MANAGER is strictly forbidden from editing and will receive 403.
     user_roles = user.get("roles") or []
-    username = (user.get("username") or "").lower()
-    is_hr_or_admin = any(r in user_roles for r in ('ADMIN', 'HR_MANAGER', 'DIRECTOR'))
-    is_sm = 'STORE_MANAGER' in user_roles or username.startswith("store_mgr")
-
-    if is_sm or not is_hr_or_admin:
+    if not any(r in user_roles for r in ('HR_MANAGER', 'DIRECTOR')):
         raise HTTPException(403, "Bạn không có quyền thao tác chức năng này.")
 
     # Fetch session with lock

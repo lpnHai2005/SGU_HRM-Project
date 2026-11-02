@@ -12,7 +12,7 @@ export function ManagerActivity({profile,initialKind='all'}:{profile:Profile;ini
  const p=usePalette();const [day,setDay]=useState(operationToday);const [filters,setFilters]=useState(emptyFilters);const [applied,setApplied]=useState({day,...emptyFilters});const [kind,setKind]=useState(initialKind);const [group,setGroup]=useState('auto');const [expanded,setExpanded]=useState<number[]>([]);
  const options=useResource<any>('/operations/filter-options');
  const {data,error,loading,reload}=useResource<{summary:Record<string,number>;employees:Person[]}>(`/operations/activity?${queryString(applied)}`);
- const storeOnly=profile.roles?.includes('STORE_MANAGER')&&!profile.roles.some(r=>['ADMIN','HR_MANAGER'].includes(r));
+ const storeOnly=profile.roles?.includes('STORE_MANAGER')&&!profile.roles.some(r=>['ADMIN','DIRECTOR','HR_MANAGER'].includes(r));
  const grouped:Record<string,Person[]>={};const storeSelected=applied.store_id||storeOnly;
  const mode=group==='auto'?(applied.employee_id?'none':storeSelected?(applied.department_id?'employee':'department'):'store'):group;
  for(const person of data?.employees||[]){

@@ -31,8 +31,8 @@ export function OvertimeRequestDrawer({
   isOpen, user, employees, lookups, onClose, onSuccess, initialDate, initialStoreId, initialEmployeeId, fixedEmployeeId,
 }: Props) {
   const roles: string[] = user?.roles || []
-  const isStoreManager = roles.includes('STORE_MANAGER') && !roles.includes('ADMIN') && !roles.includes('HR_MANAGER')
-  const isEmployeeOnly = roles.includes('EMPLOYEE') && !roles.some(role => ['ADMIN', 'HR_MANAGER', 'STORE_MANAGER'].includes(role))
+  const isStoreManager = roles.includes('STORE_MANAGER') && !roles.includes('ADMIN') && !roles.includes('HR_MANAGER') && !roles.includes('DIRECTOR')
+  const isEmployeeOnly = roles.includes('EMPLOYEE') && !roles.some(role => ['ADMIN', 'HR_MANAGER', 'DIRECTOR', 'STORE_MANAGER'].includes(role))
   const isSelfOnly = fixedEmployeeId !== undefined || isEmployeeOnly
   const [storeId, setStoreId] = useState<number>(Number(initialStoreId || user?.store_id || lookups?.stores[0]?.store_id || 0))
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<number[]>(fixedEmployeeId ? [fixedEmployeeId] : [])

@@ -84,7 +84,6 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
 
   const isStoreManager = Boolean(
     branch ||
-      user?.username?.toLowerCase()?.startsWith('store_mgr') ||
       user?.role === 'STORE_MANAGER'
   )
 

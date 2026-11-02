@@ -258,7 +258,9 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
 
 
   const role = getRoleFromUser(user)
-  const canManage = role === 'ADMIN' || role === 'HR_MANAGER' || role === 'DIRECTOR'
+  // ADMIN chỉ xem; thêm/sửa/cho thôi việc dành cho HR và Giám đốc.
+  const canView = role === 'ADMIN' || role === 'HR_MANAGER' || role === 'DIRECTOR'
+  const canManage = role === 'HR_MANAGER' || role === 'DIRECTOR'
 
   // Modal handlers
   const openModal = (mode: ModalMode, employee?: Employee) => {
@@ -808,7 +810,7 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
         <div style={{ marginTop: '20px' }}>
           <ContractHistory
             employeeId={emp.employee_id}
-            canSeeSalary={canManage}
+            canSeeSalary={canView}
           />
         </div>
 
@@ -1151,7 +1153,7 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
           <div>
             <strong>Nhân viên:</strong> {selectedEmployee.full_name} ({selectedEmployee.employee_code})
           </div>
-          {canManage && (
+          {canView && (
             <button
               type="button"
               className="btn btn-primary btn-sm"
@@ -1167,7 +1169,7 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
 
         <ContractHistory
           employeeId={selectedEmployee.employee_id}
-          canSeeSalary={canManage}
+          canSeeSalary={canView}
         />
 
         <div className="modal-footer" style={{ marginTop: '24px', padding: '12px 0 0', borderTop: '1px solid var(--border-default)', display: 'flex', justifyContent: 'flex-end' }}>
@@ -1247,7 +1249,7 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
     if (!emp) return null
 
     const isManagerOfBranch = role === 'STORE_MANAGER' && user?.store_id === emp.store_id
-    if (!canManage && !isManagerOfBranch) return null
+    if (!canView && !isManagerOfBranch) return null
 
     const isDropup = menuPos.bottom !== undefined
 
@@ -1301,7 +1303,7 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
             <div className="action-dropdown-divider"></div>
           </>
         )}
-        {(isManagerOfBranch || canManage) && (
+        {(isManagerOfBranch || canView) && (
           <button
             className="action-dropdown-item"
             onClick={() => {
@@ -1548,7 +1550,7 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
                               {Icons.eye}
                             </button>
                             {/* Nút xem lịch làm việc liên kết sang Calendar */}
-                            {(canManage || (role === 'STORE_MANAGER' && user?.store_id === emp.store_id)) && (
+                            {(canView || (role === 'STORE_MANAGER' && user?.store_id === emp.store_id)) && (
                               <button
                                 className="btn btn-secondary btn-sm btn-icon"
                                 title="Xem lịch làm việc"
@@ -1560,7 +1562,7 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
                                 {Icons.calendar}
                               </button>
                             )}
-                            {(canManage || (role === 'STORE_MANAGER' && user?.store_id === emp.store_id)) && (
+                            {(canView || (role === 'STORE_MANAGER' && user?.store_id === emp.store_id)) && (
                               <button
                                 className={`btn btn-secondary btn-sm btn-icon ${openMenuId === emp.employee_id ? 'active' : ''}`}
                                 disabled={role === 'STORE_MANAGER' && emp.employee_id === user?.employee_id}
@@ -1671,7 +1673,7 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
         initialConditions={advancedSearch}
         initialMatchMode={searchMatchMode}
         provinces={provinces}
-        canManage={canManage}
+        canManage={canView}
       />
 
       {/* Toast notification */}

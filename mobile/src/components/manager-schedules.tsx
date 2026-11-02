@@ -17,7 +17,7 @@ export function ManagerSchedules({ profile }: { profile: Profile }) {
   const [cancelled, setCancelled] = useState(false);
   const options = useResource<any>('/operations/filter-options');
   const { data, error, loading, reload } = useResource<Row[]>(`/work-schedules?${queryString({ day, view, ...filters, include_cancelled: cancelled })}`);
-  const storeOnly = profile.roles?.includes('STORE_MANAGER') && !profile.roles.some(r => ['ADMIN', 'HR_MANAGER'].includes(r));
+  const storeOnly = profile.roles?.includes('STORE_MANAGER') && !profile.roles.some(r => ['ADMIN', 'DIRECTOR', 'HR_MANAGER'].includes(r));
   const move = (step: number) => {
     const d = new Date(`${day}T12:00:00`);
     if (view === 'month') {

@@ -49,6 +49,8 @@ export interface PayrollRegulationDialogProps {
 export function PayrollRegulationDialog({ onClose, initialTab }: PayrollRegulationDialogProps) {
   const { user } = useAuth()
   const isHrOrAdmin = Boolean(user?.roles?.some((r: string) => ['ADMIN', 'HR_MANAGER', 'DIRECTOR'].includes(r)))
+  // ADMIN chỉ xem cấu hình lương; chỉnh sửa là nghiệp vụ của HR và Giám đốc.
+  const canEditPolicy = Boolean(user?.roles?.some((r: string) => ['HR_MANAGER', 'DIRECTOR'].includes(r)))
 
   // Nếu là nhân viên không có quyền quản lý, chỉ mở tab 'guide' hoặc 'attendance'
   const [activeTab, setActiveTab] = useState<'settings' | 'bonuses' | 'holidays_working_days' | 'attendance' | 'guide'>(() => {
@@ -730,7 +732,7 @@ export function PayrollRegulationDialog({ onClose, initialTab }: PayrollRegulati
                             <th style={{ width: '16%' }}>Phân Nhóm</th>
                             <th style={{ width: '18%', textAlign: 'right' }}>Giá Trị Áp Dụng</th>
                             <th style={{ width: '10%', textAlign: 'center' }}>Đơn Vị</th>
-                            {isHrOrAdmin && <th style={{ width: '14%', textAlign: 'center' }}>Thao Tác</th>}
+                            {canEditPolicy && <th style={{ width: '14%', textAlign: 'center' }}>Thao Tác</th>}
                           </tr>
                         </thead>
                         <tbody>
@@ -794,7 +796,7 @@ export function PayrollRegulationDialog({ onClose, initialTab }: PayrollRegulati
                                    s.unit === 'PHUT' ? 'Phút' :
                                    s.unit === 'NGAY' ? 'Ngày' : s.unit}
                                 </td>
-                                {isHrOrAdmin && (
+                                {canEditPolicy && (
                                   <td style={{ textAlign: 'center' }}>
                                     {isEditing ? (
                                       <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
@@ -872,7 +874,7 @@ export function PayrollRegulationDialog({ onClose, initialTab }: PayrollRegulati
                             <th style={{ width: '40%' }}>Vị Trí / Chức Danh</th>
                             <th style={{ width: '20%', textAlign: 'center' }}>Hệ Số Chức Vụ (Hệ số tính thưởng)</th>
                             <th style={{ width: '25%', textAlign: 'right' }}>Phụ Cấp Trách Nhiệm (VNĐ)</th>
-                            {isHrOrAdmin && <th style={{ width: '15%', textAlign: 'center' }}>Thao Tác</th>}
+                            {canEditPolicy && <th style={{ width: '15%', textAlign: 'center' }}>Thao Tác</th>}
                           </tr>
                         </thead>
                         <tbody>
@@ -935,7 +937,7 @@ export function PayrollRegulationDialog({ onClose, initialTab }: PayrollRegulati
                                     </span>
                                   )}
                                 </td>
-                                {isHrOrAdmin && (
+                                {canEditPolicy && (
                                   <td style={{ textAlign: 'center' }}>
                                     {isEditingPos ? (
                                       <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
@@ -999,7 +1001,7 @@ export function PayrollRegulationDialog({ onClose, initialTab }: PayrollRegulati
                   />
                 </div>
 
-                {isHrOrAdmin && (
+                {canEditPolicy && (
                   <button
                     type="button"
                     className="btn btn-primary"
@@ -1029,7 +1031,7 @@ export function PayrollRegulationDialog({ onClose, initialTab }: PayrollRegulati
                         <th style={{ width: '35%' }}>Khoản Thưởng & Mã</th>
                         <th style={{ width: '20%' }}>Cách Tính</th>
                         <th style={{ width: '18%', textAlign: 'right' }}>Mức Cơ Sở</th>
-                        {isHrOrAdmin && <th style={{ width: '12%', textAlign: 'center' }}>Thao Tác</th>}
+                        {canEditPolicy && <th style={{ width: '12%', textAlign: 'center' }}>Thao Tác</th>}
                       </tr>
                     </thead>
                     <tbody>
@@ -1053,7 +1055,7 @@ export function PayrollRegulationDialog({ onClose, initialTab }: PayrollRegulati
                               {b.calculation_type === 'CONTRACT_SALARY' ? '100% Lương HĐ' : formatCurrency(b.base_amount)}
                             </span>
                           </td>
-                          {isHrOrAdmin && (
+                          {canEditPolicy && (
                             <td style={{ textAlign: 'center' }}>
                               <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
                                 <button
@@ -1240,7 +1242,7 @@ export function PayrollRegulationDialog({ onClose, initialTab }: PayrollRegulati
                       ))}
                     </select>
 
-                    {isHrOrAdmin && (
+                    {canEditPolicy && (
                       <button
                         type="button"
                         className="btn btn-primary"
@@ -1271,7 +1273,7 @@ export function PayrollRegulationDialog({ onClose, initialTab }: PayrollRegulati
                           <th style={{ width: '14%' }}>Thứ</th>
                           <th style={{ width: '36%' }}>Dịp Lễ / Sự Kiện</th>
                           <th style={{ width: '22%' }}>Ghi Chú</th>
-                          {isHrOrAdmin && <th style={{ width: '12%', textAlign: 'center' }}>Thao Tác</th>}
+                          {canEditPolicy && <th style={{ width: '12%', textAlign: 'center' }}>Thao Tác</th>}
                         </tr>
                       </thead>
                       <tbody>
@@ -1291,7 +1293,7 @@ export function PayrollRegulationDialog({ onClose, initialTab }: PayrollRegulati
                               <td style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>
                                 {h.notes || '—'}
                               </td>
-                              {isHrOrAdmin && (
+                              {canEditPolicy && (
                                 <td style={{ textAlign: 'center' }}>
                                   <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
                                     <button

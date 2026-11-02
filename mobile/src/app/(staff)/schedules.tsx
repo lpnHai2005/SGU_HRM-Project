@@ -169,7 +169,7 @@ export default function Schedules() {
   const [tab, setTab] = useState<'personal' | 'team'>('personal');
   const [period, setPeriod] = useState(vietnamPeriod);
   const [picking, setPicking] = useState(false);
-  const manager = data?.roles?.some(r => ['ADMIN', 'HR_MANAGER', 'STORE_MANAGER'].includes(r));
+  const manager = data?.roles?.some(r => ['ADMIN', 'DIRECTOR', 'HR_MANAGER', 'STORE_MANAGER'].includes(r));
   const p = usePalette();
   const team = manager && tab === 'team';
 

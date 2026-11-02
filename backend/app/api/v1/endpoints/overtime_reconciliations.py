@@ -136,7 +136,7 @@ async def _exception_cases_for_response(db: AsyncSession, request: dict, user: d
     if not await _exception_schema_available(db):
         return []
     roles = set(user.get("roles", []))
-    can_read = bool(roles & {"ADMIN", "HR_MANAGER"}) or (
+    can_read = bool(roles & {"ADMIN", "HR_MANAGER", "DIRECTOR"}) or (
         request["employee_id"] == user.get("employee_id") or
         request["created_by"] == user.get("user_id")
     )
@@ -270,7 +270,7 @@ async def _response(db: AsyncSession, request: dict, row: dict | None,
                     user: dict) -> dict:
     roles = set(user.get("roles", []))
     manager_scope = (request["store_id"] if "STORE_MANAGER" in roles
-                     and not roles & {"ADMIN", "HR_MANAGER"}
+                     and not roles & {"ADMIN", "HR_MANAGER", "DIRECTOR"}
                      and request["employee_id"] != user.get("employee_id") else None)
     current_time = _utc_now()
     current_signature, candidate, source_rows = await _source(db, request, lock=False)
@@ -330,7 +330,7 @@ async def _response(db: AsyncSession, request: dict, row: dict | None,
 
 def _may_preview(request: dict, user: dict):
     roles = set(user.get("roles", []))
-    if roles & {"ADMIN", "HR_MANAGER"}:
+    if roles & {"ADMIN", "HR_MANAGER", "DIRECTOR"}:
         return
     raise HTTPException(403, "Chỉ HR/Admin được tạo hoặc làm mới kết quả đối soát OT.")
 
@@ -359,10 +359,10 @@ async def list_reconciliations(status: str | None = Query(default=None),
     if date_to:
         where.append("o.work_date<=:date_to")
         params["date_to"] = date_to
-    if store_id is not None and roles & {"ADMIN", "HR_MANAGER"}:
+    if store_id is not None and roles & {"ADMIN", "HR_MANAGER", "DIRECTOR"}:
         where.append("r.store_id=:selected_store")
         params["selected_store"] = store_id
-    if not roles & {"ADMIN", "HR_MANAGER"}:
+    if not roles & {"ADMIN", "HR_MANAGER", "DIRECTOR"}:
         if "STORE_MANAGER" in roles:
             params.update(store=user.get("store_id") or -1, employee=user.get("employee_id") or -1)
             where.append("(r.store_id=:store OR r.employee_id=:employee)")
@@ -416,7 +416,7 @@ async def list_reconciliations(status: str | None = Query(default=None),
                     "NO_ATTENDANCE", "ATTENDANCE_CHECKOUT_MISSING",
                 })):
             item["display_status"] = "PENDING_RECONCILIATION"
-        if ("STORE_MANAGER" in roles and not roles & {"ADMIN", "HR_MANAGER"}
+        if ("STORE_MANAGER" in roles and not roles & {"ADMIN", "HR_MANAGER", "DIRECTOR"}
                 and row["employee_id"] != user.get("employee_id")):
             item["attendance_ids"] = []
         results.append(item)
@@ -582,21 +582,21 @@ async def _decide(db: AsyncSession, request_id: int, user: dict, expected_versio
 
 @router.post("/{request_id}/verify")
 async def verify_reconciliation(request_id: int, body: ReconciliationDecision,
-                                user=Depends(require_roles(["HR_MANAGER", "ADMIN"])),
+                                user=Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
                                 db: AsyncSession = Depends(get_db)):
     return await _decide(db, request_id, user, body.expected_version, "VERIFIED", body.reason)
 
 
 @router.post("/{request_id}/reject")
 async def reject_reconciliation(request_id: int, body: ReconciliationRejection,
-                                user=Depends(require_roles(["HR_MANAGER", "ADMIN"])),
+                                user=Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
                                 db: AsyncSession = Depends(get_db)):
     return await _decide(db, request_id, user, body.expected_version, "REJECTED", body.reason)
 
 
 @router.post("/{request_id}/reopen")
 async def reopen_reconciliation(request_id: int, body: ReconciliationReopen,
-                                user=Depends(require_roles(["HR_MANAGER", "ADMIN"])),
+                                user=Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
                                 db: AsyncSession = Depends(get_db)):
     await _require_schema(db)
     request = await _lock_request(db, request_id)
@@ -661,7 +661,7 @@ async def reopen_reconciliation(request_id: int, body: ReconciliationReopen,
 
 @router.post("/{request_id}/explanation-requests", status_code=201)
 async def request_employee_explanation(request_id: int, body: ExplanationRequest,
-                                       user=Depends(require_roles(["HR_MANAGER", "ADMIN"])),
+                                       user=Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
                                        db: AsyncSession = Depends(get_db)):
     await _require_exception_schema(db)
     request = await _lock_request(db, request_id)
@@ -743,7 +743,7 @@ async def respond_to_explanation(request_id: int, case_id: int, body: Explanatio
 
 @router.post("/{request_id}/explanation-cases/{case_id}/close")
 async def close_explanation_case(request_id: int, case_id: int, body: ExceptionCaseClose,
-                                 user=Depends(require_roles(["HR_MANAGER", "ADMIN"])),
+                                 user=Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
                                  db: AsyncSession = Depends(get_db)):
     await _require_exception_schema(db)
     request = await _lock_request(db, request_id)
@@ -816,7 +816,7 @@ async def create_review_request(request_id: int, body: ReviewRequestCreate,
 
 @router.post("/{request_id}/review-requests/{case_id}/decision")
 async def decide_review_request(request_id: int, case_id: int, body: ReviewRequestDecision,
-                                user=Depends(require_roles(["HR_MANAGER", "ADMIN"])),
+                                user=Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
                                 db: AsyncSession = Depends(get_db)):
     await _require_exception_schema(db)
     request = await _lock_request(db, request_id)

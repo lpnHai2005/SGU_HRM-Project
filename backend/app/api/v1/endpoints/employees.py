@@ -327,7 +327,7 @@ async def get_employee(
 @router.post("", response_model=EmployeeOut, summary="Thêm nhân sự mới (Rubric III.3.1.1)")
 async def create_employee(
     emp: EmployeeCreate,
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     if emp.store_id is not None:
@@ -393,7 +393,7 @@ async def create_employee(
 async def update_employee(
     employee_id: int,
     emp: EmployeeUpdate,
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     await get_employee(employee_id, current_user, db)
@@ -435,7 +435,7 @@ async def update_employee(
 @router.delete("/{employee_id}", summary="Thôi việc nhân viên (Week 2.1)")
 async def delete_employee(
     employee_id: int,
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     await db.execute(text("""
@@ -460,7 +460,7 @@ async def delete_employee(
 @router.post("/promotions", summary="Thăng cấp chức vụ theo body JSON (Workflow spec)")
 async def promotions_endpoint(
     promo: PromotionCreate,
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     return await promote_employee(
@@ -480,7 +480,7 @@ async def promote_employee(
     new_store_id: Optional[int] = None,
     decision_number: str = "QĐ-BN-2026",
     reason: str = "Thăng cấp chức vụ theo năng lực",
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     # Lấy chức vụ và store hiện tại

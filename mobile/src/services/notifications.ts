@@ -338,7 +338,7 @@ export function createPersonalizedWelcomeNotif(profile?: {
   roles?: string[];
 } | null): AppNotificationItem {
   const isManager = profile?.roles?.some(r =>
-    ['STORE_MANAGER', 'HR_MANAGER', 'ADMIN'].includes(r)
+    ['STORE_MANAGER', 'HR_MANAGER', 'DIRECTOR', 'ADMIN'].includes(r)
   );
   const name = profile?.full_name || 'bạn';
   return {

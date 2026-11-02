@@ -594,7 +594,7 @@ async def list_shift_schedules(
 @router.post("/shift-schedules", summary="Phân ca làm việc cho nhân viên (Week 2.3)")
 async def assign_shift_schedule(
     req: ShiftScheduleCreate,
-    current_user: dict = Depends(require_roles(["STORE_MANAGER", "HR_MANAGER", "ADMIN", "DIRECTOR"])),
+    current_user: dict = Depends(require_roles(["STORE_MANAGER", "HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     from app.api.v1.endpoints.work_schedules import Assignment, create_schedule

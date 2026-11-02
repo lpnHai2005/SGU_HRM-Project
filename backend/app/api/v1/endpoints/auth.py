@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from app.core.database import get_db
 from app.core.security import verify_password, create_access_token, get_password_hash
+from app.core.config import settings
 from app.core.storage import upload_file_to_storage
 from app.api.deps import get_current_user, record_audit_log
 from app.schemas.schemas import LoginRequest, TokenResponse, UserProfile, TestAccountResponse, AvatarUploadRequest
@@ -392,6 +393,8 @@ async def upload_avatar_file(
     description="Cung cấp danh sách tài khoản demo tương ứng với các vai trò của chuỗi TechZone để hội đồng và nhóm kiểm thử nhanh."
 )
 async def get_test_accounts():
+    if not settings.ENABLE_DEMO_ACCOUNTS:
+        raise HTTPException(status_code=404, detail="Not Found")
     return [
         {
             "username": "admin",

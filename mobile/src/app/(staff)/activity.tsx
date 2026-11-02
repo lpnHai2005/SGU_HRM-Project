@@ -238,5 +238,5 @@ export default function ActivityScreen() {
  const {kind}=useLocalSearchParams<{kind?:string}>();
  const {data,error}=useResource<Profile>('/auth/me');
  if(!data)return <Label>{error||'Loading?'}</Label>;
- return data.roles?.some(r=>['ADMIN','HR_MANAGER','STORE_MANAGER'].includes(r))?<ManagerActivity key={kind||'all'} profile={data} initialKind={kind||'all'}/>:<HistoryScreen/>;
+ return data.roles?.some(r=>['ADMIN','DIRECTOR','HR_MANAGER','STORE_MANAGER'].includes(r))?<ManagerActivity key={kind||'all'} profile={data} initialKind={kind||'all'}/>:<HistoryScreen/>;
 }

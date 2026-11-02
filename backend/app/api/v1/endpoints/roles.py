@@ -50,7 +50,7 @@ async def get_all_roles(
 )
 async def get_all_permissions(
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_roles(["ADMIN", "DIRECTOR", "HR_MANAGER"]))
 ):
     query = text("SELECT permission_id, permission_code, permission_name, module FROM permissions ORDER BY module, permission_id;")
     res = await db.execute(query)
@@ -61,11 +61,11 @@ async def get_all_permissions(
     "/matrix",
     response_model=List[RBACMatrixItem],
     summary="Ma trận phân quyền RBAC (Role-Based Access Control Matrix)",
-    description="Hiển thị ma trận phân quyền chi tiết giữa các quyền chức năng và 4 vai trò chính của chuỗi TechZone."
+    description="Ma trận quyền lưu trong bảng permissions/role_permissions, chỉ mang tính TÀI LIỆU. Quyền thực thi được kiểm tra trong code (require_roles và kiểm tra phạm vi trong từng endpoint)."
 )
 async def get_rbac_matrix(
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_roles(["ADMIN", "DIRECTOR", "HR_MANAGER"]))
 ):
     # Lấy danh sách quyền và vai trò sở hữu
     query = text("""

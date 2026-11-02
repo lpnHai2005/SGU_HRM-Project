@@ -190,7 +190,7 @@ async def get_resignation_detail(
 @router.post("", summary="Tạo đơn thôi việc cho nhân viên")
 async def create_resignation(
     resignation_in: ResignationCreate,
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -271,7 +271,7 @@ async def create_resignation(
 async def approve_resignation(
     resignation_id: int,
     approve_data: ResignationApprove,
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -435,7 +435,7 @@ async def approve_resignation(
 @router.post("/{resignation_id}/finalize", summary="Hoàn tất thủ tục thôi việc & Tự động vô hiệu hóa tài khoản")
 async def finalize_resignation(
     resignation_id: int,
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -516,7 +516,7 @@ async def finalize_resignation(
 async def reject_resignation(
     resignation_id: int,
     reject_data: ResignationReject,
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -619,7 +619,7 @@ async def reject_resignation(
 @router.post("/{resignation_id}/cancel", summary="Hủy đơn thôi việc")
 async def cancel_resignation(
     resignation_id: int,
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -673,7 +673,7 @@ async def cancel_resignation(
 @router.post("/upload-attachment", summary="Upload file đính kèm đơn thôi việc (PDF / Ảnh)")
 async def upload_resignation_attachment(
     file: UploadFile = File(...),
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
