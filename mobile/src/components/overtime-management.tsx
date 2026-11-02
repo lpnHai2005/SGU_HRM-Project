@@ -93,6 +93,7 @@ interface Props {
   isManager: boolean;
   isStoreManager: boolean;
   isHrManager: boolean;
+  isDirector: boolean;
   isAdmin: boolean;
   monthOptions: { value: string; label: string }[];
   selectedMonth: string;
@@ -110,6 +111,7 @@ export function OvertimeManagement({
   isManager,
   isStoreManager,
   isHrManager,
+  isDirector,
   isAdmin,
   monthOptions,
   selectedMonth,
@@ -1150,7 +1152,9 @@ export function OvertimeManagement({
                 step: 'Đang xử lý',
               };
               const durationHours = calculateOvertimeHours(item.starts_at, item.ends_at);
-              const isPendingApproval = item.status === 'PENDING_HR';
+              // Chỉ HR/Giám đốc duyệt OT; CHT và ADMIN chỉ theo dõi (backend trả 403).
+              const isPendingApproval = item.status === 'PENDING_HR' && (isHrManager || isDirector)
+                && item.employee_id !== profile?.employee_id;
 
               return (
                 <Card key={item.request_id}>

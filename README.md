@@ -70,7 +70,7 @@ Báo cáo kiểm thử định lượng năng lực AI bằng Ragas: **[`backend
 - [Hệ Thống Phân Quyền Bảo Mật (RBAC System)](#hệ-thống-phân-quyền-bảo-mật-rbac-system)
   - [1. Danh mục 5 Vai Trò Cốt Lõi (Roles)](#1-danh-mục-5-vai-trò-cốt-lõi-roles)
   - [2. Danh mục 18 Quyền Chức Năng Chi Tiết (Permissions)](#2-danh-mục-18-quyền-chức-năng-chi-tiết-permissions)
-  - [3. Ma Trận Phân Quyền Chi Tiết (RBAC Matrix)](#3-ma-trận-phân-quyền-chi-tiết-rbac-matrix)
+  - [3. Ma Trận Phân Quyền Thực Thi (RBAC Matrix)](#3-ma-trận-phân-quyền-thực-thi-rbac-matrix)
   - [4. Cơ Chế Phê Duyệt Không Tự Duyệt (No Self-Approval Principle)](#4-cơ-chế-phê-duyệt-không-tự-duyệt-no-self-approval-principle)
 - [Tổng Quan Kiến Trúc & Công Nghệ](#tổng-quan-kiến-trúc--công-nghệ)
   - [1. Backend API (FastAPI & SQLAlchemy 2.0 Async)](#1-backend-api-fastapi--sqlalchemy-20-async)
@@ -347,23 +347,26 @@ Toàn bộ logic tính toán tài chính nhạy cảm được đóng gói thàn
 
 ## **Hệ Thống Phân Quyền Bảo Mật (RBAC System)**
 
-Hệ thống triển khai cơ chế kiểm soát truy cập dựa trên vai trò (**Role-Based Access Control - RBAC**) đa tầng, phân định rành mạch quyền hạn giữa các bộ phận:
+Hệ thống triển khai cơ chế kiểm soát truy cập dựa trên vai trò (**Role-Based Access Control - RBAC**) đa tầng. Mỗi API được kiểm tra qua **2 lớp**:
+
+1. **Vai trò (Role):** dependency `require_roles([...])` / `require_strict_roles([...])` trong `backend/app/api/deps.py` chặn ngay ở cửa API. **Không vai trò nào được bỏ qua kiểm tra**, kể cả `ADMIN`: mỗi endpoint phải ghi rõ vai trò được phép.
+2. **Phạm vi dữ liệu (Scope):** trong từng endpoint, dữ liệu được lọc theo cấp: *toàn chuỗi* (`ADMIN`, `DIRECTOR`, `HR_MANAGER`) → *cửa hàng phụ trách* (`STORE_MANAGER`) → *chỉ bản thân* (`EMPLOYEE`).
 
 ### 1. Danh mục 5 Vai Trò Cốt Lõi (Roles)
 
 | Mã vai trò (`role_code`) | Tên vai trò | Trách nhiệm và quyền hạn thực tế trong doanh nghiệp TechZone |
 |---|---|---|
-| **`ADMIN`** | **Quản trị viên hệ thống** | Quản trị toàn diện hệ thống: Quản lý tài khoản người dùng, cấu hình tham số, phân quyền vai trò và tra cứu toàn bộ `audit_logs`. Có quyền tối cao bypass qua tất cả các chốt kiểm tra quyền. |
-| **`DIRECTOR`** | **Giám đốc điều hành** | Quản lý cấp cao nhất thuộc Ban Giám đốc (BOD). Xem toàn bộ nhân sự, xem bảng lương toàn chuỗi, xem báo cáo quản trị và **chịu trách nhiệm phê duyệt đơn nghỉ phép / đơn thôi việc của HR Manager và Admin** (giải quyết nguyên tắc *No Self-Approval*). |
-| **`HR_MANAGER`** | **Trưởng phòng Nhân sự** | Quản lý toàn bộ hồ sơ nhân sự, hợp đồng lao động, thăng chức/điều chuyển, theo dõi bảng công chuỗi, phê duyệt đơn nghỉ phép cấp công ty (Cấp 2), điều hành tính toán và chốt bảng lương tháng, xuất báo cáo nhân sự. |
-| **`STORE_MANAGER`** | **Cửa hàng trưởng** | Quản lý nhân sự tại chi nhánh phụ trách: Phân ca làm việc tuần, theo dõi chấm công cửa hàng, duyệt sơ bộ đơn từ của nhân viên chi nhánh (Cấp 1), nhập doanh số bán hàng chi nhánh và thực hiện chấm công cá nhân. |
-| **`EMPLOYEE`** | **Nhân viên bán lẻ / Kỹ thuật** | Nhân viên tác nghiệp tại cửa hàng: Chấm công GPS Geofence + chụp selfie, xem lịch làm việc cá nhân, nộp đơn nghỉ phép / đăng ký OT, theo dõi doanh số cá nhân, tra cứu và in phiếu lương hàng tháng. |
+| **`ADMIN`** | **Quản trị viên hệ thống (kỹ thuật)** | Quản lý tài khoản người dùng, gán vai trò, quản lý cửa hàng & GPS, tra cứu `audit_logs`, chạy tác vụ bảo trì (đồng bộ trạng thái nhân viên, quét hợp đồng hết hạn). Ở các phân hệ nghiệp vụ, `ADMIN` **chỉ được xem**, không tạo/sửa/duyệt/chốt. Không truy cập Trung tâm báo cáo & KPI. |
+| **`DIRECTOR`** | **Giám đốc điều hành** | Cấp quản lý cao nhất (BOD). Có quyền nghiệp vụ như HR (hồ sơ, hợp đồng, lương, cấu hình lương), xem báo cáo quản trị và nhật ký kiểm toán. **Là người duyệt đơn nghỉ phép, đơn thôi việc của HR Manager và Admin**, duyệt tăng ca (OT), quản lý lịch phân ca của HR, xóa dự án. |
+| **`HR_MANAGER`** | **Trưởng phòng Nhân sự** | Quản lý hồ sơ nhân sự, hợp đồng lao động, thăng chức/điều chuyển, thôi việc; duyệt nghỉ phép Cấp 2, duyệt & đối soát OT, xử lý phiên chấm công bất thường; tính, chốt, chi trả lương; cấu hình chính sách lương; xem báo cáo. |
+| **`STORE_MANAGER`** | **Cửa hàng trưởng** | Chỉ trong chi nhánh phụ trách: phân ca, theo dõi chấm công, duyệt nghỉ phép Cấp 1, tạo đơn nghỉ hộ và đề xuất OT cho nhân viên, ghi nhận doanh số, xem phiếu lương **đã duyệt** của nhân viên cửa hàng. Không tự phân ca hay đề xuất OT cho chính mình. |
+| **`EMPLOYEE`** | **Nhân viên bán lẻ / Kỹ thuật** | Chấm công GPS Geofence + selfie, xem lịch làm việc, nộp đơn nghỉ phép / đăng ký OT, xem doanh số và phiếu lương **đã duyệt** của chính mình. Chỉ thấy dữ liệu của bản thân (kể cả lịch nghỉ). |
 
 ---
 
 ### 2. Danh mục 18 Quyền Chức Năng Chi Tiết (Permissions)
 
-Toàn bộ chức năng của hệ thống được module hóa thành **18 quyền hạn độc lập** thuộc 7 phân hệ:
+> ⚠️ **Lưu ý:** Bảng `permissions` / `role_permissions` trong CSDL là **tài liệu mô tả nghiệp vụ** (được đưa vào JWT và hiển thị ở `/roles/matrix`). Quyền **thực thi** được kiểm tra trong code theo vai trò và phạm vi, xem [Ma trận phân quyền thực thi](#3-ma-trận-phân-quyền-thực-thi-rbac-matrix).
 
 | Phân hệ (Module) | Mã quyền (`permission_code`) | Tên quyền chức năng |
 |---|---|---|
@@ -388,40 +391,61 @@ Toàn bộ chức năng của hệ thống được module hóa thành **18 quy�
 
 ---
 
-### 3. Ma Trận Phân Quyền Chi Tiết (RBAC Matrix)
+### 3. Ma Trận Phân Quyền Thực Thi (RBAC Matrix)
 
-Dưới đây là ma trận phân quyền thực tế được truy vấn trực tiếp từ bảng `role_permissions` trong cơ sở dữ liệu Supabase:
+Ma trận dưới đây phản ánh **đúng quyền được kiểm tra trong code backend**.
+Ký hiệu: ✅ toàn chuỗi · 🏬 chỉ cửa hàng phụ trách · 👤 chỉ dữ liệu của bản thân · 👁️ chỉ xem · ❌ không có quyền.
 
-| Phân hệ | Quyền chức năng (`permission_code`) | `ADMIN` | `DIRECTOR` | `HR_MANAGER` | `STORE_MANAGER` | `EMPLOYEE` |
+| Phân hệ | Chức năng | `ADMIN` | `DIRECTOR` | `HR_MANAGER` | `STORE_MANAGER` | `EMPLOYEE` |
 |---|---|:---:|:---:|:---:|:---:|:---:|
-| **ATTENDANCE** | `attendance:record` (Chấm công vào/ra) | ✅ | ❌ | ❌ | ✅ | ✅ |
-| | `attendance:manage_store` (Quản lý công cửa hàng) | ✅ | ❌ | ✅ | ✅ | ❌ |
-| **EMPLOYEE** | `employee:create` (Thêm nhân viên mới) | ✅ | ❌ | ✅ | ❌ | ❌ |
-| | `employee:update` (Cập nhật/Điều chuyển/Thăng chức) | ✅ | ❌ | ✅ | ❌ | ❌ |
-| | `employee:delete` (Thôi việc/Sa thải) | ✅ | ❌ | ✅ | ❌ | ❌ |
-| | `employee:view_all` (Xem toàn bộ nhân sự) | ✅ | ✅ | ✅ | ❌ | ❌ |
-| **LEAVE** | `leave:create` (Nộp đơn nghỉ phép / OT / thôi việc) | ✅ | ❌ | ❌ | ✅ | ✅ |
-| | `leave:approve_store` (Duyệt đơn Cấp 1 sơ bộ) | ✅ | ❌ | ❌ | ✅ | ❌ |
-| | `leave:approve_hr` (Duyệt đơn Cấp 2 / Giám đốc) | ✅ | ✅ | ✅ | ❌ | ❌ |
-| **PAYROLL** | `payroll:calculate` (Chạy tính bảng lương tháng) | ✅ | ❌ | ✅ | ❌ | ❌ |
-| | `payroll:view_own` (Xem và in phiếu lương cá nhân) | ✅ | ❌ | ✅ | ✅ | ✅ |
-| | `payroll:view_all` (Xem & xuất bảng lương toàn chuỗi)| ✅ | ✅ | ✅ | ❌ | ❌ |
-| **REPORT** | `report:hr_monthly` (Báo cáo biến động tháng) | ❌ | ✅ | ✅ | ❌ | ❌ |
-| | `report:demographics` (Báo cáo học vấn/lương/thâm niên)| ❌ | ✅ | ✅ | ❌ | ❌ |
-| **STORE** | `store:view_own` (Xem dữ liệu cửa hàng phụ trách)| ✅ | ✅ | ❌ | ✅ | ❌ |
-| **SYSTEM** | `user:manage` (Quản trị tài khoản) | ✅ | ❌ | ❌ | ❌ | ❌ |
-| | `role:assign` (Gán vai trò RBAC) | ✅ | ❌ | ❌ | ❌ | ❌ |
-| | `audit:view` (Xem nhật ký kiểm toán hệ thống) | ✅ | ✅ | ❌ | ❌ | ❌ |
-| **TỔNG SỐ** | **Số lượng quyền hạn sở hữu** | **16 / 18** | **7 / 18** | **11 / 18** | **6 / 18** | **3 / 18** |
+| **Hệ thống** | Quản lý tài khoản, gán vai trò, reset mật khẩu | ✅ | 👁️ | 👁️ | ❌ | ❌ |
+| | Quản lý cửa hàng & GPS | ✅ | ✅ | ❌ | ❌ | ❌ |
+| | Nhật ký kiểm toán (`audit_logs`) | ✅ | ✅ | ❌ | ❌ | ❌ |
+| | Xem ma trận phân quyền | ✅ | ✅ | ✅ | ❌ | ❌ |
+| **Nhân sự** | Xem hồ sơ nhân viên | 👁️ | ✅ | ✅ | 🏬 | 👤 |
+| | Thêm / sửa / cho thôi việc / thăng chức, điều chuyển | ❌ | ✅ | ✅ | ❌ | ❌ |
+| **Hợp đồng** | Xem hợp đồng (lương cơ bản chỉ hiện với HR, Giám đốc, Admin) | 👁️ | ✅ | ✅ | 🏬 | 👤 |
+| | Tạo / sửa / kích hoạt / gia hạn / chấm dứt / hủy | ❌ | ✅ | ✅ | ❌ | ❌ |
+| | Đồng bộ trạng thái nhân viên theo hợp đồng | ✅ | ✅ | ✅ | ❌ | ❌ |
+| **Thôi việc** | Xem / tạo đơn / hoàn tất / hủy | 👁️ | ✅ | ✅ | ❌ | ❌ |
+| | Duyệt / từ chối đơn của Nhân viên, Cửa hàng trưởng | ❌ | ❌ | ✅ | ❌ | ❌ |
+| | Duyệt / từ chối đơn của HR Manager, Admin | ❌ | ✅ | ❌ | ❌ | ❌ |
+| **Nghỉ phép** | Nộp đơn nghỉ của bản thân | 👤 | 👤 | 👤 | 👤 | 👤 |
+| | Tạo đơn hộ nhân viên khác | ❌ | ❌ | ✅ | 🏬 | ❌ |
+| | Xem danh sách đơn & lịch nghỉ | 👁️ | ✅ | ✅ | 🏬 | 👤 |
+| | Duyệt Cấp 1 | ❌ | ✅ | ❌ | 🏬 | ❌ |
+| | Duyệt Cấp 2 (đơn của HR/Admin: chỉ Giám đốc) | ❌ | ✅ | ✅ | ❌ | ❌ |
+| | Từ chối đơn | ❌ | ✅ | ✅ | 🏬 | ❌ |
+| **Chấm công** | Check-in / check-out | 👤 | 👤 | 👤 | 👤 | 👤 |
+| | Xem bảng công | 👁️ | ✅ | ✅ | 🏬 | 👤 |
+| | Xử lý phiên chấm công bất thường | ❌ | ✅ | ✅ | ❌ | ❌ |
+| **Phân ca** | Xem lịch làm việc | 👁️ | ✅ | ✅ | 🏬 | 👤 |
+| | Phân ca / lịch cố định (lịch của HR: chỉ Giám đốc) | ❌ | ✅ | ✅ | 🏬 | ❌ |
+| **Tăng ca (OT)** | Đề xuất OT cho nhân viên | ❌ | ❌ | ❌ | 🏬 | ❌ |
+| | Tự đăng ký OT | ❌ | ❌ | ❌ | ❌ | 👤 |
+| | Duyệt / từ chối / thu hồi / điều chỉnh OT | ❌ | ✅ | ✅ | ❌ | ❌ |
+| | Đối soát OT, yêu cầu giải trình | 👁️ | ✅ | ✅ | ❌ | ❌ |
+| **Doanh số** | Ghi nhận doanh số | ❌ | ✅ | ✅ | 🏬 | ❌ |
+| **Lương** | Xem bảng lương & phiếu lương | 👁️ | ✅ | ✅ | 🏬 *(đã duyệt)* | 👤 *(đã duyệt)* |
+| | Tính / chốt / chi trả / mở lại kỳ lương, điều chỉnh phiếu | ❌ | ✅ | ✅ | ❌ | ❌ |
+| | Cấu hình chính sách lương, ngày lễ, công chuẩn, phụ cấp | 👁️ | ✅ | ✅ | ❌ | ❌ |
+| **Dự án** | Tạo / sửa dự án, thành viên, phụ cấp vai trò | ❌ | ✅ | ✅ | ❌ | ❌ |
+| | Xóa dự án | ❌ | ✅ | ❌ | ❌ | ❌ |
+| **Báo cáo** | Trung tâm báo cáo & KPI, xuất Excel | ❌ | ✅ | ✅ | ❌ | ❌ |
+
+> Trợ lý AI (Chatbot) áp dụng cùng quy tắc phạm vi: ví dụ Cửa hàng trưởng chỉ tra cứu được lương **đã duyệt** của nhân viên cửa hàng mình.
 
 ---
 
 ### 4. Cơ Chế Phê Duyệt Không Tự Duyệt (No Self-Approval Principle)
 
 Hệ thống áp dụng nghiêm ngặt nguyên tắc quản trị xung đột lợi ích:
-- **Nhân viên cửa hàng:** Nộp đơn $\rightarrow$ Cửa hàng trưởng duyệt Cấp 1 (`leave:approve_store`) $\rightarrow$ Trưởng phòng HR duyệt Cấp 2 (`leave:approve_hr`).
-- **Cửa hàng trưởng:** Nộp đơn $\rightarrow$ Tự động bỏ qua Cấp 1 $\rightarrow$ Trưởng phòng HR duyệt trực tiếp.
-- **Trưởng phòng HR / Quản trị viên (Admin):** Nộp đơn $\rightarrow$ Hệ thống tự động chặn HR tự duyệt đơn của chính mình; đơn được chuyển thẳng lên Giám đốc (`DIRECTOR`) xét duyệt qua trường `director_approver_id` và `director_approved_at`.
+- **Nhân viên cửa hàng:** Nộp đơn nghỉ $\rightarrow$ Cửa hàng trưởng duyệt Cấp 1 $\rightarrow$ Trưởng phòng HR duyệt Cấp 2.
+- **Cửa hàng trưởng:** Nộp đơn nghỉ $\rightarrow$ Tự động bỏ qua Cấp 1 $\rightarrow$ Trưởng phòng HR duyệt trực tiếp.
+- **Trưởng phòng HR / Quản trị viên (Admin):** Nộp đơn nghỉ $\rightarrow$ Hệ thống chặn HR tự duyệt đơn của chính mình; đơn được chuyển thẳng lên Giám đốc (`DIRECTOR`) xét duyệt qua trường `director_approver_id` và `director_approved_at`.
+- **Đơn thôi việc:** Đơn của Nhân viên / Cửa hàng trưởng do HR duyệt; đơn của HR Manager / Admin **chỉ** Giám đốc duyệt. Không ai duyệt hoặc từ chối đơn của chính mình.
+- **Tăng ca (OT):** Người tạo đơn hoặc chính nhân viên được giao OT không được tự duyệt, tự thu hồi hay tự duyệt điều chỉnh; Cửa hàng trưởng không đề xuất OT cho chính mình.
+- **Phân ca:** Cửa hàng trưởng không tự phân/sửa/hủy lịch của bản thân; lịch của HR chỉ Giám đốc quản lý.
 
 ---
 
@@ -490,8 +514,8 @@ Hệ thống đã nạp sẵn **5 tài khoản đại diện cho 5 vai trò** đ
 
 | STT | Tài khoản (Username) | Mật khẩu | Vai trò (Role) | Họ và tên nhân sự | Chức danh thực tế | Kịch bản Demo đề xuất |
 |:---:|:---|:---:|:---:|---|---|---|
-| 1 | `admin` | `123456` | **`ADMIN`** | Nguyễn Quản Trị Viên | Quản trị viên hệ thống | Cấu hình tham số, quản trị tài khoản người dùng, xem ma trận RBAC, kiểm tra nhật ký `audit_logs`. |
-| 2 | `director` | `123456` | **`DIRECTOR`** | Nguyễn Văn Giám Đốc | Giám đốc điều hành (Ban Giám đốc) | Xem báo cáo nhân sự toàn chuỗi, xem bảng lương toàn chuỗi, **phê duyệt đơn nghỉ/thôi việc của HR và Admin** (No Self-Approval). |
+| 1 | `admin` | `123456` | **`ADMIN`** | Nguyễn Quản Trị Viên | Quản trị viên hệ thống | Quản trị tài khoản & gán vai trò, quản lý cửa hàng/GPS, xem ma trận RBAC, kiểm tra nhật ký `audit_logs`. Ở nghiệp vụ chỉ xem (không duyệt, không chốt lương). |
+| 2 | `director` | `123456` | **`DIRECTOR`** | Nguyễn Văn Giám Đốc | Giám đốc điều hành (Ban Giám đốc) | Xem báo cáo nhân sự & bảng lương toàn chuỗi, **phê duyệt đơn nghỉ/thôi việc của HR và Admin** (No Self-Approval), duyệt tăng ca (OT), xem nhật ký kiểm toán. |
 | 3 | `hr_manager` | `123456` | **`HR_MANAGER`** | Huỳnh Thị Kim Yến | Trưởng phòng Nhân sự | Quản lý hồ sơ nhân viên, duyệt đơn Cấp 2, thăng chức nhân viên, bấm nút chốt lương toàn chuỗi, xuất báo cáo Excel. |
 | 4 | `store_mgr_q1` | `123456` | **`STORE_MANAGER`** | Lê Hoàng Nam | Cửa hàng trưởng TechZone Q1 | Quản lý nhân viên chi nhánh Q1, phân ca tuần, duyệt đơn Cấp 1, nhập doanh số bán lẻ 3 ngành hàng. |
 | 5 | `staff_dung` | `123456` | **`EMPLOYEE`** | Trần Quốc Dũng | Nhân viên bán lẻ xuất sắc (Q1) | Chấm công GPS Geofence + Selfie trên Mobile, nộp đơn nghỉ phép, xem doanh số đạt KPI, tra cứu phiếu lương cá nhân. |

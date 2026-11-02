@@ -354,7 +354,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
   const isHrManager = userRoles.includes('HR_MANAGER')
   const isStoreManager = userRoles.includes('STORE_MANAGER')
   const canManage = isAdmin || isDirector || isHrManager || isStoreManager
-  const canRunPayroll = isAdmin || isDirector || isHrManager
+  const canRunPayroll = isDirector || isHrManager  // ADMIN chỉ xem bảng lương
 
   // Load payrolls
   const fetchPayrolls = useCallback(async () => {

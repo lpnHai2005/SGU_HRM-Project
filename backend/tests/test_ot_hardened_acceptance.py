@@ -381,10 +381,14 @@ class OvertimeWorkflowAcceptanceTests(unittest.IsolatedAsyncioTestCase):
         })
         id1 = r1.json()["request_id"]
 
-        # Admin creates request for Employee 2 in Store 2
-        r2 = await self.as_role(self.user_admin, "post", "/api/v1/overtime-requests", json={
-            "employee_id": 30, "work_date": "2026-11-15", "start_time": "18:00", "end_time": "20:00", "reason": "Store 2 OT",
-        })
+        # Admin is read-only for business data: cannot create OT
+        payload_2 = {"employee_id": 30, "work_date": "2026-11-15", "start_time": "18:00", "end_time": "20:00", "reason": "Store 2 OT"}
+        admin_create = await self.as_role(self.user_admin, "post", "/api/v1/overtime-requests", json=payload_2)
+        self.assertEqual(admin_create.status_code, 403)
+
+        # Manager 2 creates request for Employee 2 in Store 2
+        manager_2 = {"user_id": 6, "employee_id": 31, "store_id": 2, "roles": ["STORE_MANAGER"]}
+        r2 = await self.as_role(manager_2, "post", "/api/v1/overtime-requests", json=payload_2)
         id2 = r2.json()["request_id"]
 
         # 1. Admin sees both

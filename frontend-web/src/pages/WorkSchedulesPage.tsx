@@ -79,8 +79,8 @@ export function WorkSchedulesPage({ user }: { user: any }) {
 
   const roles: string[] = user?.roles || []
   const isStoreManager = roles.includes('STORE_MANAGER') && !roles.includes('ADMIN') && !roles.includes('HR_MANAGER') && !roles.includes('DIRECTOR')
-  const canManage = roles.includes('ADMIN') || roles.includes('DIRECTOR') || roles.includes('HR_MANAGER') || roles.includes('STORE_MANAGER')
-  const canCreateOvertime = roles.includes('ADMIN') || (roles.includes('STORE_MANAGER') && !roles.includes('HR_MANAGER'))
+  const canManage = roles.includes('DIRECTOR') || roles.includes('HR_MANAGER') || roles.includes('STORE_MANAGER')
+  const canCreateOvertime = roles.includes('STORE_MANAGER') && !roles.includes('HR_MANAGER')
 
   const [selectedDate, setSelectedDate] = useState(today)
   const [view, setView] = useState<ViewMode>('week')

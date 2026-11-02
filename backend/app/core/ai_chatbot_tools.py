@@ -30,10 +30,6 @@ def is_store_manager(current_user: dict) -> bool:
     return "STORE_MANAGER" in current_user.get("roles", [])
 
 
-def is_accountant(current_user: dict) -> bool:
-    return check_permission(current_user, ["ADMIN", "ACCOUNTANT", "HR_MANAGER"])
-
-
 def assert_can_access_employee(
     current_user: dict,
     target_employee_id: Optional[int],
@@ -854,7 +850,7 @@ async def get_my_payroll(args: Dict[str, Any], current_user: dict, db: AsyncSess
 
     # 2.2: Nhân viên chỉ xem bảng lương CONFIRMED hoặc PAID
     status_filter = ""
-    if not is_accountant(current_user):
+    if not is_hr_or_admin(current_user):
         status_filter = " AND payment_status IN ('CONFIRMED', 'PAID')"
 
     period = args.get("salary_period")
@@ -902,7 +898,7 @@ async def get_my_payroll_history(args: Dict[str, Any], current_user: dict, db: A
         return {"error": "Tài khoản chưa được liên kết với nhân viên."}
 
     status_filter = ""
-    if not is_accountant(current_user):
+    if not is_hr_or_admin(current_user):
         status_filter = " AND payment_status IN ('CONFIRMED', 'PAID')"
 
     limit = int(args.get("limit", 6))
@@ -918,24 +914,29 @@ async def get_my_payroll_history(args: Dict[str, Any], current_user: dict, db: A
 
 
 async def get_employee_payroll(args: Dict[str, Any], current_user: dict, db: AsyncSession) -> Dict[str, Any]:
-    if not is_accountant(current_user):
-        return {"error": "Truy cập bị từ chối: Chỉ Kế toán, HR Manager hoặc Ban Giám đốc mới có quyền tra cứu bảng lương nhân sự khác."}
+    if not (is_hr_or_admin(current_user) or is_store_manager(current_user)):
+        return {"error": "Truy cập bị từ chối: Chỉ HR Manager, Ban Giám đốc hoặc Cửa hàng trưởng mới có quyền tra cứu bảng lương nhân sự khác."}
 
     emp_ident = args.get("employee_id") or args.get("employee_code")
     period = args.get("salary_period")
     if not emp_ident or not period:
         return {"error": "Vui lòng cung cấp mã nhân viên và kỳ lương (salary_period, ví dụ: 2026-03)."}
 
-    emp_res = await db.execute(text("SELECT employee_id, full_name, employee_code FROM employees WHERE employee_id::text = :id OR LOWER(employee_code) = LOWER(:id)"), {"id": str(emp_ident).strip()})
+    emp_res = await db.execute(text("SELECT employee_id, full_name, employee_code, store_id FROM employees WHERE employee_id::text = :id OR LOWER(employee_code) = LOWER(:id)"), {"id": str(emp_ident).strip()})
     emp = emp_res.mappings().first()
     if not emp:
         return {"error": "Không tìm thấy nhân viên."}
+    err = assert_can_access_employee(current_user, emp["employee_id"], emp["store_id"])
+    if err:
+        return {"error": err}
+    # Cửa hàng trưởng chỉ thấy phiếu đã duyệt, giống API /payrolls.
+    status_filter = "" if is_hr_or_admin(current_user) else " AND p.payment_status IN ('CONFIRMED', 'PAID')"
 
-    query = text("""
+    query = text(f"""
         SELECT p.payroll_id, p.salary_period, p.contract_salary, p.total_allowances,
                p.gross_income, p.net_salary, p.payment_status
         FROM payrolls p
-        WHERE p.employee_id = :id AND p.salary_period = :period
+        WHERE p.employee_id = :id AND p.salary_period = :period{status_filter}
     """)
     res = await db.execute(query, {"id": emp["employee_id"], "period": period})
     row = res.mappings().first()
@@ -946,7 +947,7 @@ async def get_employee_payroll(args: Dict[str, Any], current_user: dict, db: Asy
 
 
 async def get_payroll_period(args: Dict[str, Any], current_user: dict, db: AsyncSession) -> Dict[str, Any]:
-    if not is_accountant(current_user):
+    if not is_hr_or_admin(current_user):
         return {"error": "Truy cập bị từ chối: Chỉ Kế toán, HR Manager hoặc Admin mới có quyền xem tổng hợp kỳ lương."}
 
     period = args.get("salary_period")

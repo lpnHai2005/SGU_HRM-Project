@@ -141,11 +141,12 @@ class OvertimeRequestPostgresTests(unittest.IsolatedAsyncioTestCase):
         for statement in (part.strip() for part in sql.split(";")):
             if statement:
                 await self.conn.execute(text(statement))
-        await self.conn.execute(text("INSERT INTO users VALUES (1,'admin'),(2,'manager'),(3,'employee'),(4,'hr'),(5,'outsider')"))
+        await self.conn.execute(text("INSERT INTO users VALUES (1,'admin'),(2,'manager'),(3,'employee'),(4,'hr'),(5,'outsider'),(6,'manager_two'),(7,'director')"))
         await self.conn.execute(text("INSERT INTO stores VALUES (1,'Branch One',true),(2,'Branch Two',true)"))
         await self.conn.execute(text("""INSERT INTO employees VALUES
             (20,'M-20','Store Manager',1,'ACTIVE'),(21,'E-21','Employee One',1,'ACTIVE'),
             (22,'H-22','HR Manager',1,'ACTIVE'),(30,'E-30','Employee Two',2,'ACTIVE'),
+            (31,'M-31','Store Manager Two',2,'ACTIVE'),(98,'D-98','Director Profile',1,'ACTIVE'),
             (99,'A-99','Admin Profile',1,'ACTIVE')"""))
         await self.conn.execute(text("INSERT INTO work_shifts VALUES (8,'Shift A','09:00','17:00',8,true)"))
         await self.conn.execute(text("""INSERT INTO work_schedules VALUES
@@ -393,7 +394,11 @@ class OvertimeRequestPostgresTests(unittest.IsolatedAsyncioTestCase):
         await self.as_user(manager, "post", f"/overtime-requests/{manager_id}/submit")
         await self.as_user(employee, "post", f"/overtime-requests/{manager_id}/employee-confirm")
 
-        other_store_created = await self.as_user(admin, "post", "/overtime-requests", json=self.payload(day="2026-11-04", employee_id=30))
+        # ADMIN chỉ xem nghiệp vụ: không được tạo đơn OT.
+        admin_created = await self.as_user(admin, "post", "/overtime-requests", json=self.payload(day="2026-11-04", employee_id=30))
+        self.assertEqual(admin_created.status_code, 403, admin_created.text)
+        manager_two = {"user_id": 6, "employee_id": 31, "store_id": 2, "roles": ["STORE_MANAGER"]}
+        other_store_created = await self.as_user(manager_two, "post", "/overtime-requests", json=self.payload(day="2026-11-04", employee_id=30))
         self.assertEqual(other_store_created.status_code, 201, other_store_created.text)
         other_store_id = other_store_created.json()["request_id"]
 
@@ -409,7 +414,10 @@ class OvertimeRequestPostgresTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(employee_list.status_code, 200)
         self.assertEqual({row["request_id"] for row in employee_list.json()}, {manager_id})
 
-        approved = await self.as_user(admin, "post", f"/overtime-requests/{manager_id}/approve")
+        admin_approve = await self.as_user(admin, "post", f"/overtime-requests/{manager_id}/approve")
+        self.assertEqual(admin_approve.status_code, 403, admin_approve.text)
+        director = {"user_id": 7, "employee_id": 98, "store_id": 1, "roles": ["DIRECTOR"]}
+        approved = await self.as_user(director, "post", f"/overtime-requests/{manager_id}/approve")
         self.assertEqual(approved.status_code, 200, approved.text)
         self.assertEqual(approved.json()["status"], "APPROVED")
 
@@ -420,7 +428,8 @@ class OvertimeRequestPostgresTests(unittest.IsolatedAsyncioTestCase):
 
         own_store = await self.as_user(manager, "post", "/overtime-requests", json=self.payload(
             day="2026-11-02", reason="Employee One evening delivery"))
-        other_store = await self.as_user(admin, "post", "/overtime-requests", json=self.payload(
+        manager_two = {"user_id": 6, "employee_id": 31, "store_id": 2, "roles": ["STORE_MANAGER"]}
+        other_store = await self.as_user(manager_two, "post", "/overtime-requests", json=self.payload(
             day="2026-11-04", employee_id=30, reason="Employee Two inventory support"))
         self.assertEqual(own_store.status_code, 201, own_store.text)
         self.assertEqual(other_store.status_code, 201, other_store.text)
@@ -467,26 +476,28 @@ class OvertimeRequestPostgresTests(unittest.IsolatedAsyncioTestCase):
         manager = {"user_id": 2, "employee_id": 20, "store_id": 1, "roles": ["STORE_MANAGER"]}
         employee = {"user_id": 3, "employee_id": 21, "store_id": 1, "roles": ["EMPLOYEE"]}
         hr = {"user_id": 4, "employee_id": 22, "store_id": 1, "roles": ["HR_MANAGER"]}
-        admin_hr = {"user_id": 1, "employee_id": 99, "store_id": 1, "roles": ["ADMIN", "HR_MANAGER"]}
+        admin = {"user_id": 1, "employee_id": 99, "store_id": 1, "roles": ["ADMIN"]}
         outsider = {"user_id": 5, "employee_id": 30, "store_id": 2, "roles": ["EMPLOYEE"]}
 
-        request_id = await self._approved_request("2026-11-10", creator=admin_hr)
+        request_id = await self._approved_request("2026-11-10")
         missing_reason = await self.as_user(manager, "post", f"/overtime-requests/{request_id}/revoke-request", json={})
         self.assertEqual(missing_reason.status_code, 422)
         hidden = await self.as_user(outsider, "post", f"/overtime-requests/{request_id}/revoke-request", json={"reason": "Wrong store"})
         self.assertEqual(hidden.status_code, 404)
 
-        requested = await self.as_user(admin_hr, "post", f"/overtime-requests/{request_id}/revoke-request", json={"reason": "Coverage no longer needed"})
+        admin_requested = await self.as_user(admin, "post", f"/overtime-requests/{request_id}/revoke-request", json={"reason": "Coverage no longer needed"})
+        self.assertEqual(admin_requested.status_code, 403)
+        requested = await self.as_user(manager, "post", f"/overtime-requests/{request_id}/revoke-request", json={"reason": "Coverage no longer needed"})
         self.assertEqual(requested.status_code, 200, requested.text)
         self.assertEqual(requested.json()["status"], "APPROVED")
         revoke_detail = await self.as_user(employee, "get", f"/overtime-requests/{request_id}")
         self.assertTrue(revoke_detail.json()["lifecycle"]["revocation_pending"])
-        retry = await self.as_user(admin_hr, "post", f"/overtime-requests/{request_id}/revoke-request", json={"reason": "Coverage no longer needed"})
+        retry = await self.as_user(manager, "post", f"/overtime-requests/{request_id}/revoke-request", json={"reason": "Coverage no longer needed"})
         self.assertEqual(retry.status_code, 200)
         self.assertEqual((await self.db.execute(text("SELECT count(*) FROM overtime_request_events WHERE request_id=:id AND action='REVOKE_REQUEST'"), {"id": request_id})).scalar_one(), 1)
 
-        self_approval = await self.as_user(admin_hr, "post", f"/overtime-requests/{request_id}/revoke-approve")
-        self.assertEqual(self_approval.status_code, 403)
+        admin_approval = await self.as_user(admin, "post", f"/overtime-requests/{request_id}/revoke-approve")
+        self.assertEqual(admin_approval.status_code, 403)
         approved = await self.as_user(hr, "post", f"/overtime-requests/{request_id}/revoke-approve")
         self.assertEqual(approved.status_code, 200, approved.text)
         self.assertEqual(approved.json()["status"], "REVOKED")
@@ -574,15 +585,19 @@ class OvertimeRequestPostgresTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(original.json()["status"], "APPROVED")
         self.assertIsNone(original.json()["replaced_by_request_id"])
 
-        admin_creator = {"user_id": 1, "employee_id": 99, "store_id": 1, "roles": ["ADMIN"]}
-        self_approval_parent = await self._approved_request("2026-11-16", creator=admin_creator)
-        self_approval_child = await self.as_user(admin_creator, "post", f"/overtime-requests/{self_approval_parent}/amend", json={
+        admin = {"user_id": 1, "employee_id": 99, "store_id": 1, "roles": ["ADMIN"]}
+        self_approval_parent = await self._approved_request("2026-11-16")
+        admin_amend = await self.as_user(admin, "post", f"/overtime-requests/{self_approval_parent}/amend", json={
             "work_date": "2026-11-17", "start_time": "21:00", "end_time": "23:00", "reason": "Admin-requested amendment",
+        })
+        self.assertEqual(admin_amend.status_code, 403)
+        self_approval_child = await self.as_user(manager, "post", f"/overtime-requests/{self_approval_parent}/amend", json={
+            "work_date": "2026-11-17", "start_time": "21:00", "end_time": "23:00", "reason": "Manager-requested amendment",
         })
         self_approval_child_id = self_approval_child.json()["request_id"]
         await self.as_user(employee, "post", f"/overtime-requests/{self_approval_child_id}/employee-confirm")
-        self_approval_blocked = await self.as_user(admin_creator, "post", f"/overtime-requests/{self_approval_child_id}/amend-approve")
-        self.assertEqual(self_approval_blocked.status_code, 403)
+        admin_blocked = await self.as_user(admin, "post", f"/overtime-requests/{self_approval_child_id}/amend-approve")
+        self.assertEqual(admin_blocked.status_code, 403)
         approved_by_other_hr = await self.as_user(hr, "post", f"/overtime-requests/{self_approval_child_id}/amend-approve")
         self.assertEqual(approved_by_other_hr.status_code, 200)
 

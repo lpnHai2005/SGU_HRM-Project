@@ -76,7 +76,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   const isManagerUser = useMemo(() => {
     const roles = userProfile?.roles || [];
-    return roles.some(r => ['STORE_MANAGER', 'HR_MANAGER', 'ADMIN'].includes(r));
+    return roles.some(r => ['STORE_MANAGER', 'HR_MANAGER', 'DIRECTOR', 'ADMIN'].includes(r));
   }, [userProfile]);
 
   // Load user profile when token changes

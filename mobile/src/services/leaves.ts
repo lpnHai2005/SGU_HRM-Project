@@ -53,6 +53,7 @@ export interface LeaveRequestItem {
   rejected_by_role?: string | null;
   rejected_at?: string | null;
   is_store_manager_request?: boolean;
+  is_hr_or_admin_request?: boolean;
   created_at?: string;
   updated_at?: string;
 }

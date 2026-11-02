@@ -9,7 +9,7 @@ import { useResource } from '@/hooks/use-resource';
 import { useSession } from '@/contexts/session';
 import type { Profile } from '@/services/staff';
 
-const ROLE_LABELS: Record<string, string> = { ADMIN: 'Quản trị viên', HR_MANAGER: 'Quản lý nhân sự', STORE_MANAGER: 'Cửa hàng trưởng', EMPLOYEE: 'Nhân viên' };
+const ROLE_LABELS: Record<string, string> = { ADMIN: 'Quản trị viên', DIRECTOR: 'Giám đốc', HR_MANAGER: 'Quản lý nhân sự', STORE_MANAGER: 'Cửa hàng trưởng', EMPLOYEE: 'Nhân viên' };
 
 export default function Account() {
   const { data, loading, error, reload } = useResource<Profile>('/auth/me');

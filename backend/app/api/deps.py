@@ -32,12 +32,7 @@ async def get_current_user(
             if len(parts) > 1 and parts[1].strip() not in ("null", "undefined", ""):
                 token = parts[1].strip()
 
-    # 2. Hỗ trợ đọc token từ Query parameter (?token=...) khi tải file/báo cáo
-    if not token or (isinstance(token, str) and token.strip() in ("null", "undefined", "")):
-        query_token = request.query_params.get("token")
-        if query_token and query_token.strip() not in ("null", "undefined", ""):
-            token = query_token.strip()
-
+    # Không đọc token từ query string (?token=): URL bị ghi vào log/lịch sử trình duyệt làm lộ JWT.
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -124,14 +119,12 @@ async def get_current_active_user(
 def require_roles(allowed_roles: List[str]):
     """
     Dependency kiểm tra vai trò (Role-Based Access Control - RBAC).
-    - Vai trò 'ADMIN' luôn có đặc quyền tối cao bỏ qua kiểm tra.
     - Người dùng phải sở hữu ít nhất một trong các vai trò được cấp phép.
+    - ADMIN KHÔNG được bỏ qua kiểm tra: ADMIN là quản trị kỹ thuật, chỉ đọc ở nghiệp vụ,
+      nên mỗi endpoint phải ghi rõ "ADMIN" nếu cho phép.
     """
     def role_checker(current_user: dict = Depends(get_current_user)):
         user_roles = current_user.get("roles", [])
-        if "ADMIN" in user_roles:
-            return current_user
-            
         if not any(role in allowed_roles for role in user_roles):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

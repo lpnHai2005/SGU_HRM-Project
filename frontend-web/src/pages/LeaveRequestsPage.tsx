@@ -186,6 +186,8 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
   const isHrManager = !isPersonalView && userRoles.includes('HR_MANAGER')
   const isStoreManager = !isPersonalView && userRoles.includes('STORE_MANAGER')
   const isDirector = !isPersonalView && userRoles.includes('DIRECTOR')
+  // Backend chỉ cho HR và Cửa hàng trưởng tạo đơn thay nhân viên khác.
+  const canCreateForOthers = isHrManager || isStoreManager
 
 
 
@@ -713,7 +715,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
   // Action: Submit Leave Request
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!isPersonalView && !newRequest.employee_id) {
+    if (canCreateForOthers && !newRequest.employee_id) {
       showNotification('error', 'Vui lòng chọn nhân viên cần tạo đơn nghỉ phép.')
       return
     }
@@ -754,7 +756,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
 
       const payload: LeaveRequestCreate = {
         ...newRequest,
-        employee_id: isPersonalView ? (user?.employee_id || null) : newRequest.employee_id,
+        employee_id: !canCreateForOthers ? (user?.employee_id || null) : newRequest.employee_id,
         attachment_url: combinedAttachmentUrl || undefined,
       }
       const res = await leaveApi.create(payload)
@@ -1211,10 +1213,10 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                     const isApprovedAnyLevel = req.status === 'STORE_APPROVED' || req.status === 'HR_APPROVED' || Boolean(req.store_approved_at) || Boolean(req.hr_approved_at)
 
                     // Cửa hàng trưởng không thể tự duyệt đơn của mình, không duyệt đơn của CHT khác, và không duyệt đơn của HR/Admin
-                    const canStoreApprove = (isStoreManager || isAdmin) && req.status === 'PENDING' && !isOwner && !isApplicantStoreManager && !isApplicantHrOrAdmin
+                    const canStoreApprove = isStoreManager && req.status === 'PENDING' && !isOwner && !isApplicantStoreManager && !isApplicantHrOrAdmin
 
                     // HR duyệt Cấp 2 cho Employee / Store Manager (chỉ khi KHÔNG PHẢI đơn HR/Admin, và TUÂN THỦ nguyên tắc No Self-Approval)
-                    const canHrApprove = (isHrManager || isAdmin) && !isApplicantHrOrAdmin && !isOwner && (
+                    const canHrApprove = isHrManager && !isApplicantHrOrAdmin && !isOwner && (
                       req.status === 'STORE_APPROVED' || req.status === 'PENDING'
                     )
 
@@ -1227,11 +1229,11 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                         ? (isDirector && req.status === 'PENDING')
                         : (
                             (isStoreManager && !isApplicantStoreManager && req.status === 'PENDING') ||
-                            ((isHrManager || isAdmin) && (req.status === 'PENDING' || req.status === 'STORE_APPROVED'))
+                            (isHrManager && (req.status === 'PENDING' || req.status === 'STORE_APPROVED'))
                           )
                     )
                     const canRevokeHrApproved = !isLeavePassed && !isOwner && req.status === 'HR_APPROVED' && (
-                      isApplicantHrOrAdmin ? isDirector : (isHrManager || isAdmin)
+                      isApplicantHrOrAdmin ? isDirector : isHrManager
                     )
 
                     // Nếu đã được duyệt bất kì cấp nào thì nhân viên cũng không được tự ý hủy đơn giữa chừng
@@ -1461,7 +1463,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                                   <span>In đơn nghỉ phép (PDF / A4)</span>
                                 </button>
 
-                                {!isPersonalView && (
+                                {canCreateForOthers && (
                                   <button
                                     className="action-dropdown-item"
                                     onClick={() => {
@@ -2053,7 +2055,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
 
             <form onSubmit={handleCreateSubmit} style={{ padding: '20px' }}>
               {/* Chọn nhân viên khi quản lý/HR/Admin tạo đơn hộ (Searchable Combobox chuẩn Vero Design System) */}
-              {!isPersonalView && (
+              {canCreateForOthers && (
                 <div style={{ marginBottom: '16px' }}>
                   <EmployeeSearchSelect
                     employees={employeeList}
@@ -3404,10 +3406,10 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                 )
                 const isModalApplicantStoreManager = Boolean(detailModalRequest.is_store_manager_request || detailModalRequest.position_name === 'Cửa hàng trưởng')
                 const canModalDirectorApprove = isDirector && !isModalOwner && detailModalRequest.status === 'PENDING' && isModalApplicantHrOrAdmin
-                const canModalHrApprove = (isHrManager || isAdmin) && !isModalApplicantHrOrAdmin && !isModalOwner && (
+                const canModalHrApprove = isHrManager && !isModalApplicantHrOrAdmin && !isModalOwner && (
                   detailModalRequest.status === 'STORE_APPROVED' || detailModalRequest.status === 'PENDING'
                 )
-                const canModalStoreApprove = (isStoreManager || isAdmin) && detailModalRequest.status === 'PENDING' && !isModalOwner && !isModalApplicantStoreManager && !isModalApplicantHrOrAdmin
+                const canModalStoreApprove = isStoreManager && detailModalRequest.status === 'PENDING' && !isModalOwner && !isModalApplicantStoreManager && !isModalApplicantHrOrAdmin
 
                 const now = new Date()
                 const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
@@ -3419,7 +3421,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                     ? (isDirector && detailModalRequest.status === 'PENDING')
                     : (
                         (isStoreManager && !isModalApplicantStoreManager && detailModalRequest.status === 'PENDING') ||
-                        ((isHrManager || isAdmin) && (detailModalRequest.status === 'PENDING' || detailModalRequest.status === 'STORE_APPROVED'))
+                        (isHrManager && (detailModalRequest.status === 'PENDING' || detailModalRequest.status === 'STORE_APPROVED'))
                       )
                 )
 

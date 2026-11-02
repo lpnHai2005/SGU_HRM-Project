@@ -75,7 +75,9 @@ function errorText(error: unknown) {
 export function OvertimeApprovalsPanel({ user, requestId }: Props) {
   const navigate = useNavigate()
   const roles: string[] = user?.roles || []
-  const isReviewer = roles.includes('ADMIN') || roles.includes('HR_MANAGER')
+  const isReviewer = roles.includes('ADMIN') || roles.includes('HR_MANAGER') || roles.includes('DIRECTOR')
+  // ADMIN chỉ xem danh sách; duyệt/từ chối/thu hồi dành cho HR và Giám đốc.
+  const canDecide = roles.includes('HR_MANAGER') || roles.includes('DIRECTOR')
   const isStoreManager = roles.includes('STORE_MANAGER')
   const isEmployee = roles.includes('EMPLOYEE') && !isReviewer && !roles.includes('STORE_MANAGER')
   const today = todayInVietnam()
@@ -218,18 +220,17 @@ export function OvertimeApprovalsPanel({ user, requestId }: Props) {
     }
   }
 
-  const canApproveStandard = Boolean(selected && selected.request_type !== 'AMENDMENT' && isReviewer && selected.status === 'PENDING_HR'
+  const canApproveStandard = Boolean(selected && selected.request_type !== 'AMENDMENT' && canDecide && selected.status === 'PENDING_HR'
     && selected.created_by !== user?.user_id && selected.employee_id !== user?.employee_id)
   const selectedParent = selected?.related_requests?.find(request => request.request_id === selected.parent_request_id)
-  const canApproveAmendment = Boolean(selected && selected.request_type === 'AMENDMENT' && isReviewer && selected.status === 'PENDING_HR'
+  const canApproveAmendment = Boolean(selected && selected.request_type === 'AMENDMENT' && canDecide && selected.status === 'PENDING_HR'
     && selected.created_by !== user?.user_id && selectedParent?.created_by !== user?.user_id
     && selected.employee_id !== user?.employee_id)
   const canProposeLifecycle = Boolean(selected?.lifecycle?.eligible && (
-    roles.includes('ADMIN')
-    || (isStoreManager && selected.store_id === user?.store_id && selected.employee_id !== user?.employee_id)
+    (isStoreManager && selected.store_id === user?.store_id && selected.employee_id !== user?.employee_id)
     || (roles.includes('EMPLOYEE') && selected.employee_id === user?.employee_id)
   ))
-  const canReviewRevocation = Boolean(selected && isReviewer && selected.revoke_requested_at && !selected.revoke_decided_at
+  const canReviewRevocation = Boolean(selected && canDecide && selected.revoke_requested_at && !selected.revoke_decided_at
     && selected.revoke_requested_by !== user?.user_id && selected.created_by !== user?.user_id
     && selected.employee_id !== user?.employee_id)
   const canApprove = canApproveStandard
@@ -282,7 +283,7 @@ export function OvertimeApprovalsPanel({ user, requestId }: Props) {
                 {hasPendingRevocation(request) && <span className="overtime-secondary-badge is-pending">Chờ HR quyết định thu hồi</span>}
                 {request.is_overdue && <span className="overtime-overdue-badge">Quá thời điểm dự kiến</span>}
               </div></td>
-              <td><button type="button" className="btn btn-secondary btn-sm" onClick={event => { event.stopPropagation(); void openDetail(request.request_id) }}>{request.status === 'PENDING_HR' && isReviewer ? 'Xét duyệt' : 'Chi tiết'}</button></td>
+              <td><button type="button" className="btn btn-secondary btn-sm" onClick={event => { event.stopPropagation(); void openDetail(request.request_id) }}>{request.status === 'PENDING_HR' && canDecide ? 'Xét duyệt' : 'Chi tiết'}</button></td>
             </tr>)}</tbody>
           </table>
         </div>

@@ -106,7 +106,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
   const notificationCaseId = Number(searchParams.get('case_id')) || undefined
   const userRoles: string[] = user?.roles || []
   const isReviewer = userRoles.includes('ADMIN') || userRoles.includes('HR_MANAGER') || userRoles.includes('DIRECTOR')
-  const canReviewLifecycle = userRoles.includes('ADMIN') || userRoles.includes('HR_MANAGER')
+  const canReviewLifecycle = userRoles.includes('HR_MANAGER') || userRoles.includes('DIRECTOR')  // ADMIN chỉ xem
   const isStoreManager = userRoles.includes('STORE_MANAGER')
   const canManageOvertime = !personal && (isReviewer || isStoreManager)
   const isPersonalView = personal || !canManageOvertime
@@ -943,7 +943,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
                   const isAssignedToMe = Number(req.employee_id) === Number(user?.employee_id)
                   const isCreator = req.created_by === user?.user_id
                   const canSelfConfirm = isAssignedToMe && req.status === 'PENDING_EMPLOYEE_CONFIRMATION'
-                  const canHrApprove = isReviewer && req.status === 'PENDING_HR' && req.created_by !== user?.user_id && !isAssignedToMe
+                  const canHrApprove = canReviewLifecycle && req.status === 'PENDING_HR' && req.created_by !== user?.user_id && !isAssignedToMe
                   const canCancel = ['DRAFT', 'PENDING_EMPLOYEE_CONFIRMATION', 'PENDING_HR'].includes(req.status) &&
                     (isCreator || isAssignedToMe)
                   const canRevoke = req.status === 'APPROVED' && !req.revoke_requested_at && (isReviewer || isStoreManager || isAssignedToMe || isCreator)
@@ -1801,7 +1801,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
               )}
 
               {/* HR Phê duyệt Cấp 2 */}
-              {isReviewer && selectedRequest.status === 'PENDING_HR' && selectedRequest.created_by !== user?.user_id && Number(selectedRequest.employee_id) !== Number(user?.employee_id) && (
+              {canReviewLifecycle && selectedRequest.status === 'PENDING_HR' && selectedRequest.created_by !== user?.user_id && Number(selectedRequest.employee_id) !== Number(user?.employee_id) && (
                 <>
                   <button
                     type="button"

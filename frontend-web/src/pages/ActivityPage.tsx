@@ -294,9 +294,10 @@ export function ActivityPage({
       !user?.roles?.some((role: string) =>
         ['ADMIN', 'HR_MANAGER', 'DIRECTOR'].includes(role)
       )) ||
-      user?.username?.toLowerCase()?.startsWith('store_mgr') ||
       user?.role === 'STORE_MANAGER'
   )
+  // Chỉ HR và Giám đốc được xử lý phiên chấm công.
+  const canResolveSession = Boolean(user?.roles?.some((role: string) => ['HR_MANAGER', 'DIRECTOR'].includes(role)))
 
   const handleOpenResolveSession = (session: ActivitySession) => {
     if (isStoreManager) {
@@ -1305,18 +1306,18 @@ export function ActivityPage({
                                       type="button"
                                       className="hr-resolve-action-btn"
                                       onClick={() => {
-                                        if (isStoreManager) {
+                                        if (!canResolveSession) {
                                           alert('Bạn không có quyền thao tác chức năng này')
                                           return
                                         }
                                         handleOpenResolveSession(session)
                                       }}
                                       title={
-                                        isStoreManager
+                                        !canResolveSession
                                           ? 'Bạn không có quyền thao tác chức năng này'
                                           : 'HR Ra quyết định xử lý cho phiên chấm công này'
                                       }
-                                      style={isStoreManager ? { opacity: 0.65, cursor: 'not-allowed' } : undefined}
+                                      style={!canResolveSession ? { opacity: 0.65, cursor: 'not-allowed' } : undefined}
                                     >
                                       <ShieldCheck size={12} />
                                       <span>HR Xử lý</span>

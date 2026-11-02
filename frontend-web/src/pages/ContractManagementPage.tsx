@@ -99,8 +99,12 @@ export function ContractManagementPage({ user }: ContractManagementPageProps) {
 
   // RBAC
   const userRoles = useMemo(() => user?.roles || [], [user])
-  const canManage = useMemo(() => {
+  // ADMIN chỉ xem (lương, tài liệu); thao tác ghi dành cho HR và Giám đốc.
+  const canView = useMemo(() => {
     return userRoles.includes('ADMIN') || userRoles.includes('HR_MANAGER') || userRoles.includes('DIRECTOR')
+  }, [userRoles])
+  const canManage = useMemo(() => {
+    return userRoles.includes('HR_MANAGER') || userRoles.includes('DIRECTOR')
   }, [userRoles])
 
   // Load lookups and employees
@@ -457,7 +461,7 @@ export function ContractManagementPage({ user }: ContractManagementPageProps) {
           <h1 className="page-title">Quản lý Hợp đồng lao động</h1>
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          {canManage && (
+          {canView && (
             <button
               type="button"
               className="btn btn-secondary btn-sm"
@@ -735,7 +739,7 @@ export function ContractManagementPage({ user }: ContractManagementPageProps) {
                     <th style={{ width: '160px' }}>LOẠI HĐ</th>
                     <th style={{ width: '170px' }}>THỜI HẠN</th>
                     <th>CHỨC VỤ / ĐƠN VỊ</th>
-                    {canManage && <th style={{ width: '125px' }}>LƯƠNG CƠ BẢN</th>}
+                    {canView && <th style={{ width: '125px' }}>LƯƠNG CƠ BẢN</th>}
                     <th style={{ width: '125px', textAlign: 'center' }}>TRẠNG THÁI</th>
                     <th style={{ width: '90px', textAlign: 'center' }}>HÀNH ĐỘNG</th>
                   </tr>
@@ -812,7 +816,7 @@ export function ContractManagementPage({ user }: ContractManagementPageProps) {
                         </td>
 
                         {/* LƯƠNG CƠ BẢN */}
-                        {canManage && (
+                        {canView && (
                           <td>
                             <span className="table-score-val">
                               {contract.basic_salary !== null && contract.basic_salary !== undefined
@@ -839,7 +843,7 @@ export function ContractManagementPage({ user }: ContractManagementPageProps) {
                             >
                               {Icons.eye}
                             </button>
-                            {canManage && (
+                            {canView && (
                               <button
                                 className={`btn btn-secondary btn-sm btn-icon ${openMenuId === contract.contract_id ? 'active' : ''}`}
                                 title="Tùy chọn thao tác"
@@ -1012,7 +1016,7 @@ export function ContractManagementPage({ user }: ContractManagementPageProps) {
                   <span style={{ color: 'var(--text-secondary)' }}>Đơn vị / Phòng ban: </span>
                   <strong style={{ color: 'var(--text-primary)' }}>{selectedContract.department_name || selectedContract.store_name || '--'}</strong>
                 </div>
-                {canManage && (
+                {canView && (
                   <div>
                     <span style={{ color: 'var(--text-secondary)' }}>Lương cơ bản: </span>
                     <strong style={{ color: 'var(--text-primary)' }}>
@@ -1022,7 +1026,7 @@ export function ContractManagementPage({ user }: ContractManagementPageProps) {
                     </strong>
                   </div>
                 )}
-                {canManage && (selectedContract.insurance_salary !== null && selectedContract.insurance_salary !== undefined || selectedContract.basic_salary !== null && selectedContract.basic_salary !== undefined) && (() => {
+                {canView && (selectedContract.insurance_salary !== null && selectedContract.insurance_salary !== undefined || selectedContract.basic_salary !== null && selectedContract.basic_salary !== undefined) && (() => {
                   const insSalary = selectedContract.basic_salary ?? selectedContract.insurance_salary ?? 0
                   return (
                     <div style={{ gridColumn: 'span 2', marginTop: '6px', padding: '10px 14px', background: 'var(--surface-subtle)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-default)' }}>

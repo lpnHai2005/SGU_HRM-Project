@@ -5,7 +5,7 @@ from fastapi import HTTPException
 from sqlalchemy import text
 from app.core.attendance import VIETNAM_TZ
 
-MANAGERS = {'ADMIN', 'HR_MANAGER', 'STORE_MANAGER', 'DIRECTOR'}
+MANAGERS = {'HR_MANAGER', 'STORE_MANAGER', 'DIRECTOR'}  # ADMIN chỉ xem lịch, không phân ca
 
 def interval(day, start, end):
     begin = datetime.combine(day, start, VIETNAM_TZ)
@@ -35,8 +35,8 @@ async def lock_employee(db, user, employee_id, store_id):
             raise HTTPException(403, 'Không được tự phân, sửa hoặc hủy lịch của bản thân.')
         is_hr=(await db.execute(text('''SELECT 1 FROM users u JOIN user_roles ur USING(user_id)
             JOIN roles r USING(role_id) WHERE u.employee_id=:id AND r.role_code='HR_MANAGER' LIMIT 1'''),{'id':employee_id})).first()
-        if is_hr and not roles.intersection({'ADMIN', 'DIRECTOR'}):
-            raise HTTPException(403, 'Chỉ Admin hoặc Giám đốc được quản lý lịch phân ca của HR.')
+        if is_hr and 'DIRECTOR' not in roles:
+            raise HTTPException(403, 'Chỉ Giám đốc được quản lý lịch phân ca của HR.')
     employee = (await db.execute(text('SELECT employee_id,store_id FROM employees WHERE employee_id=:id FOR UPDATE'), {'id':employee_id})).mappings().first()
     if not employee:
         raise HTTPException(404, 'Employee not found')

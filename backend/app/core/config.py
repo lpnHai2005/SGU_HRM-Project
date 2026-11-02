@@ -83,6 +83,8 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 480 # 8 giờ làm việc
+    # Lộ username + mật khẩu demo; đặt False trong .env khi triển khai thật.
+    ENABLE_DEMO_ACCOUNTS: bool = True
     
     # Danh sách tên miền CORS cho phép
     CORS_ORIGINS: Union[List[str], str] = [

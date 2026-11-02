@@ -11,8 +11,8 @@ from app.core.database import get_db
 from app.core.overtime_requests import VIETNAM_TZ, local_interval, require_transition
 
 router = APIRouter()
-MANAGER_ROLES = {"ADMIN", "HR_MANAGER", "STORE_MANAGER"}
-REVIEW_ROLES = {"ADMIN", "HR_MANAGER"}
+MANAGER_ROLES = {"ADMIN", "HR_MANAGER", "DIRECTOR", "STORE_MANAGER"}
+REVIEW_ROLES = {"ADMIN", "HR_MANAGER", "DIRECTOR"}
 
 
 class OvertimeRequestCreate(BaseModel):
@@ -265,8 +265,6 @@ async def _assert_lifecycle_eligible(db, row, *, allow_active_amendment=False):
 
 def _assert_lifecycle_proposer(row, user):
     roles = set(user.get("roles", []))
-    if "ADMIN" in roles:
-        return
     if "STORE_MANAGER" in roles:
         if row["store_id"] != user.get("store_id"):
             raise HTTPException(403, "Store manager may propose lifecycle changes only within their assigned store")
@@ -275,7 +273,7 @@ def _assert_lifecycle_proposer(row, user):
         return
     if "EMPLOYEE" in roles and row["employee_id"] == user.get("employee_id"):
         return
-    raise HTTPException(403, "Only the assigned employee, scoped store manager, or ADMIN may propose this change")
+    raise HTTPException(403, "Only the assigned employee or scoped store manager may propose this change")
 
 
 async def _lock_request(db: AsyncSession, request_id: int):
@@ -358,10 +356,10 @@ async def create_request(req: OvertimeRequestCreate, idempotency_key: str | None
     is_self = target_id == user_employee_id
     if is_self and "STORE_MANAGER" in roles:
         raise HTTPException(403, "Store managers cannot register overtime for themselves")
-    if is_self and not roles & {"EMPLOYEE", "ADMIN"}:
-        raise HTTPException(403, "Only EMPLOYEE or authorized ADMIN may create an overtime request for themselves")
-    if not is_self and not roles & {"ADMIN", "STORE_MANAGER"}:
-        raise HTTPException(403, "Only ADMIN or STORE_MANAGER may create an overtime request for another employee")
+    if is_self and "EMPLOYEE" not in roles:
+        raise HTTPException(403, "Only EMPLOYEE may create an overtime request for themselves")
+    if not is_self and "STORE_MANAGER" not in roles:
+        raise HTTPException(403, "Only STORE_MANAGER may create an overtime request for another employee")
     await _require_overtime_schema(db)
     employee = await _lock_request_employee(db, target_id)
     store_id = req.store_id or employee["store_id"]
@@ -687,7 +685,7 @@ async def employee_decline(request_id: int, body: OvertimeDecision | None = None
 
 
 @router.post("/{request_id}/approve")
-async def approve_request(request_id: int, user=Depends(require_roles(["HR_MANAGER", "ADMIN"])), db: AsyncSession = Depends(get_db)):
+async def approve_request(request_id: int, user=Depends(require_roles(["HR_MANAGER", "DIRECTOR"])), db: AsyncSession = Depends(get_db)):
     row = await _lock_request(db, request_id)
     if row.get("request_type") == "AMENDMENT":
         raise HTTPException(409, {"code": "USE_AMENDMENT_APPROVAL", "message": "Đơn điều chỉnh phải được duyệt bằng luồng phê duyệt thay thế."})
@@ -707,7 +705,7 @@ async def approve_request(request_id: int, user=Depends(require_roles(["HR_MANAG
 
 @router.post("/{request_id}/reject")
 async def reject_request(request_id: int, body: OvertimeRejection,
-                         user=Depends(require_roles(["HR_MANAGER", "ADMIN"])), db: AsyncSession = Depends(get_db)):
+                         user=Depends(require_roles(["HR_MANAGER", "DIRECTOR"])), db: AsyncSession = Depends(get_db)):
     row = await _lock_request(db, request_id)
     if row["status"] == "REJECTED":
         return row
@@ -778,7 +776,7 @@ async def request_revocation(request_id: int, body: OvertimeLifecycleReason,
 
 
 @router.post("/{request_id}/revoke-approve")
-async def approve_revocation(request_id: int, user=Depends(require_roles(["HR_MANAGER", "ADMIN"])),
+async def approve_revocation(request_id: int, user=Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
                              db: AsyncSession = Depends(get_db)):
     row = await _lock_request(db, request_id)
     if row["status"] == "REVOKED":
@@ -816,7 +814,7 @@ async def approve_revocation(request_id: int, user=Depends(require_roles(["HR_MA
 
 @router.post("/{request_id}/revoke-reject")
 async def reject_revocation(request_id: int, body: OvertimeLifecycleReason,
-                            user=Depends(require_roles(["HR_MANAGER", "ADMIN"])), db: AsyncSession = Depends(get_db)):
+                            user=Depends(require_roles(["HR_MANAGER", "DIRECTOR"])), db: AsyncSession = Depends(get_db)):
     row = await _lock_request(db, request_id)
     if row["revoke_decision"] == "REJECTED":
         return row
@@ -897,7 +895,7 @@ async def propose_amendment(request_id: int, body: OvertimeAmendment,
 
 
 @router.post("/{request_id}/amend-approve")
-async def approve_amendment(request_id: int, user=Depends(require_roles(["HR_MANAGER", "ADMIN"])),
+async def approve_amendment(request_id: int, user=Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
                             db: AsyncSession = Depends(get_db)):
     child = await _lock_request(db, request_id)
     if child.get("request_type") != "AMENDMENT" or not child.get("parent_request_id"):

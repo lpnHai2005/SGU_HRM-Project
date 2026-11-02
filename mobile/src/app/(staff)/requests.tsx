@@ -289,7 +289,22 @@ export default function RequestsScreen() {
   const isStoreManager = userRoles.includes('STORE_MANAGER');
   const isHrManager = userRoles.includes('HR_MANAGER');
   const isAdmin = userRoles.includes('ADMIN');
-  const isManager = isStoreManager || isHrManager || isAdmin;
+  const isDirector = userRoles.includes('DIRECTOR');
+  // ADMIN được xem danh sách duyệt nhưng không thao tác (giống web).
+  const isManager = isStoreManager || isHrManager || isDirector || isAdmin;
+  const isStoreOnly = isStoreManager && !isHrManager && !isDirector && !isAdmin;
+  const isViewOnly = isAdmin && !isStoreManager && !isHrManager && !isDirector;
+  // CHT duyệt cấp 1 đơn nhân viên; HR duyệt đơn NV/CHT; Giám đốc duyệt đơn HR/Admin (No Self-Approval).
+  const canActOnLeave = useCallback((item: LeaveRequestItem) => {
+    if (item.employee_id === profile?.employee_id) return false;
+    if (item.is_hr_or_admin_request) return isDirector && item.status === 'PENDING';
+    if (isHrManager) return item.status === 'PENDING' || item.status === 'STORE_APPROVED';
+    return isStoreManager && item.status === 'PENDING' && !item.is_store_manager_request;
+  }, [profile?.employee_id, isDirector, isHrManager, isStoreManager]);
+  // Backend: tự đăng ký OT cần vai trò EMPLOYEE (không phải CHT); tạo hộ chỉ CHT.
+  const canCreateOt = otScopeTab === 'manager_ot'
+    ? isStoreManager
+    : userRoles.includes('EMPLOYEE') && !isStoreManager;
 
   // Selected leave type details
   const selectedTypeInfo = useMemo(() => {
@@ -627,7 +642,7 @@ export default function RequestsScreen() {
     setError('');
     try {
       let res;
-      if (isStoreManager && !isAdmin && !isHrManager) {
+      if (isStoreOnly) {
         res = await storeApproveLeave(token, selectedRequest.request_id, actionNote);
       } else {
         res = await hrApproveLeave(token, selectedRequest.request_id, actionNote);
@@ -635,10 +650,10 @@ export default function RequestsScreen() {
       setNotice(`${res.message || 'Phê duyệt đơn nghỉ phép thành công!'}`);
       void dispatchNotification({
         type: 'leave_approval',
-        title: isHrManager ? 'Hoàn tất duyệt Cấp 2' : 'Đã duyệt Cấp 1',
+        title: isStoreOnly ? 'Đã duyệt Cấp 1' : 'Hoàn tất duyệt Cấp 2',
         body: `Đã phê duyệt đơn #${selectedRequest.request_id} (${selectedRequest.employee_name || 'nhân viên'}).`,
         actionUrl: '/(staff)/requests',
-        data: { requestId: selectedRequest.request_id, status: isHrManager ? 'HR_APPROVED' : 'STORE_APPROVED' },
+        data: { requestId: selectedRequest.request_id, status: isStoreOnly ? 'STORE_APPROVED' : 'HR_APPROVED' },
       });
       setModalMode(null);
       if (detailItem?.request_id === selectedRequest.request_id) {
@@ -718,7 +733,7 @@ export default function RequestsScreen() {
     }
 
     if (mgrStatusFilter === 'PENDING_ONLY') {
-      if (isStoreManager && !isAdmin && !isHrManager) {
+      if (isStoreOnly) {
         candidateList = candidateList.filter(r => r.status === 'PENDING');
       } else {
         candidateList = candidateList.filter(r => r.status === 'PENDING' || r.status === 'STORE_APPROVED');
@@ -744,15 +759,11 @@ export default function RequestsScreen() {
     }
 
     return candidateList;
-  }, [managerLeaves, profile?.employee_id, selectedMonth, mgrStatusFilter, isStoreManager, isAdmin, isHrManager, searchQuery]);
+  }, [managerLeaves, profile?.employee_id, selectedMonth, mgrStatusFilter, isStoreOnly, searchQuery]);
 
   const pendingApprovalCount = useMemo(() => {
-    return managerLeaves.filter(r => {
-      if (r.employee_id === profile?.employee_id) return false;
-      if (isStoreManager && !isAdmin && !isHrManager) return r.status === 'PENDING';
-      return r.status === 'PENDING' || r.status === 'STORE_APPROVED';
-    }).length;
-  }, [managerLeaves, profile?.employee_id, isStoreManager, isAdmin, isHrManager]);
+    return managerLeaves.filter(canActOnLeave).length;
+  }, [managerLeaves, canActOnLeave]);
 
   // Dedicated multi-step approval progress indicator for overview cards
   const renderApprovalProgressBox = (item: LeaveRequestItem) => {
@@ -1063,7 +1074,9 @@ export default function RequestsScreen() {
         <>
           <Label large>Duyệt đơn nhân viên chi nhánh</Label>
           <Label muted>
-            {isStoreManager && !isAdmin && !isHrManager
+            {isViewOnly
+              ? 'Chế độ xem: Quản trị viên chỉ theo dõi đơn, không duyệt hay từ chối.'
+              : isStoreOnly
               ? 'Phê duyệt sơ bộ Cấp 1 các đơn xin nghỉ phép của nhân viên thuộc chi nhánh bạn quản lý.'
               : 'Phê duyệt chính thức Cấp 2 (toàn quyền Phòng Nhân sự / Ban Giám đốc).'}
           </Label>
@@ -1177,11 +1190,8 @@ export default function RequestsScreen() {
               bg: p.card,
               step: 'Đang xử lý',
             };
-            const isPendingStore = item.status === 'PENDING';
             const isPendingHr = item.status === 'STORE_APPROVED';
-            const canApprove =
-              (isStoreManager && isPendingStore) ||
-              ((isHrManager || isAdmin) && (isPendingStore || isPendingHr));
+            const canApprove = canActOnLeave(item);
             const initials = (item.employee_name || 'NV').split(' ').slice(-2).map(w => w[0]).join('').toUpperCase();
             const cells: [string, string, boolean][] = [
               ['Loại', item.leave_type_name, false],
@@ -1240,8 +1250,10 @@ export default function RequestsScreen() {
                       onPress={() => {
                         setSelectedRequest(item);
                         setActionNote(
-                          isStoreManager
+                          isStoreOnly
                             ? 'Cửa hàng trưởng đã kiểm tra ca kíp và duyệt Cấp 1.'
+                            : item.is_hr_or_admin_request
+                            ? 'Giám đốc đã phê duyệt.'
                             : 'Phòng Nhân sự đã phê duyệt chính thức.'
                         );
                         setModalMode('approve');
@@ -1273,6 +1285,7 @@ export default function RequestsScreen() {
           isManager={isManager}
           isStoreManager={isStoreManager}
           isHrManager={isHrManager}
+          isDirector={isDirector}
           isAdmin={isAdmin}
           monthOptions={monthOptions}
           selectedMonth={selectedMonth}
@@ -2060,14 +2073,14 @@ export default function RequestsScreen() {
 
                   {/* ACTIONS INSIDE DETAIL MODAL */}
                   <View style={{ gap: 10, marginTop: 6 }}>
-                    {isManager && detailItem.employee_id !== profile?.employee_id && (
+                    {canActOnLeave(detailItem) && (
                       <View style={{ flexDirection: 'row', gap: 10 }}>
                         <View style={{ flex: 1 }}>
                           <Button
                             title="Duyệt đơn"
                             onPress={() => {
                               setSelectedRequest(detailItem);
-                              setActionNote(isStoreManager ? 'Cửa hàng trưởng duyệt Cấp 1.' : 'Phòng Nhân sự phê duyệt.');
+                              setActionNote(isStoreOnly ? 'Cửa hàng trưởng duyệt Cấp 1.' : detailItem.is_hr_or_admin_request ? 'Giám đốc phê duyệt.' : 'Phòng Nhân sự phê duyệt.');
                               setModalMode('approve');
                             }}
                             disabled={actionBusy}
@@ -2294,7 +2307,7 @@ export default function RequestsScreen() {
     </ScrollView>
 
       {/* BUTTON "ĐĂNG KÝ OT" NẰM Ở NGOÀI CARD BÊN DƯỚI GÓC PHẢI (CHO CẢ ĐƠN OT CỦA TÔI VÀ QUẢN LÝ DUYỆT OT) VỚI HIỆU ỨNG CHẠY TỪ PHẢI VÀO */}
-      {domainTab === 'overtime' && (
+      {domainTab === 'overtime' && canCreateOt && (
         <Animated.View
           style={{
             position: 'absolute',
