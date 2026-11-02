@@ -5,7 +5,7 @@ $logRoot = Join-Path $projectRoot 'tmp'
 New-Item -ItemType Directory -Path $logRoot -Force | Out-Null
 $backendListener = Get-NetTCPConnection -State Listen -LocalPort 8000 -ErrorAction SilentlyContinue
 if (-not $backendListener) {
-    Start-Process -FilePath (Join-Path $projectRoot 'backend\venv\Scripts\python.exe') -ArgumentList '-m uvicorn app.main:app --host 0.0.0.0 --port 8000' -WorkingDirectory (Join-Path $projectRoot 'backend') -WindowStyle Hidden -RedirectStandardOutput (Join-Path $logRoot 'mobile-backend.log') -RedirectStandardError (Join-Path $logRoot 'mobile-backend-error.log')
+    Start-Process -FilePath (Join-Path $projectRoot 'venv\Scripts\python.exe') -ArgumentList '-m uvicorn app.main:app --host 0.0.0.0 --port 8000' -WorkingDirectory (Join-Path $projectRoot 'backend') -WindowStyle Hidden -RedirectStandardOutput (Join-Path $logRoot 'mobile-backend.log') -RedirectStandardError (Join-Path $logRoot 'mobile-backend-error.log')
 }
 $backendReady = $false
 for ($attempt = 0; $attempt -lt 15; $attempt++) {

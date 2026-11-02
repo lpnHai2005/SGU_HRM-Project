@@ -1,2 +1,0 @@
-# TechZone HRM Root Requirements Reference
--r backend/requirements.txt

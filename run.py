@@ -203,7 +203,7 @@ def main():
 
     check_and_prepare_env()
 
-    venv_python = os.path.join(BACKEND_DIR, "venv", "Scripts" if os.name == "nt" else "bin", "python.exe" if os.name == "nt" else "python")
+    venv_python = os.path.join(ROOT_DIR, "venv", "Scripts" if os.name == "nt" else "bin", "python.exe" if os.name == "nt" else "python")
     python_executable = venv_python if os.path.isfile(venv_python) else sys.executable
     print(f"👉 Python backend đang dùng: {GREEN}{python_executable}{RESET}")
 

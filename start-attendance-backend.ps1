@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 $taskBackend = Join-Path $PSScriptRoot 'backend'
-$taskPython = Join-Path $taskBackend 'venv\Scripts\python.exe'
-if (-not (Test-Path -LiteralPath $taskPython)) { throw 'Missing backend virtual environment.' }
+$taskPython = Join-Path $PSScriptRoot 'venv\Scripts\python.exe'
+if (-not (Test-Path -LiteralPath $taskPython)) { throw 'Missing virtual environment: create it at <repo>\venv.' }
 if (Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue) {
     Write-Host 'Port 8000 is already listening. Check http://localhost:8000/docs'
     exit 0
