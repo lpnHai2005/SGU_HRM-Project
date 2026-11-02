@@ -4,7 +4,8 @@ import { Icons } from '../components/common/Icons'
 import { StatCard } from '../components/common/StatCard'
 import { EmptyState } from '../components/common/EmptyState'
 import { formatCurrency, formatDate } from '../utils/formatters'
-import type { Payroll, PayrollPeriodWorkingDays } from '../types'
+import type { Payroll, PayrollPeriodWorkingDays, PayrollImportStatusResponse } from '../types'
+import { PayrollImportDialog } from './PayrollImportDialog'
 import { payrollApi } from '../services/api'
 import './PayslipPrint.css'
 import './MyPayslipPage.css'
@@ -130,6 +131,8 @@ export function PayrollPage({ user }: PayrollPageProps) {
   const subformPaneRef = useRef<HTMLDivElement | null>(null)
   const [adjustmentPayroll, setAdjustmentPayroll] = useState<Payroll | null>(null)
   const [reopenDialogOpen, setReopenDialogOpen] = useState(false)
+  const [importStatus, setImportStatus] = useState<PayrollImportStatusResponse | null>(null)
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [unconfirmPayroll, setUnconfirmPayroll] = useState<Payroll | null>(null)
   const [selectedAnnualEmployeeId, setSelectedAnnualEmployeeId] = useState<number>(() => user?.employee_id || 0)
   const [annualData, setAnnualData] = useState<any>(null)
@@ -356,6 +359,30 @@ export function PayrollPage({ user }: PayrollPageProps) {
   const canManage = isAdmin || isDirector || isHrManager || isStoreManager
   const canRunPayroll = isDirector || isHrManager  // ADMIN chỉ xem bảng lương
 
+  const fetchImportStatus = useCallback(async () => {
+    if (!canRunPayroll) return
+    try {
+      const res = await payrollApi.getImportStatus(selectedPeriod)
+      setImportStatus(res)
+    } catch {
+      setImportStatus(null)
+    }
+  }, [selectedPeriod, canRunPayroll])
+
+  const handleRevertImport = async () => {
+    try {
+      setActionLoading(true)
+      const res = await payrollApi.revertImport(selectedPeriod)
+      toast.success(res.message || 'Đã khôi phục chấm công gốc thành công!')
+      await fetchPayrolls()
+      await fetchImportStatus()
+    } catch (err: any) {
+      toast.error(`Lỗi khôi phục: ${err.message || 'Lỗi server'}`)
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
   // Load payrolls
   const fetchPayrolls = useCallback(async () => {
     setIsLoading(true)
@@ -372,6 +399,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
         setSelectedPayroll(null)
       }
       await fetchWorkingDays(selectedPeriod)
+      await fetchImportStatus()
     } catch (err: any) {
       console.error('Error fetching payrolls:', err)
       setFeedbackMessage({ type: 'error', text: err.message || 'Lỗi khi tải danh sách bảng lương' })
@@ -384,7 +412,8 @@ export function PayrollPage({ user }: PayrollPageProps) {
   useEffect(() => {
     fetchPayrolls()
     fetchWorkingDays(selectedPeriod)
-  }, [fetchPayrolls, fetchWorkingDays, selectedPeriod])
+    fetchImportStatus()
+  }, [fetchPayrolls, fetchWorkingDays, fetchImportStatus, selectedPeriod])
 
   // Fetch annual data when annual tab is active or selected employee changes
   const fetchAnnualSummary = useCallback(async (empId: number, year: string) => {
@@ -838,6 +867,32 @@ export function PayrollPage({ user }: PayrollPageProps) {
               >
                 {Icons.settings}
               </button>
+
+              {importStatus && importStatus.override_count > 0 && (
+                <div
+                  title="Kỳ lương đang áp dụng dữ liệu nhập đè từ file Excel"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '4px 10px',
+                    borderRadius: '8px',
+                    backgroundColor: '#eff6ff',
+                    border: '1px solid #bfdbfe',
+                    color: '#1d4ed8',
+                    fontSize: '12px',
+                    fontWeight: 500,
+                  }}
+                >
+                  <span style={{ display: 'inline-flex', alignItems: 'center' }}>{Icons.info}</span>
+                  <span>
+                    Đang áp dụng dữ liệu import · <strong>{importStatus.override_count} NV</strong>
+                    {importStatus.batches && importStatus.batches.length > 0 && (
+                      <> · đợt #{importStatus.batches[0].batch_id}{importStatus.batches[0].created_at ? ` lúc ${new Date(importStatus.batches[0].created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}` : ''}</>
+                    )}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Right Zone: Core Actions & Utilities */}
@@ -884,6 +939,38 @@ export function PayrollPage({ user }: PayrollPageProps) {
                   >
                     {Icons.undo}
                   </button>
+
+                  {!(metrics.confirmedCount > 0 || metrics.paidCount > 0) && (
+                    <>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => setImportDialogOpen(true)}
+                        disabled={actionLoading}
+                        title="Nhập công thực tế và các khoản phụ cấp/thưởng/phạt bổ sung từ file Excel"
+                      >
+                        {Icons.upload}
+                        <span>Nhập Excel</span>
+                      </button>
+
+                      {importStatus && importStatus.override_count > 0 && (
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          style={{ color: '#ea580c', borderColor: '#fdba74' }}
+                          onClick={() => setConfirmation({
+                            message: `Khôi phục chấm công gốc kỳ ${selectedPeriod}? Toàn bộ ${importStatus.override_count} nhân viên đang áp dụng dữ liệu import sẽ được chuyển về chấm công máy và tính lại bảng lương.`,
+                            action: handleRevertImport,
+                          })}
+                          disabled={actionLoading}
+                          title="Hủy dữ liệu import và tính lại bảng lương theo chấm công máy"
+                        >
+                          {Icons.undo}
+                          <span>Khôi phục gốc</span>
+                        </button>
+                      )}
+                    </>
+                  )}
                 </div>
               )}
 
@@ -1874,6 +1961,16 @@ export function PayrollPage({ user }: PayrollPageProps) {
       {/* ========================================================================= */}
       {confirmation&&<div className="modal-overlay no-print"><div className="modal" role="alertdialog" aria-modal="true" aria-label="Xác nhận thao tác bảng lương" style={{maxWidth:440,padding:24}}><h2>Xác nhận bảng lương</h2><p>{confirmation.message}</p><div className="modal-footer"><button className="btn btn-secondary" onClick={()=>setConfirmation(null)}>Hủy</button><button className="btn btn-primary" onClick={()=>{const action=confirmation.action;setConfirmation(null);void action()}}>Xác nhận</button></div></div></div>}
       {reopenDialogOpen&&<PayrollReopenDialog period={selectedPeriod} busy={actionLoading} onClose={()=>setReopenDialogOpen(false)} onSubmit={handleReopenPeriod}/>}
+      {importDialogOpen && (
+        <PayrollImportDialog
+          period={selectedPeriod}
+          onClose={() => setImportDialogOpen(false)}
+          onSuccess={async () => {
+            await fetchPayrolls()
+            await fetchImportStatus()
+          }}
+        />
+      )}
       {unconfirmPayroll&&<PayrollUnconfirmDialog payroll={unconfirmPayroll} busy={actionLoading} onClose={()=>setUnconfirmPayroll(null)} onSubmit={handleUnconfirmPayroll}/>}
       {adjustmentPayroll&&<PayrollAdjustmentDialog payroll={adjustmentPayroll} busy={actionLoading} onClose={()=>setAdjustmentPayroll(null)} onSave={handleSaveAdjustment}/>}
       {isAttendanceRulesOpen && (

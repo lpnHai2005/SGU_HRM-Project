@@ -89,9 +89,10 @@ DECISION = payrolls.OvertimeDecision(approved_hours=1, decision="APPROVED", reas
 
 class OTFix01Tests(unittest.IsolatedAsyncioTestCase):
     def test_default_disabled_and_config_requires_cutoff(self):
-        self.assertEqual(Settings(_env_file=None).OT_REGISTRATION_POLICY_MODE, "DISABLED")
+        req = {"DATABASE_URL": "postgresql+asyncpg://u:p@localhost/db", "SYNC_DATABASE_URL": "postgresql://u:p@localhost/db", "JWT_SECRET_KEY": "s"}
+        self.assertEqual(Settings(_env_file=None, **req).OT_REGISTRATION_POLICY_MODE, "DISABLED")
         with self.assertRaises(ValueError):
-            Settings(_env_file=None, OT_REGISTRATION_POLICY_MODE="LEGACY_ONLY_BEFORE_CUTOFF")
+            Settings(_env_file=None, OT_REGISTRATION_POLICY_MODE="LEGACY_ONLY_BEFORE_CUTOFF", **req)
 
     def test_vietnam_business_day_including_overnight_shift(self):
         # Checkout can be on the 18th; the attendance work_date is still the 17th.

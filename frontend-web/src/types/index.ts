@@ -743,6 +743,8 @@ export interface Payroll {
   manual_addition?: number;
   manual_deduction?: number;
   adjustment_reason?: string | null;
+  extra_allowance_amount?: number;
+  extra_penalty_amount?: number;
   payment_status?: string;
   payment_date?: string | null;
   details?: PayrollDetail[];
@@ -1042,4 +1044,140 @@ export interface PayrollPeriodWorkingDays {
   updated_at?: string | null;
   is_sync_needed?: boolean;
   draft_standard_days?: number | null;
+}
+
+
+// ============================================
+// Payroll Excel Import Types
+// ============================================
+
+export interface PayrollImportRecord {
+  row_index: number;
+  employee_code: string;
+  employee_name?: string | null;
+  actual_working_days?: number | null;
+  paid_leave_days?: number | null;
+  extra_commission: number;
+  extra_bonus: number;
+  extra_allowance: number;
+  extra_penalty: number;
+  note?: string | null;
+}
+
+export interface PayrollImportError {
+  row: number;
+  employee_code?: string;
+  field: string;
+  reason: string;
+}
+
+export interface PayrollImportWarning {
+  row: number;
+  employee_code?: string;
+  field: string;
+  reason: string;
+}
+
+export interface PayrollImportChangeItem {
+  row: number;
+  employee_code: string;
+  employee_name?: string | null;
+  action: 'CREATE' | 'UPDATE' | 'DELETE' | 'UNCHANGED';
+  before: {
+    actual_working_days?: number | null;
+    paid_leave_days?: number | null;
+    extra_commission?: number;
+    extra_bonus?: number;
+    extra_allowance?: number;
+    extra_penalty?: number;
+    note?: string | null;
+    gross_income?: number;
+    net_salary?: number;
+  } | null;
+  after: {
+    actual_working_days?: number | null;
+    paid_leave_days?: number | null;
+    extra_commission?: number;
+    extra_bonus?: number;
+    extra_allowance?: number;
+    extra_penalty?: number;
+    note?: string | null;
+    gross_income?: number;
+    net_salary?: number;
+  } | null;
+  net_diff?: number;
+}
+
+export interface PayrollImportPreviewResponse {
+  valid: boolean;
+  salary_period: string;
+  file_name: string;
+  template_stamp: string;
+  total_rows: number;
+  counts: {
+    create: number;
+    update: number;
+    delete: number;
+    unchanged: number;
+    invalid: number;
+    warnings: number;
+  };
+  errors: PayrollImportError[];
+  warnings: PayrollImportWarning[];
+  changes: PayrollImportChangeItem[];
+  records: PayrollImportRecord[];
+  totals_before: {
+    gross: number;
+    net: number;
+    insurance: number;
+  };
+  totals_after: {
+    gross: number;
+    net: number;
+    insurance: number;
+  };
+}
+
+export interface PayrollImportConfirmRequest {
+  salary_period: string;
+  file_name: string;
+  template_stamp: string;
+  records: PayrollImportRecord[];
+}
+
+export interface PayrollImportConfirmResponse {
+  message: string;
+  batch_id: number;
+  salary_period: string;
+  total_records: number;
+  counts: {
+    create: number;
+    update: number;
+    delete: number;
+    unchanged: number;
+  };
+  totals: {
+    gross: number;
+    net: number;
+    insurance: number;
+  };
+}
+
+export interface PayrollImportStatusBatch {
+  batch_id: number;
+  salary_period: string;
+  file_name: string;
+  total_records: number;
+  status: string;
+  total_gross?: number;
+  total_net?: number;
+  total_insurance?: number;
+  created_at?: string;
+  imported_by_name?: string;
+}
+
+export interface PayrollImportStatusResponse {
+  salary_period: string;
+  override_count: number;
+  batches: PayrollImportStatusBatch[];
 }
