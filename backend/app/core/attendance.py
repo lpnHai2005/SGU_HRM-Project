@@ -1,5 +1,5 @@
 """Attendance clock and session rules (Vietnam business timezone)."""
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from math import ceil
 import json
 from fastapi import HTTPException
@@ -53,7 +53,6 @@ def require_available(last, now):
                             headers={'Retry-After': str(seconds)})
 
 def session_metrics(att, now):
-    from datetime import time
     context = att.get('attendance_context')
     if isinstance(context, str):
         context = json.loads(context)
@@ -64,7 +63,10 @@ def session_metrics(att, now):
     start = local_time(att['check_in_time'])
     if now < start:
         raise HTTPException(409, 'Thời gian check-out không được trước check-in.')
-    hours = round((now - start).total_seconds() / 3600, 2)
+    # Attendance records the elapsed check-in/check-out duration. Shift changes
+    # do not rewrite that actual-time measurement; overtime is compared with the
+    # snapshotted scheduled work_hours below.
+    hours = round(max(0, (now - start).total_seconds()) / 3600, 2)
     end = datetime.combine(att['work_date'], att['end_time'], VIETNAM_TZ)
     if att['end_time'] <= att['start_time']:
         end += timedelta(days=1)

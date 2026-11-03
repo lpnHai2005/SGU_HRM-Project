@@ -135,6 +135,9 @@ def populate_payroll_breakdown_from_details(pr_dict: dict, details_list: list):
     total_bonus_val = sum(float(d.get("amount") or 0) for d in details_list if d.get("item_type") == "BONUS")
     pr_dict["bonus_amount"] = total_bonus_val
     pr_dict["penalty_deduction"] = det_map.get("PENALTY", 0.0)
+    for d in details_list:
+        if d.get("item_code") == "PENALTY":
+            d["item_name"] = "Giảm trừ thưởng chuyên cần (Đi trễ)"
     pr_dict["extra_allowance_amount"] = det_map.get("EXTRA_ALLOWANCE", 0.0)
     pr_dict["extra_penalty_amount"] = det_map.get("EXTRA_PENALTY", 0.0)
     pr_dict["personal_income_tax"] = det_map.get("PIT", 0.0)
@@ -312,7 +315,7 @@ async def list_payrolls(
         JOIN positions pos ON e.position_id = pos.position_id
         LEFT JOIN LATERAL (SELECT COUNT(DISTINCT a.work_date) FILTER (WHERE a.check_in_time IS NOT NULL) AS attendance_actual_days,
             COALESCE(SUM(a.actual_work_hours),0) AS attendance_hours,
-            COALESCE(SUM(a.late_minutes),0) AS attendance_late_minutes,
+            COALESCE(SUM(CASE WHEN a.late_minutes > 15 THEN a.late_minutes ELSE 0 END),0) AS attendance_late_minutes,
             COALESCE(SUM(a.early_minutes),0) AS attendance_early_minutes,
             COALESCE(SUM(a.overtime_hours),0) AS attendance_actual_overtime_hours,
             COALESCE(SUM(CASE WHEN ota.decision='APPROVED' THEN ota.approved_hours ELSE 0 END),0) AS attendance_approved_overtime_hours
@@ -2713,7 +2716,11 @@ async def get_printable_payslip(
         if has_lumped_insurance and d.get("item_code") == "INSURANCE":
             continue
         d_dict = dict(d)
-        d_dict["name"] = d["item_name"]
+        if d.get("item_code") == "PENALTY":
+            d_dict["item_name"] = "Giảm trừ thưởng chuyên cần (Đi trễ)"
+            d_dict["name"] = "Giảm trừ thưởng chuyên cần (Đi trễ)"
+        else:
+            d_dict["name"] = d["item_name"]
         d_dict["amount"] = float(d["amount"] or 0)
         final_deductions.append(d_dict)
 
@@ -2927,7 +2934,7 @@ async def get_payroll_detail(
 
     pr_dict = dict(pr)
     attendance_summary=(await db.execute(text('''SELECT COUNT(DISTINCT a.work_date) FILTER (WHERE a.check_in_time IS NOT NULL) AS attendance_actual_days,
-        COALESCE(SUM(a.actual_work_hours),0) AS attendance_hours,COALESCE(SUM(a.late_minutes),0) AS attendance_late_minutes,
+        COALESCE(SUM(a.actual_work_hours),0) AS attendance_hours,COALESCE(SUM(CASE WHEN a.late_minutes > 15 THEN a.late_minutes ELSE 0 END),0) AS attendance_late_minutes,
         COALESCE(SUM(a.early_minutes),0) AS attendance_early_minutes,COALESCE(SUM(a.overtime_hours),0) AS attendance_actual_overtime_hours,
         COALESCE(SUM(CASE WHEN ota.decision='APPROVED' THEN ota.approved_hours ELSE 0 END),0) AS attendance_approved_overtime_hours
         FROM attendances a LEFT JOIN attendance_overtime_approvals ota USING(attendance_id)

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Eye, Clock, RefreshCw, Check, XCircle, Info, ExternalLink, Calendar, User, Building, MapPin } from 'lucide-react'
+import { Eye, Clock, RefreshCw, Check, ExternalLink, Calendar } from 'lucide-react'
 import { Icons } from '../components/common/Icons'
 import { overtimeReconciliationApi, overtimeRequestApi } from '../services/api'
 import type { OvertimeReconciliation, OvertimeRequest } from '../types'
@@ -12,6 +12,18 @@ interface Props {
   employeeId?: string | number
   user?: any
   attendanceSessions?: any[]
+}
+
+async function fetchAllPages<T>(fetchPage: (limit: number, offset: number) => Promise<T[]>, pageSize: number) {
+  const rows: T[] = []
+  const maxPages = 25
+  for (let pageIndex = 0; pageIndex < maxPages; pageIndex += 1) {
+    const offset = pageIndex * pageSize
+    const page = await fetchPage(pageSize, offset)
+    rows.push(...page)
+    if (page.length < pageSize) return rows
+  }
+  throw new Error('Danh sách vượt giới hạn tải an toàn; hãy thu hẹp bộ lọc.')
 }
 
 export interface VerifiedOvertimeItem {
@@ -43,6 +55,7 @@ export interface VerifiedOvertimeItem {
   effective_status: string
   reconciliation?: OvertimeReconciliation
   request?: OvertimeRequest
+  period_intervals?: Array<{ start_us: number; end_us: number }>
 }
 
 // Helper: Chuyển đổi khoảng thời gian bắt đầu -> kết thúc thành chuỗi hiển thị 1h40m hoặc Xh Ym
@@ -108,9 +121,46 @@ function getMonthRange(period: string) {
   const year = parseInt(yearStr, 10)
   const month = parseInt(monthStr, 10)
   const lastDay = new Date(year, month, 0).getDate()
-  const dateFrom = `${period}-01`
   const dateTo = `${period}-${String(lastDay).padStart(2, '0')}`
-  return { dateFrom, dateTo }
+  const previousDay = new Date(Date.UTC(year, month - 1, 0)).toISOString().slice(0, 10)
+  return { dateTo, queryDateFrom: previousDay }
+}
+
+function getVerifiedIntervalsForPeriod(rec: OvertimeReconciliation, period: string) {
+  const [year, month] = period.split('-').map(Number)
+  const nextMonth = month === 12 ? `${year + 1}-01` : `${year}-${String(month + 1).padStart(2, '0')}`
+  const monthStart = Date.parse(`${period}-01T00:00:00+07:00`) * 1000
+  const monthEnd = Date.parse(`${nextMonth}-01T00:00:00+07:00`) * 1000
+  const parseMicroseconds = (value: string) => {
+    if (!/(Z|[+-]\d{2}:\d{2})$/.test(value)) return Number.NaN
+    const fraction = value.match(/\.(\d+)(?=Z|[+-]\d{2}:\d{2}$)/)?.[1] || ''
+    const wholeSecond = value.replace(/\.\d+(?=Z|[+-]\d{2}:\d{2}$)/, '')
+    const epochMilliseconds = Date.parse(wholeSecond)
+    if (!Number.isFinite(epochMilliseconds)) return Number.NaN
+    return epochMilliseconds * 1000 + Number((fraction + '000000').slice(0, 6))
+  }
+  const sourceIntervals = (rec.eligible_intervals || [])
+    .map(interval => ({ start_us: parseMicroseconds(interval.starts_at), end_us: parseMicroseconds(interval.ends_at) }))
+    .filter(interval => Number.isSafeInteger(interval.start_us) && Number.isSafeInteger(interval.end_us) && interval.end_us > interval.start_us)
+    .sort((left, right) => left.start_us - right.start_us)
+
+  const fullSourceMicroseconds = sourceIntervals.reduce(
+    (total, interval) => total + interval.end_us - interval.start_us, 0,
+  )
+  if (fullSourceMicroseconds !== rec.verified_microseconds || rec.payable_microseconds !== rec.verified_microseconds) {
+    return []
+  }
+
+  const clipped = sourceIntervals
+    .map(interval => ({ start_us: Math.max(interval.start_us, monthStart), end_us: Math.min(interval.end_us, monthEnd) }))
+    .filter(interval => interval.end_us > interval.start_us)
+  const merged: Array<{ start_us: number; end_us: number }> = []
+  for (const interval of clipped) {
+    const previous = merged[merged.length - 1]
+    if (previous && interval.start_us <= previous.end_us) previous.end_us = Math.max(previous.end_us, interval.end_us)
+    else merged.push({ ...interval })
+  }
+  return merged
 }
 
 export function MonthlyVerifiedOvertimePanel({ period, storeId, employeeId, attendanceSessions = [] }: Props) {
@@ -123,21 +173,26 @@ export function MonthlyVerifiedOvertimePanel({ period, storeId, employeeId, atte
     setLoading(true)
     setError('')
     try {
-      const { dateFrom, dateTo } = getMonthRange(period)
+      const { dateTo, queryDateFrom } = getMonthRange(period)
 
       const recParams: {
         status?: string
         date_from?: string
         date_to?: string
         store_id?: number
+        employee_id?: number
         limit?: number
+        offset?: number
       } = {
-        date_from: dateFrom,
+        date_from: queryDateFrom,
         date_to: dateTo,
         limit: 100,
       }
       if (storeId) {
         recParams.store_id = Number(storeId)
+      }
+      if (employeeId) {
+        recParams.employee_id = Number(employeeId)
       }
 
       const reqFilterParams: {
@@ -147,7 +202,7 @@ export function MonthlyVerifiedOvertimePanel({ period, storeId, employeeId, atte
         employee_id?: number
         limit: number
       } = {
-        date_from: dateFrom,
+        date_from: queryDateFrom,
         date_to: dateTo,
         limit: 200,
       }
@@ -159,8 +214,8 @@ export function MonthlyVerifiedOvertimePanel({ period, storeId, employeeId, atte
       }
 
       const [reconciliations, requests] = await Promise.all([
-        overtimeReconciliationApi.list(recParams).catch(() => [] as OvertimeReconciliation[]),
-        overtimeRequestApi.list(reqFilterParams).catch(() => [] as OvertimeRequest[]),
+        fetchAllPages((limit, offset) => overtimeReconciliationApi.list({ ...recParams, limit, offset }), 100),
+        fetchAllPages((limit, offset) => overtimeRequestApi.list({ ...reqFilterParams, limit, offset }), 200),
       ])
 
       const requestMap = new Map<number, OvertimeRequest>()
@@ -168,14 +223,32 @@ export function MonthlyVerifiedOvertimePanel({ period, storeId, employeeId, atte
 
       // Nối bảng đối soát với đơn OT
       const merged: VerifiedOvertimeItem[] = []
-      for (const rec of reconciliations) {
-        // Chỉ nhận các đơn đã đối soát (VERIFIED hoặc REJECTED)
-        const isVerified = rec.effective_status === 'VERIFIED' || rec.status === 'VERIFIED'
-        const isRejected = rec.effective_status === 'REJECTED' || rec.status === 'REJECTED'
-        if (!isVerified && !isRejected) continue
+      const uniqueReconciliations = new Map<number, OvertimeReconciliation>()
+      reconciliations.forEach(rec => {
+        if (!uniqueReconciliations.has(rec.request_id)) uniqueReconciliations.set(rec.request_id, rec)
+      })
+      for (const rec of uniqueReconciliations.values()) {
+        // Đây là thẻ nguồn OT hợp lệ: chỉ nhận VERIFIED hiện hành, không stale,
+        // đơn vẫn APPROVED và có payable amount do backend xác nhận.
+        if (
+          rec.status !== 'VERIFIED' ||
+          rec.effective_status !== 'VERIFIED' ||
+          rec.source_current !== true ||
+          rec.request_status !== 'APPROVED' ||
+          rec.request_eligible !== true ||
+          !Number.isFinite(rec.payable_microseconds) ||
+          rec.payable_microseconds <= 0
+        ) continue
+
+        const periodIntervals = getVerifiedIntervalsForPeriod(rec, period)
+        const periodMicroseconds = periodIntervals.reduce(
+          (total, interval) => total + interval.end_us - interval.start_us, 0,
+        )
+        if (periodMicroseconds <= 0) continue
 
         const req = requestMap.get(rec.request_id)
-        if (employeeId && req && req.employee_id !== Number(employeeId)) {
+        const resolvedEmployeeId = req?.employee_id
+        if (employeeId && resolvedEmployeeId !== Number(employeeId)) {
           continue
         }
 
@@ -184,7 +257,7 @@ export function MonthlyVerifiedOvertimePanel({ period, storeId, employeeId, atte
         const approvedHours = startsAt && endsAt
           ? (new Date(endsAt).getTime() - new Date(startsAt).getTime()) / 3_600_000
           : 0
-        const verifiedHours = (rec.verified_microseconds ?? 0) / 3_600_000_000
+        const verifiedHours = periodMicroseconds / 3_600_000_000
 
         merged.push({
           request_id: rec.request_id,
@@ -202,9 +275,10 @@ export function MonthlyVerifiedOvertimePanel({ period, storeId, employeeId, atte
           reviewed_at: rec.reviewed_at || null,
           reviewed_by: rec.reviewed_by || null,
           decision_reason: rec.decision_reason || req?.reason || null,
-          effective_status: rec.effective_status || rec.status || 'VERIFIED',
+          effective_status: 'VERIFIED',
           reconciliation: rec,
           request: req,
+          period_intervals: periodIntervals,
         })
       }
 
@@ -212,7 +286,9 @@ export function MonthlyVerifiedOvertimePanel({ period, storeId, employeeId, atte
       merged.sort((a, b) => (b.work_date > a.work_date ? 1 : b.work_date < a.work_date ? -1 : b.request_id - a.request_id))
       setItems(merged)
     } catch (err: any) {
-      setError(err?.message || 'Không thể tải dữ liệu đối soát giờ OT từ Supabase')
+      // Fail closed: do not leave previously loaded VERIFIED rows visible as current.
+      setItems([])
+      setError(err?.message || 'Không thể tải dữ liệu đối soát giờ OT từ máy chủ')
     } finally {
       setLoading(false)
     }
@@ -222,7 +298,22 @@ export function MonthlyVerifiedOvertimePanel({ period, storeId, employeeId, atte
     void loadData()
   }, [loadData])
 
-  const totalVerifiedHours = items.reduce((sum, item) => sum + (item.effective_status === 'VERIFIED' ? item.verified_hours : 0), 0)
+  const verifiedIntervalsByEmployee = new Map<number, Array<{ start_us: number; end_us: number }>>()
+  items.forEach(item => {
+    const intervals = verifiedIntervalsByEmployee.get(item.employee_id) || []
+    intervals.push(...(item.period_intervals || []))
+    verifiedIntervalsByEmployee.set(item.employee_id, intervals)
+  })
+  const totalVerifiedHours = [...verifiedIntervalsByEmployee.values()].reduce((total, intervals) => {
+    intervals.sort((left, right) => left.start_us - right.start_us)
+    const merged: Array<{ start_us: number; end_us: number }> = []
+    for (const interval of intervals) {
+      const previous = merged[merged.length - 1]
+      if (previous && interval.start_us <= previous.end_us) previous.end_us = Math.max(previous.end_us, interval.end_us)
+      else merged.push({ ...interval })
+    }
+    return total + merged.reduce((employeeTotal, interval) => employeeTotal + interval.end_us - interval.start_us, 0) / 3_600_000_000
+  }, 0)
   const totalVerifiedMinutes = Math.round(totalVerifiedHours * 60)
   const uniqueEmployees = new Set(items.map(item => item.employee_id).filter(id => id > 0)).size
 
@@ -254,7 +345,7 @@ export function MonthlyVerifiedOvertimePanel({ period, storeId, employeeId, atte
             </span>
           </h2>
           <p className="card-subtitle">
-            Dữ liệu đối soát từ Supabase (Quản lý Đăng ký & Đối soát OT). Chỉ các khoảng OT đã đối chiếu thành công với phiên chấm công thực tế mới được ghi nhận tính lương.
+            Dữ liệu từ Quản lý Đăng ký &amp; Đối soát OT. Chỉ giờ VERIFIED còn hiệu lực mới được hiển thị là OT hợp lệ.
           </p>
         </div>
 
@@ -304,7 +395,7 @@ export function MonthlyVerifiedOvertimePanel({ period, storeId, employeeId, atte
       {/* Nội dung bảng */}
       {loading ? (
         <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
-          Đang tải dữ liệu đối soát giờ OT từ Supabase…
+          Đang tải dữ liệu đối soát giờ OT…
         </div>
       ) : error ? (
         <div
@@ -358,8 +449,6 @@ export function MonthlyVerifiedOvertimePanel({ period, storeId, employeeId, atte
               {items.map(row => {
                 const verifiedDisplay = formatVerifiedHoursDisplay(row.verified_hours)
                 const registeredDuration = getIntervalDurationDisplay(row.starts_at, row.ends_at, row.approved_hours)
-                const isVerified = row.effective_status === 'VERIFIED'
-                const isRejected = row.effective_status === 'REJECTED'
                 const mult = getOvertimeMultiplier(row)
 
                 return (
@@ -396,44 +485,36 @@ export function MonthlyVerifiedOvertimePanel({ period, storeId, employeeId, atte
                     </td>
                     {/* Cột Giờ OT hợp lệ (VERIFIED): Hiển thị 23 phút gọn gàng trong badge xanh lá (đã xóa span giờ thập phân) */}
                     <td>
-                      {isVerified ? (
-                        <span
-                          style={{
-                            fontWeight: 700,
-                            color: 'var(--color-success, #16a34a)',
-                            backgroundColor: 'rgba(22, 163, 74, 0.08)',
-                            padding: '2px 6px',
-                            borderRadius: '4px',
-                            display: 'inline-block',
-                          }}
-                        >
-                          {verifiedDisplay.minutesText}
-                        </span>
-                      ) : (
-                        <span style={{ color: 'var(--text-secondary)', fontSize: '11.5px' }}>0 phút</span>
-                      )}
+                      <span
+                        style={{
+                          fontWeight: 700,
+                          color: 'var(--color-success, #16a34a)',
+                          backgroundColor: 'rgba(22, 163, 74, 0.08)',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          display: 'inline-block',
+                        }}
+                      >
+                        {verifiedDisplay.minutesText}
+                      </span>
                     </td>
                     {/* Cột Hệ số OT: 1,5× (Ngày thường) | 2,0× (Nghỉ CN) | 3,0× (Lễ, Tết) */}
                     <td style={{ textAlign: 'center' }}>
-                      {isVerified ? (
-                        <span
-                          className="badge"
-                          title={`Hệ số tính lương OT: ${mult.label}`}
-                          style={{
-                            backgroundColor: mult.bg,
-                            color: mult.color,
-                            fontWeight: 700,
-                            fontSize: '11px',
-                            padding: '2px 7px',
-                            borderRadius: '4px',
-                            cursor: 'help',
-                          }}
-                        >
-                          {mult.rate}
-                        </span>
-                      ) : (
-                        <span style={{ color: 'var(--text-tertiary)', fontSize: '11.5px' }}>—</span>
-                      )}
+                      <span
+                        className="badge"
+                        title={`Hệ số tính lương OT: ${mult.label}`}
+                        style={{
+                          backgroundColor: mult.bg,
+                          color: mult.color,
+                          fontWeight: 700,
+                          fontSize: '11px',
+                          padding: '2px 7px',
+                          borderRadius: '4px',
+                          cursor: 'help',
+                        }}
+                      >
+                        {mult.rate}
+                      </span>
                     </td>
                     {/* Cột Đối chiếu phiên: Hiển thị Phiên #48 và cho phép click xem chi tiết */}
                     <td>
@@ -461,58 +542,26 @@ export function MonthlyVerifiedOvertimePanel({ period, storeId, employeeId, atte
                         <span style={{ color: 'var(--text-secondary)', fontSize: '11.5px' }}>—</span>
                       )}
                     </td>
-                    {/* Cột Trạng thái: Có tooltip & lý do từ chối nếu có */}
+                    {/* This card contains only current, payable VERIFIED rows. */}
                     <td>
-                      {isVerified ? (
-                        <span
-                          className="badge"
-                          title={row.decision_reason ? `Hợp lệ đối soát: ${row.decision_reason}` : 'Đã đối chiếu thành công với phiên chấm công thực tế, đủ điều kiện tính lương'}
-                          style={{
-                            backgroundColor: 'rgba(22, 163, 74, 0.12)',
-                            color: '#15803d',
-                            fontWeight: 600,
-                            fontSize: '11px',
-                            padding: '3px 8px',
-                            borderRadius: '4px',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 4,
-                            cursor: 'help',
-                          }}
-                        >
-                          <Check size={12} strokeWidth={2.5} /> VERIFIED
-                        </span>
-                      ) : isRejected ? (
-                        <div>
-                          <span
-                            className="badge"
-                            title={row.decision_reason ? `Lý do từ chối: ${row.decision_reason}` : 'Bị từ chối đối soát'}
-                            style={{
-                              backgroundColor: 'rgba(239, 68, 68, 0.12)',
-                              color: '#b91c1c',
-                              fontWeight: 600,
-                              fontSize: '11px',
-                              padding: '3px 8px',
-                              borderRadius: '4px',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: 4,
-                              cursor: 'help',
-                            }}
-                          >
-                            <XCircle size={12} strokeWidth={2.5} /> REJECTED
-                          </span>
-                          {row.decision_reason && (
-                            <div style={{ fontSize: '10.5px', color: 'var(--color-danger, #dc2626)', marginTop: 2, maxWidth: 140 }}>
-                              {row.decision_reason}
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="badge" style={{ fontSize: '11px', padding: '3px 8px' }}>
-                          {row.effective_status}
-                        </span>
-                      )}
+                      <span
+                        className="badge"
+                        title={row.decision_reason ? `Hợp lệ đối soát: ${row.decision_reason}` : 'Đã đối chiếu thành công với phiên chấm công thực tế.'}
+                        style={{
+                          backgroundColor: 'rgba(22, 163, 74, 0.12)',
+                          color: '#15803d',
+                          fontWeight: 600,
+                          fontSize: '11px',
+                          padding: '3px 8px',
+                          borderRadius: '4px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          cursor: 'help',
+                        }}
+                      >
+                        <Check size={12} strokeWidth={2.5} /> VERIFIED
+                      </span>
                     </td>
                     {/* Cột Chi tiết: Nút icon con mắt */}
                     <td style={{ textAlign: 'center' }}>

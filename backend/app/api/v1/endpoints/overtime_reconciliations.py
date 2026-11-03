@@ -345,11 +345,13 @@ async def list_reconciliations(status: str | None = Query(default=None),
                                date_from: date | None = Query(default=None),
                                date_to: date | None = Query(default=None),
                                store_id: int | None = Query(default=None, gt=0),
+                               employee_id: int | None = Query(default=None, gt=0),
                                limit: int = Query(default=50, ge=1, le=100),
+                               offset: int = Query(default=0, ge=0),
                                user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await _require_schema(db)
     roles = set(user.get("roles", []))
-    params: dict = {"limit": limit}
+    params: dict = {"limit": limit, "offset": offset}
     where = []
     if date_from and date_to and date_to < date_from:
         raise HTTPException(422, "Ngày kết thúc phải bằng hoặc sau ngày bắt đầu.")
@@ -362,6 +364,9 @@ async def list_reconciliations(status: str | None = Query(default=None),
     if store_id is not None and roles & {"ADMIN", "HR_MANAGER", "DIRECTOR"}:
         where.append("r.store_id=:selected_store")
         params["selected_store"] = store_id
+    if employee_id is not None:
+        where.append("r.employee_id=:selected_employee")
+        params["selected_employee"] = employee_id
     if not roles & {"ADMIN", "HR_MANAGER", "DIRECTOR"}:
         if "STORE_MANAGER" in roles:
             params.update(store=user.get("store_id") or -1, employee=user.get("employee_id") or -1)
@@ -402,7 +407,7 @@ async def list_reconciliations(status: str | None = Query(default=None),
         public.ot_reconciliation_request_eligible(r.request_id) AS request_eligible,
         o.revoke_requested_at,o.revoke_decided_at,o.revoke_decision
         FROM public.overtime_reconciliations r JOIN public.overtime_requests o USING(request_id)
-        WHERE """ + clause + " ORDER BY r.updated_at DESC,r.request_id DESC LIMIT :limit"),
+        WHERE """ + clause + " ORDER BY r.updated_at DESC,r.request_id DESC LIMIT :limit OFFSET :offset"),
         params)).mappings().all()
     results = []
     for row in rows:

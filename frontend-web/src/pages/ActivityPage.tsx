@@ -659,7 +659,7 @@ export function ActivityPage({
           const workHours = s.actual_work_hours !== null && s.actual_work_hours !== undefined
             ? `${Number(s.actual_work_hours).toFixed(1)}h`
             : '0h'
-          const breakM = s.break_minutes ? `${s.break_minutes}p` : '60p'
+          const breakM = s.break_minutes != null ? `${s.break_minutes}p` : '—'
           const schedTime = s.scheduled_start && s.scheduled_end
             ? `${s.scheduled_start.slice(0, 5)} - ${s.scheduled_end.slice(0, 5)}`
             : '—'
@@ -1120,14 +1120,14 @@ export function ActivityPage({
 
                         const rawDurationFmt = formatDurationDetailed(session.raw_duration_minutes)
                         const outsideHours = session.outside_schedule_hours ?? session.overtime_hours ?? 0
-                        const breakMinutes = session.break_minutes ?? 60
+                        const breakMinutes = session.break_minutes
 
-                        // Tính giờ công ròng (Đã khấu trừ giờ nghỉ trưa)
+                        // Attendance hours follow the recorded check-in/check-out duration.
                         const workHoursText =
                           session.actual_work_hours !== null && session.actual_work_hours !== undefined
                             ? `${Number(session.actual_work_hours).toFixed(1)}h công`
-                            : session.net_duration_minutes
-                            ? formatDurationDetailed(session.net_duration_minutes)
+                            : session.raw_duration_minutes
+                            ? formatDurationDetailed(session.raw_duration_minutes)
                             : '0h'
 
                         // Shift reconciliation badge class
@@ -1195,9 +1195,9 @@ export function ActivityPage({
                                 <span className="duration-work">
                                   Tính công: <strong>{workHoursText}</strong>
                                 </span>
-                                {session.raw_duration_minutes && session.raw_duration_minutes > breakMinutes && (
+                                {breakMinutes != null && breakMinutes > 0 && (
                                   <span className="duration-break">
-                                    Nghỉ: {formatDurationDetailed(breakMinutes)}
+                                    Nghỉ theo ca (tham khảo): {formatDurationDetailed(breakMinutes)}
                                   </span>
                                 )}
                               </div>

@@ -437,7 +437,7 @@ export const workScheduleApi = {
 import type { OvertimeReconciliation, OvertimeReconciliationCase, OvertimeRequest } from '../types';
 
 export const overtimeReconciliationApi = {
-  list: (params: { status?: string; date_from?: string; date_to?: string; store_id?: number; limit?: number } = {}): Promise<OvertimeReconciliation[]> =>
+  list: (params: { status?: string; date_from?: string; date_to?: string; store_id?: number; employee_id?: number; limit?: number; offset?: number } = {}): Promise<OvertimeReconciliation[]> =>
     api.get('/overtime-reconciliations', params),
   detail: (requestId: number): Promise<OvertimeReconciliation> =>
     api.get(`/overtime-reconciliations/${requestId}`),

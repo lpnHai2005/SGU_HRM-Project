@@ -768,19 +768,13 @@ function AttendanceSessionTableRow({
         <div style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text-primary)' }}>
           {session.actual_work_hours !== undefined && session.actual_work_hours !== null
             ? `${Number(session.actual_work_hours).toFixed(1)}h công`
-            : session.net_duration_minutes
-            ? formatDurationMinutes(session.net_duration_minutes)
+            : session.raw_duration_minutes
+            ? formatDurationMinutes(session.raw_duration_minutes)
             : '0h'}
         </div>
         <div style={{ fontSize: '10.5px', color: 'var(--text-tertiary)', marginTop: '2px' }}>
           {session.raw_duration_minutes ? (
-            session.raw_duration_minutes > (session.break_minutes ?? 60) ? (
-              <span>
-                Mặt: {formatDurationMinutes(session.raw_duration_minutes)} (-{Math.round((session.break_minutes ?? 60) / 60)}h trưa)
-              </span>
-            ) : (
-              <span>Mặt: {formatDurationMinutes(session.raw_duration_minutes)}</span>
-            )
+            <span>Có mặt: {formatDurationMinutes(session.raw_duration_minutes)}</span>
           ) : (
             <span>Chưa checkout</span>
           )}
@@ -1248,7 +1242,7 @@ export function EmployeeAttendanceDetailModal({
                   fontWeight: 600,
                 }}
               >
-                Tiền phạt quy định: {formatCurrency(totalLatePenalty)}
+                Giảm trừ thưởng chuyên cần: {formatCurrency(totalLatePenalty)}
               </div>
             </div>
 
