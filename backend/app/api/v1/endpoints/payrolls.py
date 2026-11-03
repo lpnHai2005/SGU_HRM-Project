@@ -135,9 +135,6 @@ def populate_payroll_breakdown_from_details(pr_dict: dict, details_list: list):
     total_bonus_val = sum(float(d.get("amount") or 0) for d in details_list if d.get("item_type") == "BONUS")
     pr_dict["bonus_amount"] = total_bonus_val
     pr_dict["penalty_deduction"] = det_map.get("PENALTY", 0.0)
-    for d in details_list:
-        if d.get("item_code") == "PENALTY":
-            d["item_name"] = "Giảm trừ thưởng chuyên cần (Đi trễ)"
     pr_dict["extra_allowance_amount"] = det_map.get("EXTRA_ALLOWANCE", 0.0)
     pr_dict["extra_penalty_amount"] = det_map.get("EXTRA_PENALTY", 0.0)
     pr_dict["personal_income_tax"] = det_map.get("PIT", 0.0)
@@ -293,6 +290,7 @@ async def list_payrolls(
         SELECT p.payroll_id, p.employee_id, e.employee_code, e.full_name as employee_name,
                s.store_name, pos.position_name, p.salary_period,
                p.standard_working_days, p.actual_working_days, p.paid_leave_days, p.unpaid_leave_days,
+               p.absent_days, COALESCE(p.daily_standard_hours, 8.00) AS daily_standard_hours,
                p.unworked_hours,
                p.contract_salary,
                COALESCE(p.total_earnings, p.gross_income) AS total_earnings,
@@ -2716,11 +2714,7 @@ async def get_printable_payslip(
         if has_lumped_insurance and d.get("item_code") == "INSURANCE":
             continue
         d_dict = dict(d)
-        if d.get("item_code") == "PENALTY":
-            d_dict["item_name"] = "Giảm trừ thưởng chuyên cần (Đi trễ)"
-            d_dict["name"] = "Giảm trừ thưởng chuyên cần (Đi trễ)"
-        else:
-            d_dict["name"] = d["item_name"]
+        d_dict["name"] = d["item_name"]
         d_dict["amount"] = float(d["amount"] or 0)
         final_deductions.append(d_dict)
 
@@ -2853,9 +2847,11 @@ async def get_printable_payslip(
         },
         "attendance": {
             "standard_working_days": float(row["standard_working_days"] if row["standard_working_days"] is not None else 26.0),
+            "daily_standard_hours": float(row["daily_standard_hours"] if row.get("daily_standard_hours") is not None else 8.00),
             "actual_working_days": float(row["actual_working_days"] if row["actual_working_days"] is not None else 0),
             "paid_leave_days": float(row["paid_leave_days"] if row["paid_leave_days"] is not None else 0),
             "unpaid_leave_days": float(row["unpaid_leave_days"] if row["unpaid_leave_days"] is not None else 0),
+            "absent_days": float(row["absent_days"] if row.get("absent_days") is not None else 0),
             "unworked_hours": float(row["unworked_hours"] if row["unworked_hours"] is not None else 0),
             "actual_work_hours": float(metrics['actual_work_hours']),
             "late_minutes": int(metrics['late_minutes']),
@@ -2866,9 +2862,11 @@ async def get_printable_payslip(
         },
         "attendance_summary": {
             "standard_working_days": float(row["standard_working_days"] if row["standard_working_days"] is not None else 26.0),
+            "daily_standard_hours": float(row["daily_standard_hours"] if row.get("daily_standard_hours") is not None else 8.00),
             "actual_working_days": float(row["actual_working_days"] if row["actual_working_days"] is not None else 0),
             "paid_leave_days": float(row["paid_leave_days"] if row["paid_leave_days"] is not None else 0),
             "unpaid_leave_days": float(row["unpaid_leave_days"] if row["unpaid_leave_days"] is not None else 0),
+            "absent_days": float(row["absent_days"] if row.get("absent_days") is not None else 0),
             "unworked_hours": float(row["unworked_hours"] if row["unworked_hours"] is not None else 0)
         },
         "earnings": final_earnings,
@@ -2899,6 +2897,7 @@ async def get_payroll_detail(
         SELECT p.payroll_id, p.employee_id, e.employee_code, e.full_name as employee_name,
                s.store_name, pos.position_name, p.salary_period,
                p.standard_working_days, p.actual_working_days, p.paid_leave_days, p.unpaid_leave_days,
+               p.absent_days, COALESCE(p.daily_standard_hours, 8.00) AS daily_standard_hours,
                p.unworked_hours,
                p.contract_salary,
                COALESCE(p.total_earnings, p.gross_income) AS total_earnings,

@@ -1400,9 +1400,9 @@ export function PayrollRegulationDialog({ onClose, initialTab }: PayrollRegulati
                         Phút trễ tính từ giờ bắt đầu của chính ca đó. Hệ thống chỉ gắn nhãn <code>LATE</code> và ghi nhận vi phạm khi trễ quá 15 phút (ví dụ: ca 13:00 thì sau 13:15 mới bị đánh dấu muộn).
                       </td>
                       <td>
-                        <span className="prd-badge">PHẠT CHUYÊN CẦN</span>
+                        <span className="prd-badge">PHẠT VI PHẠM QUY CHẾ</span>
                         <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                          Trễ &gt; 15p bị trừ chuyên cần theo mức phạt quy chế (<code>LATE_PENALTY_AMOUNT</code>) + trừ theo số phút thiếu.
+                          Trễ &gt; 15p bị phạt vi phạm quy chế (<code>LATE_PENALTY_AMOUNT</code>) + trừ lương theo số phút thiếu.
                         </div>
                       </td>
                     </tr>

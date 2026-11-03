@@ -475,7 +475,7 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
               {summary.employees_with_late ?? 0} nhân sự
             </div>
             <div className="monthly-kpi-penalty-sub">
-              Giảm trừ chuyên cần dự kiến:{' '}
+              Tiền phạt vi phạm quy chế dự kiến:{' '}
               <strong>
                 -{formatCurrency(summary.total_late_penalty_amount || (summary.total_late_sessions || 0) * policySettings.penalty)}
               </strong>

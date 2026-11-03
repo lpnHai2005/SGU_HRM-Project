@@ -708,6 +708,8 @@ export interface Payroll {
   actual_working_days?: number;
   paid_leave_days?: number;
   unpaid_leave_days?: number;
+  absent_days?: number;            // Số ngày vắng mặt không phép
+  daily_standard_hours?: number;   // Định mức giờ làm việc chuẩn mỗi ngày
   unworked_hours?: number;
   time_deduction_amount?: number;
   contract_salary?: number;

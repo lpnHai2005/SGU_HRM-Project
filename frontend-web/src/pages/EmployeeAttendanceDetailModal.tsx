@@ -1242,7 +1242,7 @@ export function EmployeeAttendanceDetailModal({
                   fontWeight: 600,
                 }}
               >
-                Giảm trừ thưởng chuyên cần: {formatCurrency(totalLatePenalty)}
+                Tiền phạt vi phạm quy chế: {formatCurrency(totalLatePenalty)}
               </div>
             </div>
 
