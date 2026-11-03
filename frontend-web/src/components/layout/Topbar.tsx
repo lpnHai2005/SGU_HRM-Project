@@ -27,6 +27,10 @@ const PAGE_TITLES: Record<string, string> = {
   attendance: 'Quản lý công',
   leave: 'Nghỉ phép',
   payroll: 'Lương & Thưởng',
+  'payroll-fund': 'Quỹ lương',
+  'branch-payroll-fund': 'Quỹ lương',
+  projects: 'Quản lý dự án',
+  'my-projects': 'Quản lý dự án',
   reports: 'Báo cáo & Thống kê',
   audit: 'Audit Log',
 }

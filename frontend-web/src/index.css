@@ -1,9 +1,12 @@
+@import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,600&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+@variant dark (&:where([data-theme="dark"], [data-theme="dark"] *, .dark, .dark *));
 /* ==========================================================================
    TechZone HRM - Vero Design System (Linear / Attio / Vercel Minimalist)
    Dual-Theme (Obsidian Charcoal Dark & Paper Crisp Light)
    ========================================================================== */
 
-@import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,600&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
 
 /* ==========================================================================
    1. VERO LIGHT THEME (Paper Crisp Minimalist)
@@ -1312,4 +1315,160 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 
 .animate-fade-in {
   animation: fadeIn var(--duration-base) var(--ease-out);
+}
+
+
+/* ==========================================================================
+   MONOCHROME TAILWIND ACCESSIBILITY SYSTEM (PAYROLL FUND & UTILITIES)
+   ========================================================================== */
+
+.bg-black { background-color: #000000; }
+.text-black { color: #000000; }
+.bg-white { background-color: #ffffff; }
+.text-white { color: #ffffff; }
+.border-black { border-color: #000000; }
+.border-white { border-color: #ffffff; }
+
+.bg-gray-50 { background-color: #f9fafb; }
+.bg-gray-100 { background-color: #f3f4f6; }
+.bg-gray-200 { background-color: #e5e7eb; }
+.bg-gray-300 { background-color: #d1d5db; }
+.bg-gray-800 { background-color: #1f2937; }
+.bg-gray-900 { background-color: #111827; }
+.bg-gray-950 { background-color: #030712; }
+
+.text-gray-400 { color: #9ca3af; }
+.text-gray-500 { color: #6b7280; }
+.text-gray-600 { color: #4b5563; }
+.text-gray-700 { color: #374151; }
+.text-gray-800 { color: #1f2937; }
+.text-gray-900 { color: #111827; }
+
+.border-gray-200 { border-color: #e5e7eb; }
+.border-gray-300 { border-color: #d1d5db; }
+.border-gray-700 { border-color: #374151; }
+.border-gray-800 { border-color: #1f2937; }
+
+[data-theme="dark"] .dark\:bg-white,
+.dark .dark\:bg-white {
+  background-color: #ffffff !important;
+}
+
+[data-theme="dark"] .dark\:text-black,
+.dark .dark\:text-black {
+  color: #000000 !important;
+}
+
+[data-theme="dark"] .dark\:border-white,
+.dark .dark\:border-white {
+  border-color: #ffffff !important;
+}
+
+[data-theme="dark"] .dark\:bg-black,
+.dark .dark\:bg-black {
+  background-color: #000000 !important;
+}
+
+[data-theme="dark"] .dark\:text-white,
+.dark .dark\:text-white {
+  color: #ffffff !important;
+}
+
+[data-theme="dark"] .dark\:border-black,
+.dark .dark\:border-black {
+  border-color: #000000 !important;
+}
+
+[data-theme="dark"] .dark\:bg-gray-800,
+.dark .dark\:bg-gray-800 {
+  background-color: #1f2937 !important;
+}
+
+[data-theme="dark"] .dark\:bg-gray-900,
+.dark .dark\:bg-gray-900 {
+  background-color: #111827 !important;
+}
+
+[data-theme="dark"] .dark\:bg-gray-950,
+.dark .dark\:bg-gray-950 {
+  background-color: #030712 !important;
+}
+
+[data-theme="dark"] .dark\:border-gray-700,
+.dark .dark\:border-gray-700 {
+  border-color: #374151 !important;
+}
+
+[data-theme="dark"] .dark\:border-gray-800,
+.dark .dark\:border-gray-800 {
+  border-color: #1f2937 !important;
+}
+
+[data-theme="dark"] .dark\:text-gray-300,
+.dark .dark\:text-gray-300 {
+  color: #d1d5db !important;
+}
+
+[data-theme="dark"] .dark\:text-gray-400,
+.dark .dark\:text-gray-400 {
+  color: #9ca3af !important;
+}
+
+[data-theme="dark"] .dark\:hover\:bg-gray-200:hover,
+.dark .dark\:hover\:bg-gray-200:hover {
+  background-color: #e5e7eb !important;
+}
+
+[data-theme="dark"] .dark\:hover\:bg-gray-800:hover,
+.dark .dark\:hover\:bg-gray-800:hover {
+  background-color: #1f2937 !important;
+}
+
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  .no-print, header, nav, .sidebar, .topbar {
+    display: none !important;
+  }
+  .page-container {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+}
+
+/* HIGH-CONTRAST ACCESSIBILITY BUTTONS FOR DARK MODE */
+[data-theme="dark"] .btn-primary-mono,
+.dark .btn-primary-mono {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  border-color: #ffffff !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .btn-primary-mono {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    border-color: #ffffff !important;
+  }
+}
+
+[data-theme="dark"] .btn-outline-mono,
+.dark .btn-outline-mono {
+  background-color: #1f2937 !important;
+  color: #ffffff !important;
+  border-color: #6b7280 !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .btn-outline-mono {
+    background-color: #1f2937 !important;
+    color: #ffffff !important;
+    border-color: #6b7280 !important;
+  }
+  :root:not([data-theme="light"]) .btn-outline-mono:hover {
+    background-color: #374151 !important;
+  }
 }
