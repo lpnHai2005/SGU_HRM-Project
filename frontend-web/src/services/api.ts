@@ -1010,10 +1010,11 @@ export const reportApi = {
     return api.get('/reports/leave-summary', Object.keys(params).length ? params : undefined);
   },
 
-  getPayrollFund: async (period?: string, storeId?: number): Promise<any> => {
+  getPayrollFund: async (period?: string, storeId?: number, budgetCap?: number): Promise<any> => {
     const params: Record<string, any> = {};
     if (period) params.period = period;
     if (storeId) params.store_id = storeId;
+    if (budgetCap) params.budget_cap = budgetCap;
     return api.get('/reports/payroll-fund', Object.keys(params).length ? params : undefined);
   },
 

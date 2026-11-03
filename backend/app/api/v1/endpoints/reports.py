@@ -376,43 +376,68 @@ async def get_demographics_report(
 # ===================================================================================
 # 4. BÁO CÁO QUỸ LƯƠNG & CHI PHÍ THEO CHI NHÁNH CỬA HÀNG
 # ===================================================================================
+# 4. BÁO CÁO QUỸ LƯƠNG & CHI PHÍ THEO CHI NHÁNH CỬA HÀNG (TCOW)
+# ===================================================================================
 
-@router.get("/payroll-fund", summary="Báo cáo tổng hợp chi phí tiền lương theo chi nhánh & phòng ban")
+@router.get("/payroll-fund", summary="Báo cáo tổng hợp chi phí tiền lương theo chi nhánh & phòng ban (TCOW)")
 async def get_payroll_fund_summary(
     period: Optional[str] = Query("2026-09", description="Kỳ lương (YYYY-MM)"),
     store_id: Optional[int] = Query(None, description="Lọc theo cửa hàng"),
-    current_user: dict = Depends(require_strict_roles(["DIRECTOR", "HR_MANAGER"])),
+    budget_cap: Optional[float] = Query(180000000.0, description="Hạn mức ngân sách dự toán (Budget Cap)"),
+    current_user: dict = Depends(require_roles(["DIRECTOR", "HR_MANAGER", "STORE_MANAGER", "ADMIN"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Báo cáo tổng hợp chi phí tiền lương chia theo từng điểm bán và phòng ban:
-    Tổng lương cơ bản, Tổng làm thêm OT, Tổng hoa hồng, Tổng các loại phụ cấp,
-    Tổng trích nộp bảo hiểm 10.5% và Tổng ngân sách lương thực chi.
+    Báo cáo Quản trị Chi phí Lao động Toàn phần (TCOW - Total Cost of Workforce):
+    1. Tổng thu nhập gộp (Gross Pay = Lương CB + Phụ cấp + OT + Thưởng + Hoa hồng)
+    2. Chi phí DN đóng 23.5% (BHXH 17.5% + BHYT 3.0% + BHTN 1.0% + KPCĐ 2.0%)
+    3. Tổng Giảm trừ NLĐ (Bảo hiểm 10.5% + Thuế TNCN + Phạt)
+    4. Quỹ thực nhận (Net Pay - Tiền thực chuyển khoản)
+    5. Tổng Chi Phí Nhân Sự (TCOW = Gross + 23.5% DN đóng)
+    6. Ngân sách dự toán (Budget Cap) vs Thực tế phát sinh (Accrued TCOW)
+    7. Phân bổ theo Cost Center (đã gộp các đơn vị trùng lặp) và chi tiết từng nhân sự.
     """
     period_str = period if isinstance(period, str) and period else local_now().date().strftime('%Y-%m')
+    user_roles = current_user.get("roles", []) if current_user else []
+
+    # Store manager scoping
+    if "STORE_MANAGER" in user_roles and not any(r in ("DIRECTOR", "HR_MANAGER", "ADMIN") for r in user_roles):
+        user_store_id = current_user.get("store_id")
+        if user_store_id:
+            store_id = user_store_id
+
     scope_params = {"period": period_str}
     scope_sql = ""
     if store_id and isinstance(store_id, int):
         scope_params["store_id"] = store_id
         scope_sql = " AND e.store_id = :store_id"
 
-    store_stats = (await db.execute(text(f"""
+    # Truy vấn chi tiết toàn bộ nhân sự có bảng lương trong kỳ
+    payroll_rows = (await db.execute(text(f"""
         SELECT 
-            COALESCE(s.store_name, d.department_name, 'Khác') as unit_name,
-            COUNT(p.payroll_id) as employee_count,
-            COALESCE(SUM(p.total_earnings - COALESCE(ot.amount, 0)), 0) as total_base_salary,
-            COALESCE(SUM(COALESCE(ot.amount, 0)), 0) as total_overtime,
-            COALESCE(SUM(p.total_allowances), 0) as total_allowances,
-            COALESCE(SUM(COALESCE(comm.amount, 0)), 0) as total_commissions,
-            COALESCE(SUM(p.total_bonuses - COALESCE(comm.amount, 0)), 0) as total_bonuses,
-            COALESCE(SUM(p.gross_income), 0) as total_gross,
-            COALESCE(SUM(p.total_insurance), 0) as total_insurance,
-            COALESCE(SUM(COALESCE(pen.amount, 0)), 0) as total_penalties,
-            COALESCE(SUM(p.net_salary), 0) as total_net
+            p.payroll_id, p.employee_id, e.employee_code, e.full_name as employee_name,
+            pos.position_name, s.store_id, s.store_name, d.department_id, d.department_name,
+            p.salary_period, p.payment_status,
+            COALESCE(p.contract_salary, 8000000) as contract_salary,
+            COALESCE(p.actual_working_days, 0) as actual_working_days,
+            COALESCE(p.standard_working_days, 26) as standard_working_days,
+            COALESCE(p.total_earnings, p.gross_income) as total_earnings,
+            COALESCE(p.total_allowances, 0) as total_allowances,
+            COALESCE(ot.amount, 0) as total_overtime,
+            COALESCE(comm.amount, 0) as total_commissions,
+            COALESCE(p.total_bonuses - COALESCE(comm.amount, 0), 0) as total_bonuses,
+            COALESCE(p.gross_income, 0) as total_gross,
+            COALESCE(p.total_insurance, 0) as total_insurance,
+            COALESCE(pen.amount, 0) as total_penalties,
+            COALESCE(tax.amount, 0) as total_tax,
+            COALESCE(p.net_salary, 0) as total_net,
+            COALESCE(c.insurance_salary, c.basic_salary, 5000000) as insurance_base
         FROM payrolls p
         JOIN employees e ON p.employee_id = e.employee_id
+        LEFT JOIN contracts c ON e.employee_id = c.employee_id AND c.status = 'ACTIVE'
         LEFT JOIN stores s ON e.store_id = s.store_id
         LEFT JOIN departments d ON e.department_id = d.department_id
+        LEFT JOIN positions pos ON e.position_id = pos.position_id
         LEFT JOIN (
             SELECT payroll_id, SUM(amount) as amount FROM payroll_details 
             WHERE item_code = 'OVERTIME' GROUP BY payroll_id
@@ -425,48 +450,183 @@ async def get_payroll_fund_summary(
             SELECT payroll_id, SUM(amount) as amount FROM payroll_details 
             WHERE item_code = 'PENALTY' GROUP BY payroll_id
         ) pen ON pen.payroll_id = p.payroll_id
-        WHERE p.salary_period = :period {scope_sql}
-        GROUP BY COALESCE(s.store_name, d.department_name, 'Khác')
-        ORDER BY total_gross DESC
-    """), scope_params)).mappings().all()
-
-    # Tổng cộng toàn chuỗi
-    total_res = (await db.execute(text(f"""
-        SELECT 
-            COUNT(p.payroll_id) as total_headcount,
-            COALESCE(SUM(p.gross_income), 0) as total_gross_fund,
-            COALESCE(SUM(p.net_salary), 0) as total_net_fund,
-            COALESCE(SUM(p.total_insurance), 0) as total_insurance_fund,
-            COALESCE(SUM(comm.amount), 0) as total_commission_fund
-        FROM payrolls p
-        JOIN employees e ON e.employee_id = p.employee_id
         LEFT JOIN (
             SELECT payroll_id, SUM(amount) as amount FROM payroll_details 
-            WHERE item_code = 'COMMISSION' GROUP BY payroll_id
-        ) comm ON comm.payroll_id = p.payroll_id
+            WHERE item_code IN ('PIT', 'TAX') GROUP BY payroll_id
+        ) tax ON tax.payroll_id = p.payroll_id
         WHERE p.salary_period = :period {scope_sql}
-    """), scope_params)).mappings().first()
+        ORDER BY e.employee_id ASC
+    """), scope_params)).mappings().all()
 
-    totals_dict = dict(total_res) if total_res else {}
-    net_fund = float(totals_dict.get("total_net_fund", 0) or 0)
-    gross_fund = float(totals_dict.get("total_gross_fund", 0) or 0)
-    ins_fund = float(totals_dict.get("total_insurance_fund", 0) or 0)
-    comm_fund = float(totals_dict.get("total_commission_fund", 0) or 0)
+    def normalize_cost_center(store_name: Optional[str], dept_name: Optional[str]) -> str:
+        raw = store_name or dept_name or "Khác"
+        cleaned = " ".join(raw.strip().split())
+        if cleaned.lower() in ("ban giám đốc", "ban giám đoc", "ban giam doc"):
+            return "Ban Giám Đốc"
+        return cleaned
 
-    allowance_total = sum(float(u.get("total_allowances", 0) or 0) for u in store_stats)
-    bonus_total = sum(float(u.get("total_bonuses", 0) or 0) for u in store_stats)
+    by_unit_map: Dict[str, Dict[str, Any]] = {}
+
+    for r in payroll_rows:
+        unit_name = normalize_cost_center(r["store_name"], r["department_name"])
+        base_sal = float(r["total_earnings"] or 0) - float(r["total_overtime"] or 0)
+        allowance = float(r["total_allowances"] or 0)
+        fixed_inc = round(base_sal + allowance, 2)
+        ot = float(r["total_overtime"] or 0)
+        comm = float(r["total_commissions"] or 0)
+        bonus = float(r["total_bonuses"] or 0)
+        var_inc = round(ot + comm + bonus, 2)
+        gross = float(r["total_gross"] or 0)
+        ins_ee = float(r["total_insurance"] or 0)
+        tax_val = float(r["total_tax"] or 0)
+        pen_val = float(r["total_penalties"] or 0)
+        deductions = round(ins_ee + tax_val + pen_val, 2)
+        net_val = float(r["total_net"] or 0)
+
+        # Căn cứ trích nộp bảo hiểm của DN (23.5% = 17.5% BHXH + 3% BHYT + 1% BHTN + 2% KPCĐ)
+        ins_base = float(r["insurance_base"] or 0)
+        if ins_base <= 0:
+            ins_base = round(ins_ee / 0.105, 2) if ins_ee > 0 else 5000000.0
+        emp_burden = round(ins_base * 0.235, 2)
+        tcow = round(gross + emp_burden, 2)
+
+        emp_data = {
+            "payroll_id": r["payroll_id"],
+            "employee_id": r["employee_id"],
+            "employee_code": r["employee_code"],
+            "employee_name": r["employee_name"],
+            "position_name": r["position_name"] or "Nhân viên",
+            "cost_center": unit_name,
+            "contract_salary": float(r["contract_salary"] or 0),
+            "actual_working_days": float(r["actual_working_days"] or 0),
+            "standard_working_days": float(r["standard_working_days"] or 26),
+            "fixed_income": fixed_inc,
+            "base_salary": base_sal,
+            "allowances": allowance,
+            "variable_income": var_inc,
+            "overtime": ot,
+            "commissions": comm,
+            "bonuses": bonus,
+            "gross_income": gross,
+            "employee_insurance": ins_ee,
+            "tax": tax_val,
+            "penalties": pen_val,
+            "deductions": deductions,
+            "net_salary": net_val,
+            "insurance_base": ins_base,
+            "employer_burden": emp_burden,
+            "tcow": tcow,
+            "payment_status": r["payment_status"] or "DRAFT"
+        }
+
+        if unit_name not in by_unit_map:
+            by_unit_map[unit_name] = {
+                "unit_name": unit_name,
+                "employee_count": 0,
+                "fixed_income": 0.0,
+                "total_base_salary": 0.0,
+                "total_allowances": 0.0,
+                "variable_income": 0.0,
+                "total_overtime": 0.0,
+                "total_commissions": 0.0,
+                "total_bonuses": 0.0,
+                "total_gross": 0.0,
+                "total_insurance": 0.0,
+                "total_tax": 0.0,
+                "total_penalties": 0.0,
+                "total_deductions": 0.0,
+                "total_net": 0.0,
+                "employer_burden": 0.0,
+                "tcow": 0.0,
+                "payment_status": r["payment_status"] or "DRAFT",
+                "employees": []
+            }
+
+        u = by_unit_map[unit_name]
+        u["employee_count"] += 1
+        u["fixed_income"] = round(u["fixed_income"] + fixed_inc, 2)
+        u["total_base_salary"] = round(u["total_base_salary"] + base_sal, 2)
+        u["total_allowances"] = round(u["total_allowances"] + allowance, 2)
+        u["variable_income"] = round(u["variable_income"] + var_inc, 2)
+        u["total_overtime"] = round(u["total_overtime"] + ot, 2)
+        u["total_commissions"] = round(u["total_commissions"] + comm, 2)
+        u["total_bonuses"] = round(u["total_bonuses"] + bonus, 2)
+        u["total_gross"] = round(u["total_gross"] + gross, 2)
+        u["total_insurance"] = round(u["total_insurance"] + ins_ee, 2)
+        u["total_tax"] = round(u["total_tax"] + tax_val, 2)
+        u["total_penalties"] = round(u["total_penalties"] + pen_val, 2)
+        u["total_deductions"] = round(u["total_deductions"] + deductions, 2)
+        u["total_net"] = round(u["total_net"] + net_val, 2)
+        u["employer_burden"] = round(u["employer_burden"] + emp_burden, 2)
+        u["tcow"] = round(u["tcow"] + tcow, 2)
+        if r["payment_status"] == "DRAFT":
+            u["payment_status"] = "DRAFT"
+        elif u["payment_status"] != "DRAFT" and r["payment_status"] == "CONFIRMED":
+            u["payment_status"] = "CONFIRMED"
+        u["employees"].append(emp_data)
+
+    by_unit_list = sorted(list(by_unit_map.values()), key=lambda x: x["tcow"], reverse=True)
+
+    # Tổng cộng toàn doanh nghiệp
+    total_headcount = len(payroll_rows)
+    total_fixed = round(sum(u["fixed_income"] for u in by_unit_list), 2)
+    total_variable = round(sum(u["variable_income"] for u in by_unit_list), 2)
+    total_base = round(sum(u["total_base_salary"] for u in by_unit_list), 2)
+    total_allowance = round(sum(u["total_allowances"] for u in by_unit_list), 2)
+    total_overtime = round(sum(u["total_overtime"] for u in by_unit_list), 2)
+    total_commission = round(sum(u["total_commissions"] for u in by_unit_list), 2)
+    total_bonus = round(sum(u["total_bonuses"] for u in by_unit_list), 2)
+    total_gross = round(sum(u["total_gross"] for u in by_unit_list), 2)
+    total_insurance = round(sum(u["total_insurance"] for u in by_unit_list), 2)
+    total_tax = round(sum(u["total_tax"] for u in by_unit_list), 2)
+    total_penalties = round(sum(u["total_penalties"] for u in by_unit_list), 2)
+    total_deductions = round(sum(u["total_deductions"] for u in by_unit_list), 2)
+    total_net = round(sum(u["total_net"] for u in by_unit_list), 2)
+    total_burden = round(sum(u["employer_burden"] for u in by_unit_list), 2)
+    total_tcow = round(sum(u["tcow"] for u in by_unit_list), 2)
+
+    budget_cap_val = float(budget_cap or 180000000.0)
+    budget_used_percent = round((total_tcow / budget_cap_val) * 100.0, 2) if budget_cap_val > 0 else 0.0
+    is_budget_warning = budget_used_percent >= 95.0
+
+    company_totals = {
+        "total_headcount": total_headcount,
+        "total_fixed_income": total_fixed,
+        "total_variable_income": total_variable,
+        "total_base_salary": total_base,
+        "total_allowance_fund": total_allowance,
+        "total_overtime_fund": total_overtime,
+        "total_commission_fund": total_commission,
+        "total_bonus_fund": total_bonus,
+        "total_gross_fund": total_gross,
+        "total_insurance_fund": total_insurance,
+        "total_tax_fund": total_tax,
+        "total_penalties_fund": total_penalties,
+        "total_deductions_fund": total_deductions,
+        "total_net_fund": total_net,
+        "total_employer_burden": total_burden,
+        "total_tcow": total_tcow,
+        "budget_cap": budget_cap_val,
+        "budget_used_percent": budget_used_percent,
+        "is_budget_warning": is_budget_warning
+    }
 
     return {
         "salary_period": period_str,
-        "company_totals": totals_dict,
-        "by_unit": [dict(u) for u in store_stats],
-        "total_net_salary": net_fund,
-        "total_gross_income": gross_fund,
-        "total_insurance_deducted": ins_fund,
-        "total_commission_fund": comm_fund,
-        "total_allowances": allowance_total,
-        "total_bonuses": bonus_total,
-        "total_tax_deducted": max(0.0, gross_fund - net_fund - ins_fund)
+        "company_totals": company_totals,
+        "by_unit": by_unit_list,
+        "total_net_salary": total_net,
+        "total_gross_income": total_gross,
+        "total_insurance_deducted": total_insurance,
+        "total_commission_fund": total_commission,
+        "total_allowances": total_allowance,
+        "total_bonuses": total_bonus,
+        "total_tax_deducted": total_tax,
+        "total_employer_burden": total_burden,
+        "total_tcow": total_tcow,
+        "budget_cap": budget_cap_val,
+        "budget_used_percent": budget_used_percent,
+        "is_budget_warning": is_budget_warning
     }
 
 
@@ -676,7 +836,7 @@ async def export_demographics_csv(
 @router.get("/export/payroll-summary/excel", summary="Xuất báo cáo quỹ lương theo chi nhánh ra file Excel (.xlsx)")
 async def export_payroll_fund_excel(
     period: Optional[str] = Query("2026-09", description="Kỳ lương (YYYY-MM)"),
-    current_user: dict = Depends(require_strict_roles(["DIRECTOR", "HR_MANAGER"])),
+    current_user: dict = Depends(require_roles(["DIRECTOR", "HR_MANAGER", "STORE_MANAGER", "ADMIN"])),
     db: AsyncSession = Depends(get_db)
 ):
     fund_data = await get_payroll_fund_summary(period=period, current_user=current_user, db=db)
@@ -685,26 +845,26 @@ async def export_payroll_fund_excel(
         raise HTTPException(status_code=404, detail=f"Không có dữ liệu quỹ lương trong kỳ {period}")
 
     columns = [
-        {"key": "unit_name", "title": "Chi nhánh / Phòng ban", "width": 26},
-        {"key": "employee_count", "title": "Số lượng NV", "width": 14, "format": "number"},
-        {"key": "total_base_salary", "title": "Tổng lương CB", "width": 18, "format": "currency"},
-        {"key": "total_overtime", "title": "Tổng tăng ca OT", "width": 16, "format": "currency"},
-        {"key": "total_allowances", "title": "Tổng phụ cấp", "width": 16, "format": "currency"},
-        {"key": "total_commissions", "title": "Tổng hoa hồng", "width": 16, "format": "currency"},
-        {"key": "total_bonuses", "title": "Tổng tiền thưởng", "width": 16, "format": "currency"},
-        {"key": "total_gross", "title": "Tổng chi phí Gross", "width": 20, "format": "currency"},
-        {"key": "total_insurance", "title": "Trích nộp BHXH", "width": 16, "format": "currency"},
-        {"key": "total_net", "title": "Tổng thực lĩnh (Net)", "width": 20, "format": "currency"}
+        {"key": "unit_name", "title": "Đơn vị (Cost Center)", "width": 26},
+        {"key": "employee_count", "title": "Số lượng NS", "width": 14, "format": "number"},
+        {"key": "fixed_income", "title": "Lương CB & Phụ cấp (Cố định)", "width": 22, "format": "currency"},
+        {"key": "variable_income", "title": "Thu nhập biến đổi (OT+HH+Thưởng)", "width": 24, "format": "currency"},
+        {"key": "total_gross", "title": "Tổng Lương Gộp (Gross)", "width": 22, "format": "currency"},
+        {"key": "total_deductions", "title": "Khấu trừ NLĐ (10.5%+Thuế)", "width": 22, "format": "currency"},
+        {"key": "total_net", "title": "Thực nhận (Net)", "width": 22, "format": "currency"},
+        {"key": "employer_burden", "title": "Chi phí DN đóng (23.5%)", "width": 22, "format": "currency"},
+        {"key": "tcow", "title": "Tổng Chi Phí (TCOW)", "width": 24, "format": "currency"},
+        {"key": "payment_status", "title": "Trạng thái", "width": 14}
     ]
 
     total_keys = [
-        "employee_count", "total_base_salary", "total_overtime",
-        "total_allowances", "total_commissions", "total_bonuses",
-        "total_gross", "total_insurance", "total_net"
+        "employee_count", "fixed_income", "variable_income",
+        "total_gross", "total_deductions", "total_net",
+        "employer_burden", "tcow"
     ]
 
     file_stream = create_styled_excel(
-        title=f"BÁO CÁO TỔNG HỢP QUỸ LƯƠNG THEO ĐƠN VỊ - KỲ {period}",
+        title=f"BÁO CÁO QUẢN TRỊ CHI PHÍ NHÂN SỰ TOÀN PHẦN (TCOW) - KỲ {period}",
         subtitle=f"Ngày xuất: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')} - Chuỗi bán lẻ TechZone",
         columns=columns,
         data=[dict(u) for u in by_unit],
@@ -712,7 +872,7 @@ async def export_payroll_fund_excel(
         total_keys=total_keys
     )
 
-    filename = f"Quy_Luong_TechZone_{period}.xlsx"
+    filename = f"Bao_Cao_TCOW_TechZone_{period}.xlsx"
     return StreamingResponse(
         file_stream,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
