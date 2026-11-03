@@ -4,10 +4,12 @@ from datetime import datetime, date, time, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi import HTTPException, FastAPI
 from httpx import AsyncClient, ASGITransport
-from app.core.attendance import VIETNAM_TZ, availability, require_available, session_metrics
+from app.core.attendance import VIETNAM_TZ, attendance_context, availability, require_available, session_metrics
 from app.api.v1.endpoints import attendances as api
+from app.api.v1.endpoints import overtime_reconciliations as reconciliation_api
 from app.api.deps import get_current_user
 from app.core.database import get_db
+from app.api.v1.endpoints.operations import _shift_deviation_minutes, enrich_session_record, verified_ot_metrics
 
 NOW = datetime(2026, 9, 26, 10, tzinfo=VIETNAM_TZ)
 USER = dict(employee_id=3, store_id=1, roles=['EMPLOYEE'])
@@ -53,6 +55,145 @@ class Rules(unittest.TestCase):
         metrics = session_metrics(att, NOW+timedelta(seconds=1))
         self.assertEqual(metrics['actual_work_hours'], 0)
         self.assertEqual(metrics['status'], 'LATE_AND_EARLY')
+
+    def test_checkout_records_elapsed_hours_without_implicit_break_deduction(self):
+        att = dict(check_in_time=datetime(2026, 9, 26, 9, tzinfo=VIETNAM_TZ),
+                   work_date=date(2026, 9, 26), start_time=time(8), end_time=time(16),
+                   work_hours=8, late_minutes=60,
+                   attendance_context={'version': 1, 'actual': {
+                       'start_time': '08:00:00', 'end_time': '16:00:00',
+                       'work_hours': 8,
+                   }})
+        metrics = session_metrics(att, datetime(2026, 9, 26, 17, tzinfo=VIETNAM_TZ))
+        self.assertEqual(metrics['actual_work_hours'], 8)
+        self.assertEqual(metrics['overtime_hours'], 0)
+        self.assertEqual(metrics['status'], 'LATE')
+
+    def test_afternoon_checkout_records_full_elapsed_hours(self):
+        att = dict(check_in_time=datetime(2026, 9, 26, 13, tzinfo=VIETNAM_TZ),
+                   work_date=date(2026, 9, 26), start_time=time(13), end_time=time(21),
+                   work_hours=8, late_minutes=0,
+                   attendance_context={'version': 1, 'actual': {
+                       'start_time': '13:00:00', 'end_time': '21:00:00',
+                       'work_hours': 8,
+                   }})
+        metrics = session_metrics(att, datetime(2026, 9, 26, 21, tzinfo=VIETNAM_TZ))
+        self.assertEqual(metrics['actual_work_hours'], 8)
+        self.assertEqual(metrics['overtime_hours'], 0)
+        self.assertEqual(metrics['status'], 'NORMAL')
+
+    def test_attendance_context_does_not_infer_break_policy(self):
+        shift = dict(shift_id=2, start_time=time(8), end_time=time(16), work_hours=8,
+                     break_minutes=60)
+        context = attendance_context(shift, None, 1)
+        self.assertEqual(context['version'], 1)
+        self.assertNotIn('break_minutes', context['actual'])
+
+    def test_activity_duration_matches_attendance_elapsed_hours(self):
+        row = dict(
+            attendance_id=10, employee_id=3, work_date=date(2026, 9, 26),
+            check_in_time=datetime(2026, 9, 26, 9, tzinfo=VIETNAM_TZ),
+            check_out_time=datetime(2026, 9, 26, 17, tzinfo=VIETNAM_TZ),
+            actual_work_hours=8, late_minutes=0, early_minutes=0, overtime_hours=0,
+            attendance_context={'version': 1, 'actual': {
+                'start_time': '08:00:00', 'end_time': '16:00:00', 'work_hours': 8,
+            }},
+        )
+        enriched = enrich_session_record(row)
+        self.assertEqual(enriched['raw_duration_minutes'], 480)
+        self.assertEqual(enriched['net_duration_minutes'], 480)
+        self.assertIsNone(enriched['break_minutes'])
+
+    def test_legacy_checkout_uses_elapsed_hours(self):
+        att = dict(check_in_time=datetime(2026, 9, 26, 9, tzinfo=VIETNAM_TZ),
+                   work_date=date(2026, 9, 26), start_time=time(8), end_time=time(16),
+                   work_hours=7, late_minutes=60)
+        metrics = session_metrics(att, datetime(2026, 9, 26, 17, tzinfo=VIETNAM_TZ))
+        self.assertEqual(metrics['actual_work_hours'], 8)
+        self.assertEqual(metrics['overtime_hours'], 1)
+
+    def test_shift_reassignment_uses_ceil_late_and_overnight_end(self):
+        late, early = _shift_deviation_minutes(
+            datetime(2026, 9, 26, 22, 15, 1),
+            datetime(2026, 9, 27, 5, 59, 59),
+            date(2026, 9, 26), time(22), time(6),
+        )
+        self.assertEqual(late, 16)  # started-minute rounding matches check-in
+        self.assertEqual(early, 0)  # checkout is one second before 06:00 (floor whole minutes)
+
+    def test_verified_ot_ledger_deduplicates_month_and_session_hours(self):
+        session = dict(attendance_id=10, employee_id=3,
+                       check_in_time=datetime(2026, 10, 31, 16, tzinfo=VIETNAM_TZ),
+                       check_out_time=datetime(2026, 10, 31, 18, tzinfo=VIETNAM_TZ))
+        interval = {"starts_at": "2026-10-31T16:30:00+07:00",
+                    "ends_at": "2026-10-31T17:30:00+07:00"}
+        reconciliations = [
+            dict(employee_id=3, request_id=1, verified_microseconds=3_600_000_000,
+                 eligible_intervals=[interval], attendance_ids=[10]),
+            dict(employee_id=3, request_id=2, verified_microseconds=3_600_000_000,
+                 eligible_intervals=[interval], attendance_ids=[10]),
+        ]
+        employee_hours, session_hours, request_ids, ambiguous = verified_ot_metrics(
+            reconciliations, [session], date(2026, 10, 1), date(2026, 10, 31))
+        self.assertEqual(employee_hours[3], 1)
+        self.assertEqual(session_hours[10], 1)
+        self.assertEqual(request_ids[10], {1, 2})
+        self.assertEqual(ambiguous, set())
+
+    def test_verified_ot_not_double_attributed_to_overlapping_sessions(self):
+        sessions = [
+            dict(attendance_id=10, employee_id=3,
+                 check_in_time=datetime(2026, 10, 31, 16, tzinfo=VIETNAM_TZ),
+                 check_out_time=datetime(2026, 10, 31, 18, tzinfo=VIETNAM_TZ)),
+            dict(attendance_id=11, employee_id=3,
+                 check_in_time=datetime(2026, 10, 31, 17, tzinfo=VIETNAM_TZ),
+                 check_out_time=datetime(2026, 10, 31, 19, tzinfo=VIETNAM_TZ)),
+        ]
+        reconciliation = [dict(employee_id=3, request_id=1, verified_microseconds=3_600_000_000,
+                               eligible_intervals=[{"starts_at": "2026-10-31T17:30:00+07:00",
+                                                    "ends_at": "2026-10-31T18:30:00+07:00"}],
+                               attendance_ids=[10, 11])]
+        _, session_hours, _, ambiguous = verified_ot_metrics(
+            reconciliation, sessions, date(2026, 10, 1), date(2026, 10, 31))
+        self.assertEqual(session_hours, {})
+        self.assertEqual(ambiguous, {10, 11})
+
+    def test_verified_ot_is_split_at_local_month_boundary(self):
+        session = dict(attendance_id=10, employee_id=3,
+                       check_in_time=datetime(2026, 10, 31, 23, tzinfo=VIETNAM_TZ),
+                       check_out_time=datetime(2026, 11, 1, 1, tzinfo=VIETNAM_TZ))
+        reconciliation = [dict(employee_id=3, request_id=7, verified_microseconds=3_600_000_000,
+                               eligible_intervals=[{"starts_at": "2026-10-31T23:30:00+07:00",
+                                                    "ends_at": "2026-11-01T00:30:00+07:00"}],
+                               attendance_ids=[10])]
+        oct_hours, _, _, _ = verified_ot_metrics(
+            reconciliation, [session], date(2026, 10, 1), date(2026, 10, 31))
+        nov_hours, _, _, _ = verified_ot_metrics(
+            reconciliation, [session], date(2026, 11, 1), date(2026, 11, 30))
+        self.assertEqual(oct_hours[3], 0.5)
+        self.assertEqual(nov_hours[3], 0.5)
+        self.assertEqual(oct_hours[3] + nov_hours[3], 1)
+
+class ReconciliationListFilterTests(unittest.IsolatedAsyncioTestCase):
+    async def test_employee_filter_is_added_without_widening_manager_scope(self):
+        db = AsyncMock()
+        db.execute.side_effect = [result(scalar=True), result(rows=[])]
+        response = await reconciliation_api.list_reconciliations(
+            status=None, date_from=None, date_to=None, store_id=None,
+            employee_id=42, limit=100, offset=25,
+            user={"user_id": 2, "employee_id": 20, "store_id": 1,
+                  "roles": ["STORE_MANAGER"]},
+            db=db,
+        )
+
+        self.assertEqual(response, [])
+        query, params = db.execute.call_args_list[1].args
+        self.assertIn("r.employee_id=:selected_employee", str(query))
+        self.assertIn("(r.store_id=:store OR r.employee_id=:employee)", str(query))
+        self.assertIn("LIMIT :limit OFFSET :offset", str(query))
+        self.assertEqual(params["selected_employee"], 42)
+        self.assertEqual(params["store"], 1)
+        self.assertEqual(params["offset"], 25)
 
 class Endpoints(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):

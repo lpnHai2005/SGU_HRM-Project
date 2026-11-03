@@ -1,5 +1,7 @@
 """Scoped workforce read models shared by web and mobile."""
-from datetime import date, datetime, timezone, timedelta
+from collections import defaultdict
+from datetime import date, datetime, timezone, timedelta, time
+from math import ceil
 from fastapi import APIRouter, Depends, Query, HTTPException, Response
 from pydantic import BaseModel
 from sqlalchemy import text
@@ -24,12 +26,144 @@ logger=logging.getLogger(__name__)
 DEFAULT_LATE_TOLERANCE_MINUTES = 15
 PROJECT_GRACE_PERIOD_MINUTES = DEFAULT_LATE_TOLERANCE_MINUTES
 DEFAULT_LATE_PENALTY_AMOUNT = 50000
+VIETNAM_TZ = timezone(timedelta(hours=7))
 
 # ATT-UI-04 Standardized Anomaly & Quality Thresholds
 EXCESSIVE_LATE_THRESHOLD_MINUTES = 240
 EXCESSIVE_EARLY_THRESHOLD_MINUTES = 240
 SHORT_SESSION_THRESHOLD_MINUTES = 15
 OVERDUE_OPEN_SESSION_DAYS = 7
+
+
+def _as_vietnam_datetime(value):
+    if value is None:
+        return None
+    if isinstance(value, str):
+        value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if value.tzinfo is None or value.utcoffset() is None:
+        return value.replace(tzinfo=VIETNAM_TZ)
+    return value.astimezone(VIETNAM_TZ)
+
+
+def _shift_deviation_minutes(check_in, check_out, work_date, shift_start, shift_end):
+    """Return late/early using the same VN wall-clock rules as check-in/out."""
+    late = early = 0
+    start = datetime.combine(work_date, shift_start, tzinfo=VIETNAM_TZ)
+    end = datetime.combine(work_date, shift_end, tzinfo=VIETNAM_TZ)
+    if shift_end <= shift_start:
+        end += timedelta(days=1)
+    if check_in:
+        local_in = _as_vietnam_datetime(check_in)
+        late = max(0, ceil((local_in - start).total_seconds() / 60))
+    if check_out:
+        local_out = _as_vietnam_datetime(check_out)
+        early = max(0, int((end - local_out).total_seconds() / 60))
+    return late, early
+
+
+def _utc_datetime(value):
+    if isinstance(value, str):
+        value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if not isinstance(value, datetime):
+        raise ValueError("OT interval timestamp must be a datetime")
+    # Legacy PostgreSQL timestamp-without-time-zone values are Vietnam wall time.
+    return _as_vietnam_datetime(value).astimezone(timezone.utc)
+
+
+def _merge_utc_intervals(intervals):
+    merged = []
+    for start, end in sorted(intervals):
+        if end <= start:
+            continue
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+    return merged
+
+
+def verified_ot_metrics(reconciliations, sessions, period_start, period_end):
+    """Count current VERIFIED intervals once and attribute only unambiguous time.
+
+    The input rows must come from v_overtime_verified_current. The interval ledger,
+    not the raw reconciliation duration, is used so month boundaries and duplicate
+    overlapping rows cannot inflate the total.
+    """
+    period_begin = datetime.combine(period_start, time.min, tzinfo=VIETNAM_TZ).astimezone(timezone.utc)
+    period_finish = datetime.combine(period_end + timedelta(days=1), time.min,
+                                     tzinfo=VIETNAM_TZ).astimezone(timezone.utc)
+    sessions_by_id = {int(row["attendance_id"]): row for row in sessions if row.get("attendance_id") is not None}
+    employee_intervals = defaultdict(list)
+    session_intervals = defaultdict(list)
+    session_request_ids = defaultdict(set)
+    ambiguous_session_ids = set()
+
+    for reconciliation in reconciliations:
+        try:
+            eligible = reconciliation.get("eligible_intervals") or []
+            if isinstance(eligible, str):
+                eligible = json.loads(eligible)
+            parsed = [(_utc_datetime(item["starts_at"]), _utc_datetime(item["ends_at"]))
+                      for item in eligible]
+            expected_us = int(reconciliation.get("verified_microseconds") or 0)
+            actual_us = sum(
+                (delta := end - start).days * 86_400_000_000
+                + delta.seconds * 1_000_000 + delta.microseconds
+                for start, end in parsed
+            )
+            if expected_us != actual_us:
+                logger.error("Skipping inconsistent current VERIFIED OT interval ledger for request_id=%s",
+                             reconciliation.get("request_id"))
+                continue
+        except (TypeError, ValueError, KeyError, json.JSONDecodeError):
+            logger.error("Skipping malformed current VERIFIED OT interval ledger for request_id=%s",
+                         reconciliation.get("request_id"))
+            continue
+
+        employee_id = int(reconciliation["employee_id"])
+        attendance_ids = {int(value) for value in (reconciliation.get("attendance_ids") or [])}
+        for start, end in parsed:
+            clipped = (max(start, period_begin), min(end, period_finish))
+            if clipped[1] <= clipped[0]:
+                continue
+            employee_intervals[employee_id].append(clipped)
+
+            candidates = []
+            for attendance_id in attendance_ids:
+                session = sessions_by_id.get(attendance_id)
+                if not session or int(session.get("employee_id") or -1) != employee_id:
+                    continue
+                check_in = session.get("check_in_time")
+                check_out = session.get("check_out_time")
+                if not check_in or not check_out:
+                    continue
+                session_start, session_end = _utc_datetime(check_in), _utc_datetime(check_out)
+                overlap = (max(clipped[0], session_start), min(clipped[1], session_end))
+                if overlap[1] > overlap[0]:
+                    candidates.append((attendance_id, overlap))
+
+            overlap_found = False
+            for index, (_, left) in enumerate(candidates):
+                if any(left[0] < right[1] and right[0] < left[1]
+                       for _, right in candidates[index + 1:]):
+                    overlap_found = True
+                    break
+            if overlap_found:
+                ambiguous_session_ids.update(attendance_id for attendance_id, _ in candidates)
+                continue
+            for attendance_id, overlap in candidates:
+                session_intervals[attendance_id].append(overlap)
+                session_request_ids[attendance_id].add(int(reconciliation["request_id"]))
+
+    employee_hours = {
+        employee_id: sum((end - start).total_seconds() for start, end in _merge_utc_intervals(intervals)) / 3600
+        for employee_id, intervals in employee_intervals.items()
+    }
+    session_hours = {
+        attendance_id: sum((end - start).total_seconds() for start, end in _merge_utc_intervals(intervals)) / 3600
+        for attendance_id, intervals in session_intervals.items()
+    }
+    return employee_hours, session_hours, session_request_ids, ambiguous_session_ids
 
 
 async def get_late_policy_settings(db: AsyncSession) -> tuple[int, int]:
@@ -197,6 +331,13 @@ def enrich_session_record(row: dict, tolerance_minutes: int = 15) -> dict:
     late_m = int(row.get("late_minutes") or 0)
     early_m = int(row.get("early_minutes") or 0)
     overtime_h = float(row.get("overtime_hours") or 0.0)
+    ctx = row.get("attendance_context") or {}
+    if isinstance(ctx, str):
+        try:
+            ctx = json.loads(ctx)
+        except Exception:
+            ctx = {}
+    actual_snapshot = ctx.get("actual") or {}
 
     raw_duration_minutes = None
     if check_in and check_out:
@@ -208,13 +349,14 @@ def enrich_session_record(row: dict, tolerance_minutes: int = 15) -> dict:
     elif check_in:
         raw_duration_minutes = None
 
-    break_m = int(row.get("break_minutes") if row.get("break_minutes") is not None else 60)
-    net_duration_minutes = None
-    if raw_duration_minutes is not None:
-        if raw_duration_minutes > break_m:
-            net_duration_minutes = max(0, raw_duration_minutes - break_m)
-        else:
-            net_duration_minutes = raw_duration_minutes
+    configured_break = actual_snapshot.get("break_minutes")
+    if configured_break is None:
+        configured_break = row.get("break_minutes")
+    break_m = int(configured_break) if configured_break is not None else None
+
+    # Keep the legacy response key for clients, but report elapsed time without
+    # subtracting an undocumented default break from attendance hours.
+    net_duration_minutes = raw_duration_minutes
 
     # Check if check-in occurred after shift scheduled end (for regular daytime shift)
     is_after_shift_end = False
@@ -275,12 +417,6 @@ def enrich_session_record(row: dict, tolerance_minutes: int = 15) -> dict:
         quality_status = "NORMAL"
 
     # Context & HR review parsing
-    ctx = row.get("attendance_context") or {}
-    if isinstance(ctx, str):
-        try:
-            ctx = json.loads(ctx)
-        except Exception:
-            ctx = {}
     hr_rev = ctx.get("hr_review")
     audit_history = ctx.get("audit_history") or []
 
@@ -302,7 +438,24 @@ def enrich_session_record(row: dict, tolerance_minutes: int = 15) -> dict:
     row["audit_history"] = audit_history
     row["is_overdue_open_session"] = is_overdue_open
     row["payroll_hold"] = payroll_hold
-    row["outside_schedule_hours"] = overtime_h
+
+    # MISSION ATT-UI-06: Sliding Shift mechanism
+    # outside_schedule_hours only occurs when actual_work_hours exceeds scheduled_work_hours
+    scheduled_wh = (
+        row.get("scheduled_hours")
+        or row.get("scheduled_work_hours")
+        or (ctx.get("actual") or {}).get("work_hours")
+    )
+    if scheduled_wh is not None:
+        try:
+            s_wh = float(scheduled_wh)
+            outside_schedule_hours = max(0.0, round(actual_hours - s_wh, 2))
+        except Exception:
+            outside_schedule_hours = overtime_h
+    else:
+        outside_schedule_hours = overtime_h
+
+    row["outside_schedule_hours"] = outside_schedule_hours
     row["excessive_late_threshold_minutes"] = EXCESSIVE_LATE_THRESHOLD_MINUTES
 
     # Evaluate decision logic (Mục 3 & 4)
@@ -346,6 +499,11 @@ def enrich_session_record(row: dict, tolerance_minutes: int = 15) -> dict:
     row["is_grace_late"] = is_grace_late
     row["is_valid_early"] = is_valid_early
     row["needs_hr_review"] = needs_hr_review
+    row["raw_late_minutes"] = late_m
+    row["verified_late_minutes"] = late_m if is_valid_late else 0
+    row["grace_late_minutes"] = late_m if is_grace_late else 0
+    row["raw_early_minutes"] = early_m
+    row["verified_early_minutes"] = early_m if is_valid_early else 0
     return row
 
 
@@ -401,13 +559,18 @@ async def monthly_attendance(period:str=Query(...,pattern=r'^\d{4}-(0[1-9]|1[0-2
         (SELECT 1 FROM attendances a WHERE a.employee_id=e.employee_id AND a.work_date BETWEEN :start AND :end))'''+where+
         ' ORDER BY s.store_name,d.department_name,e.full_name,e.employee_id'),params)).mappings().all()]
     ids=[p['employee_id'] for p in people]
+    verified_ot_source_available = bool((await db.execute(text(
+        "SELECT to_regclass('public.v_overtime_verified_current') IS NOT NULL"
+    ))).scalar_one())
     if not ids: return {'period':period,'employees':[],'summary':{
         'total_employees':0,'with_attendance':0,'without_attendance':0,'flagged_sessions':0,
         'total_late_days':0,'total_late_sessions':0,'total_late_minutes':0,'total_late_penalty_amount':0,
         'total_grace_late_sessions':0,'total_grace_late_minutes':0,'employees_with_late':0,
         'total_early_days':0,'total_early_sessions':0,'total_early_minutes':0,'employees_with_early':0,
         'total_unreviewed_late_minutes':0,'total_unreviewed_early_minutes':0,
-        'total_paid_leave_days':0.0,'total_unpaid_leave_days':0.0,'total_verified_ot_hours':0.0,
+        'total_paid_leave_days':0.0,'total_unpaid_leave_days':0.0,
+        'total_verified_ot_hours':0.0 if verified_ot_source_available else None,
+        'verified_ot_source_available': verified_ot_source_available,
         'standard_working_days': standard_working_days,
     },'late_tolerance_minutes':tolerance_minutes,'late_penalty_amount':penalty_amount,'excessive_late_threshold_minutes':EXCESSIVE_LATE_THRESHOLD_MINUTES,
     'standard_working_days': standard_working_days, 'standard_working_days_info': standard_working_days_info}
@@ -416,13 +579,13 @@ async def monthly_attendance(period:str=Query(...,pattern=r'^\d{4}-(0[1-9]|1[0-2
         a.actual_work_hours,a.late_minutes,a.early_minutes,a.overtime_hours,a.status,a.attendance_context,
         COALESCE(a.attendance_context->>'schedule_status','LEGACY_UNKNOWN') AS schedule_status,
         sh.shift_name,sh.start_time AS scheduled_start,sh.end_time AS scheduled_end,sh.work_hours AS scheduled_hours,
-        COALESCE(sh.break_minutes, 60) AS break_minutes,
+        sh.break_minutes AS break_minutes,
         s.store_name AS attendance_store_name
         FROM attendances a LEFT JOIN work_shifts sh USING(shift_id) LEFT JOIN stores s ON a.store_id=s.store_id
         WHERE a.employee_id=ANY(:ids) AND a.work_date BETWEEN :start AND :end ORDER BY a.work_date,a.check_in_time,a.attendance_id'''),params)).mappings().all()]
     planned={r['employee_id']:{'hours':float(r['hours']),'days':int(r['days'])} for r in (await db.execute(text('''SELECT ws.employee_id,
         COUNT(DISTINCT ws.work_date) AS days,
-        SUM(COALESCE(sh.work_hours, (EXTRACT(EPOCH FROM (sh.end_time-sh.start_time+CASE WHEN sh.end_time<=sh.start_time THEN interval '1 day' ELSE interval '0 day' END))/3600 - COALESCE(sh.break_minutes, 60)/60.0))) AS hours
+        SUM(COALESCE(sh.work_hours, (EXTRACT(EPOCH FROM (sh.end_time-sh.start_time+CASE WHEN sh.end_time<=sh.start_time THEN interval '1 day' ELSE interval '0 day' END))/3600 - COALESCE(sh.break_minutes, 0)/60.0))) AS hours
         FROM work_schedules ws JOIN work_shifts sh USING(shift_id) WHERE ws.employee_id=ANY(:ids)
           AND ws.work_date BETWEEN :start AND :end
           AND (ws.cancelled_at IS NULL OR EXISTS (
@@ -435,45 +598,27 @@ async def monthly_attendance(period:str=Query(...,pattern=r'^\d{4}-(0[1-9]|1[0-2
         LEFT JOIN leave_types lt USING(leave_type_id)
         WHERE lr.employee_id=ANY(:ids) AND lr.status='HR_APPROVED'
           AND lr.start_date<=:end AND lr.end_date>=:start ORDER BY lr.start_date,lr.request_id'''),params)).mappings().all()]
-    ot_verified={r['employee_id']:float(r['hours']) for r in (await db.execute(text('''SELECT o.employee_id,
-        COALESCE(SUM(rec.verified_microseconds)/3600000000.0, 0) AS hours
-        FROM overtime_reconciliations rec
-        JOIN overtime_requests o USING(request_id)
-        WHERE o.employee_id=ANY(:ids) AND o.status='APPROVED'
-          AND rec.status='VERIFIED' AND rec.verified_microseconds IS NOT NULL
-          AND o.work_date BETWEEN :start AND :end
-        GROUP BY o.employee_id'''),params)).mappings().all()}
-    ot_daily_rows = (await db.execute(text('''SELECT o.employee_id, o.work_date, o.request_id,
-        COALESCE(SUM(rec.verified_microseconds)/3600000000.0, 0) AS hours,
-        o.starts_at, o.ends_at
-        FROM overtime_reconciliations rec
-        JOIN overtime_requests o USING(request_id)
-        WHERE o.employee_id=ANY(:ids) AND o.status='APPROVED'
-          AND rec.status='VERIFIED' AND rec.verified_microseconds IS NOT NULL
-          AND o.work_date BETWEEN :start AND :end
-        GROUP BY o.employee_id, o.work_date, o.request_id, o.starts_at, o.ends_at'''), params)).mappings().all()
-    ot_by_date = {}
-    for r in ot_daily_rows:
-        key = (r['employee_id'], str(r['work_date']))
-        ot_by_date[key] = {
-            'verified_ot_hours': round(float(r['hours']), 2),
-            'ot_request_id': r['request_id'],
-            'ot_starts_at': r['starts_at'].isoformat() if r.get('starts_at') else None,
-            'ot_ends_at': r['ends_at'].isoformat() if r.get('ends_at') else None,
-        }
+    month_start_utc = datetime.combine(start, time.min, tzinfo=VIETNAM_TZ).astimezone(timezone.utc)
+    month_end_utc = datetime.combine(end + timedelta(days=1), time.min,
+                                     tzinfo=VIETNAM_TZ).astimezone(timezone.utc)
+    verified_rows = []
+    if verified_ot_source_available:
+        verified_rows = (await db.execute(text('''
+            SELECT employee_id,request_id,starts_at,ends_at,verified_microseconds,
+                   eligible_intervals,attendance_ids
+            FROM public.v_overtime_verified_current
+            WHERE employee_id=ANY(:ids) AND starts_at<:period_end AND ends_at>:period_start
+        '''), {"ids": ids, "period_start": month_start_utc, "period_end": month_end_utc})).mappings().all()
+    ot_verified, ot_session_hours, ot_session_request_ids, ambiguous_ot_sessions = verified_ot_metrics(
+        [dict(row) for row in verified_rows], sessions, start, end)
     for s in sessions:
         enrich_session_record(s, tolerance_minutes)
-        s_date_key = (s['employee_id'], str(s['work_date']))
-        if s_date_key in ot_by_date:
-            ot_info = ot_by_date[s_date_key]
-            s['has_verified_ot'] = True
-            s['verified_ot_hours'] = ot_info['verified_ot_hours']
-            s['ot_request_id'] = ot_info['ot_request_id']
-            s['ot_starts_at'] = ot_info['ot_starts_at']
-            s['ot_ends_at'] = ot_info['ot_ends_at']
-        else:
-            s['has_verified_ot'] = False
-            s['verified_ot_hours'] = 0.0
+        attendance_id = int(s["attendance_id"])
+        s["verified_ot_hours"] = round(ot_session_hours.get(attendance_id, 0.0), 2)
+        s["has_verified_ot"] = s["verified_ot_hours"] > 0
+        s["ot_request_ids"] = sorted(ot_session_request_ids.get(attendance_id, set()))
+        s["ot_request_id"] = s["ot_request_ids"][0] if len(s["ot_request_ids"]) == 1 else None
+        s["verified_ot_attribution_ambiguous"] = attendance_id in ambiguous_ot_sessions
     result=[]
     for person in people:
         rows=[r for r in sessions if r['employee_id']==person['employee_id']]
@@ -517,9 +662,11 @@ async def monthly_attendance(period:str=Query(...,pattern=r'^\d{4}-(0[1-9]|1[0-2
             scheduled_days=sched_info['days'],
             scheduled_hours=sched_info['hours'],
             actual_work_hours=sum(float(r['actual_work_hours'] or 0) for r in valid_work_rows),
-            outside_schedule_hours=sum(float(r['overtime_hours'] or 0) for r in rows),
+            outside_schedule_hours=round(sum(float(r.get('outside_schedule_hours') if r.get('outside_schedule_hours') is not None else (r.get('overtime_hours') or 0.0)) for r in rows), 2),
             overtime_hours=sum(float(r['overtime_hours'] or 0) for r in rows),
-            verified_ot_hours=round(ot_verified.get(person['employee_id'], 0.0), 2),
+            verified_ot_hours=(round(ot_verified.get(person['employee_id'], 0.0), 2)
+                               if verified_ot_source_available else None),
+            verified_ot_source_available=verified_ot_source_available,
             late_day_count=late_day_count,
             late_session_count=late_session_count,
             late_violation_count=late_violation_count,
@@ -571,7 +718,9 @@ async def monthly_attendance(period:str=Query(...,pattern=r'^\d{4}-(0[1-9]|1[0-2
         'employees_with_early': sum(1 for p in result if p['early_session_count'] > 0),
         'total_paid_leave_days': sum(p['paid_leave_days'] for p in result),
         'total_unpaid_leave_days': sum(p['unpaid_leave_days'] for p in result),
-        'total_verified_ot_hours': round(sum(p['verified_ot_hours'] for p in result), 2),
+        'total_verified_ot_hours': (round(sum(p['verified_ot_hours'] or 0 for p in result), 2)
+                                    if verified_ot_source_available else None),
+        'verified_ot_source_available': verified_ot_source_available,
         'standard_working_days': standard_working_days,
     }
     return {
@@ -763,7 +912,6 @@ async def activity(day:date|None=None,from_date:date|None=None,to_date:date|None
     sessions = []
     scheduled_emp_ids = set()
     leaves_by_emp_date = set()
-    ot_map = {}
 
     if ids:
         # Lấy lịch phân ca của nhân viên trong kỳ
@@ -794,32 +942,28 @@ async def activity(day:date|None=None,from_date:date|None=None,to_date:date|None
             if key not in leaves_by_emp_date:
                 scheduled_emp_ids.add(sr['employee_id'])
 
-        # Lấy thông tin OT đối soát VERIFIED
-        ot_rows = (await db.execute(text('''
-            SELECT o.employee_id, o.work_date, o.request_id,
-                   COALESCE(SUM(rec.verified_microseconds)/3600000000.0, 0) AS verified_hours,
-                   rec.status AS reconciliation_status, o.status AS request_status
-            FROM overtime_requests o
-            LEFT JOIN overtime_reconciliations rec USING(request_id)
-            WHERE o.employee_id=ANY(:ids) AND o.status='APPROVED'
-              AND o.work_date BETWEEN :start AND :end
-            GROUP BY o.employee_id, o.work_date, o.request_id, rec.status, o.status
-        '''), {'ids': ids, 'start': start_date, 'end': end_date})).mappings().all()
-
-        for ot in ot_rows:
-            ot_map[(ot['employee_id'], str(ot['work_date']))] = {
-                'verified_hours': round(float(ot['verified_hours']), 2),
-                'request_id': ot['request_id'],
-                'reconciliation_status': ot['reconciliation_status'],
-                'request_status': ot['request_status'],
-            }
+        activity_start_utc = datetime.combine(start_date, time.min, tzinfo=VIETNAM_TZ).astimezone(timezone.utc)
+        activity_end_utc = datetime.combine(end_date + timedelta(days=1), time.min,
+                                            tzinfo=VIETNAM_TZ).astimezone(timezone.utc)
+        verified_ot_source_available = bool((await db.execute(text(
+            "SELECT to_regclass('public.v_overtime_verified_current') IS NOT NULL"
+        ))).scalar_one())
+        ot_rows = []
+        if verified_ot_source_available:
+            ot_rows = (await db.execute(text('''
+                SELECT employee_id,request_id,starts_at,ends_at,verified_microseconds,
+                       eligible_intervals,attendance_ids
+                FROM public.v_overtime_verified_current
+                WHERE employee_id=ANY(:ids) AND starts_at<:period_end AND ends_at>:period_start
+            '''), {"ids": ids, "period_start": activity_start_utc,
+                   "period_end": activity_end_utc})).mappings().all()
 
         sessions = [dict(r) for r in (await db.execute(text('''SELECT a.attendance_id, a.employee_id, a.store_id, a.work_date,
           a.check_in_time, a.check_out_time, a.actual_work_hours, a.late_minutes, a.early_minutes, a.overtime_hours,
           a.status, a.notes, a.attendance_context,
           COALESCE(a.attendance_context->>'schedule_status','LEGACY_UNKNOWN') AS schedule_status,
           sh.shift_name, sh.start_time AS scheduled_start, sh.end_time AS scheduled_end, sh.work_hours AS scheduled_hours,
-          COALESCE(sh.break_minutes, 60) AS break_minutes,
+          sh.break_minutes AS break_minutes,
           s.store_name AS attendance_store_name
           FROM attendances a LEFT JOIN work_shifts sh USING(shift_id) LEFT JOIN stores s ON a.store_id=s.store_id
           WHERE a.employee_id=ANY(:ids) AND a.work_date BETWEEN :start AND :end
@@ -835,6 +979,9 @@ async def activity(day:date|None=None,from_date:date|None=None,to_date:date|None
                 ORDER BY created_at, proof_id'''), {'ids': attendance_ids})).mappings().all()]
             for proof in proofs:
                 proofs_by_attendance.setdefault(proof['attendance_id'], []).append(proof)
+
+        _, session_ot_hours, session_ot_request_ids, ambiguous_ot_sessions = verified_ot_metrics(
+            [dict(row) for row in ot_rows], sessions, start_date, end_date)
 
         for s in sessions:
             enrich_session_record(s, tolerance_minutes)
@@ -875,26 +1022,26 @@ async def activity(day:date|None=None,from_date:date|None=None,to_date:date|None
                 s["scheduled_end"] = str(s["scheduled_end"])
 
             # Khắc phục triệt để lỗi gán nhầm giờ kết thúc ca chiều (13:00 - 16:00 -> 13:00 - 21:00)
-            if s.get("scheduled_start") and str(s["scheduled_start"]).startswith("13:00"):
+            has_attendance_shift_snapshot = bool(actual_snap.get("start_time") and actual_snap.get("end_time"))
+            if (not has_attendance_shift_snapshot and s.get("scheduled_start")
+                    and str(s["scheduled_start"]).startswith("13:00")):
                 if not s.get("scheduled_end") or str(s["scheduled_end"]).startswith("16:00"):
                     s["scheduled_end"] = "21:00:00"
                     s["shift_name"] = s.get("shift_name") or "Ca chiều bán lẻ"
-                    s["scheduled_hours"] = 7.0
+                    s["scheduled_hours"] = 8.0
 
-            # Gắn dữ liệu OT VERIFIED
-            ot_info = ot_map.get((s['employee_id'], str(s['work_date'])))
-            if ot_info:
-                s['has_verified_ot'] = (ot_info['reconciliation_status'] == 'VERIFIED' and ot_info['verified_hours'] > 0)
-                s['verified_ot_hours'] = ot_info['verified_hours']
-                s['ot_request_id'] = ot_info['request_id']
-                s['ot_reconciliation_status'] = ot_info['reconciliation_status']
-                s['ot_request_status'] = ot_info['request_status']
-            else:
-                s['has_verified_ot'] = False
-                s['verified_ot_hours'] = 0.0
-                s['ot_request_id'] = None
-                s['ot_reconciliation_status'] = None
-                s['ot_request_status'] = None
+            # Attach current VERIFIED time only to the attendance interval that
+            # uniquely overlaps it; never copy a request total onto every session.
+            attendance_id = int(s['attendance_id'])
+            s['verified_ot_hours'] = round(session_ot_hours.get(attendance_id, 0.0), 2)
+            s['has_verified_ot'] = s['verified_ot_hours'] > 0
+            request_ids = sorted(session_ot_request_ids.get(attendance_id, set()))
+            s['ot_request_ids'] = request_ids
+            s['ot_request_id'] = request_ids[0] if len(request_ids) == 1 else None
+            s['ot_reconciliation_status'] = 'VERIFIED' if s['has_verified_ot'] else None
+            s['ot_request_status'] = 'APPROVED' if s['has_verified_ot'] else None
+            s['verified_ot_attribution_ambiguous'] = attendance_id in ambiguous_ot_sessions
+            s['verified_ot_source_available'] = verified_ot_source_available
 
             # Ba nhóm đánh giá độc lập (Mục 2):
             # A. Đối chiếu ca (shift_reconciliation)
@@ -1223,23 +1370,15 @@ async def resolve_attendance_session(
         c_out = session_dict.get("check_out_time")
         w_date = session_dict.get("work_date")
 
-        # Recalculate late_minutes
-        if c_in and sh_start and w_date:
-            tz = c_in.tzinfo
-            dt_start = datetime.combine(w_date, sh_start, tzinfo=tz)
-            if c_in > dt_start:
-                new_late_minutes = max(0, round((c_in - dt_start).total_seconds() / 60))
-            else:
-                new_late_minutes = 0
-
-        # Recalculate early_minutes
-        if c_out and sh_end and w_date:
-            tz = c_out.tzinfo
-            dt_end = datetime.combine(w_date, sh_end, tzinfo=tz)
-            if c_out < dt_end:
-                new_early_minutes = max(0, round((dt_end - c_out).total_seconds() / 60))
-            else:
-                new_early_minutes = 0
+        # Match check-in rounding, treat naive PostgreSQL timestamps as Vietnam
+        # local wall time, and move an overnight shift end to the next day.
+        if w_date and sh_start and sh_end and (c_in or c_out):
+            calculated_late, calculated_early = _shift_deviation_minutes(
+                c_in, c_out, w_date, sh_start, sh_end)
+            if c_in:
+                new_late_minutes = calculated_late
+            if c_out:
+                new_early_minutes = calculated_early
 
         # Update attendances table with new shift and recalculated metrics
         await db.execute(text('''
@@ -1331,7 +1470,7 @@ async def resolve_attendance_session(
                a.early_minutes, a.overtime_hours, a.status, a.notes, a.attendance_context,
                COALESCE(a.attendance_context->>'schedule_status','LEGACY_UNKNOWN') AS schedule_status,
                sh.shift_name, sh.start_time AS scheduled_start, sh.end_time AS scheduled_end, sh.work_hours AS scheduled_hours,
-               COALESCE(sh.break_minutes, 60) AS break_minutes,
+               sh.break_minutes AS break_minutes,
                s.store_name AS attendance_store_name
         FROM attendances a
         LEFT JOIN work_shifts sh USING(shift_id)

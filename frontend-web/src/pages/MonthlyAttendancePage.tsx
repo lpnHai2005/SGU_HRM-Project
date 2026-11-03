@@ -207,6 +207,7 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
     let sumPaidLeave = 0
     let sumUnpaidLeave = 0
     let sumVerifiedOt = 0
+    let verifiedOtSourceUnavailable = false
     let sumOutsideSchedule = 0
     let sumReviewSessions = 0
     let sumRawLateMins = 0
@@ -232,6 +233,8 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
       const paidLeave = p.paid_leave_days ?? 0
       const unpaidLeave = p.unpaid_leave_days ?? 0
       const verifiedOt = p.verified_ot_hours ?? 0
+      const verifiedOtKnown = p.verified_ot_source_available !== false
+      if (!verifiedOtKnown) verifiedOtSourceUnavailable = true
       const outsideSchedule = p.outside_schedule_hours ?? p.overtime_hours ?? 0
       const reviewSessions = p.needs_review_session_count ?? p.flagged_sessions_count ?? 0
       const rawLateMins = p.raw_late_minutes ?? 0
@@ -279,7 +282,7 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
         earlyMins,
         paidLeave,
         unpaidLeave,
-        verifiedOt.toFixed(2),
+        verifiedOtKnown ? verifiedOt.toFixed(2) : 'CHƯA CÓ NGUỒN',
         outsideSchedule.toFixed(2),
         reviewSessions,
         p.unreviewed_late_minutes ?? 0,
@@ -307,7 +310,7 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
       sumEarlyMinutes,
       sumPaidLeave,
       sumUnpaidLeave,
-      sumVerifiedOt.toFixed(2),
+      verifiedOtSourceUnavailable ? 'CHƯA CÓ NGUỒN' : sumVerifiedOt.toFixed(2),
       sumOutsideSchedule.toFixed(2),
       sumReviewSessions,
       sumRawLateMins,
@@ -472,7 +475,7 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
               {summary.employees_with_late ?? 0} nhân sự
             </div>
             <div className="monthly-kpi-penalty-sub">
-              Phạt dự kiến:{' '}
+              Giảm trừ chuyên cần dự kiến:{' '}
               <strong>
                 -{formatCurrency(summary.total_late_penalty_amount || (summary.total_late_sessions || 0) * policySettings.penalty)}
               </strong>
@@ -544,10 +547,15 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
           <div className="monthly-kpi-card">
             <div className="monthly-kpi-label">Nghỉ phép &amp; OT đối soát</div>
             <div className="monthly-kpi-value">
-              {summary.total_verified_ot_hours ?? 0}{' '}
+              {summary.verified_ot_source_available === false
+                ? '—'
+                : (summary.total_verified_ot_hours ?? 0)}{' '}
               <small style={{ fontSize: 13, fontWeight: 'normal' }}>giờ OT</small>
             </div>
             <div className="monthly-kpi-sub">
+              {summary.verified_ot_source_available === false
+                ? 'Nguồn OT VERIFIED chưa được cài đặt; không thể xác nhận tổng giờ OT. · '
+                : ''}
               {summary.total_paid_leave_days ?? 0}d phép có lương (AL) ·{' '}
               {summary.total_unpaid_leave_days ?? 0}d không lương (UL)
             </div>
@@ -592,6 +600,7 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
                     0
                   ).toFixed(2)
                   const verifiedOt = (p.verified_ot_hours ?? 0).toFixed(2)
+                  const verifiedOtKnown = p.verified_ot_source_available !== false
                   const reviewCount =
                     p.needs_review_session_count ?? p.flagged_sessions_count ?? 0
                   const lateDates = (p.late_dates && p.late_dates.length > 0)
@@ -748,10 +757,13 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
                             OT đối soát:{' '}
                             <strong
                               style={{
-                                color: (p.verified_ot_hours ?? 0) > 0 ? '#059669' : 'inherit',
+                                color: verifiedOtKnown && verifiedOt > 0 ? '#059669' : 'inherit',
                               }}
+                              title={verifiedOtKnown
+                                ? 'Chỉ tính khoảng VERIFIED hiện hành từ nguồn đối soát OT.'
+                                : 'Nguồn đối soát OT VERIFIED chưa được cài đặt; chưa thể xác nhận số giờ.'}
                             >
-                              {verifiedOt}h
+                              {verifiedOtKnown ? `${verifiedOt}h` : '—'}
                             </strong>
                           </div>
                           <div className="hr-ot-raw" title="Tổng số giờ ghi nhận ngoài khung ca (chưa duyệt OT)">
@@ -976,7 +988,7 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
                         : `${formatDurationMinutes(selectedSession.raw_duration_minutes)}`}
                     </strong>{' '}
                     <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
-                      (Có mặt {formatDurationMinutes(selectedSession.raw_duration_minutes)} · Đã trừ 1h nghỉ trưa)
+                      (Có mặt {formatDurationMinutes(selectedSession.raw_duration_minutes)})
                     </span>
                   </div>
                 </div>

@@ -15,6 +15,20 @@ async def seed_july():
     async with engine.connect() as conn:
         print("=== CLEANING EXISTING JULY 2026 TEST DATA ===")
         # Delete July overtime reconciliations first, then requests, then attendances, then schedules
+        try:
+            await conn.execute(text("ALTER TABLE overtime_reconciliation_events DISABLE TRIGGER trg_ot_reconciliation_events_immutable"))
+            await conn.execute(text("""
+                DELETE FROM overtime_reconciliation_events WHERE request_id IN (
+                    SELECT request_id FROM overtime_requests WHERE work_date >= '2026-07-01' AND work_date <= '2026-07-31'
+                )
+            """))
+        finally:
+            await conn.execute(text("ALTER TABLE overtime_reconciliation_events ENABLE TRIGGER trg_ot_reconciliation_events_immutable"))
+        await conn.execute(text("""
+            DELETE FROM attendance_overtime_approvals WHERE attendance_id IN (
+                SELECT attendance_id FROM attendances WHERE work_date >= '2026-07-01' AND work_date <= '2026-07-31'
+            )
+        """))
         await conn.execute(text("""
             DELETE FROM overtime_reconciliations WHERE request_id IN (
                 SELECT request_id FROM overtime_requests WHERE work_date >= '2026-07-01' AND work_date <= '2026-07-31'
@@ -23,6 +37,10 @@ async def seed_july():
         await conn.execute(text("DELETE FROM overtime_requests WHERE work_date >= '2026-07-01' AND work_date <= '2026-07-31'"))
         await conn.execute(text("DELETE FROM attendances WHERE work_date >= '2026-07-01' AND work_date <= '2026-07-31'"))
         await conn.execute(text("DELETE FROM work_schedules WHERE work_date >= '2026-07-01' AND work_date <= '2026-07-31'"))
+        await conn.commit()
+
+        # Đảm bảo ca chiều (shift_id = 2, 13:00 - 21:00) định mức chuẩn 8.0h, không trừ nghỉ trưa (break_minutes = 0)
+        await conn.execute(text("UPDATE work_shifts SET break_minutes = 0, work_hours = 8.00 WHERE shift_id = 2"))
         await conn.commit()
 
         # Get current max IDs
@@ -62,7 +80,7 @@ async def seed_july():
         # -------------------------------------------------------------
         for day in range(1, 32):
             w_date = date(2026, 7, day)
-            if w_date.weekday() == 6:  # Chủ Nhật nghỉ
+            if w_date.weekday() == 6 and day != 12:  # Chủ Nhật nghỉ (riêng ngày 12 test Sliding Shift)
                 continue
 
             curr_sched_id = next_sched_id
@@ -122,13 +140,12 @@ async def seed_july():
                     "attendance_context": json.dumps({"schedule_status": "MATCHED", "actual": {"shift_id": 1, "shift_name": "Ca sáng bán lẻ", "start_time": "08:00:00", "end_time": "16:00:00", "work_hours": 7.0}})
                 })
             elif day == 6:
-                # Test nâng cao: Ca sáng 08:00 - 16:00 nhưng đi làm giờ ca chiều (In 13:00, Out 21:00)
-                # Trễ 300p > 240p -> EXCESSIVE_LATE, NEEDS_REVIEW, chuyển sang unreviewed_late_minutes = 300p
-                cin = datetime.combine(w_date, time(13, 0, 0), tzinfo=VN_TZ)
-                cout = datetime.combine(w_date, time(21, 0, 0), tzinfo=VN_TZ)
+                # Sửa lỗi ca sáng: In 10:00, Out 18:00 (Trễ 120p, Sớm 0p, làm bù đủ 7.0h định mức, ngoài ca thô = 0.0h)
+                cin = datetime.combine(w_date, time(10, 0, 0), tzinfo=VN_TZ)
+                cout = datetime.combine(w_date, time(18, 0, 0), tzinfo=VN_TZ)
                 att_records.append({
                     "attendance_id": curr_att_id, "employee_id": 4, "store_id": 5, "shift_id": 1, "work_date": w_date,
-                    "check_in_time": cin, "check_out_time": cout, "late_minutes": 300, "early_minutes": 0,
+                    "check_in_time": cin, "check_out_time": cout, "late_minutes": 120, "early_minutes": 0,
                     "overtime_hours": 0.0, "actual_work_hours": 7.0, "status": "LATE",
                     "attendance_context": json.dumps({"schedule_status": "MATCHED", "actual": {"shift_id": 1, "shift_name": "Ca sáng bán lẻ", "start_time": "08:00:00", "end_time": "16:00:00", "work_hours": 7.0}})
                 })
@@ -217,6 +234,19 @@ async def seed_july():
                     "review_issues": json.dumps([]), "reviewed_by": 2, "reviewed_at": now_vn, "decision_reason": "Đối soát thành công",
                     "calculated_at": now_vn, "created_at": now_vn, "updated_at": now_vn
                 })
+            elif day == 12:
+                # MISSION ATT-UI-06: Dữ liệu kiểm thử Sliding Shift (Đi trễ bù giờ)
+                # Ca sáng (08:00 - 16:00, định mức 7.0h công, 1h nghỉ trưa).
+                # Hành vi thực tế: Đi trễ 60 phút, tự làm bù giờ (In 09:00:00, Out 17:00:00).
+                # Kỳ vọng: late_minutes = 60, is_valid_late = True (phạt 50k), actual_work_hours = 7.0h, outside_schedule_hours = 0.0h
+                cin = datetime.combine(w_date, time(9, 0, 0), tzinfo=VN_TZ)
+                cout = datetime.combine(w_date, time(17, 0, 0), tzinfo=VN_TZ)
+                att_records.append({
+                    "attendance_id": curr_att_id, "employee_id": 4, "store_id": 5, "shift_id": 1, "work_date": w_date,
+                    "check_in_time": cin, "check_out_time": cout, "late_minutes": 60, "early_minutes": 0,
+                    "overtime_hours": 0.0, "actual_work_hours": 7.0, "status": "LATE",
+                    "attendance_context": json.dumps({"schedule_status": "MATCHED", "actual": {"shift_id": 1, "shift_name": "Ca sáng bán lẻ", "start_time": "08:00:00", "end_time": "16:00:00", "work_hours": 7.0}})
+                })
             elif day == 14:
                 # In 08:00, Out 17:30 (Đúng giờ nhưng ở lại làm thêm 1.5h không có đơn OT -> test Giờ ngoài ca thô = 1.5h)
                 cin = datetime.combine(w_date, time(8, 0, 0), tzinfo=VN_TZ)
@@ -225,6 +255,18 @@ async def seed_july():
                     "attendance_id": curr_att_id, "employee_id": 4, "store_id": 5, "shift_id": 1, "work_date": w_date,
                     "check_in_time": cin, "check_out_time": cout, "late_minutes": 0, "early_minutes": 0,
                     "overtime_hours": 1.5, "actual_work_hours": 8.5, "status": "OVERTIME",
+                    "attendance_context": json.dumps({"schedule_status": "MATCHED", "actual": {"shift_id": 1, "shift_name": "Ca sáng bán lẻ", "start_time": "08:00:00", "end_time": "16:00:00", "work_hours": 7.0}})
+                })
+            elif day == 21:
+                # Test nâng cao: Phạm Quốc Dũng phân ca sáng (08:00 - 16:00) nhưng chấm công giờ ca chiều (In 13:00, Out 21:00)
+                # Check-in lúc 13:00 so với ca sáng bắt đầu 08:00 -> Trễ 300p > 240p -> EXCESSIVE_LATE, NEEDS_REVIEW
+                # Đã qua 13:00 nên không còn giờ nghỉ trưa -> Thời lượng 8.0h công thực tế
+                cin = datetime.combine(w_date, time(13, 0, 0), tzinfo=VN_TZ)
+                cout = datetime.combine(w_date, time(21, 0, 0), tzinfo=VN_TZ)
+                att_records.append({
+                    "attendance_id": curr_att_id, "employee_id": 4, "store_id": 5, "shift_id": 1, "work_date": w_date,
+                    "check_in_time": cin, "check_out_time": cout, "late_minutes": 300, "early_minutes": 0,
+                    "overtime_hours": 0.0, "actual_work_hours": 8.0, "status": "LATE",
                     "attendance_context": json.dumps({"schedule_status": "MATCHED", "actual": {"shift_id": 1, "shift_name": "Ca sáng bán lẻ", "start_time": "08:00:00", "end_time": "16:00:00", "work_hours": 7.0}})
                 })
             else:
@@ -252,6 +294,8 @@ async def seed_july():
         # Ngày 21: TEST NÂNG CAO - Phân ca chiều nhưng chấm công giờ ca sáng (In 08:00, Out 16:00 -> về sớm 300p > 240p -> EXCESSIVE_EARLY, unreviewed_early_minutes = 300p)
         # Ngày 22..31: Ngày làm chuẩn
         # -------------------------------------------------------------
+        # 2. NGUYỄN VĂN CƯỜNG (Emp #3, Store 5 - Tân Bình, Shift 2: 13:00 - 21:00, định mức 8.0h không nghỉ giữa ca)
+        # -------------------------------------------------------------
         for day in range(1, 32):
             w_date = date(2026, 7, day)
             if w_date.weekday() == 6:  # Chủ Nhật nghỉ
@@ -274,44 +318,44 @@ async def seed_july():
             next_att_id += 1
 
             if day == 1:
-                # In 12:00, Out 20:00 (Early 60m)
+                # In 12:00, Out 20:00 (Early 60m so với ca 21:00)
                 cin = datetime.combine(w_date, time(12, 0, 0), tzinfo=VN_TZ)
                 cout = datetime.combine(w_date, time(20, 0, 0), tzinfo=VN_TZ)
                 att_records.append({
                     "attendance_id": curr_att_id, "employee_id": 3, "store_id": 5, "shift_id": 2, "work_date": w_date,
                     "check_in_time": cin, "check_out_time": cout, "late_minutes": 0, "early_minutes": 60,
                     "overtime_hours": 0.0, "actual_work_hours": 7.0, "status": "EARLY",
-                    "attendance_context": json.dumps({"schedule_status": "MATCHED", "actual": {"shift_id": 2, "shift_name": "Ca chiều bán lẻ", "start_time": "13:00:00", "end_time": "21:00:00", "work_hours": 7.0}})
+                    "attendance_context": json.dumps({"schedule_status": "MATCHED", "actual": {"shift_id": 2, "shift_name": "Ca chiều bán lẻ", "start_time": "13:00:00", "end_time": "21:00:00", "work_hours": 8.0}})
                 })
             elif day == 2:
-                # In 13:00, Out 21:00 (Chuẩn ca)
+                # In 13:00, Out 21:00 (Chuẩn ca chiều 8.0h - Không còn giờ nghỉ sau 13:00)
                 cin = datetime.combine(w_date, time(13, 0, 0), tzinfo=VN_TZ)
                 cout = datetime.combine(w_date, time(21, 0, 0), tzinfo=VN_TZ)
                 att_records.append({
                     "attendance_id": curr_att_id, "employee_id": 3, "store_id": 5, "shift_id": 2, "work_date": w_date,
                     "check_in_time": cin, "check_out_time": cout, "late_minutes": 0, "early_minutes": 0,
-                    "overtime_hours": 0.0, "actual_work_hours": 7.0, "status": "NORMAL",
-                    "attendance_context": json.dumps({"schedule_status": "MATCHED", "actual": {"shift_id": 2, "shift_name": "Ca chiều bán lẻ", "start_time": "13:00:00", "end_time": "21:00:00", "work_hours": 7.0}})
+                    "overtime_hours": 0.0, "actual_work_hours": 8.0, "status": "NORMAL",
+                    "attendance_context": json.dumps({"schedule_status": "MATCHED", "actual": {"shift_id": 2, "shift_name": "Ca chiều bán lẻ", "start_time": "13:00:00", "end_time": "21:00:00", "work_hours": 8.0}})
                 })
             elif day == 3:
-                # In 14:00, Out 22:00 (Trễ 60m -> phạt 50k - Tự ở lại bù giờ chỉ đủ 7h định mức, ngoài ca thô = 0.0h)
+                # In 14:00, Out 22:00 (Trễ 60m -> phạt 50k - Tự ở lại bù giờ đủ 8h định mức ca chiều, ngoài ca thô = 0.0h)
                 cin = datetime.combine(w_date, time(14, 0, 0), tzinfo=VN_TZ)
                 cout = datetime.combine(w_date, time(22, 0, 0), tzinfo=VN_TZ)
                 att_records.append({
                     "attendance_id": curr_att_id, "employee_id": 3, "store_id": 5, "shift_id": 2, "work_date": w_date,
                     "check_in_time": cin, "check_out_time": cout, "late_minutes": 60, "early_minutes": 0,
-                    "overtime_hours": 0.0, "actual_work_hours": 7.0, "status": "LATE",
-                    "attendance_context": json.dumps({"schedule_status": "MATCHED", "actual": {"shift_id": 2, "shift_name": "Ca chiều bán lẻ", "start_time": "13:00:00", "end_time": "21:00:00", "work_hours": 7.0}})
+                    "overtime_hours": 0.0, "actual_work_hours": 8.0, "status": "LATE",
+                    "attendance_context": json.dumps({"schedule_status": "MATCHED", "actual": {"shift_id": 2, "shift_name": "Ca chiều bán lẻ", "start_time": "13:00:00", "end_time": "21:00:00", "work_hours": 8.0}})
                 })
             elif day == 4:
-                # In 15:00, Out 23:00 (Trễ 120m -> phạt 50k - Tự ở lại bù giờ chỉ đủ 7h định mức, ngoài ca thô = 0.0h)
+                # In 15:00, Out 23:00 (Trễ 120m -> phạt 50k - Tự ở lại bù giờ đủ 8h định mức ca chiều, ngoài ca thô = 0.0h)
                 cin = datetime.combine(w_date, time(15, 0, 0), tzinfo=VN_TZ)
                 cout = datetime.combine(w_date, time(23, 0, 0), tzinfo=VN_TZ)
                 att_records.append({
                     "attendance_id": curr_att_id, "employee_id": 3, "store_id": 5, "shift_id": 2, "work_date": w_date,
                     "check_in_time": cin, "check_out_time": cout, "late_minutes": 120, "early_minutes": 0,
-                    "overtime_hours": 0.0, "actual_work_hours": 7.0, "status": "LATE",
-                    "attendance_context": json.dumps({"schedule_status": "MATCHED", "actual": {"shift_id": 2, "shift_name": "Ca chiều bán lẻ", "start_time": "13:00:00", "end_time": "21:00:00", "work_hours": 7.0}})
+                    "overtime_hours": 0.0, "actual_work_hours": 8.0, "status": "LATE",
+                    "attendance_context": json.dumps({"schedule_status": "MATCHED", "actual": {"shift_id": 2, "shift_name": "Ca chiều bán lẻ", "start_time": "13:00:00", "end_time": "21:00:00", "work_hours": 8.0}})
                 })
             elif day == 6:
                 # In 13:08, Out 21:00 (Trễ 8m <= 15m Ân hạn)
@@ -320,8 +364,8 @@ async def seed_july():
                 att_records.append({
                     "attendance_id": curr_att_id, "employee_id": 3, "store_id": 5, "shift_id": 2, "work_date": w_date,
                     "check_in_time": cin, "check_out_time": cout, "late_minutes": 8, "early_minutes": 0,
-                    "overtime_hours": 0.0, "actual_work_hours": 6.87, "status": "LATE",
-                    "attendance_context": json.dumps({"schedule_status": "MATCHED", "actual": {"shift_id": 2, "shift_name": "Ca chiều bán lẻ", "start_time": "13:00:00", "end_time": "21:00:00", "work_hours": 7.0}})
+                    "overtime_hours": 0.0, "actual_work_hours": 7.87, "status": "LATE",
+                    "attendance_context": json.dumps({"schedule_status": "MATCHED", "actual": {"shift_id": 2, "shift_name": "Ca chiều bán lẻ", "start_time": "13:00:00", "end_time": "21:00:00", "work_hours": 8.0}})
                 })
             elif day == 7:
                 # In 13:12, Out 21:00 (Trễ 12m <= 15m Ân hạn)
@@ -330,8 +374,8 @@ async def seed_july():
                 att_records.append({
                     "attendance_id": curr_att_id, "employee_id": 3, "store_id": 5, "shift_id": 2, "work_date": w_date,
                     "check_in_time": cin, "check_out_time": cout, "late_minutes": 12, "early_minutes": 0,
-                    "overtime_hours": 0.0, "actual_work_hours": 6.8, "status": "LATE",
-                    "attendance_context": json.dumps({"schedule_status": "MATCHED", "actual": {"shift_id": 2, "shift_name": "Ca chiều bán lẻ", "start_time": "13:00:00", "end_time": "21:00:00", "work_hours": 7.0}})
+                    "overtime_hours": 0.0, "actual_work_hours": 7.8, "status": "LATE",
+                    "attendance_context": json.dumps({"schedule_status": "MATCHED", "actual": {"shift_id": 2, "shift_name": "Ca chiều bán lẻ", "start_time": "13:00:00", "end_time": "21:00:00", "work_hours": 8.0}})
                 })
             elif day == 15:
                 # In 13:00, Out 23:00 (CÓ ĐƠN OT 2H TỪ 21:00 ĐẾN 23:00)
@@ -340,8 +384,8 @@ async def seed_july():
                 att_records.append({
                     "attendance_id": curr_att_id, "employee_id": 3, "store_id": 5, "shift_id": 2, "work_date": w_date,
                     "check_in_time": cin, "check_out_time": cout, "late_minutes": 0, "early_minutes": 0,
-                    "overtime_hours": 2.0, "actual_work_hours": 9.0, "status": "OVERTIME",
-                    "attendance_context": json.dumps({"schedule_status": "MATCHED", "actual": {"shift_id": 2, "shift_name": "Ca chiều bán lẻ", "start_time": "13:00:00", "end_time": "21:00:00", "work_hours": 7.0}})
+                    "overtime_hours": 2.0, "actual_work_hours": 10.0, "status": "OVERTIME",
+                    "attendance_context": json.dumps({"schedule_status": "MATCHED", "actual": {"shift_id": 2, "shift_name": "Ca chiều bán lẻ", "start_time": "13:00:00", "end_time": "21:00:00", "work_hours": 8.0}})
                 })
                 curr_ot_id = next_ot_id
                 next_ot_id += 1
@@ -368,7 +412,7 @@ async def seed_july():
                     "attendance_id": curr_att_id, "employee_id": 3, "store_id": 5, "shift_id": 2, "work_date": w_date,
                     "check_in_time": cin, "check_out_time": cout, "late_minutes": 0, "early_minutes": 0,
                     "overtime_hours": 0.0, "actual_work_hours": 0.08, "status": "NORMAL",
-                    "attendance_context": json.dumps({"schedule_status": "MATCHED", "actual": {"shift_id": 2, "shift_name": "Ca chiều bán lẻ", "start_time": "13:00:00", "end_time": "21:00:00", "work_hours": 7.0}})
+                    "attendance_context": json.dumps({"schedule_status": "MATCHED", "actual": {"shift_id": 2, "shift_name": "Ca chiều bán lẻ", "start_time": "13:00:00", "end_time": "21:00:00", "work_hours": 8.0}})
                 })
             elif day == 21:
                 # Test nâng cao: Ca chiều 13:00 - 21:00 nhưng chấm công giờ ca sáng (In 08:00, Out 16:00)
@@ -378,18 +422,18 @@ async def seed_july():
                 att_records.append({
                     "attendance_id": curr_att_id, "employee_id": 3, "store_id": 5, "shift_id": 2, "work_date": w_date,
                     "check_in_time": cin, "check_out_time": cout, "late_minutes": 0, "early_minutes": 300,
-                    "overtime_hours": 0.0, "actual_work_hours": 7.0, "status": "EARLY",
-                    "attendance_context": json.dumps({"schedule_status": "MATCHED", "actual": {"shift_id": 2, "shift_name": "Ca chiều bán lẻ", "start_time": "13:00:00", "end_time": "21:00:00", "work_hours": 7.0}})
+                    "overtime_hours": 0.0, "actual_work_hours": 8.0, "status": "EARLY",
+                    "attendance_context": json.dumps({"schedule_status": "MATCHED", "actual": {"shift_id": 2, "shift_name": "Ca chiều bán lẻ", "start_time": "13:00:00", "end_time": "21:00:00", "work_hours": 8.0}})
                 })
             else:
-                # Ngày thường đúng giờ 13:00 - 21:00
+                # Ngày thường đúng giờ 13:00 - 21:00 (8.0h định mức)
                 cin = datetime.combine(w_date, time(12, 58, 0), tzinfo=VN_TZ)
                 cout = datetime.combine(w_date, time(21, 2, 0), tzinfo=VN_TZ)
                 att_records.append({
                     "attendance_id": curr_att_id, "employee_id": 3, "store_id": 5, "shift_id": 2, "work_date": w_date,
                     "check_in_time": cin, "check_out_time": cout, "late_minutes": 0, "early_minutes": 0,
-                    "overtime_hours": 0.0, "actual_work_hours": 7.0, "status": "NORMAL",
-                    "attendance_context": json.dumps({"schedule_status": "MATCHED", "actual": {"shift_id": 2, "shift_name": "Ca chiều bán lẻ", "start_time": "13:00:00", "end_time": "21:00:00", "work_hours": 7.0}})
+                    "overtime_hours": 0.0, "actual_work_hours": 8.0, "status": "NORMAL",
+                    "attendance_context": json.dumps({"schedule_status": "MATCHED", "actual": {"shift_id": 2, "shift_name": "Ca chiều bán lẻ", "start_time": "13:00:00", "end_time": "21:00:00", "work_hours": 8.0}})
                 })
 
         # -------------------------------------------------------------

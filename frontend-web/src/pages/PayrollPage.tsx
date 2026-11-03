@@ -9,7 +9,6 @@ import { PayrollImportDialog } from './PayrollImportDialog'
 import { payrollApi } from '../services/api'
 import './PayslipPrint.css'
 import './MyPayslipPage.css'
-import { PayrollOvertimePanel } from './PayrollOvertimePanel'
 import { PayrollAdjustmentDialog } from './PayrollAdjustmentDialog'
 import { PayrollRegulationDialog } from './PayrollRegulationDialog'
 import { AttendanceRegulationDialog } from './AttendanceRegulationDialog'
@@ -1000,7 +999,6 @@ export function PayrollPage({ user }: PayrollPageProps) {
             </div>
           </div>
 
-          {canRunPayroll&&<PayrollOvertimePanel period={selectedPeriod} mode="history"/>}
           {isSyncNeeded && (
             <div style={{
               background: 'var(--surface-subtle)',
