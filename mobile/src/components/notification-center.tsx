@@ -8,6 +8,7 @@ import {
   Pressable,
   Switch,
   StyleSheet,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { isRunningInExpoGo } from 'expo';
@@ -71,6 +72,24 @@ export function NotificationCenterModal({ visible, onClose }: Props) {
 
   const [activeTab, setActiveTab] = useState<'all' | 'unread' | 'approvals' | 'attendance' | 'settings'>('all');
   const [testSending, setTestSending] = useState(false);
+
+  // High contrast monochrome palette (Black, White, Gray only) for Dark Mode
+  const activeChipBg = p.brand;
+  const activeChipBorder = p.brand;
+  const activeChipText = p.onBrand;
+
+  const switchTrackColor = {
+    false: p.dark ? '#2a2a2e' : '#e4e4e7',
+    true: p.dark ? '#ffffff' : '#09090b',
+  };
+  const switchThumbColor = (val: boolean) => {
+    if (val) {
+      // In dark mode: black knob on white track; in light mode: white knob on black track
+      return p.dark ? '#09090b' : '#ffffff';
+    }
+    return p.dark ? '#71717a' : '#ffffff';
+  };
+  const switchIosBg = p.dark ? '#2a2a2e' : '#e4e4e7';
 
   const filteredNotifs = notifications.filter(item => {
     if (activeTab === 'unread') return !item.read;
@@ -138,14 +157,14 @@ export function NotificationCenterModal({ visible, onClose }: Props) {
                 style={[
                   styles.tabChip,
                   activeTab === 'all'
-                    ? { backgroundColor: p.brand, borderColor: p.brand }
+                    ? { backgroundColor: activeChipBg, borderColor: activeChipBorder }
                     : { backgroundColor: p.card, borderColor: p.line },
                 ]}
               >
                 <Text
                   style={[
                     styles.tabChipText,
-                    activeTab === 'all' ? { color: p.onBrand, fontWeight: '700' } : { color: p.text },
+                    activeTab === 'all' ? { color: activeChipText, fontWeight: '700' } : { color: p.text },
                   ]}
                 >
                   Tất cả ({notifications.length})
@@ -157,14 +176,14 @@ export function NotificationCenterModal({ visible, onClose }: Props) {
                 style={[
                   styles.tabChip,
                   activeTab === 'unread'
-                    ? { backgroundColor: p.brand, borderColor: p.brand }
+                    ? { backgroundColor: activeChipBg, borderColor: activeChipBorder }
                     : { backgroundColor: p.card, borderColor: p.line },
                 ]}
               >
                 <Text
                   style={[
                     styles.tabChipText,
-                    activeTab === 'unread' ? { color: p.onBrand, fontWeight: '700' } : { color: p.text },
+                    activeTab === 'unread' ? { color: activeChipText, fontWeight: '700' } : { color: p.text },
                   ]}
                 >
                   Chưa đọc ({unreadCount})
@@ -177,14 +196,14 @@ export function NotificationCenterModal({ visible, onClose }: Props) {
                   style={[
                     styles.tabChip,
                     activeTab === 'approvals'
-                      ? { backgroundColor: p.brand, borderColor: p.brand }
+                      ? { backgroundColor: activeChipBg, borderColor: activeChipBorder }
                       : { backgroundColor: p.card, borderColor: p.line },
                   ]}
                 >
                   <Text
                     style={[
                       styles.tabChipText,
-                      activeTab === 'approvals' ? { color: p.onBrand, fontWeight: '700' } : { color: p.text },
+                      activeTab === 'approvals' ? { color: activeChipText, fontWeight: '700' } : { color: p.text },
                     ]}
                   >
                     Duyệt đơn
@@ -197,14 +216,14 @@ export function NotificationCenterModal({ visible, onClose }: Props) {
                 style={[
                   styles.tabChip,
                   activeTab === 'attendance'
-                    ? { backgroundColor: p.brand, borderColor: p.brand }
+                    ? { backgroundColor: activeChipBg, borderColor: activeChipBorder }
                     : { backgroundColor: p.card, borderColor: p.line },
                 ]}
               >
                 <Text
                   style={[
                     styles.tabChipText,
-                    activeTab === 'attendance' ? { color: p.onBrand, fontWeight: '700' } : { color: p.text },
+                    activeTab === 'attendance' ? { color: activeChipText, fontWeight: '700' } : { color: p.text },
                   ]}
                 >
                   Chấm công
@@ -216,14 +235,14 @@ export function NotificationCenterModal({ visible, onClose }: Props) {
                 style={[
                   styles.tabChip,
                   activeTab === 'settings'
-                    ? { backgroundColor: p.brand, borderColor: p.brand }
+                    ? { backgroundColor: activeChipBg, borderColor: activeChipBorder }
                     : { backgroundColor: p.card, borderColor: p.line },
                 ]}
               >
                 <Text
                   style={[
                     styles.tabChipText,
-                    activeTab === 'settings' ? { color: p.onBrand, fontWeight: '700' } : { color: p.text },
+                    activeTab === 'settings' ? { color: activeChipText, fontWeight: '700' } : { color: p.text },
                   ]}
                 >
                   Cài đặt
@@ -241,20 +260,18 @@ export function NotificationCenterModal({ visible, onClose }: Props) {
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                   <Text style={[styles.sectionTitle, { color: p.text }]}>Trạng thái Push Notifications</Text>
                   <Badge
-                    label={isRunningInExpoGo() ? 'Expo Go' : permissionGranted ? 'Hoạt động' : 'Chưa cấp quyền'}
-                    variant={isRunningInExpoGo() ? 'neutral' : permissionGranted ? 'success' : 'danger'}
+                    label={permissionGranted ? 'Hoạt động' : 'Chưa cấp quyền'}
+                    variant={permissionGranted ? 'success' : 'danger'}
                   />
                 </View>
 
                 <Text style={{ fontFamily: 'BeVietnam', fontSize: 13, color: p.muted, lineHeight: 18 }}>
-                  {isRunningInExpoGo()
-                    ? 'Expo Go vẫn hiển thị thông báo trong ứng dụng. Thông báo đẩy Android cần bản development build.'
-                    : permissionGranted
-                    ? 'Ứng dụng đã sẵn sàng nhận thông báo đẩy. Bạn sẽ nhận thông báo khi có việc cần xử lý hoặc sắp tới ca làm.'
-                    : 'Quyền thông báo chưa được bật. Vui lòng cấp quyền để nhận cảnh báo kịp thời.'}
+                  {permissionGranted
+                    ? 'Thông báo đẩy của hệ điều hành đã được kích hoạt. Bạn sẽ nhận thông báo trên thanh trạng thái thiết bị.'
+                    : 'Quyền thông báo hệ thống chưa được bật. Vui lòng cấp quyền để nhận thông báo đẩy trên thanh trạng thái.'}
                 </Text>
 
-                {!isRunningInExpoGo() && !permissionGranted && (
+                {!permissionGranted && (
                   <Button
                     title="Cấp quyền thông báo ngay"
                     variant="brand"
@@ -284,13 +301,15 @@ export function NotificationCenterModal({ visible, onClose }: Props) {
                   <Switch
                     value={prefs.enabled}
                     onValueChange={val => updatePrefs({ enabled: val })}
-                    trackColor={{ false: p.surfaceHigh, true: p.brand }}
+                    trackColor={switchTrackColor}
+                    thumbColor={switchThumbColor(prefs.enabled)}
+                    ios_backgroundColor={switchIosBg}
                   />
                 </View>
 
                 <View style={[styles.prefDivider, { backgroundColor: p.line }]} />
 
-                <View style={styles.prefRow}>
+                <View style={[styles.prefRow, !prefs.enabled && { opacity: 0.45 }]}>
                   <View style={{ flex: 1, paddingRight: 10 }}>
                     <Text style={[styles.prefLabel, { color: p.text }]}>Nhắc nhở chấm công ca làm việc</Text>
                     <Text style={[styles.prefDesc, { color: p.muted }]}>Nhắc trước giờ vào ca và khi kết thúc ca làm</Text>
@@ -299,14 +318,16 @@ export function NotificationCenterModal({ visible, onClose }: Props) {
                     value={prefs.attendanceReminders}
                     disabled={!prefs.enabled}
                     onValueChange={val => updatePrefs({ attendanceReminders: val })}
-                    trackColor={{ false: p.surfaceHigh, true: p.brand }}
+                    trackColor={switchTrackColor}
+                    thumbColor={switchThumbColor(prefs.attendanceReminders)}
+                    ios_backgroundColor={switchIosBg}
                   />
                 </View>
 
                 {isManagerUser && (
                   <>
                     <View style={[styles.prefDivider, { backgroundColor: p.line }]} />
-                    <View style={styles.prefRow}>
+                    <View style={[styles.prefRow, !prefs.enabled && { opacity: 0.45 }]}>
                       <View style={{ flex: 1, paddingRight: 10 }}>
                         <Text style={[styles.prefLabel, { color: p.text }]}>Đơn nghỉ phép chờ phê duyệt (Quản lý)</Text>
                         <Text style={[styles.prefDesc, { color: p.muted }]}>Thông báo ngay khi nhân viên nộp đơn cần duyệt</Text>
@@ -315,7 +336,9 @@ export function NotificationCenterModal({ visible, onClose }: Props) {
                         value={prefs.leaveApprovals}
                         disabled={!prefs.enabled}
                         onValueChange={val => updatePrefs({ leaveApprovals: val })}
-                        trackColor={{ false: p.surfaceHigh, true: p.brand }}
+                        trackColor={switchTrackColor}
+                        thumbColor={switchThumbColor(prefs.leaveApprovals)}
+                        ios_backgroundColor={switchIosBg}
                       />
                     </View>
                   </>
@@ -323,7 +346,7 @@ export function NotificationCenterModal({ visible, onClose }: Props) {
 
                 <View style={[styles.prefDivider, { backgroundColor: p.line }]} />
 
-                <View style={styles.prefRow}>
+                <View style={[styles.prefRow, !prefs.enabled && { opacity: 0.45 }]}>
                   <View style={{ flex: 1, paddingRight: 10 }}>
                     <Text style={[styles.prefLabel, { color: p.text }]}>Kết quả phê duyệt đơn nghỉ phép</Text>
                     <Text style={[styles.prefDesc, { color: p.muted }]}>Nhận kết quả khi CHT duyệt Cấp 1 hoặc HR duyệt Cấp 2</Text>
@@ -332,13 +355,15 @@ export function NotificationCenterModal({ visible, onClose }: Props) {
                     value={prefs.leaveStatusUpdates}
                     disabled={!prefs.enabled}
                     onValueChange={val => updatePrefs({ leaveStatusUpdates: val })}
-                    trackColor={{ false: p.surfaceHigh, true: p.brand }}
+                    trackColor={switchTrackColor}
+                    thumbColor={switchThumbColor(prefs.leaveStatusUpdates)}
+                    ios_backgroundColor={switchIosBg}
                   />
                 </View>
 
                 <View style={[styles.prefDivider, { backgroundColor: p.line }]} />
 
-                <View style={styles.prefRow}>
+                <View style={[styles.prefRow, !prefs.enabled && { opacity: 0.45 }]}>
                   <View style={{ flex: 1, paddingRight: 10 }}>
                     <Text style={[styles.prefLabel, { color: p.text }]}>Phát hành phiếu lương hàng tháng</Text>
                     <Text style={[styles.prefDesc, { color: p.muted }]}>Báo khi phòng nhân sự chốt kỳ công và phát hành lương</Text>
@@ -347,7 +372,9 @@ export function NotificationCenterModal({ visible, onClose }: Props) {
                     value={prefs.payrollAlerts}
                     disabled={!prefs.enabled}
                     onValueChange={val => updatePrefs({ payrollAlerts: val })}
-                    trackColor={{ false: p.surfaceHigh, true: p.brand }}
+                    trackColor={switchTrackColor}
+                    thumbColor={switchThumbColor(prefs.payrollAlerts)}
+                    ios_backgroundColor={switchIosBg}
                   />
                 </View>
               </Card>
@@ -365,6 +392,7 @@ export function NotificationCenterModal({ visible, onClose }: Props) {
                       title="Gửi test: Đơn nghỉ phép chờ duyệt"
                       disabled={testSending}
                       secondary
+                      style={p.dark ? { backgroundColor: p.surfaceHigh, borderColor: p.line } : undefined}
                       onPress={() => handleTestNotification('leave_approval')}
                     />
                   )}
@@ -372,18 +400,21 @@ export function NotificationCenterModal({ visible, onClose }: Props) {
                     title="Gửi test: Nhắc nhở chấm công vào ca"
                     disabled={testSending}
                     secondary
+                    style={p.dark ? { backgroundColor: p.surfaceHigh, borderColor: p.line } : undefined}
                     onPress={() => handleTestNotification('attendance_reminder')}
                   />
                   <Button
                     title="Gửi test: Kết quả duyệt đơn nghỉ phép"
                     disabled={testSending}
                     secondary
+                    style={p.dark ? { backgroundColor: p.surfaceHigh, borderColor: p.line } : undefined}
                     onPress={() => handleTestNotification('leave_status')}
                   />
                   <Button
                     title="Gửi test: Phát hành bảng lương mới"
                     disabled={testSending}
                     secondary
+                    style={p.dark ? { backgroundColor: p.surfaceHigh, borderColor: p.line } : undefined}
                     onPress={() => handleTestNotification('payroll')}
                   />
                 </View>

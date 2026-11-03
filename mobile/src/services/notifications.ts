@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import * as Device from 'expo-device';
+import { isRunningInExpoGo } from 'expo';
 import * as SecureStore from 'expo-secure-store';
 import { nativeNotifications as Notifications } from './native-notifications';
 
@@ -52,10 +53,12 @@ if (Notifications) {
   try {
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
+        shouldShowAlert: true,
         shouldShowBanner: true,
         shouldShowList: true,
         shouldPlaySound: true,
         shouldSetBadge: true,
+        priority: Notifications?.AndroidNotificationPriority?.MAX ?? Notifications?.AndroidNotificationPriority?.HIGH,
       }),
     });
   } catch (err) {
@@ -78,13 +81,14 @@ export async function setupPushNotificationsAsync(): Promise<{
   }
 
   try {
-    // Android notification channels configuration
+    // Android notification channels configuration with high priority & vibration
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('default', {
         name: 'Thông báo chung',
-        importance: Notifications.AndroidImportance.DEFAULT,
+        importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#208AEF',
+        showBadge: true,
       });
 
       await Notifications.setNotificationChannelAsync('approvals', {
@@ -92,6 +96,7 @@ export async function setupPushNotificationsAsync(): Promise<{
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 300, 200, 300],
         lightColor: '#F59E0B',
+        showBadge: true,
       });
 
       await Notifications.setNotificationChannelAsync('reminders', {
@@ -99,13 +104,15 @@ export async function setupPushNotificationsAsync(): Promise<{
         importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [0, 200, 100, 200],
         lightColor: '#10B981',
+        showBadge: true,
       });
 
       await Notifications.setNotificationChannelAsync('alerts', {
         name: 'Cảnh báo nhân sự',
-        importance: Notifications.AndroidImportance.HIGH,
+        importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 400, 200, 400],
         lightColor: '#EF4444',
+        showBadge: true,
       });
     }
 
@@ -121,9 +128,9 @@ export async function setupPushNotificationsAsync(): Promise<{
       return { granted: false, pushToken: null };
     }
 
-    // Get Expo push token (if supported device)
+    // Get Expo push token (if supported physical device & not running in Expo Go)
     let pushToken: string | null = null;
-    if (Device.isDevice) {
+    if (Device.isDevice && !isRunningInExpoGo()) {
       try {
         const tokenRes = await Notifications.getExpoPushTokenAsync();
         pushToken = tokenRes.data;
@@ -163,11 +170,32 @@ export async function sendLocalNotification(params: {
   const channelId = params.channelId || channelMap[params.type] || 'default';
   const notificationId = params.id || `notif-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 
-  // Schedule native push alert
+  // Schedule native push alert (OS notification)
   if (Notifications) {
     try {
-      const perm = await Notifications.getPermissionsAsync().catch(() => null);
+      // Ensure Android channel exists
+      if (Platform.OS === 'android') {
+        const existingChannel = await Notifications.getNotificationChannelAsync(channelId).catch(() => null);
+        if (!existingChannel) {
+          await Notifications.setNotificationChannelAsync(channelId, {
+            name: channelId === 'approvals' ? 'Duyệt đơn nghỉ phép' : channelId === 'reminders' ? 'Nhắc nhở chấm công' : channelId === 'alerts' ? 'Cảnh báo nhân sự' : 'Thông báo chung',
+            importance: channelId === 'approvals' || channelId === 'alerts' ? Notifications.AndroidImportance.MAX : Notifications.AndroidImportance.HIGH,
+            vibrationPattern: [0, 250, 250, 250],
+            showBadge: true,
+          }).catch(() => null);
+        }
+      }
+
+      // Check / request permission
+      let perm = await Notifications.getPermissionsAsync().catch(() => null);
+      if (perm?.status !== 'granted') {
+        perm = await Notifications.requestPermissionsAsync().catch(() => null);
+      }
+
       if (perm?.status === 'granted') {
+        // Trigger with Android channel support so OS system tray displays it properly
+        const trigger = Platform.OS === 'android' ? { channelId } : null;
+
         await Notifications.scheduleNotificationAsync({
           identifier: notificationId,
           content: {
@@ -180,10 +208,11 @@ export async function sendLocalNotification(params: {
               internalId: notificationId,
             },
             sound: true,
+            badge: 1,
             // @ts-expect-error Android specific channel
             channelId,
           },
-          trigger: null, // Send immediately
+          trigger,
         });
       }
     } catch (err) {

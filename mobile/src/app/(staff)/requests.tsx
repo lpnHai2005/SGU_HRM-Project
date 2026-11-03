@@ -820,12 +820,11 @@ export default function RequestsScreen() {
         style={{ flex: 1, backgroundColor: p.bg }}
         contentContainerStyle={[styles.content, { paddingBottom: 100 }]}
       >
-      {/* One segmented control: Nghỉ phép · Tăng ca · Duyệt đơn (managers) */}
+      {/* Segmented control chuyển đổi chính: Nghỉ phép · Tăng ca */}
       <View accessibilityRole="tablist" style={{ flexDirection: 'row', gap: 4, padding: 3, borderRadius: 6, backgroundColor: p.surfaceLow }}>
         {([
-          ['mine', 'Nghỉ phép', domainTab === 'leaves' && activeTab === 'my_leaves', () => { setDomainTab('leaves'); setActiveTab('my_leaves'); }],
-          ['ot', 'Tăng ca', domainTab === 'overtime', () => setDomainTab('overtime')],
-          ...(isManager ? [['approve', 'Duyệt đơn', domainTab === 'leaves' && activeTab === 'manager_approvals', () => { setDomainTab('leaves'); setActiveTab('manager_approvals'); }] as const] : []),
+          ['leaves', 'Nghỉ phép', domainTab === 'leaves', () => setDomainTab('leaves')],
+          ['overtime', 'Tăng ca', domainTab === 'overtime', () => setDomainTab('overtime')],
         ] as const).map(([key, label, active, select]) => (
           <Pressable
             key={key}
@@ -835,17 +834,36 @@ export default function RequestsScreen() {
             style={{ flex: 1, height: 36, borderRadius: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1, borderColor: active ? p.line : 'transparent', backgroundColor: active ? p.card : 'transparent' }}
           >
             <Text style={{ fontFamily: active ? 'BeVietnamBold' : 'BeVietnam', fontSize: 13, color: active ? p.text : p.muted }}>{label}</Text>
-            {key === 'approve' && pendingApprovalCount > 0 && (
-              <View style={{ minWidth: 18, paddingHorizontal: 5, height: 18, borderRadius: 4, backgroundColor: p.brand, alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ fontFamily: 'MonoBold', fontSize: 11, color: p.onBrand }}>{pendingApprovalCount}</Text>
-              </View>
-            )}
           </Pressable>
         ))}
       </View>
 
       {domainTab === 'leaves' ? (
         <>
+          {/* Scope switch: Đơn nghỉ phép của tôi vs Duyệt đơn nghỉ phép (chỉ hiển thị cho quản lý) */}
+          {isManager && (
+            <View accessibilityRole="tablist" style={{ flexDirection: 'row', gap: 4, padding: 3, borderRadius: 6, backgroundColor: p.surfaceLow }}>
+              {([['my_leaves', 'Đơn nghỉ phép của tôi'], ['manager_approvals', 'Duyệt đơn nghỉ phép']] as const).map(([key, label]) => {
+                const active = activeTab === key;
+                return (
+                  <Pressable
+                    key={key}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: active }}
+                    onPress={() => setActiveTab(key)}
+                    style={{ flex: 1, height: 34, borderRadius: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1, borderColor: active ? p.line : 'transparent', backgroundColor: active ? p.card : 'transparent' }}
+                  >
+                    <Text style={{ fontFamily: active ? 'BeVietnamBold' : 'BeVietnam', fontSize: 13, color: active ? p.text : p.muted }}>{label}</Text>
+                    {key === 'manager_approvals' && pendingApprovalCount > 0 && (
+                      <View style={{ minWidth: 18, paddingHorizontal: 5, height: 18, borderRadius: 4, backgroundColor: p.brand, alignItems: 'center', justifyContent: 'center' }}>
+                        <Text style={{ fontFamily: 'MonoBold', fontSize: 11, color: p.onBrand }}>{pendingApprovalCount}</Text>
+                      </View>
+                    )}
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
       {/* FEEDBACK MESSAGES & LOADING */}
       <LoadingBar active={loading || profileLoading || actionBusy} label="Đang đồng bộ dữ liệu nghỉ phép…" />
       {!!error && (

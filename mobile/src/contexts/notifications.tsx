@@ -7,6 +7,7 @@ import {
   useMemo,
   type ReactNode,
 } from 'react';
+import { AppState, type AppStateStatus } from 'react-native';
 import { useRouter } from 'expo-router';
 import { nativeNotifications as Notifications } from '@/services/native-notifications';
 import { useSession } from '@/contexts/session';
@@ -319,24 +320,113 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     [prefs, isManagerUser, notifications, userKey]
   );
 
+  // Polling backend operations notifications periodically and when app becomes active
+  useEffect(() => {
+    if (!token || !userKey) return;
+    let isMounted = true;
+
+    async function syncBackendNotifs() {
+      if (!token) return;
+      try {
+        const notices = await request<Array<{
+          id: string;
+          title: string;
+          href: string;
+          is_read: boolean;
+          category?: string;
+          tone?: string;
+          overtime_status?: string;
+          created_at?: string | null;
+        }>>('/operations/notifications', token);
+
+        if (!isMounted || !Array.isArray(notices)) return;
+
+        for (const notice of notices) {
+          if (notice.is_read) continue;
+
+          // Check if already in notifications list by backendNoticeId or matching title
+          const alreadyExists = notifications.some(
+            n => n.data?.backendNoticeId === notice.id || (n.title === notice.title && Math.abs(n.timestamp - Date.now()) < 60000)
+          );
+          if (alreadyExists) continue;
+
+          let notifType: AppNotificationType = 'system';
+          if (notice.category === 'Đăng ký OT' || notice.href?.includes('overtime')) {
+            notifType = isManagerUser ? 'leave_approval' : 'leave_status';
+          } else if (notice.category === 'Đơn từ & nghỉ phép' || notice.href?.includes('leave')) {
+            notifType = isManagerUser ? 'leave_approval' : 'leave_status';
+          } else if (notice.category === 'Chấm công' || notice.href?.includes('attendance') || notice.href?.includes('activity')) {
+            notifType = 'attendance_alert';
+          }
+
+          let actionUrl = '/(staff)/requests';
+          if (notice.href?.includes('activity') || notice.href?.includes('attendance')) {
+            actionUrl = '/(staff)/activity';
+          } else if (notice.href?.includes('dashboard')) {
+            actionUrl = '/(staff)/dashboard';
+          }
+
+          void dispatchNotification({
+            type: notifType,
+            title: notice.title,
+            body: notice.category ? `[${notice.category}] Nhấn để xem chi tiết.` : 'Nhấn để xem chi tiết trên ứng dụng.',
+            actionUrl,
+            data: {
+              backendNoticeId: notice.id,
+            },
+          });
+        }
+      } catch {
+        // Silent catch for network/offline
+      }
+    }
+
+    void syncBackendNotifs();
+
+    const interval = setInterval(syncBackendNotifs, 30000);
+
+    const appStateSub = AppState.addEventListener('change', (nextState: AppStateStatus) => {
+      if (nextState === 'active') {
+        void syncBackendNotifs();
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+      appStateSub.remove();
+    };
+  }, [token, userKey, isManagerUser, notifications, dispatchNotification]);
+
   const markAsRead = useCallback(
     (id: string) => {
       setNotifications(prev => {
+        const target = prev.find(n => n.id === id);
+        if (target?.data?.backendNoticeId && token) {
+          void request(`/operations/notifications/${encodeURIComponent(String(target.data.backendNoticeId))}/read`, token, {}).catch(() => {});
+        }
         const next = prev.map(n => (n.id === id ? { ...n, read: true } : n));
         void saveNotificationsToStorage(next, userKey);
         return next;
       });
     },
-    [userKey]
+    [userKey, token]
   );
 
   const markAllAsRead = useCallback(() => {
     setNotifications(prev => {
+      if (token) {
+        prev.forEach(n => {
+          if (!n.read && n.data?.backendNoticeId) {
+            void request(`/operations/notifications/${encodeURIComponent(String(n.data.backendNoticeId))}/read`, token, {}).catch(() => {});
+          }
+        });
+      }
       const next = prev.map(n => ({ ...n, read: true }));
       void saveNotificationsToStorage(next, userKey);
       return next;
     });
-  }, [userKey]);
+  }, [userKey, token]);
 
   const deleteNotification = useCallback(
     (id: string) => {
