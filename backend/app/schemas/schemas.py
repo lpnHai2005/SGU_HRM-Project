@@ -743,6 +743,8 @@ class PayrollOut(BaseModel):
     actual_working_days: Optional[float] = 0.0
     paid_leave_days: Optional[float] = 0.0
     unpaid_leave_days: Optional[float] = 0.0
+    absent_days: Optional[float] = 0.0
+    daily_standard_hours: Optional[float] = 8.0
     unworked_hours: Optional[float] = 0.0
     time_deduction_amount: Optional[float] = 0.0
     contract_salary: Optional[float] = 0.0

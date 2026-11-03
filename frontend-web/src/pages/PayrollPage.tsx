@@ -1401,6 +1401,8 @@ export function PayrollPage({ user }: PayrollPageProps) {
                           <div>Công thực tế: <strong style={{ color: 'var(--status-success)' }}>{selectedPayroll.actual_working_days ?? 0}</strong> ngày</div>
                           <div>Phép có lương: <strong>{selectedPayroll.paid_leave_days ?? 0}</strong> ngày</div>
                           <div>Nghỉ không lương: <strong style={{ color: (selectedPayroll.unpaid_leave_days || 0) > 0 ? 'var(--status-error)' : 'inherit' }}>{selectedPayroll.unpaid_leave_days ?? 0}</strong> ngày</div>
+                          <div>Vắng không phép: <strong style={{ color: (selectedPayroll.absent_days || 0) > 0 ? 'var(--status-error)' : 'inherit' }}>{selectedPayroll.absent_days ?? 0}</strong> ngày</div>
+                          <div>Định mức ca: <strong>{selectedPayroll.daily_standard_hours ?? 8}h/ngày</strong></div>
                           <div>Giờ công: <strong>{Number(selectedPayroll.attendance_hours || 0).toFixed(1)}h</strong></div>
                           <div>Trễ: <strong style={{ color: (selectedPayroll.attendance_late_minutes || 0) > 0 ? 'var(--status-error)' : 'inherit' }}>{selectedPayroll.attendance_late_minutes || 0}p</strong></div>
                           <div>OT duyệt: <strong style={{ color: 'var(--primary-color, #2563eb)' }}>{Number(selectedPayroll.attendance_approved_overtime_hours || 0).toFixed(1)}h</strong></div>
@@ -1532,14 +1534,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                                   </td>
                                 </tr>
                               )}
-                              {(selectedPayroll.time_deduction_amount || 0) > 0 && (
-                                <tr>
-                                  <td style={{ padding: '8px 12px' }}>Giảm trừ đi trễ / về sớm</td>
-                                  <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--status-error)' }}>
-                                    -{formatCurrency(selectedPayroll.time_deduction_amount)}
-                                  </td>
-                                </tr>
-                              )}
+
                               {(selectedPayroll.penalty_deduction || 0) > 0 && (
                                 <tr>
                                   <td style={{ padding: '8px 12px' }}>Khấu trừ khác / Phạt vi phạm</td>
@@ -2084,6 +2079,8 @@ export function PayrollPage({ user }: PayrollPageProps) {
                     <div>Công thực tế: <strong>{monthlyPrintData.attendance?.actual_working_days ?? selectedPayroll?.actual_working_days ?? 0} ngày</strong></div>
                     <div>Phép năm có lương: <strong>{monthlyPrintData.attendance?.paid_leave_days ?? selectedPayroll?.paid_leave_days ?? 0} ngày</strong></div>
                     <div>Nghỉ không lương: <strong>{monthlyPrintData.attendance?.unpaid_leave_days ?? selectedPayroll?.unpaid_leave_days ?? 0} ngày</strong></div>
+                    <div>Vắng không phép: <strong>{monthlyPrintData.attendance?.absent_days ?? selectedPayroll?.absent_days ?? 0} ngày</strong></div>
+                    <div>Định mức ca: <strong>{monthlyPrintData.attendance?.daily_standard_hours ?? selectedPayroll?.daily_standard_hours ?? 8}h/ngày</strong></div>
                     <div>Giờ công thực: <strong>{monthlyPrintData.attendance?.actual_work_hours ?? 0} giờ</strong></div>
                     <div>OT làm thêm: <strong>{monthlyPrintData.attendance?.approved_overtime_hours ?? monthlyPrintData.attendance?.actual_overtime_hours ?? 0} giờ</strong></div>
                     {(monthlyPrintData.attendance?.unworked_hours ?? selectedPayroll?.unworked_hours ?? 0) > 0 && (
