@@ -5,15 +5,20 @@ import { api } from '../services/api'
 import { AttendanceHero, type DashboardPageProps } from './DashboardPage'
 import { AttendancePage } from './AttendancePage'
 import { operationToday } from './ActivityPage'
+import { GreetingAlert } from '../components/common/GreetingAlert'
 import './OverviewPage.css'
-export function OverviewPage(props:DashboardPageProps) {
+
+export function OverviewPage(props: DashboardPageProps) {
   const isChainManager = props.user?.roles?.some((r: string) => ['ADMIN', 'HR_MANAGER', 'DIRECTOR'].includes(r))
   const branch = props.user?.roles?.includes('STORE_MANAGER') && !isChainManager
   const manager = isChainManager || branch
-  const [tab, setTab] = useState(manager ? 'manager' : 'personal')
+  const [tab, setTab] = useState<'manager' | 'personal'>(manager ? 'manager' : 'personal')
   const [period, setPeriod] = useState(operationToday().slice(0, 7))
-  const [stats, setStats] = useState<any>(null), [leaves, setLeaves] = useState<any>(null), [error, setError] = useState('')
+  const [stats, setStats] = useState<any>(null)
+  const [leaves, setLeaves] = useState<any>(null)
+  const [error, setError] = useState('')
   const navigate = useNavigate()
+
   useEffect(() => {
     if (!manager || tab !== 'manager') return
     let live = true
@@ -28,27 +33,57 @@ export function OverviewPage(props:DashboardPageProps) {
     })
     return () => { live = false }
   }, [manager, tab, period])
+
   const ratio = stats?.active_employees ? Math.round(stats.attendance_today.checked_in / stats.active_employees * 100) : 0
   const money = (v: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(v || 0)
+
   return (
     <div className="page-container overview-page">
-      <h1>{manager ? 'Tổng quan' : 'Trang chủ'}</h1>
-      {manager && (
-        <div className="overview-tabs">
-          <button className={`btn ${tab === 'manager' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setTab('manager')}>
-            {branch ? 'Quản lý Chi nhánh' : 'Quản lý Chuỗi'}
-          </button>
-          {branch && (
-            <button className={`btn ${tab === 'personal' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setTab('personal')}>
+      <GreetingAlert user={props.user} />
+
+      {/* 1. Header Row đồng bộ chuẩn class="page-title" & chốt action bar bên góc phải */}
+      <div className="fund-header-row page-header">
+        <div className="fund-header-title">
+          <h1 className="page-title">{manager ? (tab === 'personal' ? 'Trang chủ Cá nhân' : (branch ? 'Quản lý Chi nhánh' : 'Tổng quan')) : 'Trang chủ'}</h1>
+          <p className="page-subtitle">
+            {manager
+              ? (tab === 'personal' ? 'Theo dõi ca làm việc, chấm công và dữ liệu cá nhân của bạn' : (branch ? 'Theo dõi chỉ số và vận hành chi nhánh' : 'Báo cáo chỉ số vận hành và ngân sách toàn chuỗi TechZone'))
+              : 'Theo dõi ca làm việc, chấm công và thông tin cá nhân'}
+          </p>
+        </div>
+        {manager && (
+          <div className="fund-actions-bar overview-tabs">
+            <button
+              type="button"
+              className={`btn btn-sm ${tab === 'manager' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setTab('manager')}
+            >
+              {branch ? 'Quản lý Chi nhánh' : 'Quản lý Chuỗi'}
+            </button>
+            <button
+              type="button"
+              className={`btn btn-sm ${tab === 'personal' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setTab('personal')}
+            >
               Cá nhân
             </button>
-          )}
-        </div>
-      )}
+          </div>
+        )}
+      </div>
+
       {tab === 'personal' ? (
         <>
-          <AttendanceHero attendance={null} todayAttendance={null} onCheckIn={props.onCheckIn} onCheckOut={props.onCheckOut} isLoading={props.attendanceLoading} />
-          <AttendancePage user={props.user} personal />
+          <AttendanceHero
+            attendance={null}
+            todayAttendance={null}
+            onCheckIn={props.onCheckIn}
+            onCheckOut={props.onCheckOut}
+            isLoading={props.attendanceLoading}
+          />
+          {/* Thẻ div bên ngoài class="page-container", ngang hàng với class="attendance-hero" */}
+          <div className="personal-timesheet-card">
+            <AttendancePage user={props.user} personal />
+          </div>
         </>
       ) : (
         <>

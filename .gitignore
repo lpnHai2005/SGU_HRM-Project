@@ -51,3 +51,6 @@ uploads/
 backend/uploads/
 
 skills-lock.json
+
+*.hash
+backend/.req_checked.hash

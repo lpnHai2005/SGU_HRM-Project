@@ -52,7 +52,23 @@ def check_and_install_dependencies(python_executable, npm_cmd):
 
     # 1. Kiểm tra Backend (requirements.txt)
     req_file = os.path.join(BACKEND_DIR, "requirements.txt")
-    if os.path.exists(req_file):
+    cache_file = os.path.join(BACKEND_DIR, ".req_checked.hash")
+
+    need_python_check = True
+    if os.path.exists(req_file) and os.path.exists(cache_file):
+        try:
+            with open(req_file, "rb") as f_req, open(cache_file, "r", encoding="utf-8") as f_c:
+                import hashlib
+                current_hash = hashlib.md5(f_req.read()).hexdigest()
+                cached_data = f_c.read().strip().split("|")
+                if len(cached_data) == 2 and cached_data[0] == current_hash and cached_data[1] == python_executable:
+                    need_python_check = False
+        except Exception:
+            need_python_check = True
+
+    if not need_python_check:
+        print(f"{GREEN}✓ Thư viện Python (requirements.txt): Đã cài đầy đủ.{RESET}")
+    elif os.path.exists(req_file):
         check_script = (
             "import sys, importlib.metadata\n"
             "packages = []\n"
@@ -114,6 +130,14 @@ def check_and_install_dependencies(python_executable, npm_cmd):
                 print(f"{RED}❌ Lỗi khi cài đặt requirements.txt: {e}{RESET}")
         else:
             print(f"{GREEN}✓ Thư viện Python (requirements.txt): Đã cài đầy đủ.{RESET}")
+            try:
+                import hashlib
+                with open(req_file, "rb") as f_req:
+                    current_hash = hashlib.md5(f_req.read()).hexdigest()
+                with open(cache_file, "w", encoding="utf-8") as f_c:
+                    f_c.write(f"{current_hash}|{python_executable}")
+            except Exception:
+                pass
 
     # 2. Kiểm tra Frontend (node_modules & các package trong package.json)
     frontend_pkg_path = os.path.join(FRONTEND_DIR, "package.json")
@@ -203,8 +227,14 @@ def main():
 
     check_and_prepare_env()
 
-    venv_python = os.path.join(ROOT_DIR, "venv", "Scripts" if os.name == "nt" else "bin", "python.exe" if os.name == "nt" else "python")
-    python_executable = venv_python if os.path.isfile(venv_python) else sys.executable
+    # Ưu tiên tìm môi trường ảo backend/venv hoặc venv ở root
+    venv_candidates = [
+        os.path.join(BACKEND_DIR, "venv", "Scripts" if os.name == "nt" else "bin", "python.exe" if os.name == "nt" else "python"),
+        os.path.join(ROOT_DIR, "venv", "Scripts" if os.name == "nt" else "bin", "python.exe" if os.name == "nt" else "python"),
+        os.path.join(BACKEND_DIR, ".venv", "Scripts" if os.name == "nt" else "bin", "python.exe" if os.name == "nt" else "python"),
+        os.path.join(ROOT_DIR, ".venv", "Scripts" if os.name == "nt" else "bin", "python.exe" if os.name == "nt" else "python"),
+    ]
+    python_executable = next((p for p in venv_candidates if os.path.isfile(p)), sys.executable)
     print(f"👉 Python backend đang dùng: {GREEN}{python_executable}{RESET}")
 
     # Tìm lệnh npm phù hợp

@@ -31,6 +31,18 @@ const localDateStr = (d: Date) => {
   return `${y}-${m}-${day}`
 }
 
+const getShiftOrderRank = (shift: { shift_name?: string; shift_code?: string; shift_id?: number }) => {
+  const name = (shift.shift_name || '').toLowerCase()
+  const code = (shift.shift_code || '').toUpperCase()
+
+  // Thứ tự: Ca sáng bán lẻ -> Ca chiều bán lẻ -> Ca hành chính văn phòng -> Ca toàn thời gian cuối tuần
+  if (code === 'CA_SANG' || name.includes('sáng')) return 1
+  if (code === 'CA_CHIEU' || name.includes('chiều')) return 2
+  if (code === 'CA_HANH_CHINH' || name.includes('hành chính') || name.includes('văn phòng')) return 3
+  if (code === 'CA_FULL' || name.includes('toàn thời gian') || name.includes('cuối tuần')) return 4
+  return 10 + (shift.shift_id || 0)
+}
+
 export function WorkScheduleCalendar({
   view,
   selectedDate,
@@ -50,17 +62,17 @@ export function WorkScheduleCalendar({
   const navigate = useNavigate()
   const [hoveredCell, setHoveredCell] = useState<{ date: string; shiftId: number } | null>(null)
 
-  // Standard shifts (4 shifts)
+  // Standard shifts (4 shifts theo thứ tự: Ca sáng bán lẻ -> Ca chiều bán lẻ -> Ca hành chính văn phòng -> Ca toàn thời gian cuối tuần)
   const standardShifts = useMemo(() => {
-    if (lookups?.work_shifts && lookups.work_shifts.length > 0) {
-      return lookups.work_shifts
-    }
-    return [
-      { shift_id: 1, shift_name: 'Ca Sáng', start_time: '08:00:00', end_time: '16:00:00', work_hours: 7.0 },
-      { shift_id: 2, shift_name: 'Ca Chiều', start_time: '13:00:00', end_time: '21:00:00', work_hours: 7.0 },
-      { shift_id: 3, shift_name: 'Ca Full cuối tuần', start_time: '08:00:00', end_time: '21:00:00', work_hours: 11.0 },
-      { shift_id: 4, shift_name: 'Ca Hành chính', start_time: '08:00:00', end_time: '17:00:00', work_hours: 8.0 },
-    ]
+    const list = lookups?.work_shifts && lookups.work_shifts.length > 0
+      ? [...lookups.work_shifts]
+      : [
+          { shift_id: 1, shift_code: 'CA_SANG', shift_name: 'Ca sáng bán lẻ', start_time: '08:00:00', end_time: '16:00:00', work_hours: 7.0 },
+          { shift_id: 2, shift_code: 'CA_CHIEU', shift_name: 'Ca chiều bán lẻ', start_time: '13:00:00', end_time: '21:00:00', work_hours: 8.0 },
+          { shift_id: 4, shift_code: 'CA_HANH_CHINH', shift_name: 'Ca hành chính văn phòng', start_time: '08:00:00', end_time: '17:00:00', work_hours: 8.0 },
+          { shift_id: 3, shift_code: 'CA_FULL', shift_name: 'Ca toàn thời gian cuối tuần', start_time: '08:00:00', end_time: '21:00:00', work_hours: 11.0 },
+        ]
+    return list.sort((a, b) => getShiftOrderRank(a) - getShiftOrderRank(b))
   }, [lookups])
 
   // Current today string

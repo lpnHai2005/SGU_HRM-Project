@@ -263,6 +263,8 @@
   grid-template-columns: repeat(5, 1fr);
   gap: 14px;
   margin-bottom: 20px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 @media (max-width: 1280px) {
@@ -285,22 +287,31 @@
 
 .monthly-kpi-card {
   padding: 14px 16px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-md, 8px);
   background: var(--surface-card);
   border: 1px solid var(--border-default);
   box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 96px;
+  box-sizing: border-box;
 }
 
 .monthly-kpi-label {
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   color: var(--text-secondary);
-  margin-bottom: 4px;
+  margin-bottom: 6px;
 }
 
 .monthly-kpi-value {
   font-size: 20px;
   font-weight: 700;
   color: var(--text-primary);
+  font-family: var(--font-mono);
   margin: 0;
   display: flex;
   align-items: baseline;
@@ -678,17 +689,19 @@
   margin-bottom: 18px;
 }
 
-.hr-att-title {
-  margin: 0 0 6px 0;
-  font-size: 24px;
+.hr-att-title,
+.page-title {
+  margin: 0 0 4px 0;
+  font-size: 22px;
   font-weight: 700;
   color: var(--text-primary);
   letter-spacing: -0.02em;
 }
 
-.hr-att-subtitle {
+.hr-att-subtitle,
+.page-subtitle {
   margin: 0;
-  font-size: 13.5px;
+  font-size: 13px;
   color: var(--text-secondary);
   line-height: 1.5;
 }
@@ -699,12 +712,12 @@
 }
 
 .text-verified-notice {
-  color: #059669;
+  color: var(--status-success, #059669);
   font-weight: 600;
 }
 
 .text-late-notice {
-  color: #dc2626;
+  color: var(--status-error, #dc2626);
   font-weight: 600;
 }
 
@@ -713,26 +726,32 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  background: var(--status-success-bg, rgba(16, 185, 129, 0.08));
-  border: 1px solid var(--status-success-border, rgba(16, 185, 129, 0.25));
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
   border-radius: var(--radius-md, 8px);
-  padding: 10px 16px;
+  padding: 10px 14px;
   margin-top: 12px;
-  font-size: var(--text-sm, 13px);
-  color: var(--status-success, #059669);
+  font-size: var(--text-xs, 12px);
+  color: var(--text-secondary);
   font-family: var(--font-sans);
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .hr-policy-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--status-success, #059669);
+  color: var(--primary, #2563eb);
   flex-shrink: 0;
 }
 
 .hr-policy-text {
   line-height: 1.45;
+}
+
+.hr-policy-text strong {
+  color: var(--text-primary);
 }
 
 .badge-policy {
@@ -745,6 +764,7 @@
   border: 1px solid var(--status-info-border, rgba(14, 165, 233, 0.25));
   font-weight: 700;
   font-size: var(--text-xs, 12px);
+  font-family: var(--font-mono);
 }
 
 .badge-penalty {
@@ -757,12 +777,14 @@
   border: 1px solid var(--status-error-border, rgba(239, 68, 68, 0.25));
   font-weight: 700;
   font-size: var(--text-xs, 12px);
+  font-family: var(--font-mono);
 }
 
 .monthly-kpi-penalty-sub {
-  font-size: var(--text-xs, 12px);
+  font-size: 11px;
   color: var(--status-error, #dc2626);
   margin-top: 3px;
+  line-height: 1.35;
 }
 
 .hr-penalty-pill {
@@ -770,8 +792,10 @@
   align-items: center;
   font-size: 11px;
   font-weight: 700;
+  font-family: var(--font-mono);
   color: var(--status-error, #dc2626);
   background: var(--status-error-bg, rgba(239, 68, 68, 0.1));
+  border: 1px solid var(--status-error-border, rgba(239, 68, 68, 0.25));
   padding: 1px 6px;
   border-radius: var(--radius-sm, 4px);
   margin-top: 2px;
@@ -782,6 +806,7 @@
   align-items: center;
   font-size: 11px;
   font-weight: 600;
+  font-family: var(--font-mono);
   color: var(--status-success, #059669);
   background: var(--status-success-bg, rgba(16, 185, 129, 0.1));
   border: 1px solid var(--status-success-border, rgba(16, 185, 129, 0.25));
@@ -808,12 +833,14 @@
   align-items: end;
   gap: 12px;
   margin: 16px 0 20px 0;
-  padding: 14px 18px;
+  padding: 12px 16px;
   background: var(--surface-card);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md, 10px);
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow-sm);
   font-family: var(--font-sans);
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .hr-filter-item {
@@ -1018,8 +1045,10 @@
   overflow: hidden;
   border: 1px solid var(--border-default);
   background: var(--surface-card);
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow-sm);
   font-family: var(--font-sans);
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .hr-master-table-card .table-responsive {
@@ -2133,3 +2162,36 @@
 
 
 
+
+
+/* ==========================================================================
+   PRINT OPTIMIZATION PER SKILL-UI (Khối 6)
+   ========================================================================== */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 9.5pt !important;
+  }
+  aside, header, nav, .app-sidebar, .topbar, .hr-att-filter-card, .btn, .th-sticky-actions, .td-sticky-actions {
+    display: none !important;
+  }
+  .page-container {
+    padding: 0 !important;
+    max-width: 100% !important;
+  }
+  .hr-master-attendance-table {
+    width: 100% !important;
+    min-width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 8.5pt !important;
+  }
+  .hr-master-attendance-table th, .hr-master-attendance-table td {
+    border: 1px solid #ccc !important;
+    padding: 4px 6px !important;
+  }
+  @page {
+    size: A4 landscape;
+    margin: 10mm;
+  }
+}

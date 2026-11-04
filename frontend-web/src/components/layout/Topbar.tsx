@@ -17,6 +17,8 @@ export interface TopbarProps {
 const PAGE_TITLES: Record<string, string> = {
   'my-schedules': 'Lịch ca & Phân công',
   'my-attendance': 'Bảng công cá nhân',
+  'my-activity': 'Nhật ký làm việc',
+  'my-payroll': 'Lương & Hợp đồng',
   'work-schedules': 'Quản lý lịch làm việc',
   account: 'Tài khoản',
   stores: 'Quản lý cửa hàng',

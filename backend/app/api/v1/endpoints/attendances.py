@@ -1,3 +1,4 @@
+import logging
 from typing import Optional, List, Dict, Any
 import json
 import ipaddress
@@ -14,6 +15,8 @@ from app.schemas.schemas import (
 )
 
 from app.core.attendance import local_now, VIETNAM_TZ, availability, require_available, session_metrics, late_minutes, attendance_context, require_checkout_ready
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -247,12 +250,63 @@ async def get_my_attendance_summary(
     emp_row = emp_res.mappings().first()
     emp_name = emp_row["full_name"] if emp_row else None
 
-    # 1. Truy vấn các bản ghi chấm công trong tháng
+    # 1. Xác định ngày công chuẩn động theo lịch & ngày lễ từ view v_payroll_period_working_days
+    # (Chuẩn hóa linh hoạt theo Migration 20261031_flexible_standard_days_and_multi_tier_ot.sql)
+    standard_days = 26.0
+    std_info = {
+        "calendar_days": 0,
+        "sundays_count": 0,
+        "holidays_count": 0,
+        "auto_standard_days": 26.0,
+        "manual_standard_days": None,
+        "is_manual_override": False,
+        "is_locked": False,
+        "reason": None,
+    }
+    try:
+        std_res = await db.execute(
+            text("""
+                SELECT salary_period, calendar_days, sundays_count, holidays_count,
+                       auto_standard_days, manual_standard_days, locked_standard_days,
+                       applied_standard_days, is_manual_override, is_locked, reason
+                FROM public.v_payroll_period_working_days
+                WHERE salary_period = :period
+            """),
+            {"period": period_str}
+        )
+        std_row = std_res.mappings().first()
+        if std_row and std_row.get("applied_standard_days") is not None:
+            standard_days = float(std_row["applied_standard_days"])
+            std_info = {
+                "calendar_days": int(std_row.get("calendar_days") or 0),
+                "sundays_count": int(std_row.get("sundays_count") or 0),
+                "holidays_count": int(std_row.get("holidays_count") or 0),
+                "auto_standard_days": float(std_row["auto_standard_days"]) if std_row.get("auto_standard_days") is not None else standard_days,
+                "manual_standard_days": float(std_row["manual_standard_days"]) if std_row.get("manual_standard_days") is not None else None,
+                "is_manual_override": bool(std_row.get("is_manual_override")),
+                "is_locked": bool(std_row.get("is_locked")),
+                "reason": std_row.get("reason"),
+            }
+        else:
+            fn_res = await db.execute(text("SELECT public.fn_payroll_standard_days(:period)"), {"period": period_str})
+            val = fn_res.scalar_one_or_none()
+            if val is not None:
+                standard_days = float(val)
+                std_info["auto_standard_days"] = standard_days
+    except Exception as e:
+        logger.warning("Không thể lấy ngày công chuẩn từ v_payroll_period_working_days: %s", e)
+
+    # 2. Truy vấn các bản ghi chấm công trong tháng: đếm chính xác số ngày thực tế đi làm
     att_query = text("""
         SELECT
-            COUNT(DISTINCT CASE WHEN check_in_time IS NOT NULL THEN work_date END) as actual_days,
+            COUNT(DISTINCT CASE 
+                WHEN check_in_time IS NOT NULL 
+                  OR actual_work_hours > 0 
+                  OR status IN ('NORMAL', 'LATE', 'EARLY', 'LATE_AND_EARLY') 
+                THEN work_date 
+            END) as actual_days,
             COALESCE(SUM(actual_work_hours), 0) as total_hours,
-            COALESCE(SUM(late_minutes + early_minutes),0) as payroll_time_adjustment_minutes,
+            COALESCE(SUM(late_minutes + early_minutes), 0) as payroll_time_adjustment_minutes,
             COUNT(CASE WHEN late_minutes > 15 THEN 1 END) as late_count,
             COALESCE(SUM(CASE WHEN late_minutes > 15 THEN late_minutes ELSE 0 END), 0) as total_late_minutes,
             COUNT(CASE WHEN early_minutes > 0 THEN 1 END) as early_count,
@@ -275,6 +329,35 @@ async def get_my_attendance_summary(
     total_early_minutes = int(att_stats["total_early_minutes"] or 0)
     ot_shifts = int(att_stats["ot_shifts_count"] or 0)
     total_ot_hours = round(float(att_stats["total_ot_hours"] or 0), 1)
+
+    # 3. Phân tách OT đa tầng (Multi-tier OT: 1.5x ngày thường, 2.0x chủ nhật, 3.0x lễ/tết)
+    ot_tier_res = await db.execute(
+        text("""
+            SELECT 
+                COALESCE(SUM(ota.approved_hours), 0) as approved_hours,
+                COALESCE(SUM(CASE 
+                    WHEN h.holiday_date IS NOT NULL THEN 0 
+                    WHEN EXTRACT(DOW FROM a.work_date) = 0 THEN 0 
+                    ELSE COALESCE(ota.approved_hours, 0) 
+                END), 0) AS ot_normal_hours,
+                COALESCE(SUM(CASE 
+                    WHEN h.holiday_date IS NOT NULL THEN 0 
+                    WHEN EXTRACT(DOW FROM a.work_date) = 0 THEN COALESCE(ota.approved_hours, 0) 
+                    ELSE 0 
+                END), 0) AS ot_weekend_hours,
+                COALESCE(SUM(CASE 
+                    WHEN h.holiday_date IS NOT NULL THEN COALESCE(ota.approved_hours, 0) 
+                    ELSE 0 
+                END), 0) AS ot_holiday_hours
+            FROM attendances a
+            LEFT JOIN attendance_overtime_approvals ota ON a.attendance_id = ota.attendance_id AND ota.decision = 'APPROVED'
+            LEFT JOIN public.public_holidays h ON a.work_date = h.holiday_date
+            WHERE a.employee_id = :emp_id
+              AND TO_CHAR(a.work_date, 'YYYY-MM') = :period
+        """),
+        {"emp_id": target_emp_id, "period": period_str}
+    )
+    ot_tier = ot_tier_res.mappings().first() or {}
 
     # 2. Truy vấn quỹ phép & nghỉ thực tế trong kỳ từ bảng leave_requests & employees
     seniority_bonus = 0.0
@@ -347,11 +430,19 @@ async def get_my_attendance_summary(
         employee_id=target_emp_id,
         employee_name=emp_name,
         working_days={
-            "standard_days": 26,
+            "standard_days": standard_days,
             "actual_days": actual_days,
             "total_hours": total_hours,
             "payroll_time_adjustment_minutes": payroll_time_adjustment_minutes,
             "payroll_time_adjustment_hours": round(payroll_time_adjustment_minutes / 60.0, 2),
+            "calendar_days": std_info["calendar_days"],
+            "sundays_count": std_info["sundays_count"],
+            "holidays_count": std_info["holidays_count"],
+            "auto_standard_days": std_info["auto_standard_days"],
+            "manual_standard_days": std_info["manual_standard_days"],
+            "is_manual_override": std_info["is_manual_override"],
+            "is_locked": std_info["is_locked"],
+            "reason": std_info["reason"],
         },
         leave_quota={
             "annual_leave": annual_total,
@@ -375,6 +466,10 @@ async def get_my_attendance_summary(
         overtime={
             "shifts_count": ot_shifts,
             "hours": total_ot_hours,
+            "approved_hours": round(float(ot_tier.get("approved_hours") or 0), 1),
+            "normal_hours": round(float(ot_tier.get("ot_normal_hours") or 0), 1),
+            "weekend_hours": round(float(ot_tier.get("ot_weekend_hours") or 0), 1),
+            "holiday_hours": round(float(ot_tier.get("ot_holiday_hours") or 0), 1),
         },
         compensatory_leave={
             "total": compensatory_leave_days,
@@ -402,11 +497,15 @@ async def list_attendances(
                a.work_date, a.check_in_time, a.check_out_time,
                a.late_minutes, a.early_minutes, a.overtime_hours, a.actual_work_hours,
                a.status, a.notes, a.attendance_context,
-               COALESCE(a.attendance_context->>'schedule_status', 'LEGACY_UNKNOWN') AS schedule_status
+               COALESCE(a.attendance_context->>'schedule_status', 'LEGACY_UNKNOWN') AS schedule_status,
+               h.holiday_name,
+               (EXTRACT(DOW FROM a.work_date) = 0) AS is_weekend,
+               (h.holiday_date IS NOT NULL) AS is_holiday
         FROM attendances a
         JOIN employees e ON a.employee_id = e.employee_id
         LEFT JOIN stores s ON a.store_id = s.store_id
         LEFT JOIN work_shifts ws ON a.shift_id = ws.shift_id
+        LEFT JOIN public.public_holidays h ON a.work_date = h.holiday_date
         WHERE 1=1
     """
     params: Dict[str, Any] = {}
@@ -458,11 +557,15 @@ async def get_my_attendance_history(
                a.work_date, a.check_in_time, a.check_out_time,
                a.late_minutes, a.early_minutes, a.overtime_hours, a.actual_work_hours,
                a.status, a.notes, a.attendance_context,
-               COALESCE(a.attendance_context->>'schedule_status', 'LEGACY_UNKNOWN') AS schedule_status
+               COALESCE(a.attendance_context->>'schedule_status', 'LEGACY_UNKNOWN') AS schedule_status,
+               h.holiday_name,
+               (EXTRACT(DOW FROM a.work_date) = 0) AS is_weekend,
+               (h.holiday_date IS NOT NULL) AS is_holiday
         FROM attendances a
         JOIN employees e ON a.employee_id = e.employee_id
         LEFT JOIN stores s ON a.store_id = s.store_id
         LEFT JOIN work_shifts ws ON a.shift_id = ws.shift_id
+        LEFT JOIN public.public_holidays h ON a.work_date = h.holiday_date
         WHERE a.employee_id = :emp_id
     """
     params = {"emp_id": emp_id}

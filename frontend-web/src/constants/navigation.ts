@@ -63,9 +63,10 @@ export const NAVIGATION: NavItemConfig[] = [
   { id: 'payroll', path: '/payroll', label: 'Quản lý bảng lương', icon: 'wallet', section: 'Kinh doanh & Tài chính', roles: financeManagers },
   { id: 'settlements', path: '/settlements', label: 'Thanh toán & Đối soát', icon: 'checkCircle', section: 'Kinh doanh & Tài chính', roles: financeManagers },
   { id: 'reports', path: '/reports', label: 'Trung tâm báo cáo & KPI', icon: 'chart', section: 'Báo cáo', roles: ['DIRECTOR', 'HR_MANAGER'], hiddenFor: ['ADMIN'] },
-  { id: 'my-schedules', path: '/my-schedules', label: 'Lịch ca của tôi', icon: 'calendar', section: 'Cá nhân', roles: ['STORE_MANAGER'], hiddenFor: ['DIRECTOR', 'ADMIN'], requiresEmployee: true },
-  { id: 'my-attendance', path: '/my-attendance', label: 'Bảng công của tôi', icon: 'clock', section: 'Cá nhân', roles: ['STORE_MANAGER'], hiddenFor: ['DIRECTOR', 'ADMIN'], requiresEmployee: true },
-  { id: 'my-activity', path: '/my-activity', label: 'Nhật ký của tôi', icon: 'chart', section: 'Cá nhân', roles: ['STORE_MANAGER'], hiddenFor: ['DIRECTOR', 'ADMIN'], requiresEmployee: true },
+  { id: 'my-attendance', path: '/my-attendance', label: 'Bảng công cá nhân', icon: 'clock', section: 'Cá nhân', roles: managers, requiresEmployee: true },
+  { id: 'my-schedules', path: '/my-schedules', label: 'Lịch ca & Phân công', icon: 'calendar', section: 'Cá nhân', roles: managers, requiresEmployee: true },
+  { id: 'my-activity', path: '/my-activity', label: 'Nhật ký làm việc', icon: 'chart', section: 'Cá nhân', roles: managers, requiresEmployee: true },
+  { id: 'my-projects', path: '/my-projects', label: 'Dự án của tôi', icon: 'briefcase', section: 'Cá nhân', roles: managers },
   {
     id: 'my-requests',
     path: '/my-leave',
@@ -79,8 +80,7 @@ export const NAVIGATION: NavItemConfig[] = [
       { id: 'my-overtime-sub', path: '/my-overtime', label: 'Đơn OT', icon: 'clock' },
     ],
   },
-  { id: 'my-payroll', path: '/my-payroll', label: 'Lương & Hợp đồng của tôi', icon: 'wallet', section: 'Cá nhân', roles: managers, requiresEmployee: true },
-  { id: 'my-projects', path: '/my-projects', label: 'Dự án của tôi', icon: 'briefcase', section: 'Cá nhân', roles: managers },
+  { id: 'my-payroll', path: '/my-payroll', label: 'Lương & Hợp đồng', icon: 'wallet', section: 'Cá nhân', roles: managers, requiresEmployee: true },
   { id: 'my-attendance-staff', path: '/my-attendance', label: 'Bảng công cá nhân', icon: 'clock', section: 'Công việc của tôi', roles: ['EMPLOYEE'], requiresEmployee: true },
   { id: 'my-schedules-staff', path: '/my-schedules', label: 'Lịch ca & Phân công', icon: 'calendar', section: 'Công việc của tôi', roles: ['EMPLOYEE'], requiresEmployee: true },
   { id: 'my-activity-staff', path: '/my-activity', label: 'Nhật ký làm việc', icon: 'chart', section: 'Công việc của tôi', roles: ['EMPLOYEE'], requiresEmployee: true },
@@ -154,7 +154,7 @@ export function canAccessPath(path: string, user: NavigationUser | null | undefi
   if (path === '/reports') {
     return userRoles.includes('DIRECTOR') || userRoles.includes('HR_MANAGER')
   }
-  if (path === '/my-leave' || path === '/my-overtime' || path === '/my-projects') {
+  if (path === '/my-leave' || path === '/my-overtime' || path === '/my-projects' || path === '/my-attendance' || path === '/my-activity' || path === '/my-schedules' || path === '/my-payroll') {
     return Boolean(user.employee_id || userRoles.includes('ADMIN') || userRoles.includes('DIRECTOR') || userRoles.includes('HR_MANAGER') || userRoles.includes('STORE_MANAGER') || userRoles.includes('EMPLOYEE'))
   }
   if (path === '/overtime' || path === '/leave') {

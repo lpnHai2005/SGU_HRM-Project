@@ -1615,3 +1615,238 @@
 .work-schedules-page .employee-select-item {
   transition-property: color, border-color, box-shadow, transform;
 }
+
+
+/* =========================================================================
+   PERSONAL SCHEDULES REFINEMENTS (LICH CA & PHAN CONG CA NHAN)
+   ========================================================================= */
+.personal-schedules-container {
+  max-width: 1560px;
+  margin: 0 auto;
+}
+
+.personal-shift-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--action-primary) 10%, var(--surface-card));
+  border: 1px solid color-mix(in srgb, var(--action-primary) 25%, transparent);
+  transition: all 0.15s ease;
+  margin-top: 4px;
+}
+
+.personal-shift-card:hover {
+  background: color-mix(in srgb, var(--action-primary) 15%, var(--surface-card));
+  border-color: var(--action-primary);
+}
+
+.personal-shift-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--action-primary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.personal-shift-time {
+  font-size: 0.75rem;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+.personal-shift-store {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.personal-day-off {
+  font-size: 0.72rem;
+  color: var(--text-tertiary);
+  margin-top: 6px;
+  font-style: italic;
+}
+
+
+/* Personal Week View (Thời khóa biểu cá nhân theo buổi) */
+.work-schedule-card .calendar-week-table th.week-col-header.is-today,
+.work-schedule-card .calendar-week-table th.week-col-header.is-today.is-selected {
+  background: color-mix(in srgb, var(--action-primary) 14%, var(--surface-subtle)) !important;
+  border-left: 1.5px solid color-mix(in srgb, var(--action-primary) 35%, transparent) !important;
+  border-right: 1.5px solid color-mix(in srgb, var(--action-primary) 35%, transparent) !important;
+  position: relative;
+  z-index: 2;
+}
+
+.work-schedule-card .calendar-week-table th.week-col-header.is-today .week-header-dayname,
+.work-schedule-card .calendar-week-table th.week-col-header.is-today.is-selected .week-header-dayname {
+  color: var(--action-primary) !important;
+  font-weight: 800 !important;
+}
+
+.personal-schedules-container .calendar-week-table .today-badge-pill {
+  display: inline-block;
+  margin-top: 3px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  background: var(--action-primary);
+  color: #fff;
+  line-height: 1.2;
+}
+
+.personal-schedules-container .week-grid-cell {
+  height: auto;
+  min-height: 56px;
+  padding: 6px;
+  vertical-align: middle;
+}
+
+.work-schedule-card .calendar-week-table td.week-grid-cell.is-today-cell {
+  background: color-mix(in srgb, var(--action-primary) 5%, var(--surface-card)) !important;
+  border-left: 1.5px solid color-mix(in srgb, var(--action-primary) 35%, transparent) !important;
+  border-right: 1.5px solid color-mix(in srgb, var(--action-primary) 35%, transparent) !important;
+  position: relative;
+  z-index: 1;
+}
+
+/* Ô tổng kết của ngày hôm nay: không có border-top solid bên trên, giữ viền trái phải mảnh như cũ */
+.work-schedule-card .calendar-week-table td.week-grid-cell.week-summary-cell.is-today-cell {
+  background: color-mix(in srgb, var(--action-primary) 5%, var(--surface-card)) !important;
+  border-top: none !important;
+  border-left: 1.5px solid color-mix(in srgb, var(--action-primary) 35%, transparent) !important;
+  border-right: 1.5px solid color-mix(in srgb, var(--action-primary) 35%, transparent) !important;
+  position: relative;
+  z-index: 1;
+}
+
+.work-schedule-card .calendar-week-table tbody tr:last-child td.week-grid-cell.is-today-cell {
+  border-bottom: none !important;
+}
+
+.personal-schedules-container .week-shift-row {
+  min-height: auto;
+}
+
+.personal-schedules-container .week-shift-label-cell {
+  padding: 8px 10px;
+}
+
+/* Thẻ ca làm việc chữ nhật gọn gàng, không lặp giờ */
+.personal-week-card {
+  height: 100%;
+  min-height: unset;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--action-primary) 10%, var(--surface-card));
+  border: 1.5px solid var(--action-primary);
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--action-primary) 12%, transparent);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.personal-week-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px color-mix(in srgb, var(--action-primary) 20%, transparent);
+}
+
+.personal-week-card-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--action-primary);
+}
+
+/* Địa điểm không bị cắt cụt, tự động xuống dòng gọn gàng */
+.personal-week-card-store {
+  font-size: 0.725rem;
+  color: var(--text-secondary);
+  margin-top: 3px;
+  line-height: 1.35;
+  white-space: normal;
+  word-break: break-word;
+  overflow: visible;
+}
+
+.personal-week-empty-slot {
+  height: 100%;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  font-size: 1.1rem;
+  opacity: 0.35;
+  user-select: none;
+}
+
+/* Thẻ OT chữ nhật đồng bộ giao diện với thẻ ca chính */
+.personal-week-ot-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--status-warning, #d97706) 10%, var(--surface-card));
+  border: 1.5px solid color-mix(in srgb, var(--status-warning, #d97706) 40%, transparent);
+  margin-bottom: 4px;
+  transition: all 0.15s ease;
+}
+
+.personal-week-ot-card:last-child {
+  margin-bottom: 0;
+}
+
+.personal-week-ot-card:hover {
+  border-color: var(--status-warning, #d97706);
+  background: color-mix(in srgb, var(--status-warning, #d97706) 16%, var(--surface-card));
+}
+
+.personal-week-ot-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.775rem;
+  font-weight: 700;
+  color: var(--status-warning, #d97706);
+}
+
+.personal-week-ot-pill {
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  background: color-mix(in srgb, var(--status-warning, #d97706) 20%, transparent);
+  color: var(--status-warning, #d97706);
+  letter-spacing: 0.03em;
+}
+
+.personal-week-ot-meta {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  line-height: 1.3;
+  white-space: normal;
+  word-break: break-word;
+}
+
+/* Footer tổng kết tuần */
+.week-summary-row {
+  border-top: 1px solid var(--border-default);
+  background: var(--surface-subtle);
+}
+
+.week-summary-cell {
+  background: var(--surface-subtle);
+  font-weight: 700;
+}
