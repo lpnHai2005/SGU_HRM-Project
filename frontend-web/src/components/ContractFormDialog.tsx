@@ -5,7 +5,7 @@
  * Tích hợp EmployeeSearchSelect tìm kiếm nhân viên thời gian thực
  */
 import { useState, useEffect } from 'react'
-import { contractApi, type ContractCreateData, type ContractUpdateData } from '../services/contractService'
+import { contractApi, type ContractCreateData, type ContractUpdateData, type WorkingHoursPerWeek } from '../services/contractService'
 import { type Contract, type ContractType } from '../types/contract'
 import { Icons } from './common/Icons'
 import { EmployeeSearchSelect } from './common/EmployeeSearchSelect'
@@ -49,6 +49,7 @@ export function ContractFormDialog({
   const [endDate, setEndDate] = useState<string>('')
   const [basicSalary, setBasicSalary] = useState<string>('')
   const [insuranceSalary, setInsuranceSalary] = useState<string>('')
+  const [workingHours, setWorkingHours] = useState<WorkingHoursPerWeek>(48)
   const [signedDate, setSignedDate] = useState<string>(new Date().toISOString().split('T')[0])
   const [positionId, setPositionId] = useState<string>('')
   const [departmentId, setDepartmentId] = useState<string>('')
@@ -88,6 +89,7 @@ export function ContractFormDialog({
         setEndDate(contract.end_date || '')
         setBasicSalary(contract.basic_salary?.toString() || '')
         setInsuranceSalary(contract.insurance_salary?.toString() || '')
+        setWorkingHours((contract.working_hours_per_week as WorkingHoursPerWeek) || 48)
         setSignedDate(contract.signed_date)
         setPositionId(contract.position_id?.toString() || '')
         setDepartmentId(contract.department_id?.toString() || '')
@@ -101,6 +103,7 @@ export function ContractFormDialog({
         setEndDate(computeEndDate(today, 'FIXED_1_YEAR'))
         setBasicSalary('')
         setInsuranceSalary('')
+        setWorkingHours(48)
         setSignedDate(today)
         setPositionId('')
         setDepartmentId('')
@@ -185,6 +188,7 @@ export function ContractFormDialog({
           end_date: isIndefinite ? null : endDate,
           basic_salary: parseFloat(basicSalary),
           insurance_salary: basicSalary ? parseFloat(basicSalary) : undefined,
+          working_hours_per_week: workingHours,
           signed_date: signedDate,
           position_id: positionId ? parseInt(positionId) : undefined,
           department_id: departmentId ? parseInt(departmentId) : undefined,
@@ -201,6 +205,7 @@ export function ContractFormDialog({
           end_date: isIndefinite ? null : endDate,
           basic_salary: parseFloat(basicSalary),
           insurance_salary: basicSalary ? parseFloat(basicSalary) : undefined,
+          working_hours_per_week: workingHours,
           signed_date: signedDate,
           position_id: positionId ? parseInt(positionId) : undefined,
           department_id: departmentId ? parseInt(departmentId) : undefined,
@@ -392,6 +397,23 @@ export function ContractFormDialog({
                 />
               </div>
 
+              {/* Working hours per week - sp lương lấy giờ/ngày = giá trị này / 6 */}
+              <div className="form-group">
+                <label className="form-label" style={{ fontWeight: 500, fontSize: '13px', display: 'block', marginBottom: '6px' }}>
+                  Thời giờ làm việc <span style={{ color: 'var(--status-error)' }}>*</span>
+                </label>
+                <select
+                  className="form-select"
+                  value={workingHours}
+                  onChange={(e) => setWorkingHours(Number(e.target.value) as WorkingHoursPerWeek)}
+                  required
+                >
+                  <option value={48}>48 giờ/tuần</option>
+                  <option value={44}>44 giờ/tuần</option>
+                  <option value={40}>40 giờ/tuần</option>
+                </select>
+              </div>
+
               {/* Insurance Salary & Mandatory Deductions - Auto-computed */}
               {(() => {
                 const basicSalaryNum = parseFloat(basicSalary) || 0
@@ -402,7 +424,7 @@ export function ContractFormDialog({
                 const bhtnAmount = autoInsuranceSalary * 0.01
 
                 return (
-                  <div className="form-group">
+                  <div className="form-group" style={{ gridColumn: 'span 2' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                       <label className="form-label" style={{ fontWeight: 500, fontSize: '13px', margin: 0 }}>
                         Trích nộp Bảo hiểm Bắt buộc (10.5%)

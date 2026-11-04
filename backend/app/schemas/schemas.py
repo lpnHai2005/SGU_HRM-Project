@@ -289,6 +289,8 @@ class ContractCreate(BaseModel):
     end_date: Optional[date] = Field(None, description="Ngày kết thúc (NULL cho INDEFINITE)")
     basic_salary: float = Field(..., ge=0, description="Lương cơ bản (>= 0)")
     insurance_salary: Optional[float] = Field(None, ge=0, description="Lương đóng bảo hiểm")
+    # fn_employee_daily_standard_hours lấy giờ/ngày = giá trị này / 6 để tính lương giờ, OT, trừ giờ
+    working_hours_per_week: Optional[Literal[40, 44, 48]] = Field(None, description="Thời giờ làm việc (giờ/tuần), mặc định 48")
     signed_date: date = Field(..., description="Ngày ký hợp đồng")
     position_id: Optional[int] = Field(None, description="ID chức vụ (snapshot)")
     department_id: Optional[int] = Field(None, description="ID phòng ban (snapshot)")
@@ -310,6 +312,7 @@ class ContractUpdate(BaseModel):
     end_date: Optional[date] = None
     basic_salary: Optional[float] = Field(None, ge=0)
     insurance_salary: Optional[float] = Field(None, ge=0)
+    working_hours_per_week: Optional[Literal[40, 44, 48]] = None
     signed_date: Optional[date] = None
     position_id: Optional[int] = None
     department_id: Optional[int] = None
