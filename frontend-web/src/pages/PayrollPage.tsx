@@ -4,11 +4,12 @@ import { Icons } from '../components/common/Icons'
 import { StatCard } from '../components/common/StatCard'
 import { EmptyState } from '../components/common/EmptyState'
 import { formatCurrency, formatDate } from '../utils/formatters'
-import type { Payroll, PayrollPeriodWorkingDays, PayrollImportStatusResponse } from '../types'
+import type { Payroll, PayrollPeriodWorkingDays, PayrollImportStatusResponse, Attendance } from '../types'
 import { PayrollImportDialog } from './PayrollImportDialog'
-import { payrollApi } from '../services/api'
+import { payrollApi, attendanceApi } from '../services/api'
 import './PayslipPrint.css'
 import './MyPayslipPage.css'
+import { PayslipHoverItem, ActualBaseSalaryHoverItem } from '../components/common/PayslipHoverItem'
 import { PayrollAdjustmentDialog } from './PayrollAdjustmentDialog'
 import { PayrollRegulationDialog } from './PayrollRegulationDialog'
 import { AttendanceRegulationDialog } from './AttendanceRegulationDialog'
@@ -81,6 +82,24 @@ function getStatusLabel(status?: string): string {
   }
 }
 
+function getActualBaseSalaryFormula(payroll?: any): string | undefined {
+  if (!payroll) return undefined
+  if (payroll.actual_base_salary_formula) return payroll.actual_base_salary_formula
+
+  const contractSalary = Number(payroll.contract_salary) || 0
+  const stdDays = Number(payroll.standard_working_days) || 26
+  const actDays = Number(payroll.actual_working_days) || 0
+  const dailyPrice = stdDays > 0 ? Math.round(contractSalary / stdDays) : 0
+  const timeDed = Number(payroll.time_deduction_amount) || 0
+
+  const baseDeductItem = payroll.details?.find((d: any) => d.item_code === 'BASE_SALARY_DEDUCTION')
+  if (timeDed > 0) {
+    const dedFormula = baseDeductItem?.calculation_formula || ('Khấu trừ: -' + formatCurrency(timeDed))
+    return 'Lương HĐ: ' + formatCurrency(contractSalary) + ' (Đơn giá ' + formatCurrency(dailyPrice) + '/ngày) | Thực tế: ' + actDays + '/' + stdDays + ' ngày | ' + dedFormula
+  }
+  return 'Lương HĐ: ' + formatCurrency(contractSalary) + ' ÷ ' + stdDays + ' ngày chuẩn × ' + actDays + ' ngày thực tế'
+}
+
 function parsePrintDate(dateStr?: string) {
   if (dateStr) {
     if (dateStr.includes('/')) {
@@ -136,6 +155,31 @@ export function PayrollPage({ user }: PayrollPageProps) {
   const [selectedAnnualEmployeeId, setSelectedAnnualEmployeeId] = useState<number>(() => user?.employee_id || 0)
   const [annualData, setAnnualData] = useState<any>(null)
   const [annualLoading, setAnnualLoading] = useState(false)
+  const [lateAttendances, setLateAttendances] = useState<Attendance[]>([])
+
+  // Load late attendances when selectedPayroll changes
+  useEffect(() => {
+    if (!selectedPayroll) {
+      setLateAttendances([])
+      return
+    }
+    let active = true
+    const loadLate = async () => {
+      try {
+        const period = selectedPayroll.salary_period
+        const empId = selectedPayroll.employee_id
+        const atts = await attendanceApi.getAll({ period, employee_id: empId }).catch(() => [])
+        if (active) {
+          const lates = (atts || []).filter(a => (a.late_minutes || 0) > 0)
+          setLateAttendances(lates)
+        }
+      } catch {
+        if (active) setLateAttendances([])
+      }
+    }
+    loadLate()
+    return () => { active = false }
+  }, [selectedPayroll?.payroll_id, selectedPayroll?.salary_period, selectedPayroll?.employee_id])
 
   // Subform close and select handlers with slide animation
   const handleClosePayrollDetail = () => {
@@ -322,6 +366,43 @@ export function PayrollPage({ user }: PayrollPageProps) {
   const [isMonthlyPrintModalOpen, setIsMonthlyPrintModalOpen] = useState(false)
   const [isAnnualPrintModalOpen, setIsAnnualPrintModalOpen] = useState(false)
   const [monthlyPrintData, setMonthlyPrintData] = useState<any>(null)
+
+  const printableEarnings = useMemo(() => {
+    if (!monthlyPrintData?.earnings) return []
+    return monthlyPrintData.earnings.map((e: any) => {
+      if (e.item_code === 'CONTRACT_SALARY') {
+        const contractSalary = Number(monthlyPrintData.summary?.contract_salary) || 0
+        const stdDays = Number(monthlyPrintData.attendance?.standard_working_days ?? 26)
+        const actDays = Number(monthlyPrintData.attendance?.actual_working_days ?? 0)
+        const paidDays = Number(monthlyPrintData.attendance?.paid_leave_days ?? 0)
+        const dailyPrice = stdDays > 0 ? Math.round(contractSalary / stdDays) : 0
+        const earnedTotal = Math.round((actDays + paidDays) * dailyPrice)
+        const timeDed = Number(monthlyPrintData.summary?.time_deduction_amount) || 0
+        const actualBase = Number(monthlyPrintData.summary?.actual_base_salary ?? e.amount)
+
+        let formula = ''
+        if (timeDed > 0) {
+          formula = 'Lương theo công: ' + formatCurrency(earnedTotal) + ' (' + actDays + ' ngày làm' + (paidDays > 0 ? (' + ' + paidDays + ' phép') : '') + ') | Trừ thời gian: -' + formatCurrency(timeDed)
+        } else {
+          formula = 'Lương HĐ: ' + formatCurrency(contractSalary) + ' ÷ ' + stdDays + ' ngày chuẩn × ' + actDays + ' ngày thực tế'
+        }
+
+        return {
+          ...e,
+          item_name: 'Lương cơ bản theo ngày công thực tế',
+          name: 'Lương cơ bản theo ngày công thực tế',
+          amount: actualBase,
+          calculation_formula: formula,
+        }
+      }
+      return e
+    })
+  }, [monthlyPrintData])
+
+  const printableDeductions = useMemo(() => {
+    if (!monthlyPrintData?.deductions) return []
+    return monthlyPrintData.deductions.filter((d: any) => d.item_code !== 'BASE_SALARY_DEDUCTION')
+  }, [monthlyPrintData])
   const [workingDaysInfo, setWorkingDaysInfo] = useState<PayrollPeriodWorkingDays | null>(null)
 
   const fetchWorkingDays = useCallback(async (period: string) => {
@@ -563,6 +644,23 @@ export function PayrollPage({ user }: PayrollPageProps) {
     setActionLoading(true)
     try {
       const printData = await payrollApi.getPayslip(payroll.payroll_id)
+      if (printData && printData.attendance) {
+        let lateCount = printData.attendance.late_count ?? 0
+        let penCount = printData.attendance.penalized_late_count ?? 0
+        if (!lateCount && (printData.attendance.late_minutes || 0) > 0) {
+          try {
+            const atts = await attendanceApi.getAll({ period: payroll.salary_period, employee_id: payroll.employee_id })
+            const lates = (atts || []).filter(a => (a.late_minutes || 0) > 0)
+            lateCount = lates.length
+            penCount = lates.filter(a => (a.late_minutes || 0) > 15).length
+          } catch {
+            penCount = Math.round((payroll.penalty_deduction || 0) / 50000)
+            lateCount = penCount || (printData.attendance.late_minutes > 0 ? 1 : 0)
+          }
+        }
+        printData.attendance.late_count = lateCount
+        printData.attendance.penalized_late_count = penCount
+      }
 
       setMonthlyPrintData(printData)
       setIsMonthlyPrintModalOpen(true)
@@ -1397,6 +1495,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                           Thống kê ngày công & Chấm công
                         </div>
                         <div style={{ display: 'flex', gap: '10px 16px', flexWrap: 'wrap' }}>
+                          <div>Lương hợp đồng: <strong style={{ color: "var(--color-primary, #2563eb)" }}>{formatCurrency(selectedPayroll.contract_salary)}</strong></div>
                           <div>Công chuẩn: <strong>{selectedPayroll.standard_working_days ?? 26}</strong> ngày</div>
                           <div>Công thực tế: <strong style={{ color: 'var(--status-success)' }}>{selectedPayroll.actual_working_days ?? 0}</strong> ngày</div>
                           <div>Phép có lương: <strong>{selectedPayroll.paid_leave_days ?? 0}</strong> ngày</div>
@@ -1404,6 +1503,9 @@ export function PayrollPage({ user }: PayrollPageProps) {
                           <div>Vắng không phép: <strong style={{ color: (selectedPayroll.absent_days || 0) > 0 ? 'var(--status-error)' : 'inherit' }}>{selectedPayroll.absent_days ?? 0}</strong> ngày</div>
                           <div>Định mức ca: <strong>{selectedPayroll.daily_standard_hours ?? 8}h/ngày</strong></div>
                           <div>Giờ công: <strong>{Number(selectedPayroll.attendance_hours || 0).toFixed(1)}h</strong></div>
+                          {lateAttendances.length > 0 && (
+                            <div>Đi muộn: <strong style={{ color: 'var(--status-error)' }}>{lateAttendances.length} lần</strong></div>
+                          )}
                           <div>Trễ: <strong style={{ color: (selectedPayroll.attendance_late_minutes || 0) > 0 ? 'var(--status-error)' : 'inherit' }}>{selectedPayroll.attendance_late_minutes || 0}p</strong></div>
                           <div>OT duyệt: <strong style={{ color: 'var(--primary-color, #2563eb)' }}>{Number(selectedPayroll.attendance_approved_overtime_hours || 0).toFixed(1)}h</strong></div>
                           {(selectedPayroll.unworked_hours || 0) > 0 && (
@@ -1411,6 +1513,8 @@ export function PayrollPage({ user }: PayrollPageProps) {
                           )}
                         </div>
                       </div>
+
+
 
                       {/* Thu nhập & Khấu trừ Breakdown Grid */}
                       <div className="mypayslip-breakdown-grid">
@@ -1422,75 +1526,157 @@ export function PayrollPage({ user }: PayrollPageProps) {
                           </div>
                           <table className="table" style={{ width: '100%', fontSize: '12.5px', margin: 0 }}>
                             <tbody>
-                              <tr>
-                                <td style={{ padding: '8px 12px' }}>Lương hợp đồng (thỏa thuận)</td>
-                                <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
-                                  {formatCurrency(selectedPayroll.contract_salary)}
-                                </td>
-                              </tr>
-                              <tr>
-                                <td style={{ padding: '8px 12px' }}>Lương cơ bản theo ngày công thực tế</td>
-                                <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
-                                  {formatCurrency(selectedPayroll.actual_base_salary)}
-                                </td>
-                              </tr>
-                              {(selectedPayroll.position_allowance || 0) > 0 && (
                                 <tr>
-                                  <td style={{ padding: '8px 12px' }}>Phụ cấp chức vụ</td>
+                                  <td style={{ padding: '8px 12px' }}>Lương hợp đồng (thỏa thuận)</td>
                                   <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
-                                    {formatCurrency(selectedPayroll.position_allowance)}
+                                    {formatCurrency(selectedPayroll.contract_salary)}
                                   </td>
                                 </tr>
-                              )}
-                              {(selectedPayroll.seniority_allowance || 0) > 0 && (
                                 <tr>
-                                  <td style={{ padding: '8px 12px' }}>Phụ cấp thâm niên</td>
-                                  <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
-                                    {formatCurrency(selectedPayroll.seniority_allowance)}
+                                  <td style={{ padding: '8px 12px' }}>
+                                    <ActualBaseSalaryHoverItem payroll={selectedPayroll} lateRecords={lateAttendances} />
+                                  </td>
+                                  <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
+                                    {(selectedPayroll.actual_base_salary || 0) > 0 ? ('+' + formatCurrency(selectedPayroll.actual_base_salary)) : formatCurrency(0)}
                                   </td>
                                 </tr>
-                              )}
-                              {(selectedPayroll.project_allowance || 0) > 0 && (
-                                <tr>
-                                  <td style={{ padding: '8px 12px' }}>Phụ cấp dự án</td>
-                                  <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
-                                    {formatCurrency(selectedPayroll.project_allowance)}
-                                  </td>
-                                </tr>
-                              )}
-                              {(selectedPayroll.meal_transport_allowance || 0) > 0 && (
-                                <tr>
-                                  <td style={{ padding: '8px 12px' }}>Phụ cấp ăn trưa & đi lại</td>
-                                  <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
-                                    {formatCurrency(selectedPayroll.meal_transport_allowance)}
-                                  </td>
-                                </tr>
-                              )}
-                              {(selectedPayroll.commission_amount || 0) > 0 && (
-                                <tr>
-                                  <td style={{ padding: '8px 12px' }}>Hoa hồng doanh số bán hàng</td>
-                                  <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
-                                    {formatCurrency(selectedPayroll.commission_amount)}
-                                  </td>
-                                </tr>
-                              )}
-                              {(selectedPayroll.overtime_salary || 0) > 0 && (
-                                <tr>
-                                  <td style={{ padding: '8px 12px' }}>Tiền làm thêm giờ (OT)</td>
-                                  <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
-                                    {formatCurrency(selectedPayroll.overtime_salary)}
-                                  </td>
-                                </tr>
-                              )}
-                              {(selectedPayroll.bonus_amount || 0) > 0 && (
-                                <tr>
-                                  <td style={{ padding: '8px 12px' }}>Thưởng hiệu quả / năng suất</td>
-                                  <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
-                                    {formatCurrency(selectedPayroll.bonus_amount)}
-                                  </td>
-                                </tr>
-                              )}
-                            </tbody>
+                                {(selectedPayroll.position_allowance || 0) > 0 && (
+                                  <tr>
+                                    <td style={{ padding: '8px 12px' }}>
+                                      <PayslipHoverItem
+                                        label="Phụ cấp chức vụ"
+                                        tooltipTitle="Phụ cấp trách nhiệm chức vụ"
+                                        tooltipLines={[
+                                          { label: 'Căn cứ:', value: 'Định mức chức danh công việc theo HĐLĐ' },
+                                          { label: 'Mức phụ cấp:', value: '+' + formatCurrency(selectedPayroll.position_allowance), isHighlight: true, color: '#10b981' }
+                                        ]}
+                                      />
+                                    </td>
+                                    <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                                      +{formatCurrency(selectedPayroll.position_allowance)}
+                                    </td>
+                                  </tr>
+                                )}
+                                {(selectedPayroll.seniority_allowance || 0) > 0 && (
+                                  <tr>
+                                    <td style={{ padding: '8px 12px' }}>
+                                      <PayslipHoverItem
+                                        label="Phụ cấp thâm niên"
+                                        tooltipTitle="Phụ cấp thâm niên công tác"
+                                        tooltipLines={[
+                                          { label: 'Căn cứ:', value: 'Thời gian cống hiến thực tế tại công ty' },
+                                          { label: 'Mức phụ cấp:', value: '+' + formatCurrency(selectedPayroll.seniority_allowance), isHighlight: true, color: '#10b981' }
+                                        ]}
+                                      />
+                                    </td>
+                                    <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                                      +{formatCurrency(selectedPayroll.seniority_allowance)}
+                                    </td>
+                                  </tr>
+                                )}
+                                {(selectedPayroll.project_allowance || 0) > 0 && (
+                                  <tr>
+                                    <td style={{ padding: '8px 12px' }}>
+                                      <PayslipHoverItem
+                                        label="Phụ cấp dự án"
+                                        tooltipTitle="Phụ cấp tham gia dự án & chiến dịch"
+                                        tooltipLines={[
+                                          { label: 'Căn cứ:', value: 'Vai trò thành viên dự án đang hoạt động' },
+                                          { label: 'Mức phụ cấp:', value: '+' + formatCurrency(selectedPayroll.project_allowance), isHighlight: true, color: '#10b981' }
+                                        ]}
+                                      />
+                                    </td>
+                                    <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                                      +{formatCurrency(selectedPayroll.project_allowance)}
+                                    </td>
+                                  </tr>
+                                )}
+                                {(selectedPayroll.meal_transport_allowance || 0) > 0 && (
+                                  <tr>
+                                    <td style={{ padding: '8px 12px' }}>
+                                      <PayslipHoverItem
+                                        label="Phụ cấp ăn trưa & đi lại"
+                                        tooltipTitle="Chế độ phúc lợi cố định"
+                                        tooltipLines={[
+                                          { label: 'Căn cứ:', value: 'Chế độ phụ cấp cơm trưa & xăng xe toàn chuỗi' },
+                                          { label: 'Mức phụ cấp:', value: '+' + formatCurrency(selectedPayroll.meal_transport_allowance), isHighlight: true, color: '#10b981' }
+                                        ]}
+                                      />
+                                    </td>
+                                    <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                                      +{formatCurrency(selectedPayroll.meal_transport_allowance)}
+                                    </td>
+                                  </tr>
+                                )}
+                                {(selectedPayroll.productivity_bonus || 0) > 0 && (
+                                  <tr>
+                                    <td style={{ padding: '8px 12px' }}>
+                                      <PayslipHoverItem
+                                        label="Thưởng năng suất hoàn thành vượt KPI"
+                                        tooltipTitle="Thưởng nóng chỉ tiêu KPI"
+                                        tooltipLines={[
+                                          { label: 'Căn cứ:', value: 'Đạt hoặc vượt chỉ tiêu định mức doanh số KPI' },
+                                          { label: 'Mức thưởng:', value: '+' + formatCurrency(selectedPayroll.productivity_bonus), isHighlight: true, color: '#10b981' }
+                                        ]}
+                                      />
+                                    </td>
+                                    <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                                      +{formatCurrency(selectedPayroll.productivity_bonus)}
+                                    </td>
+                                  </tr>
+                                )}
+                                {(selectedPayroll.commission_amount || 0) > 0 && (
+                                  <tr>
+                                    <td style={{ padding: '8px 12px' }}>
+                                      <PayslipHoverItem
+                                        label="Hoa hồng bán lẻ thiết bị"
+                                        tooltipTitle="Hoa hồng doanh số bán lẻ POS"
+                                        tooltipLines={[
+                                          { label: 'Công thức:', value: '1% Doanh số Phone & Laptop + 3% Phụ kiện' },
+                                          { label: 'Tiền hoa hồng:', value: '+' + formatCurrency(selectedPayroll.commission_amount), isHighlight: true, color: '#10b981' }
+                                        ]}
+                                      />
+                                    </td>
+                                    <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                                      +{formatCurrency(selectedPayroll.commission_amount)}
+                                    </td>
+                                  </tr>
+                                )}
+                                {(selectedPayroll.overtime_salary || 0) > 0 && (
+                                  <tr>
+                                    <td style={{ padding: '8px 12px' }}>
+                                      <PayslipHoverItem
+                                        label="Làm thêm giờ (OT)"
+                                        tooltipTitle="Tiền lương làm thêm giờ (Overtime)"
+                                        tooltipLines={[
+                                          { label: 'Công thức:', value: 'Giờ OT duyệt × Đơn giá giờ × Hệ số làm thêm' },
+                                          { label: 'Tiền lương OT:', value: '+' + formatCurrency(selectedPayroll.overtime_salary), isHighlight: true, color: '#10b981' }
+                                        ]}
+                                      />
+                                    </td>
+                                    <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                                      +{formatCurrency(selectedPayroll.overtime_salary)}
+                                    </td>
+                                  </tr>
+                                )}
+                                {(selectedPayroll.holiday_bonus || 0) > 0 && (
+                                  <tr>
+                                    <td style={{ padding: '8px 12px' }}>
+                                      <PayslipHoverItem
+                                        label="Thưởng Lễ / Tết"
+                                        tooltipTitle="Thưởng Lễ / Tết chính thức"
+                                        tooltipLines={[
+                                          { label: 'Căn cứ:', value: 'Chính sách tiền thưởng Lễ/Tết của công ty' },
+                                          { label: 'Mức tiền thưởng:', value: '+' + formatCurrency(selectedPayroll.holiday_bonus), isHighlight: true, color: '#10b981' }
+                                        ]}
+                                      />
+                                    </td>
+                                    <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                                      +{formatCurrency(selectedPayroll.holiday_bonus)}
+                                    </td>
+                                  </tr>
+                                )}
+                              </tbody>
                           </table>
                         </div>
 
@@ -1504,7 +1690,14 @@ export function PayrollPage({ user }: PayrollPageProps) {
                             <tbody>
                               <tr>
                                 <td style={{ padding: '8px 12px' }}>
-                                  {selectedPayroll?.details?.find(d => d.item_code === 'BHXH')?.item_name || 'Bảo hiểm Xã hội (BHXH)'}
+                                  <PayslipHoverItem
+                                    label={selectedPayroll?.details?.find(d => d.item_code === 'BHXH')?.item_name || 'Bảo hiểm Xã hội (BHXH)'}
+                                    tooltipTitle="Bảo hiểm Xã hội bắt buộc (8%)"
+                                    tooltipLines={[
+                                      { label: 'Tỷ lệ người lao động:', value: '8.00% trích nộp' },
+                                      { label: 'Mức trích nộp:', value: '-' + formatCurrency(selectedPayroll?.details?.find(d => d.item_code === 'BHXH')?.amount ?? selectedPayroll.bhxh_amount), isHighlight: true, color: '#ef4444' }
+                                    ]}
+                                  />
                                 </td>
                                 <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--status-error)' }}>
                                   -{formatCurrency(selectedPayroll?.details?.find(d => d.item_code === 'BHXH')?.amount ?? selectedPayroll.bhxh_amount)}
@@ -1512,7 +1705,14 @@ export function PayrollPage({ user }: PayrollPageProps) {
                               </tr>
                               <tr>
                                 <td style={{ padding: '8px 12px' }}>
-                                  {selectedPayroll?.details?.find(d => d.item_code === 'BHYT')?.item_name || 'Bảo hiểm Y tế (BHYT)'}
+                                  <PayslipHoverItem
+                                    label={selectedPayroll?.details?.find(d => d.item_code === 'BHYT')?.item_name || 'Bảo hiểm Y tế (BHYT)'}
+                                    tooltipTitle="Bảo hiểm Y tế bắt buộc (1.5%)"
+                                    tooltipLines={[
+                                      { label: 'Tỷ lệ người lao động:', value: '1.50% trích nộp' },
+                                      { label: 'Mức trích nộp:', value: '-' + formatCurrency(selectedPayroll?.details?.find(d => d.item_code === 'BHYT')?.amount ?? selectedPayroll.bhyt_amount), isHighlight: true, color: '#ef4444' }
+                                    ]}
+                                  />
                                 </td>
                                 <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--status-error)' }}>
                                   -{formatCurrency(selectedPayroll?.details?.find(d => d.item_code === 'BHYT')?.amount ?? selectedPayroll.bhyt_amount)}
@@ -1520,7 +1720,14 @@ export function PayrollPage({ user }: PayrollPageProps) {
                               </tr>
                               <tr>
                                 <td style={{ padding: '8px 12px' }}>
-                                  {selectedPayroll?.details?.find(d => d.item_code === 'BHTN')?.item_name || 'Bảo hiểm Thất nghiệp (BHTN)'}
+                                  <PayslipHoverItem
+                                    label={selectedPayroll?.details?.find(d => d.item_code === 'BHTN')?.item_name || 'Bảo hiểm Thất nghiệp (BHTN)'}
+                                    tooltipTitle="Bảo hiểm Thất nghiệp (1%)"
+                                    tooltipLines={[
+                                      { label: 'Tỷ lệ người lao động:', value: '1.00% trích nộp' },
+                                      { label: 'Mức trích nộp:', value: '-' + formatCurrency(selectedPayroll?.details?.find(d => d.item_code === 'BHTN')?.amount ?? selectedPayroll.bhtn_amount), isHighlight: true, color: '#ef4444' }
+                                    ]}
+                                  />
                                 </td>
                                 <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--status-error)' }}>
                                   -{formatCurrency(selectedPayroll?.details?.find(d => d.item_code === 'BHTN')?.amount ?? selectedPayroll.bhtn_amount)}
@@ -1528,16 +1735,34 @@ export function PayrollPage({ user }: PayrollPageProps) {
                               </tr>
                               {(selectedPayroll.personal_income_tax || 0) > 0 && (
                                 <tr>
-                                  <td style={{ padding: '8px 12px' }}>Thuế thu nhập cá nhân (TNCN)</td>
+                                  <td style={{ padding: '8px 12px' }}>
+                                    <PayslipHoverItem
+                                      label="Thuế thu nhập cá nhân (TNCN)"
+                                      tooltipTitle="Thuế TNCN tạm khấu trừ"
+                                      tooltipLines={[
+                                        { label: 'Căn cứ:', value: 'Biểu thuế lũy tiến từng phần Luật Thuế TNCN' },
+                                        { label: 'Mức khấu trừ:', value: '-' + formatCurrency(selectedPayroll.personal_income_tax), isHighlight: true, color: '#ef4444' }
+                                      ]}
+                                    />
+                                  </td>
                                   <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--status-error)' }}>
                                     -{formatCurrency(selectedPayroll.personal_income_tax)}
                                   </td>
                                 </tr>
                               )}
-
                               {(selectedPayroll.penalty_deduction || 0) > 0 && (
                                 <tr>
-                                  <td style={{ padding: '8px 12px' }}>Khấu trừ khác / Phạt vi phạm</td>
+                                  <td style={{ padding: '8px 12px' }}>
+                                    <PayslipHoverItem
+                                      label="Khấu trừ khác / Phạt vi phạm"
+                                      tooltipTitle="Phạt vi phạm quy chế chấm công"
+                                      tooltipLines={[
+                                        { label: 'Quy định phạt:', value: '50.000 VNĐ / lần đi muộn quá hạn (> 15 phút)' },
+                                        { label: 'Công thức phạt:', value: `${lateAttendances.filter(a => (a.late_minutes || 0) > 15).length || Math.round((selectedPayroll.penalty_deduction || 0) / 50000)} lần × 50.000 VNĐ` },
+                                        { label: 'Tổng tiền phạt:', value: '-' + formatCurrency(selectedPayroll.penalty_deduction), isHighlight: true, color: '#ef4444' }
+                                      ]}
+                                    />
+                                  </td>
                                   <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--status-error)' }}>
                                     -{formatCurrency(selectedPayroll.penalty_deduction)}
                                   </td>
@@ -2068,6 +2293,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                     <div>Mã số nhân viên: <strong>{monthlyPrintData.employee?.employee_code}</strong></div>
                     <div>Chức danh / Vị trí: <strong>{monthlyPrintData.employee?.position_name}</strong></div>
                     <div>Đơn vị / Chi nhánh: <strong>{monthlyPrintData.employee?.store_name}</strong></div>
+                    <div>Lương hợp đồng: <strong style={{ color: '#1e3a8a' }}>{formatCurrency(monthlyPrintData.summary?.contract_salary ?? selectedPayroll?.contract_salary)}</strong></div>
                     <div>Tài khoản ngân hàng: <strong>{monthlyPrintData.employee?.bank_account_no || monthlyPrintData.employee?.bank_account || 'Chưa cập nhật'}</strong></div>
                     <div>Ngân hàng thụ hưởng: <strong>{monthlyPrintData.employee?.bank_name || 'Chưa cập nhật'}</strong></div>
                   </div>
@@ -2082,6 +2308,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                     <div>Vắng không phép: <strong>{monthlyPrintData.attendance?.absent_days ?? selectedPayroll?.absent_days ?? 0} ngày</strong></div>
                     <div>Định mức ca: <strong>{monthlyPrintData.attendance?.daily_standard_hours ?? selectedPayroll?.daily_standard_hours ?? 8}h/ngày</strong></div>
                     <div>Giờ công thực: <strong>{monthlyPrintData.attendance?.actual_work_hours ?? 0} giờ</strong></div>
+                    <div>Đi trễ: <strong>{monthlyPrintData.attendance?.late_count ?? (monthlyPrintData.attendance?.late_minutes ? 1 : 0)} lần</strong></div>
                     <div>OT làm thêm: <strong>{monthlyPrintData.attendance?.approved_overtime_hours ?? monthlyPrintData.attendance?.actual_overtime_hours ?? 0} giờ</strong></div>
                     {(monthlyPrintData.attendance?.unworked_hours ?? selectedPayroll?.unworked_hours ?? 0) > 0 && (
                       <div style={{ gridColumn: 'span 2' }}>
@@ -2103,7 +2330,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                           </tr>
                         </thead>
                         <tbody>
-                          {monthlyPrintData.earnings?.map((e: any, idx: number) => (
+                          {printableEarnings?.map((e: any, idx: number) => (
                             <tr key={idx}>
                               <td>
                                 <div style={{ fontWeight: 600 }}>{e.item_name || e.name}</div>
@@ -2114,7 +2341,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                                 )}
                               </td>
                               <td style={{ textAlign: 'right', fontWeight: 600 }}>
-                                {formatCurrency(e.amount)}
+                                {e.amount > 0 ? ("+" + formatCurrency(e.amount)) : formatCurrency(e.amount)}
                               </td>
                             </tr>
                           ))}
@@ -2138,10 +2365,14 @@ export function PayrollPage({ user }: PayrollPageProps) {
                           </tr>
                         </thead>
                         <tbody>
-                          {monthlyPrintData.deductions?.map((d: any, idx: number) => (
+                          {printableDeductions?.map((d: any, idx: number) => {
+                            const isPenalty = d.item_code === 'PENALTY' || (d.item_name && d.item_name.toLowerCase().includes('phạt'))
+                            const penCount = monthlyPrintData?.attendance?.penalized_late_count || (monthlyPrintData?.attendance?.late_count) || Math.round(Number(d.amount) / 50000)
+                            const displayName = isPenalty && penCount > 0 ? `Phạt vi phạm quy chế chấm công (${penCount} lần đi muộn > 15 phút)` : (d.item_name || d.name)
+                            return (
                             <tr key={idx}>
                               <td>
-                                <div style={{ fontWeight: 600, color: '#991b1b' }}>{d.item_name || d.name}</div>
+                                <div style={{ fontWeight: 600, color: '#991b1b' }}>{displayName}</div>
                                 {d.calculation_formula && (
                                   <div style={{ fontSize: '10px', color: '#64748b', fontStyle: 'italic' }}>
                                     {d.calculation_formula}
@@ -2152,7 +2383,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                                 -{formatCurrency(d.amount)}
                               </td>
                             </tr>
-                          ))}
+                          )})}
                           <tr className="payslip-a4-total-row">
                             <td style={{ fontWeight: 700, color: '#991b1b' }}>TỔNG GIẢM TRỪ</td>
                             <td style={{ textAlign: 'right', color: '#dc2626', fontSize: '12px', fontWeight: 700 }}>

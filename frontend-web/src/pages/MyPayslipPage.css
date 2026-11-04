@@ -220,11 +220,13 @@
 .mypayslip-section-box {
   border: 1px solid var(--border-default);
   border-radius: 6px;
-  overflow: hidden;
+  overflow: visible;
   background: var(--surface-card);
 }
 
 .mypayslip-section-title {
+  border-top-left-radius: 5px;
+  border-top-right-radius: 5px;
   padding: 10px 14px;
   background: var(--surface-subtle);
   font-weight: 700;
@@ -262,4 +264,467 @@
   justify-content: space-between;
   gap: 10px;
   padding-top: 4px;
+}
+
+/* Tooltip on Hover for Calculation Breakdown */
+.payslip-calc-hover-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.payslip-calc-tooltip {
+  visibility: hidden;
+  position: absolute;
+  bottom: 130%;
+  left: 0;
+  min-width: 310px;
+  max-width: 440px;
+  background: #1e293b;
+  color: #f8fafc;
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.5;
+  z-index: 100;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+  border: 1px solid #334155;
+  opacity: 0;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  transform: translateY(4px);
+  pointer-events: none;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  white-space: normal;
+  text-align: left;
+}
+
+.payslip-calc-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 24px;
+  border-width: 6px;
+  border-style: solid;
+  border-color: #1e293b transparent transparent transparent;
+}
+
+.payslip-calc-hover-wrap:hover .payslip-calc-tooltip {
+  visibility: visible;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.payslip-calc-tooltip-title {
+  font-weight: 700;
+  font-size: 11.5px;
+  color: #38bdf8;
+  margin-bottom: 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #334155;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.payslip-calc-tooltip-row {
+  margin-bottom: 3px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.payslip-calc-tooltip-divider {
+  border-top: 1px dashed #475569;
+  margin: 6px 0;
+}
+
+/* ==========================================================================
+   Payslip Item Hover & Tooltip Breakdown (Vero Design System)
+   ========================================================================== */
+
+.payslip-item-hover-wrap {
+  position: relative;
+  display: inline-block;
+  cursor: help;
+}
+
+.payslip-item-hover-label {
+  border-bottom: 1px dashed var(--border-strong, #a1a1aa);
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.payslip-item-hover-wrap:hover .payslip-item-hover-label {
+  color: var(--primary-color, #2563eb);
+  border-bottom-color: var(--primary-color, #2563eb);
+}
+
+.payslip-item-hover-wrap {
+  position: relative;
+  display: inline-block;
+  cursor: pointer;
+}
+
+.payslip-item-tooltip-bridge {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 100%;
+  height: 12px;
+  background: transparent;
+  z-index: 9998;
+}
+
+.payslip-item-tooltip-box {
+  visibility: hidden;
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 320px;
+  max-width: 480px;
+  max-height: min(460px, calc(100vh - 120px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--surface-card, #ffffff);
+  color: var(--text-primary, #09090b);
+  border: 1px solid var(--border-default, #e4e4e7);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.18), 0 4px 10px -2px rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  z-index: 9999;
+  opacity: 0;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  transform: translateY(-4px);
+  pointer-events: none;
+  white-space: normal;
+  text-align: left;
+}
+
+/* Custom scrollbars */
+.payslip-item-tooltip-box::-webkit-scrollbar,
+.payslip-tooltip-late-list::-webkit-scrollbar {
+  width: 5px;
+}
+
+.payslip-item-tooltip-box::-webkit-scrollbar-track,
+.payslip-tooltip-late-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.payslip-item-tooltip-box::-webkit-scrollbar-thumb,
+.payslip-tooltip-late-list::-webkit-scrollbar-thumb {
+  background: var(--border-default, #d4d4d8);
+  border-radius: 4px;
+}
+
+[data-theme="dark"] .payslip-item-tooltip-box::-webkit-scrollbar-thumb,
+[data-theme="dark"] .payslip-tooltip-late-list::-webkit-scrollbar-thumb {
+  background: #52525b;
+}
+
+/* Close button and pin hint */
+.payslip-tooltip-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary, #71717a);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 2px 6px;
+  line-height: 1;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.payslip-tooltip-close-btn:hover {
+  color: var(--text-primary, #09090b);
+  background: var(--surface-subtle, #f4f4f5);
+}
+
+[data-theme="dark"] .payslip-tooltip-close-btn:hover {
+  color: #ffffff;
+  background: #27272a;
+}
+
+.payslip-tooltip-pin-hint {
+  font-size: 10px;
+  color: var(--text-tertiary, #71717a);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  user-select: none;
+}
+
+.payslip-item-tooltip-large {
+  min-width: 360px;
+  max-width: 520px;
+}
+
+[data-theme="dark"] .payslip-item-tooltip-box {
+  background: #18181b;
+  border-color: #27272a;
+  color: #f4f4f5;
+  box-shadow: 0 12px 28px -4px rgba(0, 0, 0, 0.7);
+}
+
+.payslip-item-tooltip-box::before {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 18px;
+  border-width: 6px;
+  border-style: solid;
+  border-color: transparent transparent var(--border-default, #e4e4e7) transparent;
+}
+
+.payslip-item-tooltip-box::after {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 18px;
+  border-width: 5px;
+  border-style: solid;
+  border-color: transparent transparent var(--surface-card, #ffffff) transparent;
+}
+
+[data-theme="dark"] .payslip-item-tooltip-box::after {
+  border-color: transparent transparent #18181b transparent;
+}
+
+.payslip-item-hover-wrap:hover .payslip-item-tooltip-box,
+.payslip-item-tooltip-box:hover,
+.payslip-item-hover-wrap.is-pinned .payslip-item-tooltip-box,
+.payslip-item-tooltip-box.is-pinned {
+  visibility: visible;
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.payslip-item-hover-wrap.is-pinned .payslip-item-tooltip-box {
+  border-color: var(--primary-color, #2563eb);
+  box-shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.25), 0 6px 12px -2px rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="dark"] .payslip-item-hover-wrap.is-pinned .payslip-item-tooltip-box {
+  border-color: #38bdf8;
+  box-shadow: 0 18px 42px -4px rgba(0, 0, 0, 0.85);
+}
+
+.payslip-item-tooltip-header {
+  font-weight: 700;
+  font-size: 11px;
+  color: var(--primary-color, #2563eb);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border-subtle, #f0f0f3);
+}
+
+[data-theme="dark"] .payslip-item-tooltip-header {
+  color: #38bdf8;
+  border-bottom-color: #27272a;
+}
+
+.payslip-item-tooltip-row {
+  margin-bottom: 3px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.payslip-tooltip-section-title {
+  font-weight: 600;
+  color: var(--text-primary, #09090b);
+}
+
+[data-theme="dark"] .payslip-tooltip-section-title {
+  color: #f4f4f5;
+}
+
+.payslip-tooltip-subrow {
+  font-size: 10.5px;
+  color: var(--text-tertiary, #71717a);
+  padding-left: 8px;
+  margin-top: -1px;
+  line-height: 1.4;
+}
+
+.payslip-tooltip-highlight {
+  background: var(--surface-subtle, #f4f4f5);
+  padding: 4px 6px;
+  border-radius: 4px;
+  margin-top: 4px;
+}
+
+[data-theme="dark"] .payslip-tooltip-highlight {
+  background: #27272a;
+}
+
+.payslip-calc-tooltip-divider {
+  border-top: 1px dashed var(--border-default, #e4e4e7);
+  margin: 6px 0;
+}
+
+[data-theme="dark"] .payslip-calc-tooltip-divider {
+  border-top-color: #3f3f46;
+}
+
+
+/* Late Attendances Breakdown in Payslip Detail */
+.mypayslip-late-alert-box {
+  margin-top: 10px;
+  padding: 10px 14px;
+  background: rgba(239, 68, 68, 0.05);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+[data-theme="dark"] .mypayslip-late-alert-box {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.mypayslip-late-alert-header {
+  font-weight: 600;
+  color: var(--status-error, #ef4444);
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mypayslip-late-alert-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mypayslip-late-alert-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 8px;
+  background: var(--surface-card, #ffffff);
+  border-radius: 4px;
+  border: 1px solid var(--border-subtle, #f4f4f5);
+  font-size: 11.5px;
+}
+
+[data-theme="dark"] .mypayslip-late-alert-item {
+  background: #27272a;
+  border-color: #3f3f46;
+}
+
+.mypayslip-late-alert-date {
+  color: var(--text-primary, #09090b);
+}
+
+[data-theme="dark"] .mypayslip-late-alert-date {
+  color: #f4f4f5;
+}
+
+.mypayslip-late-alert-badge {
+  font-family: var(--font-mono, monospace);
+  font-weight: 600;
+  color: var(--status-error, #ef4444);
+}
+
+
+/* Tooltip Late Records Box (Minimalist Monochrome with Red Accent) */
+.payslip-tooltip-late-box {
+  margin-top: 6px;
+  width: 100%;
+  background: var(--surface-subtle, #f4f4f5);
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-default, #e4e4e7);
+  box-sizing: border-box;
+}
+
+[data-theme="dark"] .payslip-tooltip-late-box {
+  background: #27272a;
+  border-color: #3f3f46;
+}
+
+.payslip-tooltip-late-header {
+  font-weight: 600;
+  color: var(--text-primary, #09090b);
+  font-size: 11px;
+  margin-bottom: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+[data-theme="dark"] .payslip-tooltip-late-header {
+  color: #f4f4f5;
+}
+
+.payslip-tooltip-late-badge {
+  color: var(--status-error, #dc2626);
+  font-weight: 700;
+  font-size: 11px;
+}
+
+[data-theme="dark"] .payslip-tooltip-late-badge {
+  color: #f87171;
+}
+
+.payslip-tooltip-late-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11px;
+  max-height: 140px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.payslip-tooltip-late-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 3px 0;
+  border-bottom: 1px dashed var(--border-subtle, #e4e4e7);
+}
+
+.payslip-tooltip-late-row:last-child {
+  border-bottom: none;
+}
+
+[data-theme="dark"] .payslip-tooltip-late-row {
+  border-bottom-color: #3f3f46;
+}
+
+.payslip-tooltip-late-date {
+  color: var(--text-secondary, #3f3f46);
+  font-weight: 500;
+}
+
+[data-theme="dark"] .payslip-tooltip-late-date {
+  color: #d4d4d8;
+}
+
+.payslip-tooltip-late-date strong {
+  color: var(--text-primary, #09090b);
+}
+
+[data-theme="dark"] .payslip-tooltip-late-date strong {
+  color: #ffffff;
+}
+
+.payslip-tooltip-late-val {
+  color: var(--status-error, #dc2626);
+  font-weight: 600;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+}
+
+[data-theme="dark"] .payslip-tooltip-late-val {
+  color: #f87171;
 }
