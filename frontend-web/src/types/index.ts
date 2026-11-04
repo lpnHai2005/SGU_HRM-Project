@@ -718,6 +718,7 @@ export interface Payroll {
   total_bonuses?: number;
   total_deductions?: number;
   actual_base_salary?: number;
+  actual_base_salary_formula?: string | null;
   overtime_salary?: number;
   position_allowance?: number;
   seniority_allowance?: number;

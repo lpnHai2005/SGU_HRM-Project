@@ -123,6 +123,15 @@ def populate_payroll_breakdown_from_details(pr_dict: dict, details_list: list):
     contract_sal = float(pr_dict.get("contract_salary") or 0.0)
     pr_dict["time_deduction_amount"] = time_ded
     pr_dict["actual_base_salary"] = max(0.0, contract_sal - time_ded)
+    std_days = float(pr_dict.get("standard_working_days") or 26.0)
+    act_days = float(pr_dict.get("actual_working_days") or 0.0)
+    daily_price = round(contract_sal / std_days, 0) if std_days > 0 else 0
+    if time_ded > 0:
+        base_deduct_obj = next((d for d in details_list if d.get("item_code") == "BASE_SALARY_DEDUCTION"), None)
+        ded_form = base_deduct_obj.get("calculation_formula") if base_deduct_obj else f"-{time_ded:,.0f} đ"
+        pr_dict["actual_base_salary_formula"] = f"Lương HĐ: {contract_sal:,.0f} đ (Đơn giá {daily_price:,.0f} đ/ngày) | Thực tế: {act_days:g}/{std_days:g} ngày | {ded_form}"
+    else:
+        pr_dict["actual_base_salary_formula"] = f"Lương HĐ: {contract_sal:,.0f} đ ÷ {std_days:g} ngày chuẩn × {act_days:g} ngày thực tế"
     pr_dict["overtime_salary"] = det_map.get("OVERTIME", 0.0)
     pr_dict["position_allowance"] = det_map.get("POSITION_ALLOWANCE", 0.0)
     pr_dict["seniority_allowance"] = det_map.get("SENIORITY_ALLOWANCE", 0.0)
@@ -2690,6 +2699,8 @@ async def get_printable_payslip(
 
     metrics=(await db.execute(text('''SELECT COALESCE(SUM(a.actual_work_hours),0) AS actual_work_hours,
         COALESCE(SUM(a.late_minutes),0) AS late_minutes,
+        COALESCE(COUNT(CASE WHEN a.late_minutes > 0 THEN 1 END),0) AS late_count,
+        COALESCE(COUNT(CASE WHEN a.late_minutes > 15 THEN 1 END),0) AS penalized_late_count,
         COALESCE(SUM(a.early_minutes),0) AS early_minutes,
         COALESCE(SUM(a.overtime_hours),0) AS actual_overtime_hours,
         COALESCE(SUM(CASE WHEN ota.decision='APPROVED' THEN ota.approved_hours ELSE 0 END),0) AS approved_overtime_hours
@@ -2855,6 +2866,8 @@ async def get_printable_payslip(
             "unworked_hours": float(row["unworked_hours"] if row["unworked_hours"] is not None else 0),
             "actual_work_hours": float(metrics['actual_work_hours']),
             "late_minutes": int(metrics['late_minutes']),
+            "late_count": int(metrics['late_count']),
+            "penalized_late_count": int(metrics['penalized_late_count']),
             "early_minutes": int(metrics['early_minutes']),
             "actual_overtime_hours": float(metrics['actual_overtime_hours']),
             "approved_overtime_hours": float(metrics['approved_overtime_hours']),
@@ -2875,6 +2888,11 @@ async def get_printable_payslip(
             "contract_salary": contract_sal,
             "time_deduction_amount": time_ded,
             "actual_base_salary": actual_base,
+            "actual_base_salary_formula": (
+                f"Lương HĐ: {contract_sal:,.0f} đ (Đơn giá {round(contract_sal/float(row['standard_working_days'] or 26), 0):,.0f} đ/ngày) | Thực tế: {float(row['actual_working_days'] or 0):g}/{float(row['standard_working_days'] or 26):g} ngày"
+                if time_ded > 0 else
+                f"Lương HĐ: {contract_sal:,.0f} đ ÷ {float(row['standard_working_days'] or 26):g} ngày chuẩn × {float(row['actual_working_days'] or 0):g} ngày thực tế"
+            ),
             "gross_income": float(calc_total_earnings),
             "total_insurance": float(row.get("total_insurance") or 0),
             "total_deduction": float(calc_total_deductions),

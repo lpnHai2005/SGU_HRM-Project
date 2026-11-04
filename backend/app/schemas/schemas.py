@@ -753,6 +753,7 @@ class PayrollOut(BaseModel):
     total_bonuses: Optional[float] = 0.0
     total_deductions: Optional[float] = 0.0
     actual_base_salary: Optional[float] = 0.0
+    actual_base_salary_formula: Optional[str] = None
     overtime_salary: Optional[float] = 0.0
     position_allowance: Optional[float] = 0.0
     seniority_allowance: Optional[float] = 0.0
