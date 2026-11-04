@@ -71,7 +71,7 @@ async def list_contracts(
         SELECT c.contract_id, c.contract_number, c.employee_id, c.contract_type,
                c.start_date, c.end_date, c.basic_salary, c.insurance_salary,
                c.signed_date, c.status, c.notes, c.contract_file_url,
-               c.previous_contract_id, c.termination_date, c.termination_reason,
+               c.working_hours_per_week, c.previous_contract_id, c.termination_date, c.termination_reason,
                c.created_at, c.activated_at, c.updated_at,
                e.employee_code, e.full_name as employee_name, e.store_id,
                s.store_name, d.department_name, pos.position_name,
@@ -301,7 +301,8 @@ async def _generate_and_save_contract_pdf(
     insurance_salary: Optional[float],
     signed_date: date,
     position_id: Optional[int] = None,
-    department_id: Optional[int] = None
+    department_id: Optional[int] = None,
+    working_hours_per_week: Optional[int] = None
 ) -> Optional[str]:
     """
     Tự động truy vấn thông tin nhân viên, tạo file PDF hợp đồng lao động chuẩn Việt Nam
@@ -339,6 +340,7 @@ async def _generate_and_save_contract_pdf(
             "basic_salary": basic_salary,
             "insurance_salary": insurance_salary or basic_salary,
             "signed_date": signed_date,
+            "working_hours_per_week": working_hours_per_week,
             "position_name": emp_data.get("position_name"),
             "store_name": emp_data.get("store_name"),
             "department_name": emp_data.get("department_name")
@@ -413,12 +415,12 @@ async def create_contract(
             contract_number, employee_id, contract_type, start_date, end_date,
             basic_salary, insurance_salary, signed_date, status,
             position_id, department_id, notes, contract_file_url,
-            created_by
+            created_by, working_hours_per_week
         ) VALUES (
             :contract_number, :employee_id, :contract_type, :start_date, :end_date,
             :basic_salary, :insurance_salary, :signed_date, 'DRAFT',
             :position_id, :department_id, :notes, :contract_file_url,
-            :created_by
+            :created_by, COALESCE(:working_hours_per_week, 48)
         )
         RETURNING contract_id
     """)
@@ -436,7 +438,8 @@ async def create_contract(
         "department_id": contract.department_id,
         "notes": contract.notes,
         "contract_file_url": contract_file_url,
-        "created_by": user_id
+        "created_by": user_id,
+        "working_hours_per_week": contract.working_hours_per_week
     })
 
     new_contract_id = result.mappings().first()["contract_id"]
@@ -455,7 +458,8 @@ async def create_contract(
             insurance_salary=contract.insurance_salary,
             signed_date=contract.signed_date,
             position_id=contract.position_id,
-            department_id=contract.department_id
+            department_id=contract.department_id,
+            working_hours_per_week=contract.working_hours_per_week or 48
         )
         if auto_url:
             contract_file_url = auto_url
@@ -802,12 +806,12 @@ async def renew_contract(
             contract_number, employee_id, contract_type, start_date, end_date,
             basic_salary, insurance_salary, signed_date, status,
             position_id, department_id, notes, previous_contract_id,
-            created_by
+            created_by, working_hours_per_week
         ) VALUES (
             :contract_number, :employee_id, :contract_type, :start_date, :end_date,
             :basic_salary, :insurance_salary, :signed_date, 'DRAFT',
             :position_id, :department_id, :notes, :previous_contract_id,
-            :created_by
+            :created_by, COALESCE(:working_hours_per_week, 48)
         )
         RETURNING contract_id
     """)
@@ -825,7 +829,8 @@ async def renew_contract(
         "department_id": current_contract.get("department_id"),
         "notes": renew_data.notes,
         "previous_contract_id": contract_id,
-        "created_by": user_id
+        "created_by": user_id,
+        "working_hours_per_week": current_contract.get("working_hours_per_week")
     })
 
     new_contract_id = result.mappings().first()["contract_id"]
@@ -843,7 +848,8 @@ async def renew_contract(
         insurance_salary=new_salary,
         signed_date=date.today(),
         position_id=renew_data.new_position_id or current_contract.get("position_id"),
-        department_id=current_contract.get("department_id")
+        department_id=current_contract.get("department_id"),
+        working_hours_per_week=current_contract.get("working_hours_per_week")
     )
 
     # Audit log
@@ -1441,7 +1447,8 @@ async def generate_contract_pdf_action(
         insurance_salary=contract.get("insurance_salary"),
         signed_date=contract.get("signed_date") or date.today(),
         position_id=contract.get("position_id"),
-        department_id=contract.get("department_id")
+        department_id=contract.get("department_id"),
+        working_hours_per_week=contract.get("working_hours_per_week")
     )
     if not file_url:
         raise HTTPException(status_code=500, detail="Không thể tạo file PDF hợp đồng")
@@ -1493,7 +1500,8 @@ async def download_contract_file(
             insurance_salary=contract.get("insurance_salary"),
             signed_date=contract.get("signed_date") or date.today(),
             position_id=contract.get("position_id"),
-            department_id=contract.get("department_id")
+            department_id=contract.get("department_id"),
+            working_hours_per_week=contract.get("working_hours_per_week")
         )
         if file_url:
             await db.commit()
@@ -1533,7 +1541,8 @@ async def stream_contract_pdf(
             insurance_salary=contract.get("insurance_salary"),
             signed_date=contract.get("signed_date") or date.today(),
             position_id=contract.get("position_id"),
-            department_id=contract.get("department_id")
+            department_id=contract.get("department_id"),
+            working_hours_per_week=contract.get("working_hours_per_week")
         )
         if file_url:
             await db.commit()
@@ -1592,6 +1601,7 @@ async def stream_contract_pdf(
             "basic_salary": contract["basic_salary"],
             "insurance_salary": contract.get("insurance_salary") or contract["basic_salary"],
             "signed_date": contract.get("signed_date") or date.today(),
+            "working_hours_per_week": contract.get("working_hours_per_week"),
             "position_name": emp_data.get("position_name"),
             "store_name": emp_data.get("store_name"),
             "department_name": emp_data.get("department_name")
