@@ -1,7 +1,6 @@
 -- =============================================================================
 -- Contract Management Enhancement Migration
 -- Purpose: Add status, audit fields, and contract management features
--- Author: Claude Opus 5.5
 -- Date: 2026-10-18
 -- =============================================================================
 
