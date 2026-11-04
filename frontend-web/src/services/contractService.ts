@@ -9,6 +9,8 @@ import type { Contract, ContractStats, ContractListResponse, ContractType } from
 // Contract Type Definitions
 // ============================================
 
+export type WorkingHoursPerWeek = 40 | 44 | 48;
+
 export interface ContractCreateData {
   employee_id: number;
   contract_type: ContractType;
@@ -16,6 +18,7 @@ export interface ContractCreateData {
   end_date?: string | null;
   basic_salary: number;
   insurance_salary?: number | null;
+  working_hours_per_week?: WorkingHoursPerWeek;
   signed_date: string;
   position_id?: number | null;
   department_id?: number | null;
@@ -29,6 +32,7 @@ export interface ContractUpdateData {
   end_date?: string | null;
   basic_salary?: number;
   insurance_salary?: number;
+  working_hours_per_week?: WorkingHoursPerWeek;
   signed_date?: string;
   position_id?: number;
   department_id?: number;

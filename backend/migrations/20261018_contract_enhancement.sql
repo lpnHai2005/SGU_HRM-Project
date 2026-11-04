@@ -1,7 +1,6 @@
 -- =============================================================================
 -- Contract Management Enhancement Migration
 -- Purpose: Add status, audit fields, and contract management features
--- Author: Claude Opus 5.5
 -- Date: 2026-10-18
 -- =============================================================================
 
@@ -39,7 +38,7 @@ ALTER TABLE contracts ADD COLUMN IF NOT EXISTS department_id INTEGER REFERENCES 
 
 -- 9. Drop old unused columns if they exist
 ALTER TABLE contracts DROP COLUMN IF EXISTS salary_percentage;
-ALTER TABLE contracts DROP COLUMN IF EXISTS working_hours_per_week;
+-- working_hours_per_week được giữ lại (dùng cho HĐ, PDF, chatbot) - xem 20261104_contract_working_hours_check.sql
 
 -- 10. Create indexes for performance
 CREATE INDEX IF NOT EXISTS idx_contracts_status ON contracts(status);

@@ -24,6 +24,7 @@ export interface Contract {
   end_date?: string | null;
   basic_salary?: number | null;
   insurance_salary?: number | null;
+  working_hours_per_week?: number | null;
   signed_date: string;
   status: ContractStatus;
   notes?: string | null;

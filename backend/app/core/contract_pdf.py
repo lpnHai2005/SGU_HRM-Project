@@ -564,7 +564,7 @@ def generate_contract_pdf(
     # ĐIỀU 2
     story.append(Paragraph("<b>ĐIỀU 2: CHẾ ĐỘ LÀM VIỆC VÀ THỜI GIỜ NGHỈ NGƠI</b>", section_heading))
     d2_items = [
-        "<b>2.1. Thời giờ làm việc:</b> 48 giờ/tuần (tối đa 08 giờ/ngày). Làm việc theo ca xoay linh hoạt hoặc giờ hành chính theo lịch bố trí phân công hàng tuần của Quản lý cửa hàng / Trưởng bộ phận.",
+        f"<b>2.1. Thời giờ làm việc:</b> {contract_data.get('working_hours_per_week') or 48} giờ/tuần (tối đa 08 giờ/ngày). Làm việc theo ca xoay linh hoạt hoặc giờ hành chính theo lịch bố trí phân công hàng tuần của Quản lý cửa hàng / Trưởng bộ phận.",
         "<b>2.2. Thời giờ nghỉ ngơi:</b> Được nghỉ giữa ca tối thiểu 30 phút theo luật định; được nghỉ ít nhất 01 ngày (24 giờ liên tục) trong tuần theo lịch phân ca.",
         "<b>2.3. Nghỉ Lễ, Tết và Nghỉ phép năm:</b> Được nghỉ làm việc và hưởng nguyên lương vào 11 ngày nghỉ Lễ, Tết theo quy định của Bộ luật Lao động. Người lao động làm việc đủ 12 tháng tại Công ty được hưởng 12 ngày nghỉ phép năm hưởng nguyên lương. Cứ 05 năm làm việc liên tục tại TechZone được tăng thêm 01 ngày phép năm.",
         "<b>2.4. Trang thiết bị làm việc:</b> Được Công ty trang bị đầy đủ đồng phục thương hiệu TechZone, thẻ nhân viên, hệ thống phần mềm quản lý bán hàng (HRM/POS) và các thiết bị kỹ thuật chuyên dụng phục vụ công việc."
