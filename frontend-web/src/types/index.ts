@@ -238,6 +238,9 @@ export interface Attendance {
   actual_work_hours?: number;
   status: string;
   notes?: string | null;
+  holiday_name?: string | null;
+  is_weekend?: boolean;
+  is_holiday?: boolean;
 }
 
 export interface WorkShift {
@@ -322,6 +325,14 @@ export interface AttendanceSummary {
     total_hours: number;
     payroll_time_adjustment_minutes: number;
     payroll_time_adjustment_hours: number;
+    calendar_days?: number;
+    sundays_count?: number;
+    holidays_count?: number;
+    auto_standard_days?: number;
+    manual_standard_days?: number | null;
+    is_manual_override?: boolean;
+    is_locked?: boolean;
+    reason?: string | null;
   };
   leave_quota: {
     annual_leave: number;
@@ -345,6 +356,10 @@ export interface AttendanceSummary {
   overtime: {
     shifts_count: number;
     hours: number;
+    approved_hours?: number;
+    normal_hours?: number;
+    weekend_hours?: number;
+    holiday_hours?: number;
   };
   compensatory_leave: {
     total: number;

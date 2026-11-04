@@ -4,7 +4,6 @@ import { api } from '../services/api'
 import { DatePicker } from '../components/common/DatePicker'
 import { Icons } from '../components/common/Icons'
 import { formatQualityFlag } from '../utils/formatters'
-import { CreditCard, ShieldCheck } from 'lucide-react'
 import {
   AttendanceResolutionModal,
   type DecisionType,
@@ -712,26 +711,28 @@ export function ActivityPage({
 
   return (
     <div className="page-container operations-page">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-        <div>
-          <h1 style={{ margin: 0, padding: 0, border: 'none' }}>
+      <div className="fund-header-row page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+        <div className="fund-header-title">
+          <h1 className="page-title">
             Nhật ký làm việc &amp; Hoạt động
           </h1>
-          <p style={{ margin: '4px 0 0', fontSize: '13px', color: 'var(--text-secondary)' }}>
+          <p className="page-subtitle" style={{ margin: '4px 0 0', fontSize: '13px', color: 'var(--text-secondary)' }}>
             Đối soát trực quan tình hình làm việc, tính giờ công thực tế và kiểm tra minh chứng theo ca
           </p>
         </div>
 
-        <button
-          type="button"
-          className="btn btn-secondary"
-          onClick={handleExportCsv}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 38 }}
-          title="Xuất bảng dữ liệu hiện hành ra file Excel CSV"
-        >
-          {Icons.download}
-          <span>Xuất CSV</span>
-        </button>
+        <div className="fund-actions-bar" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={handleExportCsv}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            title="Xuất bảng dữ liệu hiện hành ra file Excel CSV"
+          >
+            {Icons.download}
+            <span>Xuất CSV</span>
+          </button>
+        </div>
       </div>
 
       {/* BỘ LỌC THỜI GIAN & ĐỐI TƯỢNG (MỤC 8) */}
@@ -879,15 +880,16 @@ export function ActivityPage({
       </div>
 
       {error && (
-        <p role="alert" className="text-danger" style={{ margin: '4px 0' }}>
-          ⚠️ {error}
+        <p role="alert" className="text-danger" style={{ margin: '4px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span className="status-pill rejected" style={{ padding: '1px 6px', fontSize: '11px' }}>Lỗi</span>
+          <span>{error}</span>
         </p>
       )}
 
       {/* DẢI 8 THẺ KPI CHUẨN 2 HÀNG (MỤC 7) */}
       <div className="kpi-8-grid">
-        <div className="kpi-card" style={{ '--kpi-accent': '#2563eb' } as any}>
-          <span className="kpi-card-title">Nhân viên theo lịch</span>
+        <div className="card kpi-hover-card kpi-card">
+          <span className="kpi-card-title">NHÂN VIÊN THEO LỊCH</span>
           <div className="kpi-card-value">
             {summary.scheduled_employees !== undefined ? summary.scheduled_employees : summary.total ?? '—'}
             <span className="kpi-card-unit">người</span>
@@ -895,8 +897,8 @@ export function ActivityPage({
           <span className="kpi-card-subtext">Có ca phân công hợp lệ</span>
         </div>
 
-        <div className="kpi-card" style={{ '--kpi-accent': '#059669' } as any}>
-          <span className="kpi-card-title">Đã chấm công</span>
+        <div className="card kpi-hover-card kpi-card">
+          <span className="kpi-card-title">ĐÃ CHẤM CÔNG</span>
           <div className="kpi-card-value">
             {summary.checked_in ?? '—'}
             <span className="kpi-card-unit">người</span>
@@ -904,8 +906,8 @@ export function ActivityPage({
           <span className="kpi-card-subtext">Đã phát sinh lượt check-in</span>
         </div>
 
-        <div className="kpi-card" style={{ '--kpi-accent': '#0284c7' } as any}>
-          <span className="kpi-card-title">Đang làm việc</span>
+        <div className="card kpi-hover-card kpi-card">
+          <span className="kpi-card-title">ĐANG LÀM VIỆC</span>
           <div className="kpi-card-value">
             {summary.working ?? '—'}
             <span className="kpi-card-unit">người</span>
@@ -913,8 +915,8 @@ export function ActivityPage({
           <span className="kpi-card-subtext">Đang trong ca (chưa check-out)</span>
         </div>
 
-        <div className="kpi-card" style={{ '--kpi-accent': '#94a3b8' } as any}>
-          <span className="kpi-card-title">Chưa chấm công</span>
+        <div className="card kpi-hover-card kpi-card">
+          <span className="kpi-card-title">CHƯA CHẤM CÔNG</span>
           <div className="kpi-card-value">
             {summary.not_checked_in ?? '—'}
             <span className="kpi-card-unit">người</span>
@@ -922,8 +924,8 @@ export function ActivityPage({
           <span className="kpi-card-subtext">Thuộc lịch nhưng chưa vào ca</span>
         </div>
 
-        <div className="kpi-card" style={{ '--kpi-accent': '#dc2626' } as any}>
-          <span className="kpi-card-title">⚠️ Đi muộn</span>
+        <div className="card kpi-hover-card kpi-card">
+          <span className="kpi-card-title">ĐI MUỘN</span>
           <div className="kpi-card-value">
             {summary.late_employees !== undefined ? summary.late_employees : summary.late ?? '—'}
             <span className="kpi-card-unit">người vi phạm</span>
@@ -933,8 +935,8 @@ export function ActivityPage({
           </span>
         </div>
 
-        <div className="kpi-card" style={{ '--kpi-accent': '#d97706' } as any}>
-          <span className="kpi-card-title">⚠️ Về sớm</span>
+        <div className="card kpi-hover-card kpi-card">
+          <span className="kpi-card-title">VỀ SỚM</span>
           <div className="kpi-card-value">
             {summary.early_employees !== undefined ? summary.early_employees : summary.early ?? '—'}
             <span className="kpi-card-unit">người về sớm</span>
@@ -944,8 +946,11 @@ export function ActivityPage({
           </span>
         </div>
 
-        <div className="kpi-card" style={{ '--kpi-accent': '#e11d48' } as any}>
-          <span className="kpi-card-title">⚠️ Phiên cần rà soát</span>
+        <div className="card kpi-hover-card kpi-card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span className="kpi-card-title">PHIÊN CẦN RÀ SOÁT</span>
+            <span className="status-pill rejected" style={{ fontSize: '9.5px', padding: '0 4px', lineHeight: '14px', textTransform: 'none' }}>Cần duyệt</span>
+          </div>
           <div className="kpi-card-value">
             {summary.flagged_sessions ?? '—'}
             <span className="kpi-card-unit">phiên</span>
@@ -953,8 +958,8 @@ export function ActivityPage({
           <span className="kpi-card-subtext">Bất thường &amp; chờ HR xác minh</span>
         </div>
 
-        <div className="kpi-card" style={{ '--kpi-accent': '#f59e0b' } as any}>
-          <span className="kpi-card-title">⚠️ Phiên ngắn (≤15p)</span>
+        <div className="card kpi-hover-card kpi-card">
+          <span className="kpi-card-title">PHIÊN NGẮN (≤15P)</span>
           <div className="kpi-card-value">
             {summary.short_sessions ?? '—'}
             <span className="kpi-card-unit">phiên</span>
@@ -964,7 +969,7 @@ export function ActivityPage({
       </div>
 
       {/* TOOLBAR TÙY CHỌN HIỂN THỊ */}
-      <div className="operations-toolbar" style={{ marginTop: 4 }}>
+      <div className="operations-toolbar">
         <label>
           Tìm kiếm nhân viên
           <input
@@ -1010,8 +1015,8 @@ export function ActivityPage({
               working: 'Đang làm việc (chưa ra)',
               late: 'Đi muộn (>15p)',
               early: 'Về sớm (>0p)',
-              flagged: '⚠️ Có phiên cần rà soát',
-              short: '⏱️ Phiên ngắn (≤15p)',
+              flagged: 'Có phiên cần rà soát',
+              short: 'Phiên ngắn (≤15p)',
               ...attendanceLabels,
             }).map(([value, label]) => (
               <option key={value} value={value}>
@@ -1047,7 +1052,7 @@ export function ActivityPage({
             ).length
 
             return (
-              <details key={`${groupTitle}-${person.employee_id}`} open={!!applied.employee_id || people.length <= 5}>
+              <details key={`${groupTitle}-${person.employee_id}`}>
                 <summary>
                   <span className="activity-expand-indicator" aria-hidden="true">
                     {Icons.chevronRight}
@@ -1070,8 +1075,10 @@ export function ActivityPage({
                     <span
                       className="person-flag-badge"
                       title={`${flaggedCount} phiên bất thường cần kiểm tra`}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                     >
-                      ⚠️ {flaggedCount} phiên cần rà soát
+                      <span className="status-pill rejected" style={{ fontSize: '10px', padding: '1px 5px', textTransform: 'none' }}>Rà soát</span>
+                      <span>{flaggedCount} phiên cần rà soát</span>
                     </span>
                   )}
                 </summary>
@@ -1319,7 +1326,7 @@ export function ActivityPage({
                                       }
                                       style={!canResolveSession ? { opacity: 0.65, cursor: 'not-allowed' } : undefined}
                                     >
-                                      <ShieldCheck size={12} />
+                                      {Icons.shield}
                                       <span>HR Xử lý</span>
                                     </button>
                                   </div>
@@ -1363,7 +1370,7 @@ export function ActivityPage({
                                     className="activity-card-proof-badge"
                                     title="Chấm công qua thiết bị thẻ từ / vân tay tại cửa hàng"
                                   >
-                                    <CreditCard size={12} />
+                                    <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', background: 'currentColor', marginRight: '4px' }}></span>
                                     <span>Chấm qua thẻ</span>
                                   </span>
                                 )}

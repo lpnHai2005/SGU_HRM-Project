@@ -1,15 +1,160 @@
-.overview-page { display:grid;gap:22px; }
-.overview-tabs {display:flex;flex-wrap:wrap;gap:10px;}
-.overview-panel {padding:24px;}
-.overview-panel header {display:flex;justify-content:space-between;align-items:center;gap:20px;margin-bottom:20px;flex-wrap:wrap;}
-.overview-panel h2 {font-size:18px;margin:0 0 16px;}
-.overview-metric {min-width:0;overflow-wrap:anywhere;border:1px solid var(--border-color);border-radius:16px;background:var(--surface-subtle);color:var(--text-primary);padding:22px;display:flex;flex-direction:column;gap:12px;text-align:left;box-shadow:0 4px 18px #00000006;}
-button.overview-metric {cursor:pointer;transition:transform .15s;}
-button.overview-metric:hover {transform:translateY(-3px);}
-.overview-metric strong {font-size:32px;}
-.overview-metric small,.overview-metric span {color:var(--text-secondary);}
-.overview-columns {display:grid;grid-template-columns:1fr 1fr;gap:22px;}
-.overview-rate {font-size:48px;display:block;margin:16px 0;}
-.overview-panel progress {width:100%;height:12px;accent-color:#2563eb;}
-.overview-row {display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border-color);}
-@media(max-width:760px){.overview-columns{grid-template-columns:1fr}.overview-panel{padding:16px}.overview-metric{padding:16px}}
+.overview-page {
+  display: grid;
+  gap: 20px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.overview-page .fund-header-row.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.overview-page .fund-header-title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.overview-page .fund-header-title .page-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+.overview-page .fund-header-title .page-subtitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.overview-tabs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.overview-panel {
+  padding: 24px;
+}
+
+.overview-panel header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.overview-panel h2 {
+  font-size: 18px;
+  margin: 0 0 16px;
+}
+
+.overview-metric {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  text-align: left;
+  box-shadow: 0 4px 18px #00000006;
+}
+
+button.overview-metric {
+  cursor: pointer;
+  transition: transform .15s;
+}
+
+button.overview-metric:hover {
+  transform: translateY(-3px);
+}
+
+.overview-metric strong {
+  font-size: 32px;
+}
+
+.overview-metric small,
+.overview-metric span {
+  color: var(--text-secondary);
+}
+
+.overview-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 22px;
+}
+
+.overview-rate {
+  font-size: 48px;
+  display: block;
+  margin: 16px 0;
+}
+
+.overview-panel progress {
+  width: 100%;
+  height: 12px;
+  accent-color: #2563eb;
+}
+
+.overview-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+/* Thẻ div bọc ngoài class="page-container" của Bảng công cá nhân, ngang hàng với class="attendance-hero" */
+.personal-timesheet-card {
+  background: var(--surface-card);
+  border: 1px solid #d1d5db;
+  border-radius: var(--radius-lg, 12px);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+  position: relative;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+[data-theme="dark"] .personal-timesheet-card {
+  border-color: #38383f;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+
+.personal-timesheet-card .page-container {
+  padding: 16px 20px;
+  max-width: 100%;
+  margin: 0;
+  animation: none;
+}
+
+@media(max-width:760px) {
+  .overview-columns {
+    grid-template-columns: 1fr;
+  }
+  .overview-panel {
+    padding: 16px;
+  }
+  .overview-metric {
+    padding: 16px;
+  }
+  .overview-page .fund-header-row.page-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

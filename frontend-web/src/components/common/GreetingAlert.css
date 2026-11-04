@@ -1,0 +1,147 @@
+.greeting-alert-banner {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  z-index: 999999; /* Luôn nằm trên cùng, cao hơn toàn bộ topbar và shell layout */
+  max-width: 440px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-left: 3.5px solid #f59e0b;
+  border-radius: var(--radius-md, 8px);
+  padding: 12px 14px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.05);
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  animation: greetingSlideInRight 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  box-sizing: border-box;
+  touch-action: pan-y;
+  user-select: none;
+  cursor: grab;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+[data-theme="dark"] .greeting-alert-banner {
+  border-left-color: #fbbf24;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.greeting-alert-banner.greeting-dragging {
+  cursor: grabbing;
+  animation: none !important;
+  transition: none !important;
+}
+
+/* Hiệu ứng chạy ngược vào trong khi đóng/vuốt tắt/click ngoài */
+.greeting-alert-banner.greeting-slide-out {
+  animation: greetingSlideOutRight 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+  pointer-events: none;
+}
+
+@keyframes greetingSlideInRight {
+  0% {
+    transform: translateX(120%);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes greetingSlideOutRight {
+  0% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(125%);
+    opacity: 0;
+  }
+}
+
+/* Thư viện span: Huy hiệu icon dạng span thân thiện */
+.greeting-icon-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md, 8px);
+  background: rgba(245, 158, 11, 0.12);
+  color: #d97706;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+[data-theme="dark"] .greeting-icon-badge {
+  background: rgba(245, 158, 11, 0.18);
+  color: #fbbf24;
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+.greeting-alert-content {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Phân cấp thông tin (Hierarchy): Dòng chào nổi bật, đậm nét */
+.greeting-alert-title {
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--text-primary);
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.greeting-alert-title strong {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+/* Phân cấp thông tin (Hierarchy): Dòng thời gian mờ & nhỏ hơn, dùng font mono */
+.greeting-alert-subtext {
+  margin-top: 4px;
+  font-size: 11px;
+  font-family: var(--font-mono, 'JetBrains Mono', Consolas, monospace);
+  color: var(--text-tertiary);
+  letter-spacing: -0.01em;
+  opacity: 0.88;
+}
+
+.greeting-alert-close {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-tertiary);
+  padding: 3px;
+  margin-left: 2px;
+  margin-top: -1px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm, 4px);
+  transition: color 0.15s, background-color 0.15s;
+  flex-shrink: 0;
+}
+
+.greeting-alert-close:hover {
+  color: var(--text-primary);
+  background-color: var(--surface-subtle);
+}
+
+.greeting-close-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (max-width: 640px) {
+  .greeting-alert-banner {
+    top: 14px;
+    right: 12px;
+    left: 12px;
+    max-width: none;
+  }
+}

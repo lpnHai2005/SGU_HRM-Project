@@ -14,6 +14,7 @@ import { assignedShift, shiftProgress, storeLabel } from '@/services/presentatio
 import { clockTime, vietnamPeriod, type Today } from '@/services/attendance';
 import { type EmployeeSummaryData, type ManagerDashboardKpis } from '@/services/dashboard';
 import { useNotifications } from '@/contexts/notifications';
+import { MobileGreetingAlert } from '@/components/greeting-alert';
 
 const TZ = 'Asia/Ho_Chi_Minh';
 
@@ -335,6 +336,8 @@ export default function Home() {
           <Pressable accessibilityLabel="Đóng menu" accessibilityRole="button" onPress={() => setDrawer(false)} style={{ flex: 1 }} />
         </View>
       </Modal>
+
+      <MobileGreetingAlert userName={profile.data?.full_name || 'bạn'} />
     </View>
   );
 }

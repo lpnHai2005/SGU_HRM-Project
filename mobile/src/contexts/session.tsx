@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, useCallback, type React
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 import { request } from '@/services/attendance';
+import { resetMobileGreetingSession } from '@/components/greeting-alert';
 
 type Session = { token: string | null; ready: boolean; signIn: (username: string, password: string) => Promise<void>; signOut: () => Promise<void> };
 const Context = createContext<Session>(null!);
@@ -20,6 +21,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setToken(data.access_token);
   }, []);
   const signOut = useCallback(async () => {
+    resetMobileGreetingSession();
     setToken(null);
     if (Platform.OS !== 'web') await SecureStore.deleteItemAsync(key);
   }, []);

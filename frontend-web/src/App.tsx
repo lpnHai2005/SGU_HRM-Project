@@ -105,6 +105,9 @@ export function App() {
   }
 
   const handleLogout = async () => {
+    try {
+      sessionStorage.removeItem('greeting_shown')
+    } catch {}
     await logout()
   }
 

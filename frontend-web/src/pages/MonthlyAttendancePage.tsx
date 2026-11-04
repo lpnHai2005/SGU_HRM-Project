@@ -12,9 +12,11 @@ import {
   ShieldCheck,
   Calendar,
   Code,
+  Search,
 } from 'lucide-react'
 import { api } from '../services/api'
 import { MonthPicker } from '../components/common/MonthPicker'
+import { EmptyState } from '../components/common/EmptyState'
 import {
   formatDate,
   formatTime,
@@ -334,8 +336,8 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
       {/* 1. Header trang & Banner Quy định */}
       <div className="hr-att-header">
         <div>
-          <h1 className="hr-att-title">Quản lý công &amp; Đối soát Đi trễ</h1>
-          <p className="hr-att-subtitle">
+          <h1 className="hr-att-title page-title">Quản lý công &amp; Đối soát Đi trễ</h1>
+          <p className="hr-att-subtitle page-subtitle">
             Bảng tổng hợp công chuẩn Enterprise HRM. Tách biệt rõ ràng giữa{' '}
             <strong className="text-muted-notice">Ngoài ca (ghi nhận thô)</strong>,{' '}
             <strong className="text-verified-notice">OT đối soát (VERIFIED)</strong> và{' '}
@@ -350,7 +352,7 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
             <strong>Quy định công ty:</strong> Thời gian trễ cho phép tối đa (LATE_TOLERANCE_MINUTES):{' '}
             <span className="badge-policy">15 phút (Không phạt)</span> · Mức phạt đi trễ quá hạn (&gt;15p):{' '}
             <span className="badge-penalty">50.000 ₫/lần</span> · Công chuẩn kỳ {period}:{' '}
-            <strong>{standardWorkingDays} ngày công</strong>
+            <strong style={{ fontFamily: 'var(--font-mono)' }}>{standardWorkingDays} ngày công</strong>
             {standardDaysInfo && (
               <span style={{ fontSize: '11px', opacity: 0.85, marginLeft: '4px' }}>
                 ({standardDaysInfo.is_manual_override
@@ -466,9 +468,9 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
             title="Nhấp để lọc danh sách nhân viên có ngày đi trễ quá hạn"
           >
             <div className="monthly-kpi-label">Đi trễ quá hạn (&gt;15p)</div>
-            <div className="monthly-kpi-value">
+            <div className="monthly-kpi-value" style={{ fontFamily: 'var(--font-mono)' }}>
               {summary.total_late_days ?? 0}{' '}
-              <small style={{ fontSize: 13, fontWeight: 'normal' }}>ngày</small>
+              <small style={{ fontSize: 13, fontWeight: 'normal', fontFamily: 'var(--font-sans)' }}>ngày</small>
             </div>
             <div className="monthly-kpi-sub">
               {summary.total_late_sessions ?? 0} lần phạt · {summary.total_late_minutes ?? 0}p ·{' '}
@@ -476,7 +478,7 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
             </div>
             <div className="monthly-kpi-penalty-sub">
               Tiền phạt vi phạm quy chế dự kiến:{' '}
-              <strong>
+              <strong style={{ fontFamily: 'var(--font-mono)' }}>
                 -{formatCurrency(summary.total_late_penalty_amount || (summary.total_late_sessions || 0) * policySettings.penalty)}
               </strong>
               {summary.total_grace_late_sessions > 0 && (
@@ -494,9 +496,9 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
             title="Nhấp để lọc danh sách nhân viên có ngày về sớm"
           >
             <div className="monthly-kpi-label">Về sớm hợp lệ (Tổng ngày)</div>
-            <div className="monthly-kpi-value">
+            <div className="monthly-kpi-value" style={{ fontFamily: 'var(--font-mono)' }}>
               {summary.total_early_days ?? 0}{' '}
-              <small style={{ fontSize: 13, fontWeight: 'normal' }}>ngày</small>
+              <small style={{ fontSize: 13, fontWeight: 'normal', fontFamily: 'var(--font-sans)' }}>ngày</small>
             </div>
             <div className="monthly-kpi-sub">
               {summary.total_early_sessions ?? 0} phiên · {summary.total_early_minutes ?? 0}p ·{' '}
@@ -511,9 +513,9 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
             title="Nhấp để lọc nhân viên có phiên bất thường cần HR xác minh"
           >
             <div className="monthly-kpi-label">Phiên cần HR xác minh / rà soát</div>
-            <div className="monthly-kpi-value">
+            <div className="monthly-kpi-value" style={{ fontFamily: 'var(--font-mono)' }}>
               {summary.total_needs_review_sessions ?? summary.flagged_sessions ?? 0}{' '}
-              <small style={{ fontSize: 13, fontWeight: 'normal' }}>phiên</small>
+              <small style={{ fontSize: 13, fontWeight: 'normal', fontFamily: 'var(--font-sans)' }}>phiên</small>
             </div>
             <div className="monthly-kpi-sub">
               Phiên ngắn ≤15p, lệch ca, thiếu checkout (Đã loại trừ khỏi trễ)
@@ -530,10 +532,10 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
             title="Nhấp để xem toàn bộ danh sách nhân sự"
           >
             <div className="monthly-kpi-label">Nhân sự có dữ liệu công</div>
-            <div className="monthly-kpi-value">
+            <div className="monthly-kpi-value" style={{ fontFamily: 'var(--font-mono)' }}>
               {summary.with_attendance}{' '}
               <small
-                style={{ fontSize: 13, fontWeight: 'normal', color: 'var(--text-tertiary)' }}
+                style={{ fontSize: 13, fontWeight: 'normal', color: 'var(--text-tertiary)', fontFamily: 'var(--font-sans)' }}
               >
                 / {summary.total_employees} người
               </small>
@@ -546,11 +548,11 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
           {/* KPI 5: Nghỉ phép & OT đối soát */}
           <div className="monthly-kpi-card">
             <div className="monthly-kpi-label">Nghỉ phép &amp; OT đối soát</div>
-            <div className="monthly-kpi-value">
+            <div className="monthly-kpi-value" style={{ fontFamily: 'var(--font-mono)' }}>
               {summary.verified_ot_source_available === false
                 ? '—'
                 : (summary.total_verified_ot_hours ?? 0)}{' '}
-              <small style={{ fontSize: 13, fontWeight: 'normal' }}>giờ OT</small>
+              <small style={{ fontSize: 13, fontWeight: 'normal', fontFamily: 'var(--font-sans)' }}>giờ OT</small>
             </div>
             <div className="monthly-kpi-sub">
               {summary.verified_ot_source_available === false
@@ -621,7 +623,7 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
                         <div className="hr-emp-cell">
                           <div className="hr-emp-line1">
                             {p.employee_code && (
-                              <span className="hr-emp-code-badge">[{p.employee_code}]</span>
+                              <span className="hr-emp-code-badge" style={{ fontFamily: 'var(--font-mono)' }}>[{p.employee_code}]</span>
                             )}
                             <button
                               type="button"
@@ -650,12 +652,12 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
                       {/* Cột 2: CÔNG & GIỜ LÀM */}
                       <td style={{ textAlign: 'center' }}>
                         <div className="hr-hours-line1">
-                          <strong>
+                          <strong style={{ fontFamily: 'var(--font-mono)' }}>
                             {p.working_days ?? 0} / {p.standard_working_days ?? standardWorkingDays} công
                           </strong>
                         </div>
                         <div className="hr-sub-meta">
-                          {(p.actual_work_hours ?? 0).toFixed(2)}h thực tế / {(p.scheduled_hours ?? 0).toFixed(2)}h ca
+                          <span style={{ fontFamily: 'var(--font-mono)' }}>{(p.actual_work_hours ?? 0).toFixed(2)}h</span> thực tế / <span style={{ fontFamily: 'var(--font-mono)' }}>{(p.scheduled_hours ?? 0).toFixed(2)}h</span> ca
                           {p.scheduled_days !== undefined && ` (${p.scheduled_days} ca)`}
                         </div>
                       </td>
@@ -666,14 +668,14 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
                           {/* Dòng 1: Pill Số ngày trễ & badge tiền phạt nằm cùng hàng ngang */}
                           <div className="hr-metric-line1">
                             {p.late_day_count > 0 ? (
-                              <span className="hr-pill-late-day">
+                              <span className="hr-pill-late-day" style={{ fontFamily: 'var(--font-mono)' }}>
                                 {p.late_day_count} ngày trễ
                               </span>
                             ) : (
                               <span className="hr-pill-zero-day">0 ngày</span>
                             )}
                             {p.late_session_count > 0 && latePenalty > 0 && (
-                              <span className="hr-penalty-pill">
+                              <span className="hr-penalty-pill" style={{ fontFamily: 'var(--font-mono)' }}>
                                 -{formatCurrency(latePenalty)}
                               </span>
                             )}
@@ -683,10 +685,10 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
                           <div className="hr-metric-line2">
                             {p.late_session_count > 0 ? (
                               <>
-                                <strong>{p.late_session_count}</strong> lần ({p.verified_late_minutes ?? 0}p)
+                                <strong style={{ fontFamily: 'var(--font-mono)' }}>{p.late_session_count}</strong> lần (<span style={{ fontFamily: 'var(--font-mono)' }}>{p.verified_late_minutes ?? 0}p</span>)
                                 {lateDates.length > 0 && (
                                   <span className="hr-metric-dates-inline" title={`Chi tiết ngày: ${lateDates.join(', ')}`}>
-                                    {' '}· Ngày: {lateDates.slice(0, 2).join(', ')}{lateDates.length > 2 ? ` (+${lateDates.length - 2})` : ''}
+                                    {' '}· Ngày: <span style={{ fontFamily: 'var(--font-mono)' }}>{lateDates.slice(0, 2).join(', ')}{lateDates.length > 2 ? ` (+${lateDates.length - 2})` : ''}</span>
                                   </span>
                                 )}
                               </>
@@ -699,7 +701,7 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
                           {((p.grace_late_session_count ?? 0) > 0 || unreviewedLateMins > 0) && (
                             <div className="hr-metric-line3">
                               {(p.grace_late_session_count ?? 0) > 0 && (
-                                <span className="hr-grace-tag" title="Phiên trễ trong hạn 15 phút đầu ca được miễn phạt">
+                                <span className="hr-grace-tag" title="Phiên trễ trong hạn 15 phút đầu ca được miễn phạt" style={{ fontFamily: 'var(--font-mono)' }}>
                                   Kèm {p.grace_late_session_count} lần ≤15p (0₫)
                                 </span>
                               )}
@@ -707,6 +709,7 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
                                 <span
                                   className="hr-metric-raw-diff"
                                   title="Phút trễ thô từ phiên bất thường cần HR rà soát"
+                                  style={{ fontFamily: 'var(--font-mono)' }}
                                 >
                                   +{unreviewedLateMins}p thô chờ rà soát
                                 </span>
@@ -721,7 +724,7 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
                         <div className="hr-metric-unified-box">
                           <div className="hr-metric-line1">
                             {p.early_day_count > 0 ? (
-                              <span className="hr-pill-early-day">
+                              <span className="hr-pill-early-day" style={{ fontFamily: 'var(--font-mono)' }}>
                                 {p.early_day_count} ngày sớm
                               </span>
                             ) : (
@@ -731,7 +734,7 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
                           <div className="hr-metric-line2">
                             {p.early_session_count > 0 ? (
                               <>
-                                <strong>{p.early_session_count}</strong> phiên ({p.verified_early_minutes ?? 0}p)
+                                <strong style={{ fontFamily: 'var(--font-mono)' }}>{p.early_session_count}</strong> phiên (<span style={{ fontFamily: 'var(--font-mono)' }}>{p.verified_early_minutes ?? 0}p</span>)
                               </>
                             ) : (
                               <span className="text-muted" style={{ fontSize: '11px' }}>Không về sớm</span>
@@ -742,6 +745,7 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
                               <span
                                 className="hr-metric-raw-diff"
                                 title="Phút sớm thô từ phiên bất thường cần HR rà soát"
+                                style={{ fontFamily: 'var(--font-mono)' }}
                               >
                                 +{unreviewedEarlyMins}p thô chờ rà soát
                               </span>
@@ -757,7 +761,8 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
                             OT đối soát:{' '}
                             <strong
                               style={{
-                                color: verifiedOtKnown && verifiedOt > 0 ? '#059669' : 'inherit',
+                                color: verifiedOtKnown && verifiedOt > 0 ? 'var(--status-success, #059669)' : 'inherit',
+                                fontFamily: 'var(--font-mono)',
                               }}
                               title={verifiedOtKnown
                                 ? 'Chỉ tính khoảng VERIFIED hiện hành từ nguồn đối soát OT.'
@@ -767,7 +772,7 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
                             </strong>
                           </div>
                           <div className="hr-ot-raw" title="Tổng số giờ ghi nhận ngoài khung ca (chưa duyệt OT)">
-                            Ngoài ca thô: {outsideHours}h
+                            Ngoài ca thô: <span style={{ fontFamily: 'var(--font-mono)' }}>{outsideHours}h</span>
                           </div>
                         </div>
                       </td>
@@ -776,10 +781,10 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
                       <td style={{ textAlign: 'center' }}>
                         <div className="hr-leave-cell">
                           <div>
-                            Có lương: <strong>{p.paid_leave_days ?? 0}d</strong>
+                            Có lương: <strong style={{ fontFamily: 'var(--font-mono)' }}>{p.paid_leave_days ?? 0}d</strong>
                           </div>
                           <div className="hr-leave-unpaid">
-                            Không lương: <strong>{p.unpaid_leave_days ?? 0}d</strong>
+                            Không lương: <strong style={{ fontFamily: 'var(--font-mono)' }}>{p.unpaid_leave_days ?? 0}d</strong>
                           </div>
                         </div>
                       </td>
@@ -790,19 +795,19 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
                           {p.late_day_count > 0 && (
                             <span className="summary-tag tag-late">
                               <AlertCircle size={12} />
-                              <span>Đi trễ: {p.late_day_count} ngày (-{formatCurrency(latePenalty)})</span>
+                              <span>Đi trễ: <strong style={{ fontFamily: 'var(--font-mono)' }}>{p.late_day_count}</strong> ngày (-<span style={{ fontFamily: 'var(--font-mono)' }}>{formatCurrency(latePenalty)}</span>)</span>
                             </span>
                           )}
                           {p.early_day_count > 0 && (
                             <span className="summary-tag tag-early">
                               <Clock size={12} />
-                              <span>Về sớm: {p.early_day_count} ngày</span>
+                              <span>Về sớm: <strong style={{ fontFamily: 'var(--font-mono)' }}>{p.early_day_count}</strong> ngày</span>
                             </span>
                           )}
                           {reviewCount > 0 && (
                             <span className="summary-tag tag-review">
                               <AlertTriangle size={12} />
-                              <span>Cần HR rà soát: {reviewCount} phiên</span>
+                              <span>Cần HR rà soát: <strong style={{ fontFamily: 'var(--font-mono)' }}>{reviewCount}</strong> phiên</span>
                             </span>
                           )}
                           {p.late_day_count === 0 &&
@@ -847,12 +852,17 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
           </div>
 
           {!filteredRows.length && (
-            <div className="hr-table-empty">
-              <p>Không có dữ liệu nhân sự phù hợp với điều kiện lọc hiện tại.</p>
+            <div className="hr-table-empty" style={{ padding: '36px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+              <EmptyState
+                icon={<Search size={32} />}
+                title="Không tìm thấy nhân sự"
+                description="Không có dữ liệu nhân sự phù hợp với điều kiện lọc hiện tại."
+              />
               {(searchTerm || quickStatus !== 'ALL') && (
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"
+                  style={{ marginTop: 12 }}
                   onClick={() => {
                     setSearchTerm('')
                     setQuickStatus('ALL')
@@ -1087,13 +1097,13 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
                 let statusLabel = 'Chưa đối soát'
                 let statusBadgeClass = 'badge-secondary'
                 if (scheduleStatus === 'MATCHED') {
-                  statusLabel = '✓ Đúng ca phân công (Khớp lịch)'
+                  statusLabel = 'Đúng ca phân công (Khớp lịch)'
                   statusBadgeClass = 'badge-success'
                 } else if (scheduleStatus === 'SHIFT_MISMATCH') {
-                  statusLabel = '⚠️ Làm lệch phân ca quy định'
+                  statusLabel = 'Làm lệch phân ca quy định'
                   statusBadgeClass = 'badge-warning'
                 } else if (scheduleStatus === 'UNSCHEDULED') {
-                  statusLabel = '⚠️ Làm việc ngoài lịch phân ca'
+                  statusLabel = 'Làm việc ngoài lịch phân ca'
                   statusBadgeClass = 'badge-warning'
                 }
 

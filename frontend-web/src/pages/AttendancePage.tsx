@@ -115,10 +115,16 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
     })
   }, [teamAttendances, searchEmployee, statusFilter])
 
-  // 8 Chỉ số công
-  const actualDays = summaryData?.working_days?.actual_days || 0
-  const standardDays = summaryData?.working_days?.standard_days || 26
-  const totalHours = summaryData?.working_days?.total_hours || 0
+  // 8 Chỉ số công - Chuẩn hóa theo công tháng thực tế & Migration 20261031_flexible_standard_days_and_multi_tier_ot
+  const workingDays = summaryData?.working_days
+  const actualDays = workingDays?.actual_days || 0
+  const standardDays = workingDays?.standard_days || 26
+  const totalHours = workingDays?.total_hours || 0
+  const calendarDays = workingDays?.calendar_days
+  const sundaysCount = workingDays?.sundays_count
+  const holidaysCount = workingDays?.holidays_count
+  const isManualOverride = workingDays?.is_manual_override
+  const isLocked = workingDays?.is_locked
 
   // Quỹ phép
   const annualLeave = summaryData?.leave_quota?.annual_leave || 0
@@ -131,20 +137,26 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
   const earlyCount = summaryData?.early_departures?.count || 0
   const earlyMinutes = summaryData?.early_departures?.minutes || 0
 
-  // Làm thêm & Công tác & Tăng ca
+  // Làm thêm & Công tác & Tăng ca (Multi-tier OT: 1.5x / 2.0x / 3.0x)
   const extraHours = summaryData?.extra_work?.hours || 0
   const businessTripDays = summaryData?.business_trips?.days || 0
-  const otShifts = summaryData?.overtime?.shifts_count || 0
-  const otHours = summaryData?.overtime?.hours || 0
+  const otSummary = summaryData?.overtime
+  const otShifts = otSummary?.shifts_count || 0
+  const otHours = otSummary?.hours || 0
+  const otApprovedHours = otSummary?.approved_hours || 0
+  const otNormalHours = otSummary?.normal_hours || 0
+  const otWeekendHours = otSummary?.weekend_hours || 0
+  const otHolidayHours = otSummary?.holiday_hours || 0
   const compensatoryDays = summaryData?.compensatory_leave?.total || 0
 
   // Xuất file CSV báo cáo công
   const handleExportCSV = () => {
     const records = activeTab === 'my_timesheet' ? filteredPersonalRecords : filteredTeamRecords
-    const headers = ['Ngày làm việc', 'Nhân viên', 'Ca làm việc', 'Check-in', 'Check-out', 'Đi muộn (phút)', 'Về sớm (phút)', 'Giờ công thực tế (h)', 'Giờ ngoài ca ghi nhận (h)', 'Trạng thái', 'Ghi chú']
+    const headers = ['Ngày làm việc', 'Loại ngày', 'Nhân viên', 'Ca làm việc', 'Check-in', 'Check-out', 'Đi muộn (phút)', 'Về sớm (phút)', 'Giờ công thực tế (h)', 'Giờ ngoài ca ghi nhận (h)', 'Trạng thái', 'Ghi chú']
     
     const rows = records.map(att => [
       att.work_date,
+      att.is_holiday ? `Lễ (${att.holiday_name || 'Nghỉ lễ'})` : att.is_weekend ? 'Chủ nhật (2.0x)' : 'Ngày thường (1.5x)',
       att.employee_name || user?.full_name || 'Nhân viên',
       att.shift_name || 'Ca làm việc',
       att.check_in_time ? formatTime(att.check_in_time) : '--:--',
@@ -175,6 +187,65 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginTop: '4px' }}>
             Bảng tổng hợp ngày công, thời gian làm việc & dữ liệu chấm công chi tiết TechZone
           </p>
+          {workingDays && (
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              fontSize: '12px',
+              padding: '4px 12px',
+              borderRadius: 'var(--radius-full)',
+              background: '#000000',
+              color: '#ffffff',
+              border: '1px solid #000000',
+              fontWeight: 500,
+              marginTop: '6px',
+              flexWrap: 'wrap'
+            }}>
+              <span className="status-pill active" style={{ fontSize: '10px', padding: '1px 6px', textTransform: 'none', background: 'rgba(255, 255, 255, 0.2)', color: '#ffffff', border: '1px solid rgba(255, 255, 255, 0.3)' }}>Công chuẩn</span>
+              <span>kỳ {periodDisplay}: <strong>{standardDays} ngày</strong></span>
+              {calendarDays ? (
+                <>
+                  <span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>•</span>
+                  <span>{calendarDays} ngày lịch</span>
+                  <span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>-</span>
+                  <span>{sundaysCount} Chủ nhật</span>
+                  {Boolean(holidaysCount) && (
+                    <>
+                      <span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>-</span>
+                      <span style={{ color: '#f87171', fontWeight: 600 }}>{holidaysCount} ngày lễ</span>
+                    </>
+                  )}
+                </>
+              ) : null}
+              {isManualOverride && (
+                <span style={{
+                  fontSize: '10.5px',
+                  background: 'rgba(234, 88, 12, 0.25)',
+                  color: '#fdba74',
+                  padding: '1px 6px',
+                  borderRadius: '4px',
+                  fontWeight: 600,
+                  border: '1px solid rgba(234, 88, 12, 0.4)'
+                }}>
+                  Ghi đè thủ công
+                </span>
+              )}
+              {isLocked && (
+                <span style={{
+                  fontSize: '10.5px',
+                  background: 'rgba(16, 185, 129, 0.25)',
+                  color: '#6ee7b7',
+                  padding: '1px 6px',
+                  borderRadius: '4px',
+                  fontWeight: 600,
+                  border: '1px solid rgba(16, 185, 129, 0.4)'
+                }}>
+                  Đã chốt kỳ
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -199,8 +270,8 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
           icon={Icons.checkCircle}
           iconColor="green"
           label="NGÀY CÔNG THỰC TẾ"
-          value={`${actualDays} công`}
-          footerNote={`Công chuẩn: ${standardDays} | Làm: ${totalHours}h | Trễ/sớm tính lương: ${summaryData?.working_days?.payroll_time_adjustment_hours ?? 0}h`}
+          value={`${actualDays} / ${standardDays} công`}
+          footerNote={`Công chuẩn tháng: ${standardDays} | Làm: ${totalHours}h | Trễ/sớm tính lương: ${workingDays?.payroll_time_adjustment_hours ?? 0}h`}
         />
 
         {/* Card 2: Quỹ phép */}
@@ -256,9 +327,12 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
         <StatCard
           icon={Icons.trendingUp}
           iconColor="amber"
-          label="GIỜ NGOÀI CA THỰC TẾ"
+          label="GIỜ NGOÀI CA & TĂNG CA OT"
           value={`${otHours} giờ`}
-          footerNote={`${otShifts} phiên phát sinh · cần HR duyệt riêng trước khi tính lương`}
+          footerNote={otApprovedHours > 0
+            ? `Đã duyệt: ${otApprovedHours}h (Thường: ${otNormalHours}h · CN: ${otWeekendHours}h · Lễ: ${otHolidayHours}h)`
+            : `${otShifts} phiên phát sinh · Hệ số: 1.5x (Thường) / 2.0x (CN) / 3.0x (Lễ)`
+          }
         />
 
         {/* Card 8: Quỹ nghỉ bù */}
@@ -357,9 +431,20 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
                       </td>
                     )}
                     <td>
-                      <span className="table-cell-mono" style={{ fontWeight: 600 }}>
-                        {formatDate(att.work_date)}
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        <span className="table-cell-mono" style={{ fontWeight: 600 }}>
+                          {formatDate(att.work_date)}
+                        </span>
+                        {att.is_holiday ? (
+                          <span className="status-pill rejected" style={{ fontSize: '10.5px', padding: '1px 6px', fontWeight: 600 }} title="Ngày nghỉ lễ hưởng lương (OT 3.0x)">
+                            Lễ {att.holiday_name ? `: ${att.holiday_name}` : ''}
+                          </span>
+                        ) : att.is_weekend ? (
+                          <span className="status-pill pending" style={{ fontSize: '10.5px', padding: '1px 6px', fontWeight: 600 }} title="Ngày nghỉ Chủ nhật (OT 2.0x)">
+                            Chủ nhật
+                          </span>
+                        ) : null}
+                      </div>
                     </td>
                     <td>
                       <span>{att.shift_name || 'Chưa có tên ca'}</span>

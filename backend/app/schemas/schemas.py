@@ -533,16 +533,27 @@ class AttendanceOut(AttendanceContextOut):
     actual_work_hours: Optional[float] = 0.0
     status: str = "NORMAL"
     notes: Optional[str] = None
+    holiday_name: Optional[str] = None
+    is_weekend: Optional[bool] = False
+    is_holiday: Optional[bool] = False
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class AttendanceWorkingDaysSummary(BaseModel):
-    standard_days: int = 26
+    standard_days: float = 26.0
     actual_days: float = 0.0
     total_hours: float = 0.0
     payroll_time_adjustment_minutes: int = 0
     payroll_time_adjustment_hours: float = 0.0
+    calendar_days: Optional[int] = None
+    sundays_count: Optional[int] = None
+    holidays_count: Optional[int] = None
+    auto_standard_days: Optional[float] = None
+    manual_standard_days: Optional[float] = None
+    is_manual_override: bool = False
+    is_locked: bool = False
+    reason: Optional[str] = None
 
 
 class AttendanceLeaveQuotaSummary(BaseModel):
@@ -559,6 +570,10 @@ class AttendanceCountAndMinutes(BaseModel):
 class AttendanceOvertimeSummary(BaseModel):
     shifts_count: int = 0
     hours: float = 0.0
+    approved_hours: float = 0.0
+    normal_hours: float = 0.0
+    weekend_hours: float = 0.0
+    holiday_hours: float = 0.0
 
 
 class AttendanceSingleValue(BaseModel):
