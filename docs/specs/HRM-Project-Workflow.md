@@ -66,7 +66,7 @@ SGU_HRM-Project/
 | STORE_MANAGER | Cửa hàng trưởng |
 | EMPLOYEE | Nhân viên |
 
-**Test Accounts:** `admin`, `hr_manager`, `store_mgr_q1`, `staff_dung`, `tech_em` (password: `123456`)
+**Test Accounts:** `tz001`, `tz002`, `tz003`, `tz004`, `tz005` (password: `TechZone@2026`)
 
 ### 1.4 Frontend Web Setup
 - [ ] Vite + React + TypeScript project
@@ -192,7 +192,7 @@ NET = GROSS - Insurance (10.5%) - Penalty
   Insurance = BHXH 8% + BHYT 1.5% + BHTN 1%
 ```
 
-**Example (staff_dung - 220 triệu):**
+**Example (tz004 - 220 triệu):**
 ```
 - Base: 8,000,000
 - Phone 150M × 1% = 1,500,000
@@ -280,20 +280,20 @@ NET = GROSS - Insurance (10.5%) - Penalty
 
 ### 5.2 Demo Scenarios
 
-**Step 1: Admin (`admin`)** - Web only
+**Step 1: Admin (`tz001`)** - Web only
 - Show RBAC permissions
 - Show Audit Log
 
-**Step 2: Employee (`staff_dung`)** - Web + Mobile
+**Step 2: Employee (`tz004`)** - Web + Mobile
 - **Web:** View profile, attendance history, payroll
 - **Mobile:** Check-in/out, Submit leave, View salary
 - **Demo print:** Phiếu lương tháng (Mobile)
 
-**Step 3: Store Manager (`store_mgr_q1`)** - Web + Mobile
+**Step 3: Store Manager (`tz003`)** - Web + Mobile
 - **Web:** Full branch management, view employees
 - **Mobile:** Quick approve leave (Level 1), View branch attendance
 
-**Step 4: HR Manager (`hr_manager`)** - Web + Mobile
+**Step 4: HR Manager (`tz002`)** - Web + Mobile
 - **Web:** Run payroll, Dashboard charts, Promote employee
 - **Mobile:** Quick approve leave (Level 2), Push notifications
 

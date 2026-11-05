@@ -208,8 +208,8 @@ Bộ kiểm thử tự động toàn diện gồm **27/27 Test Cases** đã ch�
 ```
 === 1. AUTHENTICATING TEST ACCOUNTS ===
 Admin login: OK
-Employee (staff_dung) login: OK
-Store Manager (store_mgr_q1) login: OK
+Employee (tz004) login: OK
+Store Manager (tz003) login: OK
 
 === 2. TESTING PAYROLL CALCULATION & SALES ===
 Record sales (240M, 120% KPI): OK
@@ -256,11 +256,11 @@ Mã nguồn Frontend Web (`tsc -b && vite build`) cũng đã được build th�
 
 | Tài khoản (Username) | Mật khẩu | Vai trò (Role) | Nhân sự đại diện | Kịch bản Demo thực chiến |
 | :--- | :---: | :---: | :--- | :--- |
-| `admin` | `123456` | `ADMIN` | Quản trị viên hệ thống | Cấu hình hệ thống, quản lý tài khoản, xem ma trận RBAC, xem nhật ký `audit_logs`. |
-| `hr_manager` | `123456` | `HR_MANAGER` | Huỳnh Thị Kim Yến (Trưởng phòng HR) | Duyệt đơn nghỉ phép Cấp 2, Thăng chức nhân viên $\rightarrow$ tự đổi quyền, Bấm nút chốt lương toàn chuỗi, Xem Dashboard phân tích nhân sự, Xuất Excel báo cáo. |
-| `store_mgr_q1` | `123456` | `STORE_MANAGER` | Lê Hoàng Nam (CHT Quận 1) | Quản lý nhân viên chi nhánh Q1, Duyệt đơn nghỉ phép Cấp 1, Phân ca làm việc, Nhập doanh số bán lẻ chi nhánh. |
-| `staff_dung` | `123456` | `EMPLOYEE` | Trần Quốc Dũng (NV Bán hàng Q1) | Check-in/out ca làm việc trên Mobile, Nộp đơn nghỉ phép, Xem thành tích bán 220tr, Xem phiếu lương tháng và in phiếu lương PDF chuẩn A4. |
-| `tech_em` | `123456` | `EMPLOYEE` | Phan Thị Én (Kỹ thuật viên Q3) | Chấm công, xem lịch làm việc, xem lương cá nhân. |
+| `tz001` | `TechZone@2026` | `ADMIN` | Quản trị viên hệ thống | Cấu hình hệ thống, quản lý tài khoản, xem ma trận RBAC, xem nhật ký `audit_logs`. |
+| `tz002` | `TechZone@2026` | `HR_MANAGER` | Trần Thị Bình (Trưởng phòng HR) | Duyệt đơn nghỉ phép Cấp 2, Thăng chức nhân viên $\rightarrow$ tự đổi quyền, Bấm nút chốt lương toàn chuỗi, Xem Dashboard phân tích nhân sự, Xuất Excel báo cáo. |
+| `tz003` | `TechZone@2026` | `STORE_MANAGER` | Lê Văn Cường (CHT Quận 1) | Quản lý nhân viên chi nhánh Q1, Duyệt đơn nghỉ phép Cấp 1, Phân ca làm việc, Nhập doanh số bán lẻ chi nhánh. |
+| `tz004` | `TechZone@2026` | `EMPLOYEE` | Phạm Quốc Dũng (NV Bán hàng Q1) | Check-in/out ca làm việc trên Mobile, Nộp đơn nghỉ phép, Xem thành tích bán 220tr, Xem phiếu lương tháng và in phiếu lương PDF chuẩn A4. |
+| `tz005` | `TechZone@2026` | `EMPLOYEE` | Hoàng Thị Em (Kỹ thuật viên Q3) | Chấm công, xem lịch làm việc, xem lương cá nhân. |
 
 ---
 

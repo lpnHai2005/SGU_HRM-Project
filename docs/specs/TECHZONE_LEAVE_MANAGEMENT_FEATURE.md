@@ -208,10 +208,10 @@ Bộ kiểm thử tự động toàn diện gồm **17/17 Test Steps** được 
 
 [BƯỚC 1] Đăng nhập 4 tài khoản thử nghiệm các vai trò...
  -> Đăng nhập thành công: admin (['ADMIN'])
- -> Đăng nhập thành công: hr_manager (['HR_MANAGER'])
- -> Đăng nhập thành công: store_mgr_q1 (['STORE_MANAGER'])
- -> Đăng nhập thành công: staff_dung (['EMPLOYEE'])
- -> Đăng nhập thành công: tech_em (['EMPLOYEE'])
+ -> Đăng nhập thành công: tz002 (['HR_MANAGER'])
+ -> Đăng nhập thành công: tz003 (['STORE_MANAGER'])
+ -> Đăng nhập thành công: tz004 (['EMPLOYEE'])
+ -> Đăng nhập thành công: tz005 (['EMPLOYEE'])
 
 [BƯỚC 2] Kiểm tra danh mục loại đơn nghỉ phép (/leaves/types)...
  -> Tìm thấy 6 loại đơn nghỉ phép:
@@ -222,7 +222,7 @@ Bộ kiểm thử tự động toàn diện gồm **17/17 Test Steps** được 
     * [KHONG_LUONG] Nghỉ không hưởng lương - Max: 15 ngày | Hưởng lương: False
     * [THOI_VIEC] Đơn xin thôi việc / nghỉ việc - Max: 0 ngày | Hưởng lương: False
 
-[BƯỚC 3] Tra cứu số dư phép năm cá nhân của nhân viên staff_dung (/leaves/balances/me)...
+[BƯỚC 3] Tra cứu số dư phép năm cá nhân của nhân viên tz004 (/leaves/balances/me)...
  -> Nhân viên: Phạm Quốc Dũng
  -> Tiêu chuẩn phép năm: 12.0 ngày (Thưởng thâm niên: 0.0 ngày)
  -> Đã sử dụng: 0.0 ngày | Còn lại: 12.0 ngày
@@ -234,7 +234,7 @@ Bộ kiểm thử tự động toàn diện gồm **17/17 Test Steps** được 
  -> 4.4 Xin quá số dư phép năm: Status 400 (Số ngày phép yêu cầu (100.0 ngày) vượt quá số dư phép năm còn lại (12.0 ngày)...)
  [PASS] Hoàn tất kiểm tra 4 trường hợp validation đầu vào!
 
-[BƯỚC 5] Nhân viên staff_dung nộp đơn nghỉ phép năm hợp lệ...
+[BƯỚC 5] Nhân viên tz004 nộp đơn nghỉ phép năm hợp lệ...
  -> Nộp đơn thành công! Mã đơn: #18 | Trạng thái: PENDING
  -> Thông báo: Nộp đơn Nghỉ phép năm thành công! Đơn đang chờ Cửa hàng trưởng phê duyệt.
  -> Nộp trùng khoảng thời gian (Phải bị chặn): Status 400
@@ -243,11 +243,11 @@ Bộ kiểm thử tự động toàn diện gồm **17/17 Test Steps** được 
  -> Mã đơn: #18 | Nhân viên: Phạm Quốc Dũng (TZ-004)
  -> Loại nghỉ: Nghỉ phép năm | Từ 2026-10-15 đến 2026-10-16 (2.0 ngày) | Trạng thái: PENDING
 
-[BƯỚC 7] Cửa hàng trưởng store_mgr_q1 thực hiện duyệt Cấp 1...
+[BƯỚC 7] Cửa hàng trưởng tz003 thực hiện duyệt Cấp 1...
  -> Kết quả duyệt Cấp 1: Duyệt Cấp 1 thành công cho nhân viên Phạm Quốc Dũng!
  -> Cố tình duyệt Cấp 1 lần nữa: Status 400 (Đơn này đã được CHT phê duyệt trước đó.)
 
-[BƯỚC 8] Trưởng phòng HR (hr_manager) thực hiện duyệt chính thức Cấp 2...
+[BƯỚC 8] Trưởng phòng HR (tz002) thực hiện duyệt chính thức Cấp 2...
  -> Kết quả duyệt Cấp 2: Phòng Nhân sự đã phê duyệt chính thức thành công!
  -> Số dư phép năm sau khi duyệt: Đã sử dụng: 2.0 ngày | Còn lại: 10.0 ngày
 
@@ -259,7 +259,7 @@ Bộ kiểm thử tự động toàn diện gồm **17/17 Test Steps** được 
  -> Đã hủy đơn xin nghỉ phép thành công: CANCELLED
 
 [BƯỚC 11] Kiểm tra Ma trận phân quyền xem danh sách đơn (RBAC)...
- -> Nhân viên staff_dung chỉ thấy đơn của mình (employee_id=4)
+ -> Nhân viên tz004 chỉ thấy đơn của mình (employee_id=4)
  -> Cửa hàng trưởng Q1 thấy đơn thuộc chi nhánh mình & của mình
  -> HR Manager thấy toàn bộ đơn trong toàn hệ thống TechZone
 
@@ -306,10 +306,10 @@ Bộ kiểm thử tự động toàn diện gồm **17/17 Test Steps** được 
 Khi trình bày trước hội đồng phản biện hoặc giảng viên, nhóm có thể thực hiện 7 kịch bản demo mẫu sau:
 
 1. **Kịch bản 1: Nộp đơn và Luồng duyệt 2 cấp thành công (Happy Path)**
-   - **Nhân viên (`staff_dung`):** Nộp đơn Nghỉ phép năm 2 ngày -> Trạng thái `Chờ CHT duyệt` (vàng cam).
-   - **Cửa hàng trưởng (`store_mgr_q1`):** Bấm nút **"✓ Duyệt"** -> Đơn chuyển sang `Chờ HR duyệt` (xanh dương).
-   - **Trưởng phòng HR (`hr_manager`):** Bấm nút **"✓ Duyệt"** -> Đơn chuyển sang `Đã duyệt` (xanh lá).
-   - **Kết quả:** Quỹ phép năm của `staff_dung` tự động bị trừ đúng 2 ngày, xuất hiện trên Lịch nghỉ phép.
+   - **Nhân viên (`tz004`):** Nộp đơn Nghỉ phép năm 2 ngày -> Trạng thái `Chờ CHT duyệt` (vàng cam).
+   - **Cửa hàng trưởng (`tz003`):** Bấm nút **"✓ Duyệt"** -> Đơn chuyển sang `Chờ HR duyệt` (xanh dương).
+   - **Trưởng phòng HR (`tz002`):** Bấm nút **"✓ Duyệt"** -> Đơn chuyển sang `Đã duyệt` (xanh lá).
+   - **Kết quả:** Quỹ phép năm của `tz004` tự động bị trừ đúng 2 ngày, xuất hiện trên Lịch nghỉ phép.
 
 2. **Kịch bản 2: Ràng buộc số ngày tối đa theo từng loại nghỉ (Max Days Validation)**
    - Chọn loại nghỉ **Nghỉ việc riêng** (tối đa 3 ngày).
@@ -318,10 +318,10 @@ Khi trình bày trước hội đồng phản biện hoặc giảng viên, nhóm
    - Nhập lại đúng 3 ngày -> Nộp thành công.
 
 3. **Kịch bản 3: Phân cấp phê duyệt đơn của Cửa hàng trưởng (Store Manager Leave Workflow)**
-   - **Cửa hàng trưởng (`store_mgr_q1`):** Nộp đơn xin nghỉ phép cá nhân.
+   - **Cửa hàng trưởng (`tz003`):** Nộp đơn xin nghỉ phép cá nhân.
    - Đơn hiển thị trạng thái `Chờ HR duyệt`. Cột **CHT DUYỆT** hiển thị rõ `Không áp dụng`.
    - CHT không có nút tự duyệt đơn của mình.
-   - **Trưởng phòng HR (`hr_manager`):** Thấy nút **"✓ Duyệt"** trực tiếp để phê duyệt đơn của CHT mà không cần qua Cấp 1.
+   - **Trưởng phòng HR (`tz002`):** Thấy nút **"✓ Duyệt"** trực tiếp để phê duyệt đơn của CHT mà không cần qua Cấp 1.
 
 4. **Kịch bản 4: Cửa hàng trưởng từ chối đơn ở Cấp 1 (Level 1 Rejection)**
    - Nhân viên nộp đơn -> Cửa hàng trưởng bấm **"✕ Từ chối"** và nhập lý do: *"Trùng đợt siêu khuyến mãi, thiếu nhân sự trực quầy"*.

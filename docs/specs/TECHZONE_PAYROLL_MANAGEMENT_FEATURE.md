@@ -54,7 +54,7 @@ NET = GROSS - Insurance (10.5%) - Penalty
 | **Phạt đi muộn** | `penalty_deduction` | Phạt vi phạm quy chế chấm công (Check-in trễ `> 15 phút`): **50.000đ / lần**. | Tự động phát hiện từ chấm công |
 | **THỰC LĨNH (NET)** | `net_salary` | `GROSS - Bảo hiểm (10.5%) - Thuế TNCN - Phạt đi muộn`. | Số tiền thực nhận chuyển khoản |
 
-### 2.3. Ví dụ minh họa thực tế: Nhân viên Phạm Quốc Dũng (`staff_dung`)
+### 2.3. Ví dụ minh họa thực tế: Nhân viên Phạm Quốc Dũng (`tz004`)
 
 ```text
 Doanh số tháng 09/2026: 220.000.000 VNĐ (Mục tiêu KPI: 220.000.000 VNĐ -> Đạt 100%)
@@ -206,13 +206,13 @@ Hệ thống đã được kiểm thử toàn diện qua bộ kịch bản tự 
  Chuỗi TechZone - Liên kết Nghỉ phép (Trừ lương), Hoa hồng, Thưởng KPI, In A4/PDF
 =====================================================================================
 
-[BƯỚC 1] Đăng nhập các tài khoản hệ thống (admin, hr_manager, store_mgr_q1, staff_dung)...
+[BƯỚC 1] Đăng nhập các tài khoản hệ thống (admin, tz002, tz003, tz004)...
  -> Đăng nhập thành công: admin (['ADMIN'])
- -> Đăng nhập thành công: hr_manager (['HR_MANAGER'])
- -> Đăng nhập thành công: store_mgr_q1 (['STORE_MANAGER'])
- -> Đăng nhập thành công: staff_dung (['EMPLOYEE'])
+ -> Đăng nhập thành công: tz002 (['HR_MANAGER'])
+ -> Đăng nhập thành công: tz003 (['STORE_MANAGER'])
+ -> Đăng nhập thành công: tz004 (['EMPLOYEE'])
 
-[BƯỚC 2] Thiết lập doanh số bán lẻ 220 triệu cho staff_dung (Phone 150M, Laptop 70M, KPI 100%)...
+[BƯỚC 2] Thiết lập doanh số bán lẻ 220 triệu cho tz004 (Phone 150M, Laptop 70M, KPI 100%)...
  -> Đã ghi nhận doanh số: Tổng 220,000,000 VNĐ | Tỷ lệ KPI: 100.0%
 
 [BƯỚC 3] Kiểm tra hoa hồng bán lẻ và thưởng KPI...
@@ -220,7 +220,7 @@ Hệ thống đã được kiểm thử toàn diện qua bộ kịch bản tự 
  -> Thưởng nóng KPI: 1,000,000 VNĐ (Kỳ vọng: 1,000,000 VNĐ)
 
 [BƯỚC 4] Kiểm tra liên kết phân hệ Nghỉ phép có trừ lương (Unpaid Leave Linkage)...
- -> Nhân viên staff_dung đã nộp đơn nghỉ không lương #36 ngày 2026-09-18
+ -> Nhân viên tz004 đã nộp đơn nghỉ không lương #36 ngày 2026-09-18
  -> HR đã duyệt chính thức (HR_APPROVED) đơn #36
  -> Xác nhận: Bảng chấm công attendances đã tự động ghi nhận status=UNPAID_LEAVE
 
@@ -233,7 +233,7 @@ Hệ thống đã được kiểm thử toàn diện qua bộ kịch bản tự 
 [BƯỚC 6] Kiểm tra endpoint alias workflow: GET /api/payroll/generate/{month}...
  -> GET /api/payroll/generate/2026-09 thành công! Nhận được 6 phiếu lương.
 
-[BƯỚC 7] Kiểm tra phiếu lương chi tiết của staff_dung (ID: 4) & khấu trừ nghỉ không lương...
+[BƯỚC 7] Kiểm tra phiếu lương chi tiết của tz004 (ID: 4) & khấu trừ nghỉ không lương...
  -> Thông số phiếu lương #45 của Phạm Quốc Dũng:
     * Công chuẩn: 26.0 ngày | Công thực tế: 24.0 ngày
     * Nghỉ không lương: 2.0 ngày (Từ đơn #36 đã duyệt)
@@ -323,9 +323,9 @@ Hệ thống tự động:
 - Khởi động Frontend Web (Vite React) tại: `http://localhost:5173`
 
 ### 8.2. Tài khoản thử nghiệm
-- **HR Manager:** `hr_manager` / `123456` (Chốt lương, duyệt trạng thái, xem toàn chuỗi, in phiếu, xuất Excel).
-- **Cửa hàng trưởng:** `store_mgr_q1` / `123456` (Xem bảng lương nhân sự chi nhánh Quận 1).
-- **Nhân viên:** `staff_dung` / `123456` (Xem phiếu lương tháng cá nhân, xem giải trình công thức và in A4).
+- **HR Manager:** `tz002` / `TechZone@2026` (Chốt lương, duyệt trạng thái, xem toàn chuỗi, in phiếu, xuất Excel).
+- **Cửa hàng trưởng:** `tz003` / `TechZone@2026` (Xem bảng lương nhân sự chi nhánh Quận 1).
+- **Nhân viên:** `tz004` / `TechZone@2026` (Xem phiếu lương tháng cá nhân, xem giải trình công thức và in A4).
 
 ### 8.3. Chạy kiểm thử tự động
 Từ thư mục `backend`:
