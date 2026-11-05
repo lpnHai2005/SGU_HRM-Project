@@ -50,6 +50,8 @@ async def test_payroll_import_postgres_workflow():
                     await db.execute(text("DELETE FROM public.payroll_import_overrides WHERE salary_period = :p"), {"p": period})
                     await db.execute(text("DELETE FROM public.payroll_import_batches WHERE salary_period = :p"), {"p": period})
                     await db.execute(text("DELETE FROM public.payroll_calculation_runs WHERE salary_period = :p"), {"p": period})
+                    # Kỳ 2040 vượt mọi hợp đồng có sẵn; thiếu hợp đồng sẽ dừng cả kỳ. Rollback ở cuối test hoàn tác.
+                    await db.execute(text("UPDATE public.contracts SET end_date = NULL WHERE status = 'ACTIVE'"))
 
                     # Seed auxiliary master data
                     await db.execute(text("""

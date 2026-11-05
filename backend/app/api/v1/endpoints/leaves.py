@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from app.core.database import get_db
 from app.core.config import settings
+from app.core.leave_days import count_leave_days, leave_working_dates
 from app.api.deps import get_current_user, require_roles, log_audit
 from app.schemas.schemas import (
     LeaveTypeOut, LeaveRequestCreate, LeaveApproveRequest, LeaveRejectRequest,
@@ -625,9 +626,6 @@ async def create_leave_request(
     if req.start_date > req.end_date:
         raise HTTPException(status_code=400, detail="Ngày bắt đầu nghỉ không được lớn hơn ngày kết thúc.")
 
-    if req.total_days <= 0:
-        raise HTTPException(status_code=400, detail="Số ngày xin nghỉ phải lớn hơn 0.")
-
     # 2. Kiểm tra loại đơn nghỉ
     type_res = await db.execute(
         text("SELECT leave_type_id, type_code, type_name, max_days_allowed, requires_attachment FROM leave_types WHERE leave_type_id = :id"),
@@ -637,21 +635,26 @@ async def create_leave_request(
     if not leave_type:
         raise HTTPException(status_code=404, detail="Loại đơn nghỉ phép không tồn tại.")
 
+    # Số ngày do server tính; giá trị client gửi lên chỉ để tương thích và không được tin.
+    total_days = await count_leave_days(db, req.start_date, req.end_date, leave_type["type_code"])
+    if total_days <= 0:
+        raise HTTPException(status_code=400, detail="Khoảng thời gian đã chọn không có ngày làm việc nào.")
+
     # 3. Kiểm tra hạn mức số ngày nghỉ tối đa theo loại đơn
     if leave_type["type_code"] == "PHEP_NAM":
         balance = await get_employee_leave_balance(target_emp_id, current_user, db)
-        if req.total_days > balance.annual_leave_remaining:
+        if total_days > balance.annual_leave_remaining:
             who = f"của nhân viên {target_emp['full_name']}" if (target_emp_id != user_emp_id) else "của bạn"
             raise HTTPException(
                 status_code=400,
-                detail=f"Số ngày phép yêu cầu ({req.total_days} ngày) vượt quá số dư phép năm còn lại {who} ({balance.annual_leave_remaining} ngày). Vui lòng điều chỉnh hoặc chọn loại nghỉ không lương."
+                detail=f"Số ngày phép yêu cầu ({total_days} ngày) vượt quá số dư phép năm còn lại {who} ({balance.annual_leave_remaining} ngày). Vui lòng điều chỉnh hoặc chọn loại nghỉ không lương."
             )
     else:
         max_days = leave_type.get("max_days_allowed")
-        if max_days and max_days > 0 and req.total_days > float(max_days):
+        if max_days and max_days > 0 and total_days > float(max_days):
             raise HTTPException(
                 status_code=400,
-                detail=f"Loại nghỉ '{leave_type['type_name']}' chỉ được nghỉ tối đa {max_days} ngày theo quy định. Bạn đang đăng ký {req.total_days} ngày. Vui lòng điều chỉnh lại thời gian."
+                detail=f"Loại nghỉ '{leave_type['type_name']}' chỉ được nghỉ tối đa {max_days} ngày theo quy định. Bạn đang đăng ký {total_days} ngày. Vui lòng điều chỉnh lại thời gian."
             )
 
     # 4. Kiểm tra đơn trùng lặp thời gian
@@ -688,7 +691,7 @@ async def create_leave_request(
         "leave_type_id": req.leave_type_id,
         "start_date": req.start_date,
         "end_date": req.end_date,
-        "total_days": req.total_days,
+        "total_days": total_days,
         "reason": req.reason,
         "attachment_url": req.attachment_url
     })
@@ -711,7 +714,7 @@ async def create_leave_request(
             "leave_type": leave_type["type_name"],
             "start_date": str(req.start_date),
             "end_date": str(req.end_date),
-            "total_days": req.total_days,
+            "total_days": total_days,
             "reason": req.reason
         },
         ip_address=client_ip
@@ -996,9 +999,7 @@ async def hr_approve_leave(
     emp_store_res = await db.execute(text("SELECT store_id FROM employees WHERE employee_id = :eid"), {"eid": leave_req["employee_id"]})
     emp_store_id = emp_store_res.scalar() or 1
 
-    cur_d = leave_req["start_date"]
-    end_d = leave_req["end_date"]
-    while cur_d <= end_d:
+    for cur_d in await leave_working_dates(db, leave_req["start_date"], leave_req["end_date"]):
         att_note = f"Đơn nghỉ phép #{leave_req['request_id']} ({leave_req['leave_type_name']}) - {'Có trừ lương' if is_unpaid else 'Hưởng lương'}"
         exist_res = await db.execute(
             text("SELECT attendance_id FROM attendances WHERE employee_id = :eid AND work_date = :w_date"),
@@ -1027,7 +1028,6 @@ async def hr_approve_leave(
                 "status": att_status,
                 "note": att_note
             })
-        cur_d += timedelta(days=1)
 
     await db.commit()
 
@@ -1162,6 +1162,18 @@ async def reject_leave(
     # NẾU ĐƠN NÀY TỪNG ĐƯỢC DUYỆT CHÍNH THỨC (HR_APPROVED) VÀ BỊ THU HỒI/TỪ CHỐI LẠI:
     # Tự động hoàn nguyên trạng thái hồ sơ nhân sự
     if old_status == "HR_APPROVED":
+        # Gỡ ngày nghỉ khỏi chấm công: dòng do đơn tạo thì xóa, dòng đã có giờ vào thì trả về ngày làm.
+        note_pattern = f"Đơn nghỉ phép #{request_id} (%"
+        await db.execute(text("""
+            DELETE FROM attendances
+            WHERE employee_id = :eid AND notes LIKE :note AND check_in_time IS NULL
+        """), {"eid": leave_req["employee_id"], "note": note_pattern})
+        await db.execute(text("""
+            UPDATE attendances
+            SET status = 'NORMAL', notes = NULL, updated_at = CURRENT_TIMESTAMP,
+                actual_work_hours = COALESCE(ROUND((EXTRACT(EPOCH FROM check_out_time - check_in_time) / 3600)::numeric, 2), 0)
+            WHERE employee_id = :eid AND notes LIKE :note
+        """), {"eid": leave_req["employee_id"], "note": note_pattern})
         # 1. Hoàn nguyên nếu là đơn thôi việc
         if leave_req["type_code"] == "THOI_VIEC" or leave_req["leave_type_id"] == 6:
             await db.execute(text("""
@@ -1174,6 +1186,15 @@ async def reject_leave(
                 SET is_active = TRUE, updated_at = CURRENT_TIMESTAMP
                 WHERE employee_id = :eid
             """), {"eid": leave_req["employee_id"]})
+            await db.execute(text("""
+                UPDATE contracts
+                SET status = 'ACTIVE', termination_date = NULL, termination_reason = NULL,
+                    terminated_by = NULL, updated_at = CURRENT_TIMESTAMP
+                WHERE employee_id = :eid AND termination_reason = :reason
+            """), {
+                "eid": leave_req["employee_id"],
+                "reason": f"Nghỉ việc theo đơn xin thôi việc (Leave Request #{request_id})",
+            })
         # 2. Hoàn nguyên nếu là đơn thai sản
         elif leave_req["type_code"] == "THAI_SAN" or leave_req["leave_type_id"] == 3:
             await db.execute(text("""

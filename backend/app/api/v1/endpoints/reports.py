@@ -8,6 +8,7 @@ from fastapi.responses import StreamingResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
+from app.core.company import get_company_profile
 from app.core.database import get_db
 from app.core.attendance import local_now
 from app.api.deps import require_roles, require_strict_roles, get_current_user
@@ -46,6 +47,14 @@ async def _dashboard_kpis(db: AsyncSession, current_user: dict, today: date) -> 
     return {"active_employees": active, "pending_leaves": pending,
             "attendance_today": {"checked_in": attendance[0] or 0,
                                  "late": attendance[1] or 0, "working": attendance[2] or 0}}
+
+
+@router.get("/company-profile", summary="Thông tin pháp nhân in trên các biểu mẫu")
+async def read_company_profile(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    return await get_company_profile(db)
 
 
 @router.get("/dashboard-kpis", summary="Bốn chỉ số nhân sự Dashboard, không phụ thuộc Payroll/Sales")
@@ -781,6 +790,7 @@ async def export_demographics_excel(
     ]
 
     file_stream = create_styled_excel(
+        company_name=(await get_company_profile(db)).get("name"),
         title="BÁO CÁO CƠ CẤU NHÂN SỰ & HỌC VẤN TOÀN CHUỖI",
         subtitle=f"Ngày xuất: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')} - Tổng số nhân sự: {len(details)} người",
         columns=columns,
@@ -839,7 +849,7 @@ async def export_payroll_fund_excel(
     current_user: dict = Depends(require_roles(["DIRECTOR", "HR_MANAGER", "STORE_MANAGER", "ADMIN"])),
     db: AsyncSession = Depends(get_db)
 ):
-    fund_data = await get_payroll_fund_summary(period=period, current_user=current_user, db=db)
+    fund_data = await get_payroll_fund_summary(period=period, store_id=None, budget_cap=None, current_user=current_user, db=db)
     by_unit = fund_data.get("by_unit", [])
     if not by_unit:
         raise HTTPException(status_code=404, detail=f"Không có dữ liệu quỹ lương trong kỳ {period}")
@@ -864,6 +874,7 @@ async def export_payroll_fund_excel(
     ]
 
     file_stream = create_styled_excel(
+        company_name=(await get_company_profile(db)).get("name"),
         title=f"BÁO CÁO QUẢN TRỊ CHI PHÍ NHÂN SỰ TOÀN PHẦN (TCOW) - KỲ {period}",
         subtitle=f"Ngày xuất: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')} - Chuỗi bán lẻ TechZone",
         columns=columns,
@@ -1305,7 +1316,7 @@ async def export_overview_excel(
     ]
 
     # 2. Dữ liệu Quỹ lương
-    fund_data = await get_payroll_fund_summary(period=period_str, store_id=store_id, current_user=current_user, db=db)
+    fund_data = await get_payroll_fund_summary(period=period_str, store_id=store_id, budget_cap=None, current_user=current_user, db=db)
     fund_rows = [dict(u) for u in fund_data.get("by_unit", [])]
 
     fund_columns = [
@@ -1394,7 +1405,7 @@ async def export_overview_excel(
         }
     ]
 
-    file_stream = create_multisheet_excel(sheets)
+    file_stream = create_multisheet_excel(sheets, (await get_company_profile(db)).get("name"))
     filename = f"Bao_Cao_Tong_Hop_TechZone_{period}.xlsx"
     return StreamingResponse(
         file_stream,
