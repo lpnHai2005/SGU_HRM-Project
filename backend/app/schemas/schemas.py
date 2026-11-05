@@ -14,8 +14,8 @@ except ImportError:
 # ===================================================================================
 
 class LoginRequest(BaseModel):
-    username: str = Field(..., json_schema_extra={"example": "admin"}, description="Tên đăng nhập hệ thống")
-    password: str = Field(..., json_schema_extra={"example": "123456"}, description="Mật khẩu người dùng")
+    username: str = Field(..., json_schema_extra={"example": "tz001"}, description="Tên đăng nhập hệ thống")
+    password: str = Field(..., json_schema_extra={"example": "TechZone@2026"}, description="Mật khẩu người dùng")
 
 
 class TokenResponse(BaseModel):
@@ -263,7 +263,6 @@ class PromotionCreate(BaseModel):
 
 class ContractTypeEnum(str, Enum):
     PROBATION = "PROBATION"
-    FIXED_TERM = "FIXED_TERM"
     FIXED_1_YEAR = "FIXED_1_YEAR"
     FIXED_2_YEAR = "FIXED_2_YEAR"
     FIXED_3_YEAR = "FIXED_3_YEAR"
@@ -282,7 +281,7 @@ class ContractCreate(BaseModel):
     """Schema để tạo hợp đồng mới"""
     employee_id: int = Field(..., description="ID nhân viên")
     contract_type: ContractTypeEnum = Field(
-        default=ContractTypeEnum.FIXED_TERM,
+        default=ContractTypeEnum.FIXED_1_YEAR,
         description="Loại hợp đồng"
     )
     start_date: date = Field(..., description="Ngày bắt đầu")
@@ -346,7 +345,10 @@ class ContractRenew(BaseModel):
     """Schema để gia hạn hợp đồng"""
     new_start_date: date = Field(..., description="Ngày bắt đầu mới")
     new_end_date: Optional[date] = Field(None, description="Ngày kết thúc mới")
+    new_contract_type: Optional[ContractTypeEnum] = Field(None, description="Loại HĐ mới, bỏ trống thì giữ loại cũ")
     new_basic_salary: Optional[float] = Field(None, ge=0, description="Lương mới")
+    new_insurance_salary: Optional[float] = Field(None, ge=0, description="Lương đóng BH mới, bỏ trống thì giữ mức cũ")
+    new_working_hours_per_week: Optional[Literal[40, 44, 48]] = Field(None, description="Giờ/tuần mới, bỏ trống thì giữ mức cũ")
     new_position_id: Optional[int] = Field(None, description="Chức vụ mới")
     notes: Optional[str] = Field(None, description="Ghi chú")
 
@@ -656,7 +658,7 @@ class LeaveRequestCreate(BaseModel):
     leave_type_id: int
     start_date: date
     end_date: date
-    total_days: float
+    total_days: Optional[float] = None  # server tự tính, giữ để client cũ không lỗi
     reason: str
     attachment_url: Optional[str] = None
 

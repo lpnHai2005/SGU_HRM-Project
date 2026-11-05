@@ -8,6 +8,7 @@ import re
 from datetime import date, datetime
 from typing import Dict, Any, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.leave_days import count_leave_days
 from sqlalchemy import text
 
 
@@ -500,10 +501,6 @@ async def validate_leave_request(
     if start_d < today:
         return {"valid": False, "error": f"Không thể tạo đơn nghỉ phép cho ngày trong quá khứ (trước ngày {today.strftime('%d/%m/%Y')}).", "status_code": 400}
 
-    total_days = float((end_d - start_d).days + 1)
-    if total_days <= 0:
-        return {"valid": False, "error": "Số ngày xin nghỉ phải lớn hơn 0.", "status_code": 400}
-
     # 3. Trùng lặp thời gian
     overlap_res = await db.execute(text("""
         SELECT request_id, start_date, end_date, status
@@ -540,6 +537,10 @@ async def validate_leave_request(
             "error": f"Loại phép '{leave_type_code_or_id}' không hợp lệ. Các loại hỗ trợ: PHEP_NAM, NGHI_OM, THAI_SAN, VIEC_RIENG, KHONG_LUONG, THOI_VIEC.",
             "status_code": 400
         }
+
+    total_days = await count_leave_days(db, start_d, end_d, lt["type_code"])
+    if total_days <= 0:
+        return {"valid": False, "error": "Khoảng thời gian đã chọn không có ngày làm việc nào.", "status_code": 400}
 
     # 5. Yêu cầu minh chứng (nếu có attachment_url truyền vào)
     requires_att = bool(lt["requires_attachment"])

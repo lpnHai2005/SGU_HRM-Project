@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, 
 from fastapi.responses import StreamingResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side, Protection
 
@@ -24,6 +25,7 @@ from app.core.ot_registration_policy import (
 )
 from app.api.deps import get_current_user, require_roles
 from app.core.vietnamese_number import currency_to_vietnamese_words
+from app.core.company import get_company_profile
 from app.core.excel_exporter import create_styled_excel
 import logging
 from app.schemas.schemas import (
@@ -406,7 +408,14 @@ async def execute_payroll_calculation(db, period: str, hr_id: int):
     await db.execute(text("DELETE FROM payrolls WHERE salary_period = :period"), {"period": period})
 
     # 2. Gọi Stored Procedure chính
-    await db.execute(text("CALL sp_generate_monthly_payroll(:period, :hr_id)"), {"period": period, "hr_id": hr_id})
+    try:
+        await db.execute(text("CALL sp_generate_monthly_payroll(:period, :hr_id)"), {"period": period, "hr_id": hr_id})
+    except DBAPIError as exc:
+        match = re.search(r"PAYROLL_CONTRACT_MISSING: ([^\n]*)", str(exc))
+        if match:
+            await db.rollback()
+            raise HTTPException(409, f"Chưa thể tính lương: nhân viên chưa có hợp đồng hiệu lực trong kỳ: {match.group(1)}")
+        raise
     await reapply_payroll_adjustments(db, period, saved_adjustments)
     await db.execute(text('''INSERT INTO payroll_calculation_runs(salary_period,calculated_at)
         VALUES(:period,clock_timestamp()) ON CONFLICT(salary_period) DO UPDATE
@@ -692,13 +701,7 @@ async def get_annual_salary(
     net_total = float(row_dict.get("total_net_salary_year") or 0)
     row_dict["net_salary_in_words"] = currency_to_vietnamese_words(net_total)
     row_dict["employee"] = dict(emp_info)
-    row_dict["company"] = {
-        "name": "CÔNG TY TNHH THƯƠNG MẠI DỊCH VỤ TECH ZONE",
-        "brand": "TECHZONE",
-        "tax_id": "0312345678",
-        "hotline": "1900 6868",
-        "address": "273 An Dương Vương, Phường 3, Quận 5, TP. Hồ Chí Minh"
-    }
+    row_dict["company"] = await get_company_profile(db)
     row_dict["monthly_records"] = monthly_list
     return row_dict
 
@@ -793,6 +796,7 @@ async def record_sales(
     if "STORE_MANAGER" in roles and not any(role in roles for role in ("ADMIN", "HR_MANAGER", "DIRECTOR")):
         if not current_user.get("store_id") or req.store_id != current_user["store_id"]:
             raise HTTPException(status_code=403, detail="Chỉ được ghi doanh số cửa hàng được giao")
+    await ensure_period_not_finalized(db, req.salary_period)
     employee_store = (await db.execute(
         text("SELECT store_id FROM employees WHERE employee_id = :employee_id"),
         {"employee_id": req.employee_id},
@@ -859,12 +863,13 @@ async def get_my_commission(
     return row
 
 
-@router.get("/commissions/calculate/{month}", response_model=List[CommissionOut], summary="Chạy tính hoa hồng và trả về kết quả theo tháng (Week 3.1)")
+@router.post("/commissions/calculate/{month}", response_model=List[CommissionOut], summary="Chạy tính hoa hồng và trả về kết quả theo tháng (Week 3.1)")
 async def calculate_commissions_endpoint(
     month: str,
     current_user: dict = Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
+    await ensure_period_not_finalized(db, month)
     await db.execute(text("CALL sp_calculate_monthly_commission(:period)"), {"period": month})
     await db.commit()
     return await list_commissions(period=month, store_id=None, employee_id=None, current_user=current_user, db=db)
@@ -2444,6 +2449,7 @@ async def export_payroll_excel(
         excel_data.append(p_dict)
 
     file_stream = create_styled_excel(
+        company_name=(await get_company_profile(db)).get("name"),
         title=f"BẢNG LƯƠNG NHÂN SỰ TOÀN CHUỖI - KỲ {period}",
         subtitle=f"Thời điểm xuất báo cáo: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')} - Đơn vị tiền tệ: VNĐ",
         columns=columns,
@@ -2534,6 +2540,7 @@ async def export_annual_payroll_excel(
         emp_code = emp_info.get("employee_code", f"NV{target_emp_id}")
         emp_name = emp_info.get("full_name", "")
         file_stream = create_styled_excel(
+            company_name=(await get_company_profile(db)).get("name"),
             title=f"BẢNG TỔNG HỢP THU NHẬP NĂM {year} - {emp_name} ({emp_code})",
             subtitle=f"Chức vụ: {emp_info.get('position_name', '-')} • Đơn vị: {emp_info.get('store_name', '-')} • MST: {emp_info.get('tax_code') or 'Chưa có'} • Thời điểm xuất: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}",
             columns=columns,
@@ -2593,6 +2600,7 @@ async def export_annual_payroll_excel(
     ]
 
     file_stream = create_styled_excel(
+        company_name=(await get_company_profile(db)).get("name"),
         title=f"BẢNG TỔNG HỢP THU NHẬP NĂM TOÀN CHUỖI TECHZONE - NĂM {year}",
         subtitle=f"Thời điểm xuất báo cáo: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')} - Đơn vị tiền tệ: VNĐ",
         columns=columns,
@@ -2832,13 +2840,7 @@ async def get_printable_payslip(
         "payroll_code": f"PL-{period_str}-{str(row['payroll_id']).zfill(4)}",
         "generated_date": current_time_str,
         "created_at": str(row.get("payment_date") or date.today().strftime("%d/%m/%Y")),
-        "company": {
-            "name": "TECHZONE RETAIL",
-            "brand": "TECHZONE RETAIL",
-            "tax_id": None,
-            "hotline": None,
-            "address": None
-        },
+        "company": await get_company_profile(db),
         "payslip_title": f"PHIẾU LƯƠNG THÁNG {month_val}/{year_val}",
         "salary_period": row["salary_period"],
         "manual_adjustment": {"addition_amount":manual_add,"deduction_amount":manual_ded,
