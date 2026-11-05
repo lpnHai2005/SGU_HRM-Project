@@ -83,11 +83,11 @@ Frontend được kết nối với Backend FastAPI qua các endpoints:
 
 | Username | Password | Vai trò |
 |----------|----------|---------|
-| admin | 123456 | Quản trị viên |
-| hr_manager | 123456 | Trưởng phòng Nhân sự |
-| store_mgr_q1 | 123456 | Cửa hàng trưởng Q1 |
-| staff_dung | 123456 | Nhân viên |
-| tech_em | 123456 | Kỹ thuật viên |
+| tz001 | TechZone@2026 | Quản trị viên |
+| tz002 | TechZone@2026 | Trưởng phòng Nhân sự |
+| tz003 | TechZone@2026 | Cửa hàng trưởng Q1 |
+| tz004 | TechZone@2026 | Nhân viên |
+| tz005 | TechZone@2026 | Kỹ thuật viên |
 
 ## Vai trò & Quyền hạn
 
@@ -105,6 +105,7 @@ Frontend được kết nối với Backend FastAPI qua các endpoints:
 2. Token được lưu vào localStorage
 3. Mọi API request đều gửi token qua Authorization header
 4. Khi token hết hạn (401), tự động redirect về trang login
+5. 30 phút không thao tác thì tự đăng xuất, cảnh báo trước 2 phút (`src/utils/idleWatch.ts`)
 
 ### API Service Layer (`src/services/api.ts`)
 - Sử dụng Fetch API thay vì Axios

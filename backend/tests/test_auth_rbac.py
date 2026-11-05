@@ -19,11 +19,11 @@ from app.main import app
 
 # 5 Tài khoản thử nghiệm chuẩn của dự án TechZone
 TEST_ACCOUNTS = [
-    {"username": "admin", "expected_role": "ADMIN", "desc": "Quản trị viên toàn hệ thống"},
-    {"username": "hr_manager", "expected_role": "HR_MANAGER", "desc": "Trưởng phòng Nhân sự"},
-    {"username": "store_mgr_q1", "expected_role": "STORE_MANAGER", "desc": "Cửa hàng trưởng Quận 1"},
-    {"username": "staff_dung", "expected_role": "EMPLOYEE", "desc": "Nhân viên Bán hàng xuất sắc"},
-    {"username": "tech_em", "expected_role": "EMPLOYEE", "desc": "Kỹ thuật viên Sửa chữa"}
+    {"username": "tz001", "expected_role": "ADMIN", "desc": "Quản trị viên toàn hệ thống"},
+    {"username": "tz002", "expected_role": "HR_MANAGER", "desc": "Trưởng phòng Nhân sự"},
+    {"username": "tz003", "expected_role": "STORE_MANAGER", "desc": "Cửa hàng trưởng Quận 1"},
+    {"username": "tz004", "expected_role": "EMPLOYEE", "desc": "Nhân viên Bán hàng xuất sắc"},
+    {"username": "tz005", "expected_role": "EMPLOYEE", "desc": "Kỹ thuật viên Sửa chữa"}
 ]
 
 async def run_tests():
@@ -62,11 +62,11 @@ async def run_tests():
         # -------------------------------------------------------------
         # TEST 3: Đăng nhập & Xác thực JWT Token cho từng vai trò
         # -------------------------------------------------------------
-        print("\n[TEST 3] Đăng nhập 5 tài khoản với mật khẩu '123456' & xác thực JWT...")
+        print("\n[TEST 3] Đăng nhập 5 tài khoản với mật khẩu 'TechZone@2026' & xác thực JWT...")
         tokens = {}
         for acc in TEST_ACCOUNTS:
             username = acc["username"]
-            payload = {"username": username, "password": "123456"}
+            payload = {"username": username, "password": "TechZone@2026"}
             res = await client.post("/api/v1/auth/login", json=payload)
             assert res.status_code == 200, f"Đăng nhập thất bại cho {username}: {res.text}"
             token_data = res.json()
@@ -102,15 +102,15 @@ async def run_tests():
         # -------------------------------------------------------------
         print("\n[TEST 5] Kiểm tra Ma trận phân quyền RBAC...")
         admin_headers = {"Authorization": f"Bearer {tokens['admin']}"}
-        staff_headers = {"Authorization": f"Bearer {tokens['staff_dung']}"}
-        hr_headers = {"Authorization": f"Bearer {tokens['hr_manager']}"}
+        staff_headers = {"Authorization": f"Bearer {tokens['tz004']}"}
+        hr_headers = {"Authorization": f"Bearer {tokens['tz002']}"}
 
         # 5.1: Admin xem Audit Logs -> 200 OK
         res = await client.get("/api/v1/audit-logs", headers=admin_headers)
         print(f" -> Admin truy cập /audit-logs: Status {res.status_code}")
         assert res.status_code == 200
 
-        # 5.2: Nhân viên thường (staff_dung) xem Audit Logs -> Phải bị chặn 403 Forbidden!
+        # 5.2: Nhân viên thường (tz004) xem Audit Logs -> Phải bị chặn 403 Forbidden!
         res = await client.get("/api/v1/audit-logs", headers=staff_headers)
         print(f" -> Staff truy cập /audit-logs (Phải bị chặn): Status {res.status_code} ({res.json().get('detail')})")
         assert res.status_code == 403, f"Expected 403, got {res.status_code}"

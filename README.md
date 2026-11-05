@@ -514,13 +514,13 @@ Hệ thống đã nạp sẵn **5 tài khoản đại diện cho 5 vai trò** đ
 
 | STT | Tài khoản (Username) | Mật khẩu | Vai trò (Role) | Họ và tên nhân sự | Chức danh thực tế | Kịch bản Demo đề xuất |
 |:---:|:---|:---:|:---:|---|---|---|
-| 1 | `admin` | `123456` | **`ADMIN`** | Nguyễn Quản Trị Viên | Quản trị viên hệ thống | Quản trị tài khoản & gán vai trò, quản lý cửa hàng/GPS, xem ma trận RBAC, kiểm tra nhật ký `audit_logs`. Ở nghiệp vụ chỉ xem (không duyệt, không chốt lương). |
-| 2 | `director` | `123456` | **`DIRECTOR`** | Nguyễn Văn Giám Đốc | Giám đốc điều hành (Ban Giám đốc) | Xem báo cáo nhân sự & bảng lương toàn chuỗi, **phê duyệt đơn nghỉ/thôi việc của HR và Admin** (No Self-Approval), duyệt tăng ca (OT), xem nhật ký kiểm toán. |
-| 3 | `hr_manager` | `123456` | **`HR_MANAGER`** | Huỳnh Thị Kim Yến | Trưởng phòng Nhân sự | Quản lý hồ sơ nhân viên, duyệt đơn Cấp 2, thăng chức nhân viên, bấm nút chốt lương toàn chuỗi, xuất báo cáo Excel. |
-| 4 | `store_mgr_q1` | `123456` | **`STORE_MANAGER`** | Lê Hoàng Nam | Cửa hàng trưởng TechZone Q1 | Quản lý nhân viên chi nhánh Q1, phân ca tuần, duyệt đơn Cấp 1, nhập doanh số bán lẻ 3 ngành hàng. |
-| 5 | `staff_dung` | `123456` | **`EMPLOYEE`** | Trần Quốc Dũng | Nhân viên bán lẻ xuất sắc (Q1) | Chấm công GPS Geofence + Selfie trên Mobile, nộp đơn nghỉ phép, xem doanh số đạt KPI, tra cứu phiếu lương cá nhân. |
+| 1 | `tz001` | `TechZone@2026` | **`ADMIN`** | Nguyễn Văn An | Quản trị viên hệ thống | Quản trị tài khoản & gán vai trò, quản lý cửa hàng/GPS, xem ma trận RBAC, kiểm tra nhật ký `audit_logs`. Ở nghiệp vụ chỉ xem (không duyệt, không chốt lương). |
+| 2 | `tzdir` | `TechZone@2026` | **`DIRECTOR`** | Phạm Nguyệt Vượng | Giám đốc điều hành (Ban Giám đốc) | Xem báo cáo nhân sự & bảng lương toàn chuỗi, **phê duyệt đơn nghỉ/thôi việc của HR và Admin** (No Self-Approval), duyệt tăng ca (OT), xem nhật ký kiểm toán. |
+| 3 | `tz002` | `TechZone@2026` | **`HR_MANAGER`** | Trần Thị Bình | Trưởng phòng Nhân sự | Quản lý hồ sơ nhân viên, duyệt đơn Cấp 2, thăng chức nhân viên, bấm nút chốt lương toàn chuỗi, xuất báo cáo Excel. |
+| 4 | `tz003` | `TechZone@2026` | **`STORE_MANAGER`** | Lê Văn Cường | Cửa hàng trưởng TechZone Q1 | Quản lý nhân viên chi nhánh Q1, phân ca tuần, duyệt đơn Cấp 1, nhập doanh số bán lẻ 3 ngành hàng. |
+| 5 | `tz004` | `TechZone@2026` | **`EMPLOYEE`** | Phạm Quốc Dũng | Nhân viên bán lẻ xuất sắc (Q1) | Chấm công GPS Geofence + Selfie trên Mobile, nộp đơn nghỉ phép, xem doanh số đạt KPI, tra cứu phiếu lương cá nhân. |
 
-*(Ngoài ra còn có tài khoản phụ `tech_em` / `123456` - Vai trò `EMPLOYEE` đại diện cho Kỹ thuật viên chi nhánh Quận 3).*
+*(Ngoài ra còn có tài khoản phụ `tz005` / `TechZone@2026` - Vai trò `EMPLOYEE` đại diện cho Kỹ thuật viên chi nhánh Quận 3).*
 
 ---
 

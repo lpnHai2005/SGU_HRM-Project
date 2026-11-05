@@ -54,3 +54,6 @@ skills-lock.json
 
 *.hash
 backend/.req_checked.hash
+
+# Database dumps (PII + password hashes)
+/backups/

@@ -36,15 +36,15 @@ async def run_tests():
         # 1. Đăng nhập các tài khoản
         print("\n[BƯỚC 1] Đăng nhập 4 tài khoản thử nghiệm các vai trò...")
         tokens = {}
-        for role_user in ["admin", "hr_manager", "store_mgr_q1", "staff_dung", "tech_em"]:
-            res = await client.post("/api/v1/auth/login", json={"username": role_user, "password": "123456"})
+        for role_user in ["tz001", "tz002", "tz003", "tz004", "tz005"]:
+            res = await client.post("/api/v1/auth/login", json={"username": role_user, "password": "TechZone@2026"})
             assert res.status_code == 200, f"Đăng nhập thất bại: {role_user} ({res.text})"
             tokens[role_user] = res.json()["access_token"]
             print(f" -> Đăng nhập thành công: {role_user} ({res.json()['roles']})")
 
-        staff_headers = {"Authorization": f"Bearer {tokens['staff_dung']}"}
-        store_headers = {"Authorization": f"Bearer {tokens['store_mgr_q1']}"}
-        hr_headers = {"Authorization": f"Bearer {tokens['hr_manager']}"}
+        staff_headers = {"Authorization": f"Bearer {tokens['tz004']}"}
+        store_headers = {"Authorization": f"Bearer {tokens['tz003']}"}
+        hr_headers = {"Authorization": f"Bearer {tokens['tz002']}"}
         admin_headers = {"Authorization": f"Bearer {tokens['admin']}"}
 
         # 2. Kiểm tra danh mục loại nghỉ phép
@@ -57,8 +57,8 @@ async def run_tests():
             print(f"    * [{t['type_code']}] {t['type_name']} - Max: {t['max_days_allowed']} ngày | Hưởng lương: {t['is_paid']}")
         assert len(types) >= 6
 
-        # 3. Tra cứu số dư phép năm ban đầu của staff_dung
-        print("\n[BƯỚC 3] Tra cứu số dư phép năm cá nhân của nhân viên staff_dung (/leaves/balances/me)...")
+        # 3. Tra cứu số dư phép năm ban đầu của tz004
+        print("\n[BƯỚC 3] Tra cứu số dư phép năm cá nhân của nhân viên tz004 (/leaves/balances/me)...")
         res = await client.get("/api/v1/leaves/balances/me", headers=staff_headers)
         assert res.status_code == 200
         init_balance = res.json()
@@ -116,7 +116,7 @@ async def run_tests():
         print(" [PASS] Hoàn tất kiểm tra 4 trường hợp validation đầu vào!")
 
         # 5. Nộp đơn xin nghỉ phép năm hợp lệ
-        print("\n[BƯỚC 5] Nhân viên staff_dung nộp đơn nghỉ phép năm hợp lệ...")
+        print("\n[BƯỚC 5] Nhân viên tz004 nộp đơn nghỉ phép năm hợp lệ...")
         submit_payload = {
             "leave_type_id": 1,
             "start_date": "2026-10-15",
@@ -148,7 +148,7 @@ async def run_tests():
         assert detail["status"] == "PENDING"
 
         # 7. Quy trình Duyệt Cấp 1 (Cửa hàng trưởng - Level 1 Approval)
-        print("\n[BƯỚC 7] Cửa hàng trưởng store_mgr_q1 thực hiện duyệt Cấp 1...")
+        print("\n[BƯỚC 7] Cửa hàng trưởng tz003 thực hiện duyệt Cấp 1...")
         approve1_res = await client.post(f"/api/v1/leaves/{req_id}/approve-store", headers=store_headers, json={
             "note": "Cửa hàng trưởng Nam đã sắp xếp ca kíp và duyệt sơ bộ Cấp 1."
         })
@@ -162,7 +162,7 @@ async def run_tests():
         assert re_app1.status_code == 400
 
         # 8. Quy trình Duyệt Cấp 2 (Phòng Nhân sự - Level 2 Approval)
-        print("\n[BƯỚC 8] Trưởng phòng HR (hr_manager) thực hiện duyệt chính thức Cấp 2...")
+        print("\n[BƯỚC 8] Trưởng phòng HR (tz002) thực hiện duyệt chính thức Cấp 2...")
         approve2_res = await client.post(f"/api/v1/leaves/{req_id}/approve-hr", headers=hr_headers)
         assert approve2_res.status_code == 200
         print(f" -> Kết quả duyệt Cấp 2: {approve2_res.json()['message']}")
@@ -220,13 +220,13 @@ async def run_tests():
         # 11. Kiểm tra Ma trận phân quyền xem danh sách đơn (RBAC Matrix)
         print("\n[BƯỚC 11] Kiểm tra Ma trận phân quyền xem danh sách đơn (RBAC)...")
         
-        # 11.1 Nhân viên thường staff_dung chỉ thấy đơn của mình
+        # 11.1 Nhân viên thường tz004 chỉ thấy đơn của mình
         res = await client.get("/api/v1/leaves", headers=staff_headers)
         staff_leaves = res.json()
-        print(f" -> Nhân viên staff_dung thấy {len(staff_leaves)} đơn (Toàn bộ employee_id={staff_leaves[0]['employee_id']})")
+        print(f" -> Nhân viên tz004 thấy {len(staff_leaves)} đơn (Toàn bộ employee_id={staff_leaves[0]['employee_id']})")
         assert all(l["employee_id"] == 4 for l in staff_leaves)
 
-        # 11.2 Cửa hàng trưởng store_mgr_q1 thấy đơn của chi nhánh Q1
+        # 11.2 Cửa hàng trưởng tz003 thấy đơn của chi nhánh Q1
         res = await client.get("/api/v1/leaves", headers=store_headers)
         store_leaves = res.json()
         print(f" -> Cửa hàng trưởng Q1 thấy {len(store_leaves)} đơn thuộc chi nhánh mình")
@@ -341,7 +341,7 @@ async def run_tests():
         # 17. KIỂM TRA PHÂN CẤP DUYỆT ĐƠN CỦA CỬA HÀNG TRƯỞNG (STORE MANAGER LEAVE WORKFLOW)
         print("\n[BƯỚC 17] Kiểm tra quy trình nộp & phân cấp duyệt đơn của Cửa hàng trưởng...")
         
-        # 17.1 Cửa hàng trưởng (store_mgr_q1 - employee_id 3) nộp đơn xin nghỉ
+        # 17.1 Cửa hàng trưởng (tz003 - employee_id 3) nộp đơn xin nghỉ
         cht_submit_res = await client.post("/api/v1/leaves", headers=store_headers, json={
             "leave_type_id": 1, # Phép năm
             "start_date": "2026-12-20",

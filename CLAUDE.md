@@ -172,12 +172,14 @@ SGU-HRM-Project/
 - Format: `TZ-XXX` (VD: TZ-001, TZ-002)
 
 ### Mã hợp đồng
-- Format: `HDLD-TZ-XXX-YYYY` (VD: HDLD-TZ-001-2026)
+- Format: `HD-YYYY-NNNN` (VD: HD-2026-0001)
 
 ### Trạng thái nhân viên
 - `PROBATION` - Thử việc
 - `ACTIVE` - Đang làm việc
+- `ON_LEAVE` - Nghỉ dài hạn (thai sản)
 - `RESIGNED` - Đã thôi việc
+- `TERMINATED` - Chấm dứt
 
 ### Trạng thái đơn nghỉ
 - `PENDING` - Chờ duyệt

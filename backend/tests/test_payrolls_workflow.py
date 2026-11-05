@@ -35,23 +35,23 @@ async def run_tests():
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         # 1. ĐĂNG NHẬP 4 TÀI KHOẢN VAI TRÒ
-        print("\n[BƯỚC 1] Đăng nhập các tài khoản hệ thống (admin, hr_manager, store_mgr_q1, staff_dung)...")
+        print("\n[BƯỚC 1] Đăng nhập các tài khoản hệ thống (admin, tz002, tz003, tz004)...")
         tokens = {}
-        for username in ["admin", "hr_manager", "store_mgr_q1", "staff_dung"]:
-            res = await client.post("/api/v1/auth/login", json={"username": username, "password": "123456"})
+        for username in ["tz001", "tz002", "tz003", "tz004"]:
+            res = await client.post("/api/v1/auth/login", json={"username": username, "password": "TechZone@2026"})
             assert res.status_code == 200, f"Đăng nhập thất bại: {username} ({res.text})"
             tokens[username] = res.json()["access_token"]
             print(f" -> Đăng nhập thành công: {username} ({res.json()['roles']})")
 
         admin_headers = {"Authorization": f"Bearer {tokens['admin']}"}
-        hr_headers = {"Authorization": f"Bearer {tokens['hr_manager']}"}
-        store_headers = {"Authorization": f"Bearer {tokens['store_mgr_q1']}"}
-        staff_headers = {"Authorization": f"Bearer {tokens['staff_dung']}"}
+        hr_headers = {"Authorization": f"Bearer {tokens['tz002']}"}
+        store_headers = {"Authorization": f"Bearer {tokens['tz003']}"}
+        staff_headers = {"Authorization": f"Bearer {tokens['tz004']}"}
 
         test_period = "2026-09"
 
         # 2. KIỂM THỬ ĐẶT DOANH SỐ CHO STAFF_DŨNG (VÍ DỤ 220 TRIỆU ĐỒNG TỪ WORKFLOW)
-        print("\n[BƯỚC 2] Thiết lập doanh số bán lẻ 220 triệu cho staff_dung (Phone 150M, Laptop 70M, KPI 100%)...")
+        print("\n[BƯỚC 2] Thiết lập doanh số bán lẻ 220 triệu cho tz004 (Phone 150M, Laptop 70M, KPI 100%)...")
         async with AsyncSessionLocal() as db:
             emp4_store = (await db.execute(text("SELECT store_id FROM employees WHERE employee_id = 4"))).scalar() or 5
         sales_payload = {
@@ -83,7 +83,7 @@ async def run_tests():
 
         # 4. KIỂM TRA LIÊN KẾT PHÂN HỆ NGHỈ PHÉP (LEAVES LIÊN KẾT TRỪ LƯƠNG)
         print("\n[BƯỚC 4] Kiểm tra liên kết phân hệ Nghỉ phép có trừ lương (Unpaid Leave Linkage)...")
-        # Tạo đơn nghỉ không lương 1 ngày cho staff_dung trong tháng 9
+        # Tạo đơn nghỉ không lương 1 ngày cho tz004 trong tháng 9
         test_leave_date = date(2026, 9, 18)
         leave_payload = {
             "leave_type_id": 5, # KHONG_LUONG
@@ -95,7 +95,7 @@ async def run_tests():
         res = await client.post("/api/v1/leaves", json=leave_payload, headers=staff_headers)
         assert res.status_code in (200, 201), f"Lỗi tạo đơn nghỉ phép: {res.text}"
         leave_req_id = res.json()["request_id"]
-        print(f" -> Nhân viên staff_dung đã nộp đơn nghỉ không lương #{leave_req_id} ngày {test_leave_date}")
+        print(f" -> Nhân viên tz004 đã nộp đơn nghỉ không lương #{leave_req_id} ngày {test_leave_date}")
 
         # HR phê duyệt đơn nghỉ không lương (Cấp 2)
         res = await client.post(f"/api/v1/leaves/{leave_req_id}/approve-hr", json={"note": "HR duyệt nghỉ không lương test"}, headers=hr_headers)
@@ -129,7 +129,7 @@ async def run_tests():
         print(f" -> GET /api/payroll/generate/{test_period} thành công! Nhận được {len(payrolls_alias)} phiếu lương.")
 
         # 7. KIỂM TRA PHIẾU LƯƠNG CỦA STAFF_DŨNG VÀ CÔNG THỨC TRỪ LƯƠNG NGHỈ PHÉP
-        print("\n[BƯỚC 7] Kiểm tra phiếu lương chi tiết của staff_dung (ID: 4) & khấu trừ nghỉ không lương...")
+        print("\n[BƯỚC 7] Kiểm tra phiếu lương chi tiết của tz004 (ID: 4) & khấu trừ nghỉ không lương...")
         dung_payroll = next(p for p in payrolls_alias if p["employee_id"] == 4)
         payroll_id = dung_payroll["payroll_id"]
         print(f" -> Thông số phiếu lương #{payroll_id} của {dung_payroll['employee_name']}:")

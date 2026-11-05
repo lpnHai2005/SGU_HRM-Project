@@ -78,8 +78,8 @@ async def change_password(
                     "schema": {
                         "type": "object",
                         "properties": {
-                            "username": {"type": "string", "example": "admin"},
-                            "password": {"type": "string", "example": "123456"}
+                            "username": {"type": "string", "example": "tz001"},
+                            "password": {"type": "string", "example": "TechZone@2026"}
                         },
                         "required": ["username", "password"]
                     }
@@ -88,8 +88,8 @@ async def change_password(
                     "schema": {
                         "type": "object",
                         "properties": {
-                            "username": {"type": "string", "example": "admin"},
-                            "password": {"type": "string", "example": "123456"}
+                            "username": {"type": "string", "example": "tz001"},
+                            "password": {"type": "string", "example": "TechZone@2026"}
                         },
                         "required": ["username", "password"]
                     }
@@ -389,7 +389,7 @@ async def upload_avatar_file(
 @router.get(
     "/test-accounts",
     response_model=List[TestAccountResponse],
-    summary="Danh sách tài khoản test demo nhanh (Mật khẩu: 123456)",
+    summary="Danh sách tài khoản test demo nhanh (Mật khẩu: TechZone@2026)",
     description="Cung cấp danh sách tài khoản demo tương ứng với các vai trò của chuỗi TechZone để hội đồng và nhóm kiểm thử nhanh."
 )
 async def get_test_accounts():
@@ -397,38 +397,38 @@ async def get_test_accounts():
         raise HTTPException(status_code=404, detail="Not Found")
     return [
         {
-            "username": "admin",
+            "username": "tz001",
             "role": "Quản trị viên (ADMIN)",
             "name": "Nguyễn Văn An",
             "desc": "Toàn quyền quản trị tài khoản, ma trận phân quyền và nhật ký hệ thống (Audit Log)"
         },
         {
-            "username": "director",
+            "username": "tzdir",
             "role": "Giám đốc (DIRECTOR)",
-            "name": "Nguyễn Văn Giám Đốc",
+            "name": "Phạm Nguyệt Vượng",
             "desc": "Phê duyệt đơn nghỉ phép / thôi việc của HR và Admin (No Self-Approval), xem báo cáo tổng hợp toàn công ty"
         },
         {
-            "username": "hr_manager",
+            "username": "tz002",
             "role": "Trưởng phòng Nhân sự (HR_MANAGER)",
             "name": "Trần Thị Bình",
             "desc": "Quản lý hồ sơ nhân sự, phê duyệt nghỉ phép cấp 2 (Employee/Store Manager), thăng chức đổi role, chốt lương và xem báo cáo"
         },
         {
-            "username": "store_mgr_q1",
+            "username": "tz003",
             "role": "Cửa hàng trưởng (STORE_MANAGER)",
             "name": "Lê Văn Cường",
             "desc": "Quản lý nhân viên chi nhánh Q1, phân ca tuần, duyệt nghỉ phép cấp 1"
         },
         {
-            "username": "staff_dung",
-            "role": "Nhân viên Bán hàng xuất sắc (EMPLOYEE)",
+            "username": "tz004",
+            "role": "Nhân viên Bán hàng (EMPLOYEE)",
             "name": "Phạm Quốc Dũng",
-            "desc": "Check-in chấm công, nộp đơn nghỉ phép, ghi nhận doanh số 220M, xem và in phiếu lương A4"
+            "desc": "Check-in chấm công, nộp đơn nghỉ phép, xem doanh số, xem và in phiếu lương A4"
         },
         {
-            "username": "tech_em",
-            "role": "Kỹ thuật viên Phần cứng (EMPLOYEE)",
+            "username": "tz005",
+            "role": "Kỹ thuật viên (EMPLOYEE)",
             "name": "Hoàng Thị Em",
             "desc": "Chấm công kỹ thuật, xem lịch phân ca, xem phiếu lương cá nhân"
         }

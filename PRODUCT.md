@@ -82,7 +82,7 @@ NET = GROSS − Insurance (10.5%)
 
 **AI features (deferred):** RAG for HR policy Q&A, employee retention prediction.
 
-**Test accounts:** `admin`, `hr_manager`, `store_mgr_q1`, `staff_dung`, `tech_em` (password: `123456`).
+**Test accounts:** `tz001`, `tz002`, `tz003`, `tz004`, `tz005` (password: `TechZone@2026`).
 
 **UI language:** Vietnamese throughout (labels, navigation, messages, errors).
 
