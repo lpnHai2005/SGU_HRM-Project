@@ -1,6 +1,7 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { formatFullCurrency } from '../components/charts/chartTheme';
+import { useCompanyProfile } from '../hooks/useCompanyProfile';
 import './ReportsPrint.css';
 
 export interface ReportsPrintModalProps {
@@ -30,6 +31,8 @@ export const ReportsPrintModal: React.FC<ReportsPrintModalProps> = ({
   currentUser,
   leaveSummary,
 }) => {
+  const company = useCompanyProfile();
+
   if (!isOpen) return null;
 
   const currentDateStr = new Date().toLocaleDateString('vi-VN', {
@@ -102,11 +105,13 @@ export const ReportsPrintModal: React.FC<ReportsPrintModalProps> = ({
         {/* Header Pháp nhân */}
         <div className="report-a4-header">
           <div>
-            <div className="report-a4-company-name">CÔNG TY TNHH TM DV TECH ZONE</div>
+            <div className="report-a4-company-name">{company.name}</div>
             <div className="report-a4-company-sub">HỆ THỐNG QUẢN TRỊ NGUỒN NHÂN LỰC & CHUỖI CỬA HÀNG</div>
-            <div className="report-a4-company-sub" style={{ fontSize: '10.5px' }}>
-              Địa chỉ: 273 An Dương Vương, Phường 3, Quận 5, TP. Hồ Chí Minh
-            </div>
+            {company.address && (
+              <div className="report-a4-company-sub" style={{ fontSize: '10.5px' }}>
+                Địa chỉ: {company.address}
+              </div>
+            )}
           </div>
           <div className="report-a4-meta">
             <div className="report-a4-meta-code">Số: BC-HRM-{period.replace('-', '')}</div>

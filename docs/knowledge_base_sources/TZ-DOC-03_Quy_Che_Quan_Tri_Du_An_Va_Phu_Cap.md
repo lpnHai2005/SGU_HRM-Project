@@ -14,9 +14,9 @@ keywords: ["dự án", "phụ cấp dự án", "project allowance", "project_rol
 - **Dự án mở rộng điểm bán:** `PRJ-EXPAND-Q7` (Flagship Quận 7 - Ngân sách 500.000.000 VNĐ).
 - **Chiến dịch mở bán độc quyền:** `PRJ-IPHONE16-LAUNCH` (Mở bán iPhone 16 Series - Ngân sách 350.000.000 VNĐ).
 - **Dự án chuyển đổi số:** `PRJ-ERP-HRM` (Chuyển đổi số Quản trị Nhân sự - Ngân sách 200.000.000 VNĐ).
-- **Trạng thái:** `IN_PROGRESS` (đang chạy), `ACTIVE` (hoạt động), `COMPLETED` (hoàn tất), `CANCELLED` (hủy bỏ).
+- **Trạng thái:** `PLANNING` (lập kế hoạch), `IN_PROGRESS` (đang chạy), `COMPLETED` (hoàn tất), `CANCELLED` (hủy bỏ).
 
-## 2. Khung 5 vai trò thành viên và định mức phụ cấp hàng tháng
+## 2. Khung 5 vai trò chuẩn và định mức phụ cấp hàng tháng
 | Mã vai trò | Tên vai trò | Định mức phụ cấp / tháng | Trách nhiệm chính |
 |---|---|---|---|
 | `PROJECT_LEAD` | Trưởng dự án | **1.500.000 – 2.000.000 VNĐ** | Quản lý toàn diện tiến độ, ngân sách, nhân sự |
@@ -25,10 +25,12 @@ keywords: ["dự án", "phụ cấp dự án", "project allowance", "project_rol
 | `TECH_LEAD` | Trưởng nhóm Kỹ thuật | **1.000.000 VNĐ** | Giải pháp kỹ thuật, hạ tầng quầy demo và POS |
 | `MEMBER` | Thành viên thông thường | **500.000 VNĐ** | Hỗ trợ vận hành và tác nghiệp theo phân công |
 
+Định mức được thiết lập riêng cho từng vai trò trong từng dự án: `PROJECT_LEAD` tại `PRJ-EXPAND-Q7` là 2.000.000 VNĐ, tại `PRJ-ERP-HRM` là 1.500.000 VNĐ. HR hoặc Giám đốc có thể tạo thêm vai trò mới.
+
 ## 3. Điều kiện tính phụ cấp dự án vào kỳ lương
 Khi chạy chốt lương (`sp_generate_monthly_payroll`), nhân viên được hưởng phụ cấp khi:
 1. `project_members.is_active = TRUE`.
-2. Dự án có trạng thái `IN_PROGRESS` hoặc `ACTIVE`.
+2. Dự án có trạng thái `IN_PROGRESS`.
 3. Ngày tham gia `joined_date` <= kỳ lương hạch toán.
 4. Ngày rời dự án `left_date` chưa đến hoặc >= kỳ lương hạch toán.
 

@@ -91,7 +91,7 @@ export function ContractManagementPage({ user }: ContractManagementPageProps) {
       }
       fetchContracts()
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || 'Lỗi khi tạo file PDF hợp đồng')
+      toast.error(err?.message || 'Lỗi khi tạo file PDF hợp đồng')
     } finally {
       setGeneratingPdf(false)
     }
@@ -274,7 +274,7 @@ export function ContractManagementPage({ user }: ContractManagementPageProps) {
       fetchContracts()
       fetchStats()
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || 'Thao tác không thành công')
+      toast.error(err?.message || 'Thao tác không thành công')
     } finally {
       setConfirmLoading(false)
     }
@@ -304,7 +304,7 @@ export function ContractManagementPage({ user }: ContractManagementPageProps) {
       fetchContracts()
       fetchStats()
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || err?.message || 'Lỗi khi đồng bộ trạng thái')
+      toast.error(err?.message || 'Lỗi khi đồng bộ trạng thái')
     } finally {
       setSyncingStatuses(false)
     }
@@ -397,7 +397,7 @@ export function ContractManagementPage({ user }: ContractManagementPageProps) {
           </>
         )}
 
-        {canManage && (contract.status === 'ACTIVE' || contract.status === 'EXPIRED') && (
+        {canManage && (contract.status === 'ACTIVE' || contract.status === 'EXPIRED') && contract.contract_type !== 'INDEFINITE' && (
           <button
             className="action-dropdown-item"
             onClick={() => handleRenew(contract)}
@@ -640,7 +640,9 @@ export function ContractManagementPage({ user }: ContractManagementPageProps) {
             >
               <option value="">Tất cả loại HĐ</option>
               <option value="PROBATION">Thử việc</option>
-              <option value="FIXED_TERM">Xác định thời hạn</option>
+              <option value="FIXED_1_YEAR">Xác định thời hạn (1 năm)</option>
+              <option value="FIXED_2_YEAR">Xác định thời hạn (2 năm)</option>
+              <option value="FIXED_3_YEAR">Xác định thời hạn (3 năm)</option>
               <option value="INDEFINITE">Không xác định thời hạn</option>
             </select>
 
@@ -1161,7 +1163,7 @@ export function ContractManagementPage({ user }: ContractManagementPageProps) {
                           setSelectedContract({ ...selectedContract, contract_file_url: res.file_url })
                           fetchContracts()
                         } catch (err: any) {
-                          toast.error(err?.response?.data?.detail || 'Lỗi khi tải file lên')
+                          toast.error(err?.message || 'Lỗi khi tải file lên')
                         } finally {
                           setDetailUploading(false)
                         }
@@ -1223,15 +1225,17 @@ export function ContractManagementPage({ user }: ContractManagementPageProps) {
                 )}
                 {canManage && selectedContract.status === 'ACTIVE' && (
                   <div style={{ display: 'flex', gap: '8px' }}>
-                    <button
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => {
-                        setShowDetailModal(false)
-                        handleRenew(selectedContract)
-                      }}
-                    >
-                      {Icons.refresh} Gia hạn
-                    </button>
+                    {selectedContract.contract_type !== 'INDEFINITE' && (
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => {
+                          setShowDetailModal(false)
+                          handleRenew(selectedContract)
+                        }}
+                      >
+                        {Icons.refresh} Gia hạn
+                      </button>
+                    )}
                     <button
                       className="btn btn-danger btn-sm"
                       onClick={() => {
@@ -1243,7 +1247,7 @@ export function ContractManagementPage({ user }: ContractManagementPageProps) {
                     </button>
                   </div>
                 )}
-                {canManage && selectedContract.status === 'EXPIRED' && (
+                {canManage && selectedContract.status === 'EXPIRED' && selectedContract.contract_type !== 'INDEFINITE' && (
                   <button
                     className="btn btn-secondary btn-sm"
                     onClick={() => {

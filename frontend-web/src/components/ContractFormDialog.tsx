@@ -6,7 +6,7 @@
  */
 import { useState, useEffect } from 'react'
 import { contractApi, type ContractCreateData, type ContractUpdateData, type WorkingHoursPerWeek } from '../services/contractService'
-import { type Contract, type ContractType } from '../types/contract'
+import { type Contract, type ContractType, addDaysToDate, addYearsToContractStart, toLocalDateString } from '../types/contract'
 import { Icons } from './common/Icons'
 import { EmployeeSearchSelect } from './common/EmployeeSearchSelect'
 import { toast } from 'sonner'
@@ -27,8 +27,13 @@ const CONTRACT_TYPE_OPTIONS = [
   { value: 'FIXED_2_YEAR', label: 'Xác định thời hạn (2 năm)', years: 2 },
   { value: 'FIXED_3_YEAR', label: 'Xác định thời hạn (3 năm)', years: 3 },
   { value: 'PROBATION', label: 'Thử việc', years: 0 },
-  { value: 'FIXED_TERM', label: 'Xác định thời hạn khác (Tùy chỉnh ngày)', years: 0 },
   { value: 'INDEFINITE', label: 'Không xác định thời hạn (Vô thời hạn)', years: 0 },
+]
+
+// 6 tháng tính theo lịch có thể dài 181-184 ngày, vượt mức tối đa 180 ngày
+const PROBATION_PRESETS = [
+  { days: 90, label: '3 tháng (90 ngày)' },
+  { days: 180, label: '6 tháng (180 ngày)' },
 ]
 
 export function ContractFormDialog({
@@ -45,12 +50,12 @@ export function ContractFormDialog({
   // Form State
   const [employeeId, setEmployeeId] = useState<string>('')
   const [contractType, setContractType] = useState<ContractType>('FIXED_1_YEAR')
-  const [startDate, setStartDate] = useState<string>(new Date().toISOString().split('T')[0])
+  const [startDate, setStartDate] = useState<string>(toLocalDateString())
   const [endDate, setEndDate] = useState<string>('')
   const [basicSalary, setBasicSalary] = useState<string>('')
   const [insuranceSalary, setInsuranceSalary] = useState<string>('')
   const [workingHours, setWorkingHours] = useState<WorkingHoursPerWeek>(48)
-  const [signedDate, setSignedDate] = useState<string>(new Date().toISOString().split('T')[0])
+  const [signedDate, setSignedDate] = useState<string>(toLocalDateString())
   const [positionId, setPositionId] = useState<string>('')
   const [departmentId, setDepartmentId] = useState<string>('')
   const [notes, setNotes] = useState<string>('')
@@ -60,20 +65,9 @@ export function ContractFormDialog({
   // Helper: Tính ngày kết thúc tự động dựa trên ngày bắt đầu và loại HĐ 1, 2, 3 năm
   const computeEndDate = (start: string, type: string): string => {
     if (!start) return ''
-    const d = new Date(start)
-    if (isNaN(d.getTime())) return ''
-
-    let years = 0
-    if (type === 'FIXED_1_YEAR') years = 1
-    else if (type === 'FIXED_2_YEAR') years = 2
-    else if (type === 'FIXED_3_YEAR') years = 3
-
-    if (years > 0) {
-      d.setFullYear(d.getFullYear() + years)
-      d.setDate(d.getDate() - 1)
-      return d.toISOString().split('T')[0]
-    }
-    return ''
+    if (type === 'PROBATION') return addDaysToDate(start, PROBATION_PRESETS[0].days - 1)
+    const years = CONTRACT_TYPE_OPTIONS.find((opt) => opt.value === type)?.years ?? 0
+    return years > 0 ? addYearsToContractStart(start, years) : ''
   }
 
   const isAutoEndDate = contractType === 'FIXED_1_YEAR' || contractType === 'FIXED_2_YEAR' || contractType === 'FIXED_3_YEAR'
@@ -96,7 +90,7 @@ export function ContractFormDialog({
         setNotes(contract.notes || '')
       } else {
         // Mode: Create
-        const today = new Date().toISOString().split('T')[0]
+        const today = toLocalDateString()
         setEmployeeId('')
         setContractType('FIXED_1_YEAR')
         setStartDate(today)
@@ -116,12 +110,7 @@ export function ContractFormDialog({
   // Khi thay đổi loại hợp đồng
   const handleContractTypeChange = (newType: ContractType) => {
     setContractType(newType)
-    if (newType === 'FIXED_1_YEAR' || newType === 'FIXED_2_YEAR' || newType === 'FIXED_3_YEAR') {
-      const calculated = computeEndDate(startDate, newType)
-      setEndDate(calculated)
-    } else if (newType === 'INDEFINITE') {
-      setEndDate('')
-    }
+    setEndDate(computeEndDate(startDate, newType))
   }
 
   // Khi thay đổi ngày bắt đầu
@@ -130,6 +119,10 @@ export function ContractFormDialog({
     if (isAutoEndDate) {
       const calculated = computeEndDate(newStart, contractType)
       setEndDate(calculated)
+    } else if (contractType === 'PROBATION') {
+      // Giữ nguyên độ dài thử việc đã chọn khi dời ngày bắt đầu
+      const length = (Date.parse(endDate) - Date.parse(startDate)) / 86400000
+      setEndDate(newStart ? addDaysToDate(newStart, length || PROBATION_PRESETS[0].days - 1) : '')
     }
   }
 
@@ -172,8 +165,21 @@ export function ContractFormDialog({
       return
     }
 
+    if (contractType === 'PROBATION') {
+      const days = (new Date(endDate).getTime() - new Date(startDate).getTime()) / 86400000 + 1
+      if (days < 30 || days > 180) {
+        toast.error('Hợp đồng thử việc phải kéo dài từ 30 đến 180 ngày')
+        return
+      }
+    }
+
     if (!basicSalary || parseFloat(basicSalary) < 0) {
-      toast.error('Lương cơ bản không được âm')
+      toast.error('Vui lòng nhập lương cơ bản hợp lệ')
+      return
+    }
+
+    if (insuranceSalary && parseFloat(insuranceSalary) < 0) {
+      toast.error('Lương đóng bảo hiểm không được âm')
       return
     }
 
@@ -187,7 +193,7 @@ export function ContractFormDialog({
           start_date: startDate,
           end_date: isIndefinite ? null : endDate,
           basic_salary: parseFloat(basicSalary),
-          insurance_salary: basicSalary ? parseFloat(basicSalary) : undefined,
+          insurance_salary: parseFloat(insuranceSalary || basicSalary),
           working_hours_per_week: workingHours,
           signed_date: signedDate,
           position_id: positionId ? parseInt(positionId) : undefined,
@@ -204,7 +210,7 @@ export function ContractFormDialog({
           start_date: startDate,
           end_date: isIndefinite ? null : endDate,
           basic_salary: parseFloat(basicSalary),
-          insurance_salary: basicSalary ? parseFloat(basicSalary) : undefined,
+          insurance_salary: parseFloat(insuranceSalary || basicSalary),
           working_hours_per_week: workingHours,
           signed_date: signedDate,
           position_id: positionId ? parseInt(positionId) : undefined,
@@ -233,7 +239,7 @@ export function ContractFormDialog({
       onSuccess?.()
       onClose()
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || 'Có lỗi xảy ra khi lưu hợp đồng')
+      toast.error(err?.message || 'Có lỗi xảy ra khi lưu hợp đồng')
     } finally {
       setLoading(false)
     }
@@ -370,11 +376,28 @@ export function ContractFormDialog({
                       className="form-input"
                       value={endDate}
                       onChange={(e) => setEndDate(e.target.value)}
-                      min={startDate}
+                      min={addDaysToDate(startDate, 29)}
+                      max={addDaysToDate(startDate, 179)}
                       required
                     />
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+                      {PROBATION_PRESETS.map((preset) => {
+                        const presetEnd = addDaysToDate(startDate, preset.days - 1)
+                        return (
+                          <button
+                            key={preset.days}
+                            type="button"
+                            className={`btn btn-sm ${endDate === presetEnd ? 'btn-primary' : 'btn-secondary'}`}
+                            onClick={() => setEndDate(presetEnd)}
+                            style={{ fontSize: '12px', padding: '4px 8px' }}
+                          >
+                            {preset.label}
+                          </button>
+                        )
+                      })}
+                    </div>
                     <div style={{ fontSize: '11.5px', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-                      Tùy chỉnh ngày kết thúc hợp đồng
+                      Thử việc từ 30 đến 180 ngày
                     </div>
                   </div>
                 )}
@@ -389,7 +412,11 @@ export function ContractFormDialog({
                   type="number"
                   className="form-input"
                   value={basicSalary}
-                  onChange={(e) => setBasicSalary(e.target.value)}
+                  onChange={(e) => {
+                    // Lương BH bám theo lương cơ bản cho đến khi người dùng nhập mức riêng
+                    if (insuranceSalary === basicSalary) setInsuranceSalary(e.target.value)
+                    setBasicSalary(e.target.value)
+                  }}
                   placeholder="Ví dụ: 8000000"
                   min="0"
                   step="100000"
@@ -414,10 +441,25 @@ export function ContractFormDialog({
                 </select>
               </div>
 
-              {/* Insurance Salary & Mandatory Deductions - Auto-computed */}
+              {/* Insurance Salary */}
+              <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                <label className="form-label" style={{ fontWeight: 500, fontSize: '13px', display: 'block', marginBottom: '6px' }}>
+                  Lương đóng bảo hiểm (VNĐ)
+                </label>
+                <input
+                  type="number"
+                  className="form-input"
+                  value={insuranceSalary}
+                  onChange={(e) => setInsuranceSalary(e.target.value)}
+                  placeholder="Để trống để lấy bằng lương cơ bản"
+                  min="0"
+                  step="100000"
+                />
+              </div>
+
+              {/* Mandatory Deductions - Auto-computed */}
               {(() => {
-                const basicSalaryNum = parseFloat(basicSalary) || 0
-                const autoInsuranceSalary = basicSalaryNum
+                const autoInsuranceSalary = parseFloat(insuranceSalary || basicSalary) || 0
                 const totalInsuranceDeduction = autoInsuranceSalary * 0.105
                 const bhxhAmount = autoInsuranceSalary * 0.08
                 const bhytAmount = autoInsuranceSalary * 0.015
@@ -444,14 +486,14 @@ export function ContractFormDialog({
                     <input
                       type="text"
                       className="form-input"
-                      value={basicSalary ? `- ${formatCurrency(totalInsuranceDeduction)}` : '0 VNĐ'}
+                      value={autoInsuranceSalary ? `- ${formatCurrency(totalInsuranceDeduction)}` : '0 VNĐ'}
                       readOnly
                       disabled
                       style={{
                         backgroundColor: 'var(--surface-subtle)',
                         cursor: 'not-allowed',
                         fontWeight: 600,
-                        color: basicSalary ? 'var(--status-error)' : 'var(--text-secondary)',
+                        color: autoInsuranceSalary ? 'var(--status-error)' : 'var(--text-secondary)',
                         fontFamily: 'var(--font-mono)'
                       }}
                     />
@@ -474,7 +516,7 @@ export function ContractFormDialog({
                         paddingBottom: '6px'
                       }}>
                         <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                          Mức lương làm căn cứ đóng BH (100% lương CB):
+                          Mức lương làm căn cứ đóng BH:
                         </span>
                         <strong style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>
                           {formatCurrency(autoInsuranceSalary)}

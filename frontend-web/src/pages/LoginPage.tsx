@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { Icons } from '../components/common/Icons'
+import { IDLE_LOGOUT_FLAG } from '../utils/idleWatch'
 
 export interface LoginPageProps {
   onLogin: () => void
@@ -17,8 +18,14 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const { login } = useAuth()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
+  const [error, setError] = useState(() =>
+    sessionStorage.getItem(IDLE_LOGOUT_FLAG) ? 'Phiên đăng nhập đã kết thúc do không hoạt động. Vui lòng đăng nhập lại.' : ''
+  )
   const [isLoading, setIsLoading] = useState(false)
+
+  useEffect(() => {
+    sessionStorage.removeItem(IDLE_LOGOUT_FLAG)
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

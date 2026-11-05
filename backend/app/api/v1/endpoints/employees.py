@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from app.core.database import get_db
 from app.api.deps import get_current_user, require_roles
+from app.core.contract_service import ContractService
 from app.schemas.schemas import (
     EmployeeCreate, EmployeeUpdate, EmployeeOut,
     PromotionCreate
@@ -374,15 +375,16 @@ async def create_employee(
     contract_num = f"HDLD-{emp.employee_code}-2026"
     await db.execute(text("""
         INSERT INTO contracts (
-            contract_number, employee_id, contract_type, start_date,
+            contract_number, employee_id, contract_type, start_date, end_date,
             basic_salary, insurance_salary, signed_date, status
         ) VALUES (
-            :c_num, :emp_id, 'FIXED_TERM', :start_date,
-            :b_sal, 5000000, :start_date, 'DRAFT'
+            :c_num, :emp_id, 'FIXED_1_YEAR', :start_date, :end_date,
+            :b_sal, :b_sal, :start_date, 'DRAFT'
         )
     """), {
         "c_num": contract_num, "emp_id": new_id,
         "start_date": emp.join_date,
+        "end_date": ContractService.fixed_term_end_date(emp.join_date, 1) if emp.join_date else None,
         "b_sal": basic_salary
     })
 

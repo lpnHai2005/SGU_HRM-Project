@@ -36,9 +36,16 @@ import { CustomChartTooltip } from '../components/charts/CustomChartTooltip'
 import { ReportsPrintModal } from './ReportsPrintModal'
 import { ReportDrilldownModal } from '../components/reports/ReportDrilldownModal'
 import type { DrilldownColumn } from '../components/reports/ReportDrilldownModal'
-import { evaluateAdvancedSearch } from '../components/common/AdvancedSearchModal'
-import type { SearchCondition, SearchFieldConfig } from '../components/common/AdvancedSearchModal'
-import { Filter, Eye, Table as TableIcon, Building2, User as UserIcon, Calendar, DollarSign, Trash2 } from 'lucide-react'
+import type { SearchFieldConfig } from '../components/common/AdvancedSearchModal'
+import {
+  AdvancedSearchFilterBar,
+  EmployeeAdvancedSearchModal,
+  type SearchCondition,
+  type SearchField,
+} from '../components/EmployeeAdvancedSearchModal'
+import { Icons } from '../components/common/Icons'
+import { fieldsWithData, matchesSearchConditions } from '../utils/searchConditions'
+import { Eye, Table as TableIcon, Building2, User as UserIcon, Calendar, DollarSign } from 'lucide-react'
 import type {
   DemographicsReportData,
   HeadcountTrendPoint,
@@ -256,8 +263,10 @@ export function ReportsPage({ user }: ReportsPageProps) {
   })
   const [subformSearch, setSubformSearch] = useState<string>('')
   const [subformConditions, setSubformConditions] = useState<SearchCondition[]>([])
-  // Thay vì mở popup modal, dùng inline accordion mở trực tiếp trong Subform
-  const [isAdvFilterExpanded, setIsAdvFilterExpanded] = useState<boolean>(false)
+  const [subformMatchMode, setSubformMatchMode] = useState<'AND' | 'OR'>('AND')
+  const [showSubformSearch, setShowSubformSearch] = useState<boolean>(false)
+  // Dropdown lọc nhanh luôn cộng dồn (VÀ), tách riêng với điều kiện tìm kiếm nâng cao
+  const [subformQuickFilters, setSubformQuickFilters] = useState<Record<string, string>>({})
 
   // State quản lý Tab 4: Bảng Thống Kê Ma Trận Đa Chiều (Cross-Tab Matrix Reports)
   const [matrixYear, setMatrixYear] = useState<number>(() => new Date().getFullYear())
@@ -287,6 +296,8 @@ export function ReportsPage({ user }: ReportsPageProps) {
     })
     setSubformSearch('')
     setSubformConditions([])
+    setSubformMatchMode('AND')
+    setSubformQuickFilters({})
     setIsClosingSubform(false)
     setIsSubformOpen(true)
   }
@@ -297,46 +308,6 @@ export function ReportsPage({ user }: ReportsPageProps) {
       setIsSubformOpen(false)
       setIsClosingSubform(false)
     }, 220)
-  }
-
-  // Helper lấy nhãn toán tử thân thiện cho người dùng thông thường (không dùng thuật ngữ coder)
-  const getFriendlyOperatorsForType = (type: string) => {
-    switch (type) {
-      case 'number':
-        return [
-          { label: 'Bằng chính xác ( = )', value: '=' },
-          { label: 'Khác ( != )', value: '!=' },
-          { label: 'Lớn hơn ( > )', value: '>' },
-          { label: 'Nhỏ hơn ( < )', value: '<' },
-          { label: 'Từ mức này trở lên ( >= )', value: '>=' },
-          { label: 'Từ mức này trở xuống ( <= )', value: '<=' },
-        ]
-      case 'date':
-        return [
-          { label: 'Vào đúng ngày ( = )', value: '=' },
-          { label: 'Khác ngày ( != )', value: '!=' },
-          { label: 'Sau ngày ( > )', value: '>' },
-          { label: 'Trước ngày ( < )', value: '<' },
-          { label: 'Từ ngày này trở đi ( >= )', value: '>=' },
-          { label: 'Đến ngày này ( <= )', value: '<=' },
-        ]
-      case 'select':
-        return [
-          { label: 'Chính xác là ( = )', value: '=' },
-          { label: 'Không phải là / Khác ( != )', value: '!=' },
-          { label: 'Có chứa từ khóa', value: 'CONTAINS' },
-        ]
-      case 'string':
-      default:
-        return [
-          { label: 'Có chứa từ khóa', value: 'CONTAINS' },
-          { label: 'Không chứa từ khóa', value: 'NOT_CONTAINS' },
-          { label: 'Chính xác là ( = )', value: '=' },
-          { label: 'Khác với ( != )', value: '!=' },
-          { label: 'Bắt đầu bằng', value: 'STARTS_WITH' },
-          { label: 'Kết thúc bằng', value: 'ENDS_WITH' },
-        ]
-    }
   }
 
   // Tự động trích xuất các lựa chọn thực tế cho trường đang chọn (hỗ trợ lấy danh sách chi nhánh đầy đủ từ DB)
@@ -418,75 +389,28 @@ export function ReportsPage({ user }: ReportsPageProps) {
     return options.sort((a, b) => b.count - a.count)
   }, [subformConfig.data, stores])
 
+  // Trường tìm kiếm nâng cao của Subform, danh mục lấy từ dữ liệu thực tế
+  const subformSearchFields = useMemo<SearchField[]>(
+    () =>
+      fieldsWithData(subformConfig.filterFields, subformConfig.data || []).map((f) => ({
+        key: f.key,
+        label: f.label,
+        type: f.type === 'string' ? 'text' : f.type,
+        group: 'Tiêu chí lọc',
+        placeholder: f.placeholder || '',
+        options: f.type === 'select'
+          ? getOptionsForField(f.key).map(({ label, value }) => ({ label: label.replace(/ \(\d+\)$/, ''), value }))
+          : undefined,
+      })),
+    [subformConfig.filterFields, subformConfig.data, getOptionsForField]
+  )
+
   // Trợ giúp lọc nhanh theo Dropdown danh mục
   const handleQuickDropdownFilter = (fieldKey: string, value: string) => {
-    if (!value) {
-      setSubformConditions((prev) => prev.filter((c) => c.fieldKey !== fieldKey))
-    } else {
-      setSubformConditions((prev) => {
-        const withoutField = prev.filter((c) => c.fieldKey !== fieldKey)
-        const newCond: SearchCondition = {
-          id: `quick_dd_${fieldKey}_${Date.now()}`,
-          logic: 'AND',
-          isNot: false,
-          fieldKey,
-          operator: '=',
-          value,
-        }
-        return [...withoutField, newCond]
-      })
-    }
+    setSubformQuickFilters((prev) => ({ ...prev, [fieldKey]: value }))
   }
 
-  const getActiveFilterValue = (fieldKey: string): string => {
-    const found = subformConditions.find((c) => c.fieldKey === fieldKey && c.operator === '=' && !c.isNot)
-    return found ? found.value : ''
-  }
-
-  const handleAddInlineCondition = () => {
-    const firstField = subformConfig.filterFields[0]
-    const newOp = firstField?.type === 'number'
-      ? '>='
-      : firstField?.type === 'date'
-      ? '>='
-      : firstField?.type === 'select'
-      ? '='
-      : 'CONTAINS'
-    const newCond: SearchCondition = {
-      id: `cond_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      logic: 'AND',
-      isNot: false,
-      fieldKey: firstField?.key || '',
-      operator: newOp as any,
-      value: '',
-    }
-    setSubformConditions(prev => [...prev, newCond])
-  }
-
-  const handleUpdateInlineCondition = (index: number, patch: Partial<SearchCondition>) => {
-    setSubformConditions(prev => prev.map((cond, idx) => idx === index ? { ...cond, ...patch } : cond))
-  }
-
-  const handleInlineFieldChange = (index: number, newFieldKey: string) => {
-    const targetField = subformConfig.filterFields.find(f => f.key === newFieldKey)
-    const newOp = targetField?.type === 'number'
-      ? '>='
-      : targetField?.type === 'date'
-      ? '>='
-      : targetField?.type === 'select'
-      ? '='
-      : 'CONTAINS'
-    setSubformConditions(prev => prev.map((cond, idx) => idx === index ? {
-      ...cond,
-      fieldKey: newFieldKey,
-      operator: newOp as any,
-      value: '',
-    } : cond))
-  }
-
-  const handleRemoveInlineCondition = (index: number) => {
-    setSubformConditions(prev => prev.filter((_, idx) => idx !== index))
-  }
+  const getActiveFilterValue = (fieldKey: string): string => subformQuickFilters[fieldKey] || ''
 
   // Tải file CSV/Excel thực tế khi nhấn Xuất dữ liệu ở Subform
   const handleExportSubformData = () => {
@@ -593,7 +517,7 @@ export function ReportsPage({ user }: ReportsPageProps) {
     })
   }
 
-  // Lọc dữ liệu hiển thị trong Subform: Kết hợp Search nhanh + Tìm kiếm nâng cao (>, <, =, AND, OR, NOT)
+  // Lọc dữ liệu hiển thị trong Subform: Kết hợp Search nhanh + Dropdown lọc nhanh + Tìm kiếm nâng cao
   const filteredSubformData = useMemo(() => {
     let result = subformConfig.data || []
     if (subformSearch.trim()) {
@@ -602,13 +526,13 @@ export function ReportsPage({ user }: ReportsPageProps) {
         Object.values(row).some((val) => String(val || '').toLowerCase().includes(term))
       )
     }
-    if (subformConditions.length > 0) {
-      result = result.filter((row: any) =>
-        evaluateAdvancedSearch(row, subformConditions, subformConfig.filterFields)
-      )
-    }
-    return result
-  }, [subformConfig.data, subformSearch, subformConditions, subformConfig.filterFields])
+    Object.entries(subformQuickFilters).forEach(([fieldKey, value]) => {
+      if (value) result = result.filter((row: any) => String(row[fieldKey] ?? '').trim() === value.trim())
+    })
+    return result.filter((row: any) =>
+      matchesSearchConditions(row, subformConditions, subformSearchFields, subformMatchMode)
+    )
+  }, [subformConfig.data, subformSearch, subformQuickFilters, subformConditions, subformSearchFields, subformMatchMode])
 
   // Backward compatibility cho print modal
   const [drilldownConfig, setDrilldownConfig] = useState<any>({ isOpen: false, title: '', columns: [], data: [] })
@@ -2644,14 +2568,15 @@ export function ReportsPage({ user }: ReportsPageProps) {
               </div>
               <button
                 type="button"
-                className={`reports-adv-trigger-btn ${subformConditions.length > 0 || isAdvFilterExpanded ? 'has-active' : ''}`}
-                onClick={() => setIsAdvFilterExpanded(!isAdvFilterExpanded)}
-                title="Mở bộ lọc tìm kiếm chi tiết trực tiếp trong bảng"
+                className={`btn ${subformConditions.length > 0 ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setShowSubformSearch(true)}
+                disabled={subformSearchFields.length === 0}
+                title={subformSearchFields.length === 0 ? 'Không có dữ liệu để tìm kiếm' : 'Tìm kiếm nâng cao'}
               >
-                <Filter size={14} />
-                <span>Bộ lọc chi tiết</span>
+                {Icons.search}
+                <span>Tìm kiếm nâng cao</span>
                 {subformConditions.length > 0 && (
-                  <span className="reports-adv-badge">{subformConditions.length}</span>
+                  <span className="search-count-badge">{subformConditions.length}</span>
                 )}
               </button>
             </div>
@@ -2772,213 +2697,29 @@ export function ReportsPage({ user }: ReportsPageProps) {
               )
             })()}
 
-            {/* BỘ LỌC TÌM KIẾM CHI TIẾT INLINE DÀNH CHO NGƯỜI DÙNG PHỔ THÔNG (KHÔNG DÙNG MODAL) */}
-            {isAdvFilterExpanded && (
-              <div className="reports-inline-filter-box">
-                <div className="reports-inline-filter-header">
-                  <span className="reports-inline-filter-title">
-                    <Filter size={13} style={{ display: 'inline', verticalAlign: '-1px', marginRight: '4px' }} />
-                    Bộ lọc chi tiết ({subformConfig.title})
-                  </span>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      style={{ fontSize: '11px', padding: '2px 8px' }}
-                      onClick={handleAddInlineCondition}
-                    >
-                      + Thêm điều kiện
-                    </button>
-                    {subformConditions.length > 0 && (
-                      <button
-                        type="button"
-                        className="btn btn-secondary btn-sm"
-                        style={{ fontSize: '11px', padding: '2px 8px', color: 'var(--status-error)' }}
-                        onClick={() => setSubformConditions([])}
-                      >
-                        Xóa tất cả
-                      </button>
-                    )}
-                  </div>
-                </div>
+            <AdvancedSearchFilterBar
+              conditions={subformConditions}
+              matchMode={subformMatchMode}
+              fields={subformSearchFields}
+              onEdit={() => setShowSubformSearch(true)}
+              onClear={() => setSubformConditions([])}
+              style={{ margin: '8px 0 0' }}
+            />
 
-                <div className="reports-inline-conditions-list">
-                  {subformConditions.length === 0 ? (
-                    <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', textAlign: 'center', padding: '10px 0' }}>
-                      Chưa có điều kiện nào. Bấm <strong>"+ Thêm điều kiện"</strong> để lọc theo học vấn, chức vụ, mức lương...
-                    </div>
-                  ) : (
-                    subformConditions.map((cond, idx) => {
-                      const curField = subformConfig.filterFields.find((f) => f.key === cond.fieldKey) || subformConfig.filterFields[0]
-                      const operators = getFriendlyOperatorsForType(curField?.type || 'string')
-                      const availableOptions = getOptionsForField(cond.fieldKey)
-                      const isSelectInput = curField?.type === 'select' || (availableOptions.length > 0 && curField?.type !== 'number' && curField?.type !== 'date')
-
-                      return (
-                        <div key={cond.id || idx} className="reports-inline-condition-row">
-                          {idx === 0 ? (
-                            <span className="reports-inline-seq-label">ĐIỀU KIỆN 1</span>
-                          ) : (
-                            <select
-                              className="reports-inline-logic-select"
-                              value={cond.logic}
-                              onChange={(e) => handleUpdateInlineCondition(idx, { logic: e.target.value as 'AND' | 'OR' })}
-                            >
-                              <option value="AND">Và (Đồng thời)</option>
-                              <option value="OR">Hoặc (Một trong hai)</option>
-                            </select>
-                          )}
-
-                          <label className="reports-inline-not-label" title="Đảo ngược điều kiện (Ngoại trừ)">
-                            <input
-                              type="checkbox"
-                              checked={!!cond.isNot}
-                              onChange={(e) => handleUpdateInlineCondition(idx, { isNot: e.target.checked })}
-                            />
-                            <span>Ngoại trừ</span>
-                          </label>
-
-                          <select
-                            className="form-control"
-                            style={{ fontSize: '12px', padding: '4px 8px', minWidth: '130px' }}
-                            value={cond.fieldKey}
-                            onChange={(e) => handleInlineFieldChange(idx, e.target.value)}
-                          >
-                            {subformConfig.filterFields.map((f) => (
-                              <option key={f.key} value={f.key}>
-                                {f.label}
-                              </option>
-                            ))}
-                          </select>
-
-                          <select
-                            className="form-control"
-                            style={{ fontSize: '12px', padding: '4px 8px', minWidth: '135px' }}
-                            value={cond.operator}
-                            onChange={(e) => handleUpdateInlineCondition(idx, { operator: e.target.value as any })}
-                          >
-                            {operators.map((op) => (
-                              <option key={op.value} value={op.value}>
-                                {op.label}
-                              </option>
-                            ))}
-                          </select>
-
-                          {/* Chọn giá trị thực tế có trong bảng thay vì nhập tay thủ công */}
-                          {isSelectInput ? (
-                            <select
-                              className="form-control"
-                              style={{
-                                fontSize: '12px',
-                                padding: '4px 8px',
-                                flex: 1,
-                                minWidth: '150px',
-                                fontWeight: cond.value ? 600 : 400,
-                                borderColor: cond.value ? 'var(--brand-primary, #2563eb)' : undefined,
-                              }}
-                              value={cond.value}
-                              onChange={(e) => handleUpdateInlineCondition(idx, { value: e.target.value })}
-                            >
-                              <option value="">-- Chọn {curField?.label} ({availableOptions.length} mục có trong bảng) --</option>
-                              {availableOptions.map((opt) => (
-                                <option key={opt.value} value={opt.value}>
-                                  {opt.label}
-                                </option>
-                              ))}
-                            </select>
-                          ) : curField?.type === 'number' ? (
-                            <input
-                              type="number"
-                              className="form-control"
-                              style={{ fontSize: '12px', padding: '4px 8px', flex: 1, minWidth: '110px' }}
-                              placeholder={curField?.placeholder || 'Nhập số...'}
-                              value={cond.value}
-                              onChange={(e) => handleUpdateInlineCondition(idx, { value: e.target.value })}
-                            />
-                          ) : curField?.type === 'date' ? (
-                            <input
-                              type="date"
-                              className="form-control"
-                              style={{ fontSize: '12px', padding: '4px 8px', flex: 1, minWidth: '120px' }}
-                              value={cond.value}
-                              onChange={(e) => handleUpdateInlineCondition(idx, { value: e.target.value })}
-                            />
-                          ) : (
-                            <input
-                              type="text"
-                              className="form-control"
-                              style={{ fontSize: '12px', padding: '4px 8px', flex: 1, minWidth: '110px' }}
-                              placeholder={curField?.placeholder || 'Nhập từ khóa cần lọc...'}
-                              value={cond.value}
-                              onChange={(e) => handleUpdateInlineCondition(idx, { value: e.target.value })}
-                            />
-                          )}
-
-                          <button
-                            type="button"
-                            className="reports-inline-del-btn"
-                            title="Xóa dòng điều kiện này"
-                            onClick={() => handleRemoveInlineCondition(idx)}
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
-                      )
-                    })
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Chips tóm tắt điều kiện đang lọc dễ hiểu cho người dùng */}
-            {subformConditions.length > 0 && (
-              <div className="reports-active-chips-bar">
-                <span style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontWeight: 600 }}>Bộ lọc đang áp dụng:</span>
-                {subformConditions.map((cond, idx) => {
-                  const f = subformConfig.filterFields.find((field) => field.key === cond.fieldKey)
-                  const opList = getFriendlyOperatorsForType(f?.type || 'string')
-                  const opLabel = opList.find((o) => o.value === cond.operator)?.label || cond.operator
-                  let displayVal = cond.value || '...'
-                  if (cond.fieldKey === 'payment_status') {
-                    if (cond.value === 'PAID') displayVal = 'Đã chi trả'
-                    else if (cond.value === 'CONFIRMED') displayVal = 'Đã duyệt'
-                    else if (cond.value === 'DRAFT') displayVal = 'Bản nháp'
-                  }
-                  return (
-                    <span key={cond.id || idx} className="reports-active-chip">
-                      {idx > 0 && <strong>{cond.logic === 'AND' ? 'VÀ' : 'HOẶC'}</strong>}
-                      {cond.isNot && <span style={{ color: 'var(--status-error)', fontWeight: 700 }}>NGOẠI TRỪ</span>}
-                      <span>
-                        {f?.label || cond.fieldKey}: <em>{opLabel}</em> "{displayVal}"
-                      </span>
-                      <button
-                        type="button"
-                        className="reports-chip-remove-btn"
-                        onClick={() => handleRemoveInlineCondition(idx)}
-                        title="Bỏ điều kiện này"
-                      >
-                        ×
-                      </button>
-                    </span>
-                  )
-                })}
-                <button
-                  type="button"
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: 'var(--primary-color)',
-                    fontSize: '11.5px',
-                    cursor: 'pointer',
-                    textDecoration: 'underline',
-                    padding: '2px 4px',
-                  }}
-                  onClick={() => setSubformConditions([])}
-                >
-                  Xóa lọc
-                </button>
-              </div>
-            )}
+            <EmployeeAdvancedSearchModal
+              isOpen={showSubformSearch && subformSearchFields.length > 0}
+              onClose={() => setShowSubformSearch(false)}
+              onApply={(conditions, matchMode) => {
+                setSubformMatchMode(matchMode)
+                setSubformConditions(conditions)
+              }}
+              onClear={() => setSubformConditions([])}
+              initialConditions={subformConditions}
+              initialMatchMode={subformMatchMode}
+              fields={subformSearchFields}
+              title={`Tìm kiếm nâng cao: ${subformConfig.title}`}
+              entityLabel="bản ghi"
+            />
           </div>
 
           {/* Bảng dữ liệu con (Subform Table) */}

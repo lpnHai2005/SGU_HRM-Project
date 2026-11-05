@@ -53,7 +53,10 @@ export interface ContractTerminateData {
 export interface ContractRenewData {
   new_start_date: string;
   new_end_date?: string | null;
+  new_contract_type?: ContractType;
   new_basic_salary?: number;
+  new_insurance_salary?: number;
+  new_working_hours_per_week?: WorkingHoursPerWeek;
   new_position_id?: number;
   notes?: string;
 }
@@ -167,7 +170,7 @@ export const contractApi = {
   }> => {
     const formData = new FormData();
     formData.append('file', file);
-    return api.post(`/contracts/${contractId}/file`, formData);
+    return api.upload(`/contracts/${contractId}/file`, formData);
   },
 
   /**

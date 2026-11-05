@@ -11,10 +11,10 @@ keywords: ["nội quy", "đi muộn", "đi trễ", "phạt 50000", "ân hạn 15
 *Số: TZ-DOC-01/QĐ-TZ2026 - Ban hành ngày 01/01/2026 bởi Ban Giám Đốc TechZone*
 
 ## 1. Khung thời gian làm việc và ca trực chuỗi cửa hàng
-- **Ca Sáng:** 08:00 – 16:00 (nghỉ 45 phút ăn trưa).
-- **Ca Chiều:** 13:00 – 21:00 (nghỉ 45 phút ăn tối).
-- **Ca Full:** 08:00 – 21:00 (áp dụng trong các dịp sự kiện cao điểm).
-- **Khối Văn phòng Trụ sở (HQ):** 08:00 – 17:00 (Thứ 2 đến Thứ 6), Thứ 7 làm buổi sáng (08:00 – 12:00).
+- **Ca Sáng:** 08:00 – 16:00 (nghỉ 60 phút, tính 7 giờ công).
+- **Ca Chiều:** 13:00 – 21:00 (tính 8 giờ công).
+- **Ca Full (toàn thời gian cuối tuần):** 08:00 – 21:00 (nghỉ 120 phút, tính 11 giờ công).
+- **Khối Văn phòng Trụ sở (HQ):** Ca hành chính 08:00 – 17:00 (nghỉ 60 phút, tính 8 giờ công) từ Thứ 2 đến Thứ 6, Thứ 7 làm buổi sáng (08:00 – 12:00).
 
 ## 2. Tiêu chuẩn tác phong bán lẻ
 - Mặc áo polo TechZone đen phối xanh ngọc, quần tây tối màu, đeo thẻ nhân viên có mã QR.
@@ -22,13 +22,13 @@ keywords: ["nội quy", "đi muộn", "đi trễ", "phạt 50000", "ân hạn 15
 - Quản lý két tiền mặt tại quầy thu ngân an toàn, bàn giao ca đầy đủ.
 
 ## 3. Quy định đi muộn, về sớm và chế tài xử lý
-- **Thời gian ân hạn:** 15 phút đầu ca trực (check-in trước hoặc đúng +15 phút tính là Đúng giờ NORMAL).
+- **Thời gian ân hạn:** 15 phút đầu ca trực (check-in trước hoặc đúng +15 phút tính là Đúng giờ NORMAL, không phạt và không trừ lương).
 - **Xử phạt đi muộn (> 15 phút):**
   - Ghi nhận trạng thái `LATE`.
   - Khấu trừ vi phạm: **50.000 VNĐ / lần** vào kỳ lương.
-  - Trừ lương cơ bản theo phút làm việc thiếu: `(Lương HĐ / 26 / 8) * (Số phút trễ / 60)`.
-  - Đi muộn > 60 phút không lý do bị trừ 0.5 ngày công thực tế.
-- **Về sớm không lý do:** Ghi nhận `EARLY` và trừ giờ công thiếu.
+  - Trừ lương theo toàn bộ số phút trễ: `Đơn giá giờ * (Số phút trễ / 60)`, với `Đơn giá giờ = Lương HĐ / Công chuẩn của kỳ / Giờ chuẩn ngày`.
+- **Về sớm:** Ghi nhận `EARLY` và trừ lương theo số phút về sớm, không áp dụng ân hạn. Vừa muộn vừa sớm ghi nhận `LATE_AND_EARLY`.
+- **Vắng không phép:** Không chấm công cả ngày và không có đơn nghỉ bị trừ 1 ngày công.
 
 ## 4. Quản lý tài sản và bàn giao ca
 - Kiểm đếm máy mẫu trưng bày (Demo Units) và phụ kiện trên kệ vào cuối mỗi ca.

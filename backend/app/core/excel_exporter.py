@@ -10,7 +10,8 @@ def create_styled_excel(
     data: List[Dict[str, Any]],
     include_totals: bool = False,
     total_keys: Optional[List[str]] = None,
-    freeze_cell: Optional[str] = None
+    freeze_cell: Optional[str] = None,
+    company_name: Optional[str] = None
 ) -> io.BytesIO:
     """
     Generate professional styled Excel file with TechZone branding.
@@ -54,7 +55,7 @@ def create_styled_excel(
 
     # 1. Company Name Header
     ws.merge_cells(f"A1:{last_col_letter}1")
-    ws["A1"] = "TECHZONE - CÔNG TY TNHH TM DV TECH ZONE"
+    ws["A1"] = f"TECHZONE - {company_name}" if company_name else "TECHZONE"
     ws["A1"].font = Font(name="Segoe UI", size=11, bold=True, color="1E3A8A")
     ws["A1"].alignment = Alignment(horizontal="left", vertical="center")
     ws.row_dimensions[1].height = 20
@@ -189,7 +190,7 @@ def create_styled_excel(
     return output
 
 
-def create_multisheet_excel(sheets: List[Dict[str, Any]]) -> io.BytesIO:
+def create_multisheet_excel(sheets: List[Dict[str, Any]], company_name: Optional[str] = None) -> io.BytesIO:
     """
     Generate professional multi-sheet Excel file with TechZone branding.
     Includes freeze panes, auto-fit column widths, zebra striping, and safe padding.
@@ -241,7 +242,7 @@ def create_multisheet_excel(sheets: List[Dict[str, Any]]) -> io.BytesIO:
 
         # 1. Company Name Header
         ws.merge_cells(f"A1:{last_col_letter}1")
-        ws["A1"] = "TECHZONE - CÔNG TY TNHH TM DV TECH ZONE"
+        ws["A1"] = f"TECHZONE - {company_name}" if company_name else "TECHZONE"
         ws["A1"].font = Font(name="Segoe UI", size=11, bold=True, color="1E3A8A")
         ws["A1"].alignment = Alignment(horizontal="left", vertical="center")
         ws.row_dimensions[1].height = 20

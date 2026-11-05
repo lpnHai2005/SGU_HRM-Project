@@ -1,3 +1,4 @@
+import { useCompanyProfile } from '../hooks/useCompanyProfile'
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Icons } from '../components/common/Icons'
 import { StatCard } from '../components/common/StatCard'
@@ -127,6 +128,7 @@ interface LocalProofFile {
 }
 
 export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageProps) {
+  const company = useCompanyProfile()
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([])
   const [leaveBalance, setLeaveBalance] = useState<LeaveBalance | null>(null)
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([])
@@ -3779,7 +3781,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                   {/* 1. Header 2 Cột: Đơn vị chủ quản & Quốc hiệu chuẩn Thể thức Hành chính */}
                   <div className="leave-a4-national-header">
                     <div className="leave-hdr-org">
-                      <div className="leave-org-name">CÔNG TY CỔ PHẦN CÔNG NGHỆ TECHZONE VIỆT NAM</div>
+                      <div className="leave-org-name">{company.name}</div>
                       <div className="leave-org-sub">HỆ THỐNG PHÂN PHỐI & CHUỖI BÁN LẺ TOÀN QUỐC</div>
                       {printModalRequest.store_name && (
                         <div style={{ fontSize: '10.5px', color: '#1e3a8a', fontWeight: 600, marginTop: '1px' }}>
@@ -3815,7 +3817,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                   <div className="leave-kinh-gui-box">
                     <div>
                       <span className="leave-kinh-gui-title">Kính gửi:</span>
-                      <span>- Ban Giám đốc Công ty Cổ phần Công nghệ TechZone Việt Nam;</span>
+                      <span>- Ban Giám đốc {company.name};</span>
                     </div>
                     <div style={{ paddingLeft: '55px' }}>
                       <span>- Phòng Quản lý Nhân sự;</span>

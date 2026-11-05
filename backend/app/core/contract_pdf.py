@@ -256,6 +256,9 @@ class NumberedCanvas(canvas.Canvas):
 # 4. TRÌNH TẠO HỢP ĐỒNG LAO ĐỘNG CHUẨN
 # ===============================================================================
 
+# Dữ liệu còn thiếu để trống cho điền tay, không tự điền giá trị giả vào văn bản pháp lý
+BLANK = "........................"
+
 CONTRACT_TYPE_LABELS = {
     "PROBATION": "Hợp đồng thử việc",
     "FIXED_1_YEAR": "Hợp đồng lao động xác định thời hạn (01 năm)",
@@ -279,7 +282,7 @@ def generate_contract_pdf(
     Args:
         contract_data: Thông tin hợp đồng (contract_number, contract_type, start_date, end_date, basic_salary, insurance_salary, signed_date, ...)
         employee_data: Thông tin nhân viên (full_name, identity_card, dob, permanent_address, current_address, phone, email, position_name, store_name, ...)
-        company_data: Tùy chọn thông tin công ty bên A (nếu None sẽ dùng TechZone mặc định)
+        company_data: Thông tin bên A (name, tax_code, address, phone, email, representative, title)
 
     Returns:
         bytes: Dữ liệu PDF ở dạng nhị phân sẵn sàng lưu trữ hoặc tải về.
@@ -371,20 +374,12 @@ def generate_contract_pdf(
         textColor=colors.HexColor("#6b7280")
     )
 
-    # Dữ liệu bên A mặc định
+    # Thông tin bên A
+    company_data = company_data or {}
     comp = {
-        "name": "CÔNG TY CỔ PHẦN CÔNG NGHỆ TECHZONE VIỆT NAM",
-        "short_name": "TECHZONE CORP",
-        "tax_code": "0316899988",
-        "address": "273 An Dương Vương, Phường 3, Quận 5, TP. Hồ Chí Minh",
-        "phone": "(028) 3835 4409",
-        "email": "hr@techzone.vn",
-        "representative": "Bà TRẦN THỊ THU HÀ",
-        "title": "Giám đốc Nhân sự",
-        "authorization": "Theo Giấy ủy quyền số 01/2024/GUQ-TZ ký ngày 02/01/2024"
+        key: company_data.get(key) or BLANK
+        for key in ("name", "tax_code", "address", "phone", "email", "representative", "title")
     }
-    if company_data:
-        comp.update(company_data)
 
     # Xử lý thông tin hợp đồng
     c_num = contract_data.get("contract_number", "HD-2026-XXXX")
@@ -411,25 +406,29 @@ def generate_contract_pdf(
     ins_sal_words = number_to_vietnamese_words(insurance_salary)
 
     # Xử lý thông tin nhân viên (Bên B)
-    emp_name = str(employee_data.get("full_name") or employee_data.get("employee_name") or "NGUYỄN VĂN A").strip().upper()
-    emp_code = employee_data.get("employee_code", "")
-    emp_gender = "Nam" if str(employee_data.get("gender", "")).upper() in ["MALE", "NAM"] else "Nữ"
+    emp_name = str(employee_data.get("full_name") or employee_data.get("employee_name") or BLANK).strip().upper()
+    emp_code = employee_data.get("employee_code") or ""
+    emp_gender = {"MALE": "Nam", "NAM": "Nam", "FEMALE": "Nữ", "NỮ": "Nữ"}.get(str(employee_data.get("gender")).upper(), BLANK)
     emp_dob = format_vn_date(employee_data.get("dob"))
-    emp_cccd = employee_data.get("identity_card", "........................")
+    emp_cccd = employee_data.get("identity_card") or BLANK
     emp_cccd_date = format_vn_date(employee_data.get("identity_issued_date"))
-    emp_cccd_place = employee_data.get("identity_issued_place", "Cục Cảnh sát QLHC về TTXH")
-    emp_address = employee_data.get("permanent_address") or employee_data.get("current_address") or "........................"
+    emp_cccd_place = employee_data.get("identity_issued_place") or BLANK
+    emp_address = employee_data.get("permanent_address") or employee_data.get("current_address") or BLANK
     emp_current_address = employee_data.get("current_address") or emp_address
-    emp_phone = employee_data.get("phone", "........................")
-    emp_email = employee_data.get("company_email") or employee_data.get("personal_email") or employee_data.get("email") or "........................"
-    emp_tax = employee_data.get("tax_code", "Đang cập nhật")
-    emp_ins = employee_data.get("insurance_code", "Đang cập nhật")
-    emp_bank_acc = employee_data.get("bank_account_number", "........................")
-    emp_bank_name = employee_data.get("bank_name", "Ngân hàng")
+    emp_phone = employee_data.get("phone") or BLANK
+    emp_email = employee_data.get("company_email") or employee_data.get("personal_email") or employee_data.get("email") or BLANK
+    emp_tax = employee_data.get("tax_code") or "Đang cập nhật"
+    emp_ins = employee_data.get("insurance_code") or "Đang cập nhật"
+    emp_bank_acc = employee_data.get("bank_account_number") or BLANK
+    emp_bank_name = employee_data.get("bank_name") or BLANK
 
-    emp_position = contract_data.get("position_name") or employee_data.get("position_name") or "Chuyên viên tư vấn công nghệ"
-    emp_store = contract_data.get("store_name") or employee_data.get("store_name") or "Hệ thống Cửa hàng TechZone"
-    emp_store_address = employee_data.get("store_address") or "Trụ sở & Chi nhánh TechZone"
+    emp_position = contract_data.get("position_name") or employee_data.get("position_name") or BLANK
+    # Nhân viên văn phòng không thuộc cửa hàng nào thì làm việc tại trụ sở
+    emp_store = (
+        contract_data.get("store_name") or employee_data.get("store_name")
+        or contract_data.get("department_name") or employee_data.get("department_name") or BLANK
+    )
+    emp_store_address = employee_data.get("store_address") or comp["address"]
 
     story = []
 
@@ -461,7 +460,7 @@ def generate_contract_pdf(
     story.append(Spacer(1, 10))
 
     # MỞ ĐẦU
-    signed_p = f"Hôm nay, ngày {signed_date_val.day:02d} tháng {signed_date_val.month:02d} năm {signed_date_val.year}, tại Văn phòng Công ty Cổ phần Công nghệ TechZone Việt Nam, chúng tôi gồm có:"
+    signed_p = f"Hôm nay, ngày {signed_date_val.day:02d} tháng {signed_date_val.month:02d} năm {signed_date_val.year}, tại văn phòng {comp['name']}, chúng tôi gồm có:"
     story.append(Paragraph(f"<i>{signed_p}</i>", body_style))
     story.append(Spacer(1, 6))
 
@@ -470,12 +469,11 @@ def generate_contract_pdf(
     # ===============================================================================
     story.append(Paragraph("<b>BÊN A: NGƯỜI SỬ DỤNG LAO ĐỘNG</b>", section_heading))
     bena_data = [
-        [Paragraph("<b>Tên tổ chức:</b>", table_cell_bold), Paragraph(f"<b>{comp['name']}</b> ({comp['short_name']})", table_cell_style)],
-        [Paragraph("<b>Mã số thuế:</b>", table_cell_bold), Paragraph(f"{comp['tax_code']} do Sở Kế hoạch và Đầu tư TP. Hồ Chí Minh cấp", table_cell_style)],
+        [Paragraph("<b>Tên tổ chức:</b>", table_cell_bold), Paragraph(f"<b>{comp['name']}</b>", table_cell_style)],
+        [Paragraph("<b>Mã số thuế:</b>", table_cell_bold), Paragraph(comp["tax_code"], table_cell_style)],
         [Paragraph("<b>Địa chỉ trụ sở:</b>", table_cell_bold), Paragraph(comp["address"], table_cell_style)],
         [Paragraph("<b>Điện thoại:</b>", table_cell_bold), Paragraph(f"{comp['phone']} &nbsp;&nbsp;|&nbsp;&nbsp; <b>Email:</b> {comp['email']}", table_cell_style)],
-        [Paragraph("<b>Đại diện bởi:</b>", table_cell_bold), Paragraph(f"<b>{comp['representative']}</b> &nbsp;&nbsp;|&nbsp;&nbsp; <b>Chức vụ:</b> {comp['title']}", table_cell_style)],
-        [Paragraph("<b>Ủy quyền:</b>", table_cell_bold), Paragraph(comp["authorization"], table_cell_style)]
+        [Paragraph("<b>Đại diện bởi:</b>", table_cell_bold), Paragraph(f"<b>{comp['representative']}</b> &nbsp;&nbsp;|&nbsp;&nbsp; <b>Chức vụ:</b> {comp['title']}", table_cell_style)]
     ]
     bena_table = Table(bena_data, colWidths=[110, 405])
     bena_table.setStyle(TableStyle([

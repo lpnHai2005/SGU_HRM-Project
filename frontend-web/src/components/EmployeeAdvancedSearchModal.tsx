@@ -1,17 +1,10 @@
 import React, { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { Icons } from './common/Icons'
+import type { SearchCondition, SearchField, SearchFieldType } from '../utils/searchConditions'
 import './EmployeeAdvancedSearchModal.css'
 
-export type SearchFieldType = 'text' | 'province' | 'number' | 'date'
-
-export interface SearchField {
-  key: string
-  label: string
-  type: SearchFieldType
-  group: string
-  placeholder: string
-  sensitive?: boolean
-}
+export type { SearchCondition, SearchField, SearchFieldType }
 
 export const SEARCH_FIELDS: SearchField[] = [
   { key: 'name', label: 'Họ và tên', type: 'text', group: 'Thông tin cá nhân', placeholder: 'VD: Nguyen Van An' },
@@ -33,8 +26,6 @@ export const SEARCH_FIELDS: SearchField[] = [
   { key: 'insurance_code', label: 'Mã số BHXH', type: 'text', group: 'Tài chính', placeholder: 'VD: 79', sensitive: true },
   { key: 'bank_account', label: 'Số tài khoản ngân hàng', type: 'text', group: 'Tài chính', placeholder: 'VD: 0071', sensitive: true },
 ]
-
-export const SEARCH_FIELD_GROUPS = ['Thông tin cá nhân', 'Địa chỉ', 'Công việc & Lương', 'Tài chính']
 
 export interface SearchOperatorDef {
   key: string
@@ -75,16 +66,10 @@ export const SEARCH_OPS_BY_TYPE: Record<SearchFieldType, SearchOperatorDef[]> = 
     { key: 'lt', backendOp: 'lt', not: false, label: 'Trước ngày (<)' },
     { key: 'between', backendOp: 'between', not: false, label: 'Trong khoảng' },
   ],
-}
-
-export type SearchCondition = {
-  join: 'AND' | 'OR'
-  not: boolean
-  field: string
-  op: string
-  value: string
-  value2: string
-  values: string[]
+  select: [
+    { key: 'eq', backendOp: 'eq', not: false, label: 'Chính xác là (=)' },
+    { key: 'neq', backendOp: 'neq', not: false, label: 'Không phải là (≠)' },
+  ],
 }
 
 export type Province = {
@@ -100,19 +85,25 @@ export interface EmployeeAdvancedSearchModalProps {
   onClear: () => void
   initialConditions: SearchCondition[]
   initialMatchMode: 'AND' | 'OR'
-  provinces: Province[]
-  canManage: boolean
+  provinces?: Province[]
+  canManage?: boolean
+  fields?: SearchField[]
+  title?: string
+  entityLabel?: string
 }
 
-export const newCondition = (join: 'AND' | 'OR' = 'AND'): SearchCondition => ({
-  join,
-  not: false,
-  field: 'name',
-  op: 'contains',
-  value: '',
-  value2: '',
-  values: [],
-})
+export const newCondition = (join: 'AND' | 'OR' = 'AND', field: SearchField = SEARCH_FIELDS[0]): SearchCondition => {
+  const defaultOp = SEARCH_OPS_BY_TYPE[field.type][0]
+  return {
+    join,
+    not: defaultOp.not,
+    field: field.key,
+    op: defaultOp.backendOp,
+    value: '',
+    value2: '',
+    values: [],
+  }
+}
 
 export const hasConditionValue = (cond: SearchCondition) =>
   cond.op === 'in' ? cond.values.length > 0 : Boolean(cond.value.trim() || cond.value2.trim())
@@ -129,20 +120,22 @@ export const formatConditionDisplayValue = (field: SearchField | undefined, valu
     return isNaN(num) ? value : `${num.toLocaleString('vi-VN')} ₫`
   }
   if (field?.type === 'date') return value.split('-').reverse().join('/')
-  if (field?.type === 'number') return `${value} tuổi`
-  return `"${value}"`
+  if (field?.key === 'age') return `${value} tuổi`
+  if (field?.type === 'number') return Number(value).toLocaleString('vi-VN')
+  return `"${field?.options?.find(option => option.value === value)?.label ?? value}"`
 }
 
 export const describeConditionsInNaturalLanguage = (
   conditions: SearchCondition[],
-  mode: 'AND' | 'OR' = 'AND'
+  mode: 'AND' | 'OR' = 'AND',
+  fields: SearchField[] = SEARCH_FIELDS
 ) => {
   const validConds = conditions.filter(hasConditionValue)
   if (validConds.length === 0) return ''
 
   return validConds
     .map(cond => {
-      const field = SEARCH_FIELDS.find(item => item.key === cond.field)
+      const field = fields.find(item => item.key === cond.field)
       const type = field?.type || 'text'
       const opDef = getOpDef(type, cond.op, cond.not)
       let valStr = ''
@@ -165,11 +158,14 @@ export const EmployeeAdvancedSearchModal: React.FC<EmployeeAdvancedSearchModalPr
   onClear,
   initialConditions,
   initialMatchMode,
-  provinces,
-  canManage,
+  provinces = [],
+  canManage = true,
+  fields = SEARCH_FIELDS,
+  title = 'Tìm kiếm nhân sự nâng cao',
+  entityLabel = 'nhân sự',
 }) => {
   const [matchMode, setMatchMode] = useState<'AND' | 'OR'>(initialMatchMode)
-  const [conditions, setConditions] = useState<SearchCondition[]>([newCondition(initialMatchMode)])
+  const [conditions, setConditions] = useState<SearchCondition[]>([newCondition(initialMatchMode, fields[0])])
   const [error, setError] = useState<string>('')
 
   useEffect(() => {
@@ -178,11 +174,11 @@ export const EmployeeAdvancedSearchModal: React.FC<EmployeeAdvancedSearchModalPr
       if (initialConditions.length > 0) {
         setConditions(initialConditions.map(c => ({ ...c, join: initialMatchMode })))
       } else {
-        setConditions([newCondition(initialMatchMode)])
+        setConditions([newCondition(initialMatchMode, fields[0])])
       }
       setError('')
     }
-  }, [isOpen, initialConditions, initialMatchMode])
+  }, [isOpen, initialConditions, initialMatchMode, fields])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -203,9 +199,9 @@ export const EmployeeAdvancedSearchModal: React.FC<EmployeeAdvancedSearchModalPr
         const next = { ...cond, ...patch }
         // Khi đổi trường sang kiểu dữ liệu khác
         if (patch.field && patch.field !== cond.field) {
-          const oldType = SEARCH_FIELDS.find(f => f.key === cond.field)?.type || 'text'
-          const newType = SEARCH_FIELDS.find(f => f.key === patch.field)?.type || 'text'
-          if (oldType !== newType) {
+          const oldType = fields.find(f => f.key === cond.field)?.type || 'text'
+          const newType = fields.find(f => f.key === patch.field)?.type || 'text'
+          if (oldType !== newType || newType === 'select') {
             const defaultOpDef = SEARCH_OPS_BY_TYPE[newType][0]
             next.op = defaultOpDef.backendOp
             next.not = defaultOpDef.not
@@ -232,7 +228,7 @@ export const EmployeeAdvancedSearchModal: React.FC<EmployeeAdvancedSearchModalPr
 
   const handleAddCondition = () => {
     if (conditions.length >= 10) return
-    setConditions(prev => [...prev, newCondition(matchMode)])
+    setConditions(prev => [...prev, newCondition(matchMode, fields[0])])
   }
 
   const handleRemoveCondition = (index: number) => {
@@ -241,7 +237,7 @@ export const EmployeeAdvancedSearchModal: React.FC<EmployeeAdvancedSearchModalPr
   }
 
   const handleReset = () => {
-    setConditions([newCondition('AND')])
+    setConditions([newCondition('AND', fields[0])])
     setMatchMode('AND')
     setError('')
     onClear()
@@ -277,8 +273,11 @@ export const EmployeeAdvancedSearchModal: React.FC<EmployeeAdvancedSearchModalPr
   }
 
   const validConditions = conditions.filter(hasConditionValue)
+  const groups = [...new Set(fields.map(f => f.group))]
+  const entityTitle = entityLabel.charAt(0).toUpperCase() + entityLabel.slice(1)
 
-  return (
+  // Portal để modal không bị kẹt trong panel có hiệu ứng trượt của trang gọi
+  return createPortal(
     <div
       className="modal-overlay"
       onClick={e => e.target === e.currentTarget && onClose()}
@@ -297,7 +296,7 @@ export const EmployeeAdvancedSearchModal: React.FC<EmployeeAdvancedSearchModalPr
             <span className="modal-title-icon icon-view">
               {Icons.search}
             </span>
-            <span>Tìm kiếm nhân sự nâng cao</span>
+            <span>{title}</span>
           </h3>
           <button type="button" className="modal-close" onClick={onClose} title="Đóng (Esc)">
             {Icons.x}
@@ -312,8 +311,8 @@ export const EmployeeAdvancedSearchModal: React.FC<EmployeeAdvancedSearchModalPr
                 <strong>Chế độ kết hợp điều kiện:</strong>
                 <small>
                   {matchMode === 'AND'
-                    ? 'Nhân sự phải thỏa mãn đồng thời tất cả các điều kiện bên dưới.'
-                    : 'Nhân sự chỉ cần thỏa mãn một trong các điều kiện bên dưới.'}
+                    ? `${entityTitle} phải thỏa mãn đồng thời tất cả các điều kiện bên dưới.`
+                    : `${entityTitle} chỉ cần thỏa mãn một trong các điều kiện bên dưới.`}
                 </small>
               </div>
               <div className="search-segmented-toggle" role="group" aria-label="Chế độ kết hợp điều kiện">
@@ -337,7 +336,7 @@ export const EmployeeAdvancedSearchModal: React.FC<EmployeeAdvancedSearchModalPr
             {/* Danh sách các dòng điều kiện */}
             <div className="search-conditions-list">
               {conditions.map((cond, index) => {
-                const field = SEARCH_FIELDS.find(f => f.key === cond.field) || SEARCH_FIELDS[0]
+                const field = fields.find(f => f.key === cond.field) || fields[0]
                 const type = field.type
                 const currentOpDef = getOpDef(type, cond.op, cond.not)
 
@@ -363,8 +362,8 @@ export const EmployeeAdvancedSearchModal: React.FC<EmployeeAdvancedSearchModalPr
                             aria-label={`Điều kiện ${index + 1} - Chọn trường thông tin`}
                             onChange={e => updateCondition(index, { field: e.target.value })}
                           >
-                            {SEARCH_FIELD_GROUPS.map(group => {
-                              const groupFields = SEARCH_FIELDS.filter(
+                            {groups.map(group => {
+                              const groupFields = fields.filter(
                                 f => f.group === group && (canManage || !f.sensitive)
                               )
                               if (groupFields.length === 0) return null
@@ -494,6 +493,20 @@ export const EmployeeAdvancedSearchModal: React.FC<EmployeeAdvancedSearchModalPr
                                 </option>
                               ))}
                             </select>
+                          ) : type === 'select' ? (
+                            <select
+                              className="form-select"
+                              value={cond.value}
+                              aria-label={`Điều kiện ${index + 1} - Chọn giá trị`}
+                              onChange={e => updateCondition(index, { value: e.target.value })}
+                            >
+                              <option value="">-- Chọn {field.label} --</option>
+                              {field.options?.map(option => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
                           ) : cond.op === 'between' ? (
                             <div className="between-inputs-wrap">
                               <input
@@ -572,13 +585,13 @@ export const EmployeeAdvancedSearchModal: React.FC<EmployeeAdvancedSearchModalPr
                   <span>Xem trước kết quả tìm kiếm</span>
                 </div>
                 <div className="search-preview-content">
-                  Tìm nhân sự thỏa mãn{' '}
+                  Tìm {entityLabel} thỏa mãn{' '}
                   <span className="preview-match-highlight">
                     {matchMode === 'AND' ? 'TẤT CẢ' : 'BẤT KỲ'}
                   </span>{' '}
                   các tiêu chí:
                   {validConditions.map((cond, i) => {
-                    const field = SEARCH_FIELDS.find(item => item.key === cond.field)
+                    const field = fields.find(item => item.key === cond.field)
                     const type = field?.type || 'text'
                     const opDef = getOpDef(type, cond.op, cond.not)
                     let valStr = ''
@@ -641,6 +654,49 @@ export const EmployeeAdvancedSearchModal: React.FC<EmployeeAdvancedSearchModalPr
             </div>
           </div>
         </form>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
+export interface AdvancedSearchFilterBarProps {
+  conditions: SearchCondition[]
+  matchMode: 'AND' | 'OR'
+  fields?: SearchField[]
+  onEdit: () => void
+  onClear: () => void
+  style?: React.CSSProperties
+}
+
+export const AdvancedSearchFilterBar: React.FC<AdvancedSearchFilterBarProps> = ({
+  conditions,
+  matchMode,
+  fields = SEARCH_FIELDS,
+  onEdit,
+  onClear,
+  style,
+}) => {
+  if (conditions.length === 0) return null
+
+  return (
+    <div className="employee-advanced-filter-bar" style={style}>
+      <div className="employee-filter-bar-content">
+        <span className="employee-filter-mode-badge">
+          {Icons.filter}
+          <span>{matchMode === 'AND' ? 'Khớp TẤT CẢ (VÀ)' : 'Khớp BẤT KỲ (HOẶC)'}</span>
+        </span>
+        <span className="employee-filter-bar-desc">
+          {describeConditionsInNaturalLanguage(conditions, matchMode, fields)}
+        </span>
+      </div>
+      <div className="employee-filter-bar-actions">
+        <button type="button" className="btn btn-secondary btn-sm" onClick={onEdit}>
+          {Icons.edit} Chỉnh sửa
+        </button>
+        <button type="button" className="btn btn-secondary btn-sm" title="Xóa bộ lọc nâng cao" onClick={onClear}>
+          {Icons.close} Xóa
+        </button>
       </div>
     </div>
   )

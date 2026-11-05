@@ -16,6 +16,7 @@ import logging
 
 from app.core.database import get_db
 from app.api.deps import get_current_user, require_roles, record_audit_log
+from app.core.company import get_company_profile
 from app.core.contract_service import (
     ContractService, ContractStatus, ContractType,
     VALID_TRANSITIONS
@@ -72,6 +73,7 @@ async def list_contracts(
                c.start_date, c.end_date, c.basic_salary, c.insurance_salary,
                c.signed_date, c.status, c.notes, c.contract_file_url,
                c.working_hours_per_week, c.previous_contract_id, c.termination_date, c.termination_reason,
+               c.position_id, c.department_id,
                c.created_at, c.activated_at, c.updated_at,
                e.employee_code, e.full_name as employee_name, e.store_id,
                s.store_name, d.department_name, pos.position_name,
@@ -79,7 +81,7 @@ async def list_contracts(
         FROM contracts c
         JOIN employees e ON c.employee_id = e.employee_id
         LEFT JOIN stores s ON e.store_id = s.store_id
-        LEFT JOIN departments d ON e.department_id = d.department_id
+        LEFT JOIN departments d ON COALESCE(c.department_id, e.department_id) = d.department_id
         LEFT JOIN positions pos ON COALESCE(c.position_id, e.position_id) = pos.position_id
         LEFT JOIN contracts pc ON c.previous_contract_id = pc.contract_id
         WHERE 1=1
@@ -289,6 +291,29 @@ async def get_contract(
 # 3. TẠO HỢP ĐỒNG MỚI & TỰ ĐỘNG TẠO FILE PDF
 # ===============================================================================
 
+async def _get_contract_signer(db: AsyncSession) -> dict:
+    """Bên A do Giám đốc đang làm việc ký; chưa có thì PDF chừa trống."""
+    res = await db.execute(text("""
+        SELECT e.full_name, e.gender, p.position_name
+        FROM employees e
+        JOIN users u ON u.employee_id = e.employee_id
+        JOIN user_roles ur ON ur.user_id = u.user_id
+        JOIN roles r ON r.role_id = ur.role_id
+        LEFT JOIN positions p ON e.position_id = p.position_id
+        WHERE r.role_code = 'DIRECTOR' AND e.employment_status = 'ACTIVE'
+        ORDER BY e.employee_id
+        LIMIT 1
+    """))
+    signer = res.mappings().first()
+    if not signer:
+        return {}
+    honorific = {"MALE": "Ông", "FEMALE": "Bà"}.get(signer["gender"], "Ông/Bà")
+    return {
+        "representative": f"{honorific} {signer['full_name'].upper()}",
+        "title": signer["position_name"]
+    }
+
+
 async def _generate_and_save_contract_pdf(
     db: AsyncSession,
     contract_id: int,
@@ -346,7 +371,8 @@ async def _generate_and_save_contract_pdf(
             "department_name": emp_data.get("department_name")
         }
 
-        pdf_bytes = generate_contract_pdf(contract_dict, dict(emp_data))
+        company = {**await get_company_profile(db), **await _get_contract_signer(db)}
+        pdf_bytes = generate_contract_pdf(contract_dict, dict(emp_data), company)
         file_url = await upload_file_to_storage(
             content=pdf_bytes,
             filename=f"{contract_number}.pdf",
@@ -518,13 +544,14 @@ async def update_contract(
             detail=f"Chỉ có thể cập nhật hợp đồng ở trạng thái DRAFT. Trạng thái hiện tại: {current_contract['status']}"
         )
 
-    # Validate date range if provided
-    if contract_update.start_date and contract_update.end_date:
-        await ContractService.validate_date_range(
-            current_contract["contract_type"],
-            contract_update.start_date,
-            contract_update.end_date
-        )
+    data = contract_update.model_dump(exclude_unset=True)
+
+    # Validate the values the contract will have after this update
+    await ContractService.validate_date_range(
+        data.get("contract_type") or current_contract["contract_type"],
+        data.get("start_date") or current_contract["start_date"],
+        data["end_date"] if "end_date" in data else current_contract["end_date"]
+    )
 
     # Validate salary if provided
     if contract_update.basic_salary is not None and contract_update.basic_salary < 0:
@@ -534,9 +561,9 @@ async def update_contract(
     update_fields = []
     params = {"contract_id": contract_id}
 
-    data = contract_update.model_dump(exclude_unset=True)
     for k, v in data.items():
-        if v is not None:
+        # end_date = NULL is how a contract becomes INDEFINITE
+        if v is not None or k == "end_date":
             # Map field names (camelCase in schema to snake_case in DB)
             db_field = k
             if k == "file_url":
@@ -772,20 +799,24 @@ async def renew_contract(
             detail=f"Hợp đồng {current_contract['contract_number']} đã được gia hạn bởi hợp đồng {already_renewed['contract_number']}"
         )
 
-    # Validate new dates
+    # Validate new terms
     new_start = renew_data.new_start_date
     new_end = renew_data.new_end_date
+    new_type = renew_data.new_contract_type or current_contract["contract_type"]
 
-    await ContractService.validate_date_range(
+    ContractService.validate_renewal(
         current_contract["contract_type"],
-        new_start,
-        new_end
+        current_contract["end_date"],
+        new_type,
+        new_start
     )
 
-    # Validate new salary
-    new_salary = renew_data.new_basic_salary if renew_data.new_basic_salary else current_contract["basic_salary"]
-    if new_salary and new_salary < 0:
-        raise HTTPException(status_code=400, detail="Lương cơ bản không được âm")
+    await ContractService.validate_date_range(new_type, new_start, new_end)
+
+    # Terms left empty carry over from the old contract
+    new_salary = renew_data.new_basic_salary if renew_data.new_basic_salary is not None else current_contract["basic_salary"]
+    new_insurance = renew_data.new_insurance_salary if renew_data.new_insurance_salary is not None else current_contract["insurance_salary"]
+    new_hours = renew_data.new_working_hours_per_week or current_contract.get("working_hours_per_week")
 
     # Validate overlap
     await ContractService.validate_overlap(
@@ -819,18 +850,18 @@ async def renew_contract(
     result = await db.execute(query, {
         "contract_number": new_contract_number,
         "employee_id": current_contract["employee_id"],
-        "contract_type": current_contract["contract_type"],
+        "contract_type": new_type,
         "start_date": new_start,
         "end_date": new_end,
         "basic_salary": new_salary,
-        "insurance_salary": new_salary,
+        "insurance_salary": new_insurance,
         "signed_date": date.today(),
         "position_id": renew_data.new_position_id or current_contract.get("position_id"),
         "department_id": current_contract.get("department_id"),
         "notes": renew_data.notes,
         "previous_contract_id": contract_id,
         "created_by": user_id,
-        "working_hours_per_week": current_contract.get("working_hours_per_week")
+        "working_hours_per_week": new_hours
     })
 
     new_contract_id = result.mappings().first()["contract_id"]
@@ -841,15 +872,15 @@ async def renew_contract(
         contract_id=new_contract_id,
         contract_number=new_contract_number,
         employee_id=current_contract["employee_id"],
-        contract_type=current_contract["contract_type"],
+        contract_type=new_type,
         start_date=new_start,
         end_date=new_end,
         basic_salary=new_salary,
-        insurance_salary=new_salary,
+        insurance_salary=new_insurance,
         signed_date=date.today(),
         position_id=renew_data.new_position_id or current_contract.get("position_id"),
         department_id=current_contract.get("department_id"),
-        working_hours_per_week=current_contract.get("working_hours_per_week")
+        working_hours_per_week=new_hours
     )
 
     # Audit log
@@ -1606,7 +1637,8 @@ async def stream_contract_pdf(
             "store_name": emp_data.get("store_name"),
             "department_name": emp_data.get("department_name")
         }
-        pdf_bytes = generate_contract_pdf(contract_dict, dict(emp_data))
+        company = {**await get_company_profile(db), **await _get_contract_signer(db)}
+        pdf_bytes = generate_contract_pdf(contract_dict, dict(emp_data), company)
         return StreamingResponse(
             io.BytesIO(pdf_bytes),
             media_type="application/pdf",

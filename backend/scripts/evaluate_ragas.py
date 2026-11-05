@@ -71,17 +71,17 @@ EXTENDED_GOLDEN_DATASET = [
         "category": "TIEN_LUONG",
         "doc_code": "TZ-DOC-02",
         "question": "Công ty TechZone tính hoa hồng bán hàng cho nhân viên bán lẻ điện thoại và phụ kiện như thế nào?",
-        "ground_truth": "Công ty TechZone không áp dụng hoa hồng bán hàng cá nhân. Toàn bộ thu nhập biến đổi ngoài lương cứng được phân bổ thông qua Phụ cấp Dự án theo vai trò được bổ nhiệm.",
-        "key_facts": ["không áp dụng hoa hồng", "phụ cấp dự án", "thu nhập biến đổi"]
+        "ground_truth": "TechZone tính hoa hồng bán lẻ 1% doanh số điện thoại và laptop, 3% doanh số phụ kiện. Đạt từ 100% KPI thưởng 1.000.000 VNĐ, đạt từ 120% KPI thưởng 2.000.000 VNĐ.",
+        "key_facts": ["hoa hồng", "1%", "3%", "kpi"]
     },
-    # 5. Tiêu chuẩn công chuẩn 26 ngày (TZ-DOC-02)
+    # 5. Công chuẩn theo kỳ lương (TZ-DOC-02)
     {
         "id": "TC-05",
         "category": "TIEN_LUONG",
         "doc_code": "TZ-DOC-02",
         "question": "Tiêu chuẩn số ngày công chuẩn trong tháng để hưởng trọn vẹn lương hợp đồng tại TechZone là bao nhiêu ngày?",
-        "ground_truth": "Tiêu chuẩn công chuẩn áp dụng chung toàn chuỗi là 26 ngày công/tháng đối với cả khối cửa hàng và khối văn phòng.",
-        "key_facts": ["26 ngày công", "công chuẩn", "lương hợp đồng"]
+        "ground_truth": "Công chuẩn thay đổi theo từng kỳ lương, bằng tổng ngày trong tháng trừ Chủ nhật và ngày Lễ, Tết; HR hoặc Giám đốc có thể ghi đè cho từng kỳ.",
+        "key_facts": ["công chuẩn", "chủ nhật", "lễ", "từng kỳ"]
     },
     # 6. Phụ cấp thâm niên (TZ-DOC-02)
     {
@@ -152,8 +152,8 @@ EXTENDED_GOLDEN_DATASET = [
         "category": "NHAN_SU",
         "doc_code": "TZ-DOC-06",
         "question": "Thời gian thử việc tối đa đối với vị trí nhân viên bán lẻ và quản lý tại TechZone là bao lâu?",
-        "ground_truth": "Thời gian thử việc tối đa là 30 ngày đối với nhân viên bán lẻ, và tối đa 60 ngày đối với vị trí quản lý hoặc chuyên môn kỹ thuật cao.",
-        "key_facts": ["thử việc", "30 ngày", "60 ngày", "quản lý"]
+        "ground_truth": "Thời gian thử việc tối đa là 180 ngày (6 tháng), thường là 3 tháng hoặc 6 tháng.",
+        "key_facts": ["thử việc", "180 ngày", "6 tháng"]
     },
     # 14. Quyền xem dữ liệu nhân viên theo RBAC (TZ-DOC-06)
     {
