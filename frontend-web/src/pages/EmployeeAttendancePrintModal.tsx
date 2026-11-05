@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useCompanyProfile } from '../hooks/useCompanyProfile'
 import { Printer, X, CheckCircle2, AlertTriangle } from 'lucide-react'
 import {
   formatDate,
@@ -35,6 +36,7 @@ export function EmployeeAttendancePrintModal({
   onClose,
 }: EmployeeAttendancePrintModalProps) {
   const [checksum, setChecksum] = useState<string>('COMPUTING...')
+  const company = useCompanyProfile()
 
   const isReconciled =
     (employee.needs_review_session_count || 0) === 0 &&
@@ -182,7 +184,7 @@ export function EmployeeAttendancePrintModal({
         {/* 1. Quốc hiệu & Tên cơ quan chuẩn Nghị định 30/2020/NĐ-CP */}
         <header className="print-header-grid">
           <div className="print-hdr-org">
-            <div className="print-org-name">CÔNG TY CỔ PHẦN CÔNG NGHỆ TECHZONE</div>
+            <div className="print-org-name">{company.name}</div>
             <div className="print-org-sub">{employee.store_name || 'HỆ THỐNG BÁN LẺ & VĂN PHÒNG'}</div>
             <div className="print-doc-number">
               Số: TS-{period.replace('-', '')}/{employee.employee_code || `NV${employee.employee_id}`}

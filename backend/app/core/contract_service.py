@@ -2,7 +2,7 @@
 Contract Service - Business Logic Layer
 Xử lý các nghiệp vụ liên quan đến hợp đồng lao động
 """
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
@@ -21,6 +21,9 @@ class ContractType:
     PROBATION = "PROBATION"
     FIXED_TERM = "FIXED_TERM"
     INDEFINITE = "INDEFINITE"
+
+
+FIXED_TERM_YEARS = {"FIXED_1_YEAR": 1, "FIXED_2_YEAR": 2, "FIXED_3_YEAR": 3}
 
 
 # Valid state transitions
@@ -139,6 +142,15 @@ class ContractService:
         return True
 
     @staticmethod
+    def fixed_term_end_date(start_date: date, years: int) -> date:
+        """Last day of an N-year contract: the day before its anniversary."""
+        try:
+            anniversary = start_date.replace(year=start_date.year + years)
+        except ValueError:  # 29/02 has no anniversary in a non-leap year
+            anniversary = date(start_date.year + years, 3, 1)
+        return anniversary - timedelta(days=1)
+
+    @staticmethod
     async def validate_date_range(
         contract_type: str,
         start_date: date,
@@ -147,8 +159,8 @@ class ContractService:
         """
         Validate contract dates based on contract type.
         """
-        # PROBATION and FIXED_TERM require end_date
-        if contract_type in [ContractType.PROBATION, ContractType.FIXED_TERM] or contract_type.startswith("FIXED_"):
+        # Probation and fixed-term contracts require end_date
+        if contract_type == ContractType.PROBATION or contract_type.startswith("FIXED_"):
             if end_date is None:
                 raise HTTPException(
                     status_code=400,
@@ -161,10 +173,53 @@ class ContractService:
                     detail="Ngày kết thúc phải lớn hơn ngày bắt đầu"
                 )
 
-        # INDEFINITE allows NULL end_date
-        elif contract_type == ContractType.INDEFINITE:
-            # end_date can be None for indefinite contracts
-            pass
+            years = FIXED_TERM_YEARS.get(contract_type)
+            if years and end_date != ContractService.fixed_term_end_date(start_date, years):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Hợp đồng {years} năm từ {start_date} phải kết thúc vào {ContractService.fixed_term_end_date(start_date, years)}"
+                )
+
+            # TZ-DOC-06: thử việc 30 - 180 ngày
+            if contract_type == ContractType.PROBATION and not 30 <= (end_date - start_date).days + 1 <= 180:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Hợp đồng thử việc phải kéo dài từ 30 đến 180 ngày"
+                )
+
+        elif contract_type == ContractType.INDEFINITE and end_date is not None:
+            raise HTTPException(
+                status_code=400,
+                detail="Hợp đồng không xác định thời hạn không có ngày kết thúc"
+            )
+
+    @staticmethod
+    def validate_renewal(
+        current_type: str,
+        current_end_date: Optional[date],
+        new_type: str,
+        new_start_date: date
+    ) -> None:
+        """
+        Validate renewal rules that only depend on the old and new contract terms.
+        """
+        if current_type == ContractType.INDEFINITE:
+            raise HTTPException(
+                status_code=400,
+                detail="Hợp đồng không xác định thời hạn không cần gia hạn"
+            )
+
+        if new_type == ContractType.PROBATION:
+            raise HTTPException(
+                status_code=400,
+                detail="Không thể gia hạn thành hợp đồng thử việc"
+            )
+
+        if current_end_date and new_start_date <= current_end_date:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Ngày bắt đầu mới phải sau ngày kết thúc hợp đồng cũ ({current_end_date})"
+            )
 
     @staticmethod
     async def validate_salary(basic_salary: float) -> None:

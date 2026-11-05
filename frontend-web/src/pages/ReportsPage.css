@@ -16,7 +16,7 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 12px;
-  background-color: var(--bg-surface);
+  background-color: var(--surface-card);
   border: 1px solid var(--border-default);
   padding: 12px 18px;
   border-radius: var(--radius-md, 8px);
@@ -86,7 +86,7 @@
 }
 
 .chart-card {
-  background-color: var(--bg-surface);
+  background-color: var(--surface-card);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md, 8px);
   padding: 18px 20px;
@@ -203,7 +203,7 @@
 
 /* Card Container cho Subform chi tiết bên phải */
 .reports-subform-card {
-  background-color: var(--bg-surface);
+  background-color: var(--surface-card);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md, 8px);
   box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.06);
@@ -215,7 +215,7 @@
 
 .reports-subform-header {
   padding: 16px 18px;
-  background: linear-gradient(180deg, var(--bg-subtle) 0%, var(--bg-surface) 100%);
+  background: linear-gradient(180deg, var(--bg-subtle) 0%, var(--surface-card) 100%);
   border-bottom: 1px solid var(--border-subtle);
   display: flex;
   justify-content: space-between;
@@ -258,7 +258,7 @@
 
 .reports-subform-toolbar {
   padding: 12px 18px;
-  background-color: var(--bg-surface);
+  background-color: var(--surface-card);
   border-bottom: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
@@ -282,7 +282,7 @@
   padding: 6px 10px 6px 28px;
   border-radius: 6px;
   border: 1px solid var(--border-default);
-  background-color: var(--bg-surface);
+  background-color: var(--surface-card);
   color: var(--text-primary);
 }
 
@@ -295,87 +295,6 @@
   pointer-events: none;
   display: flex;
   align-items: center;
-}
-
-.reports-adv-trigger-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  padding: 6px 10px;
-  border-radius: 6px;
-  border: 1px solid var(--border-default);
-  background: var(--bg-subtle);
-  color: var(--text-primary);
-  cursor: pointer;
-  transition: all 0.15s ease;
-  white-space: nowrap;
-}
-
-.reports-adv-trigger-btn:hover {
-  border-color: var(--brand-primary, #2563eb);
-  color: var(--brand-primary, #2563eb);
-}
-
-.reports-adv-trigger-btn.has-active {
-  background: rgba(37, 99, 235, 0.08);
-  border-color: var(--brand-primary, #2563eb);
-  color: var(--brand-primary, #2563eb);
-}
-
-.reports-adv-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 4px;
-  border-radius: 10px;
-  background-color: var(--brand-primary, #2563eb);
-  color: #ffffff;
-  font-size: 10.5px;
-  font-weight: 700;
-}
-
-/* Chips bộ lọc nâng cao đang áp dụng */
-.reports-active-chips-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-}
-
-.reports-active-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  background: var(--bg-subtle, #f1f5f9);
-  border: 1px solid var(--border-subtle, #e2e8f0);
-  padding: 3px 8px;
-  border-radius: 4px;
-  color: var(--text-secondary);
-}
-
-.reports-active-chip strong {
-  color: var(--brand-primary, #2563eb);
-}
-
-.reports-chip-remove-btn {
-  background: none;
-  border: none;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  padding: 0 2px;
-  font-size: 11px;
-  line-height: 1;
-  margin-left: 3px;
-  transition: color 0.15s ease;
-}
-
-.reports-chip-remove-btn:hover {
-  color: var(--status-error, #ef4444);
 }
 
 /* Thanh gợi ý lọc nhanh 1 chạm theo thực tế doanh nghiệp */
@@ -408,7 +327,7 @@
   padding: 3px 10px;
   border-radius: 9999px;
   border: 1px solid var(--border-default, #cbd5e1);
-  background: var(--bg-surface, #ffffff);
+  background: var(--surface-card);
   color: var(--text-secondary, #475569);
   cursor: pointer;
   transition: all 0.15s ease;
@@ -436,7 +355,7 @@
   gap: 12px;
   flex-wrap: wrap;
   padding: 6px 10px;
-  background: var(--bg-surface, #ffffff);
+  background: var(--surface-card);
   border: 1px solid var(--border-subtle, #e2e8f0);
   border-radius: 6px;
   margin-top: 6px;
@@ -460,7 +379,7 @@
   padding: 2px 24px 2px 8px;
   font-size: 12px;
   color: var(--text-primary, #0f172a);
-  background-color: var(--bg-surface, #ffffff);
+  background-color: var(--surface-card);
   border: 1px solid var(--border-default, #cbd5e1);
   border-radius: 5px;
   outline: none;
@@ -483,105 +402,19 @@
 }
 
 .reports-quick-select.active {
-  background-color: #eff6ff;
+  background-color: rgba(37, 99, 235, 0.1);
   border-color: var(--brand-primary, #2563eb);
   color: var(--brand-primary, #2563eb);
   font-weight: 600;
 }
 
-/* Khung bộ lọc nâng cao tích hợp trực tiếp (Inline Accordion - Không dùng Modal) */
-.reports-inline-filter-box {
-  background: var(--bg-subtle, #f8fafc);
-  border: 1px solid var(--border-default, #e2e8f0);
-  border-radius: 8px;
-  padding: 10px 12px;
-  margin-top: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  animation: mypayslipSlideIn 0.2s ease-out;
+[data-theme="dark"] .reports-quick-select.active {
+  color: #93c5fd;
 }
 
-.reports-inline-filter-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.reports-inline-condition-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  background: var(--bg-surface, #ffffff);
-  border: 1px solid var(--border-subtle, #e2e8f0);
-  padding: 6px 8px;
-  border-radius: 6px;
-}
-
-.reports-inline-logic-select {
-  font-size: 11.5px;
-  padding: 3px 6px;
-  height: 28px;
-  border-radius: 4px;
-  background-color: rgba(37, 99, 235, 0.08);
-  font-weight: 600;
-  color: var(--brand-primary, #2563eb);
-  border: 1px solid rgba(37, 99, 235, 0.2);
-}
-
-.reports-inline-not-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  color: var(--status-error, #ef4444);
-  font-weight: 600;
-  cursor: pointer;
-  padding: 0 4px;
-  user-select: none;
-}
-
-.reports-inline-field-select {
-  font-size: 11.5px;
-  padding: 3px 6px;
-  height: 28px;
-  min-width: 120px;
-}
-
-.reports-inline-op-select {
-  font-size: 11.5px;
-  padding: 3px 6px;
-  height: 28px;
-  min-width: 115px;
-}
-
-.reports-inline-val-input {
-  flex: 1;
-  min-width: 130px;
-  font-size: 11.5px;
-  padding: 3px 8px;
-  height: 28px;
-}
-
-.reports-inline-del-btn {
-  padding: 3px 6px;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  background: none;
-  border: none;
-}
-
-.reports-inline-del-btn:hover {
-  color: var(--status-error, #ef4444);
-}
-
-.reports-inline-filter-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding-top: 6px;
-  border-top: 1px dashed var(--border-subtle, #e2e8f0);
+.reports-quick-select option {
+  background-color: var(--surface-card);
+  color: var(--text-primary);
 }
 
 /* Bảng dữ liệu trong Subform */
@@ -636,7 +469,7 @@
  * ============================================================================== */
 
 .matrix-report-card {
-  background-color: var(--bg-surface);
+  background-color: var(--surface-card);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md, 8px);
   overflow: hidden;
@@ -656,7 +489,7 @@
 
 .matrix-view-toggle {
   display: inline-flex;
-  background-color: var(--bg-surface);
+  background-color: var(--surface-card);
   border: 1px solid var(--border-default);
   border-radius: 6px;
   padding: 2px;

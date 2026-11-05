@@ -4,9 +4,9 @@
  * Hỗ trợ tự động tính ngày kết thúc theo thời hạn gia hạn (1, 2, 3 năm)
  */
 import { useState, useEffect } from 'react'
-import { contractApi, type ContractRenewData } from '../services/contractService'
+import { contractApi, type ContractRenewData, type WorkingHoursPerWeek } from '../services/contractService'
 import { employeeApi } from '../services/api'
-import { type Contract, getContractTypeLabel } from '../types/contract'
+import { type Contract, type ContractType, addDaysToDate, addYearsToContractStart, getContractTypeLabel, toLocalDateString } from '../types/contract'
 import { formatDate, formatCurrency, getInitials } from '../utils/formatters'
 import { Icons } from './common/Icons'
 import { toast } from 'sonner'
@@ -18,53 +18,56 @@ export interface ContractRenewDialogProps {
   onSuccess?: () => void
 }
 
+type RenewDuration = '1_YEAR' | '2_YEAR' | '3_YEAR' | 'INDEFINITE'
+
+const DURATION_YEARS: Partial<Record<RenewDuration, number>> = { '1_YEAR': 1, '2_YEAR': 2, '3_YEAR': 3 }
+
+// Loại HĐ mới đi theo thời hạn được chọn, không giữ loại của HĐ cũ
+const DURATION_CONTRACT_TYPE: Record<RenewDuration, ContractType> = {
+  '1_YEAR': 'FIXED_1_YEAR',
+  '2_YEAR': 'FIXED_2_YEAR',
+  '3_YEAR': 'FIXED_3_YEAR',
+  INDEFINITE: 'INDEFINITE',
+}
+
 export function ContractRenewDialog({
   open,
   contract,
   onClose,
   onSuccess,
 }: ContractRenewDialogProps) {
-  const [renewDuration, setRenewDuration] = useState<'1_YEAR' | '2_YEAR' | '3_YEAR' | 'CUSTOM' | 'INDEFINITE'>('1_YEAR')
+  const [renewDuration, setRenewDuration] = useState<RenewDuration>('1_YEAR')
   const [newStartDate, setNewStartDate] = useState<string>('')
   const [newEndDate, setNewEndDate] = useState<string>('')
   const [newBasicSalary, setNewBasicSalary] = useState<string>('')
+  const [newInsuranceSalary, setNewInsuranceSalary] = useState<string>('')
+  const [newWorkingHours, setNewWorkingHours] = useState<WorkingHoursPerWeek>(48)
   const [newPositionId, setNewPositionId] = useState<string>('')
   const [notes, setNotes] = useState<string>('')
   const [loading, setLoading] = useState(false)
   const [positions, setPositions] = useState<any[]>([])
 
   // Helper tính ngày kết thúc
-  const computeEndDate = (start: string, duration: string): string => {
-    if (!start) return ''
-    const d = new Date(start)
-    if (isNaN(d.getTime())) return ''
-
-    let years = 0
-    if (duration === '1_YEAR') years = 1
-    else if (duration === '2_YEAR') years = 2
-    else if (duration === '3_YEAR') years = 3
-
-    if (years > 0) {
-      d.setFullYear(d.getFullYear() + years)
-      d.setDate(d.getDate() - 1)
-      return d.toISOString().split('T')[0]
-    }
-    return ''
+  const computeEndDate = (start: string, duration: RenewDuration): string => {
+    const years = DURATION_YEARS[duration]
+    return start && years ? addYearsToContractStart(start, years) : ''
   }
+
+  // Ngày sớm nhất HĐ mới được bắt đầu: liền sau ngày kết thúc HĐ cũ
+  const earliestStart = contract?.end_date ? addDaysToDate(contract.end_date, 1) : undefined
 
   useEffect(() => {
     if (open && contract) {
-      // Ngày bắt đầu mặc định: ngày liền sau ngày kết thúc HĐ cũ (hoặc ngày hôm nay)
-      let defaultStart = new Date().toISOString().split('T')[0]
-      if (contract.end_date) {
-        const nextDay = new Date(contract.end_date)
-        nextDay.setDate(nextDay.getDate() + 1)
-        defaultStart = nextDay.toISOString().split('T')[0]
-      }
+      // Mặc định nối tiếp HĐ cũ; HĐ đã hết hạn từ trước thì bắt đầu từ hôm nay
+      const today = toLocalDateString()
+      const nextDay = contract.end_date ? addDaysToDate(contract.end_date, 1) : today
+      const defaultStart = nextDay > today ? nextDay : today
       setNewStartDate(defaultStart)
       setRenewDuration('1_YEAR')
       setNewEndDate(computeEndDate(defaultStart, '1_YEAR'))
       setNewBasicSalary(contract.basic_salary?.toString() || '')
+      setNewInsuranceSalary(contract.insurance_salary?.toString() || '')
+      setNewWorkingHours((contract.working_hours_per_week as WorkingHoursPerWeek) || 48)
       setNewPositionId(contract.position_id?.toString() || '')
       setNotes(`Gia hạn từ hợp đồng ${contract.contract_number}`)
     }
@@ -82,21 +85,15 @@ export function ContractRenewDialog({
   }, [open])
 
   // Đổi thời hạn gia hạn
-  const handleDurationChange = (duration: '1_YEAR' | '2_YEAR' | '3_YEAR' | 'CUSTOM' | 'INDEFINITE') => {
+  const handleDurationChange = (duration: RenewDuration) => {
     setRenewDuration(duration)
-    if (duration === 'INDEFINITE') {
-      setNewEndDate('')
-    } else if (duration !== 'CUSTOM') {
-      setNewEndDate(computeEndDate(newStartDate, duration))
-    }
+    setNewEndDate(computeEndDate(newStartDate, duration))
   }
 
   // Đổi ngày bắt đầu
   const handleStartDateChange = (newStart: string) => {
     setNewStartDate(newStart)
-    if (renewDuration === '1_YEAR' || renewDuration === '2_YEAR' || renewDuration === '3_YEAR') {
-      setNewEndDate(computeEndDate(newStart, renewDuration))
-    }
+    setNewEndDate(computeEndDate(newStart, renewDuration))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -106,6 +103,11 @@ export function ContractRenewDialog({
 
     if (!newStartDate) {
       toast.error('Vui lòng chọn ngày bắt đầu mới')
+      return
+    }
+
+    if (earliestStart && newStartDate < earliestStart) {
+      toast.error('Ngày bắt đầu mới phải sau ngày kết thúc hợp đồng cũ')
       return
     }
 
@@ -119,7 +121,7 @@ export function ContractRenewDialog({
       return
     }
 
-    if (newBasicSalary && parseFloat(newBasicSalary) < 0) {
+    if (parseFloat(newBasicSalary) < 0 || parseFloat(newInsuranceSalary) < 0) {
       toast.error('Lương mới không được âm')
       return
     }
@@ -129,7 +131,10 @@ export function ContractRenewDialog({
       const data: ContractRenewData = {
         new_start_date: newStartDate,
         new_end_date: renewDuration === 'INDEFINITE' ? null : newEndDate || null,
+        new_contract_type: DURATION_CONTRACT_TYPE[renewDuration],
         new_basic_salary: newBasicSalary ? parseFloat(newBasicSalary) : undefined,
+        new_insurance_salary: newInsuranceSalary ? parseFloat(newInsuranceSalary) : undefined,
+        new_working_hours_per_week: newWorkingHours,
         new_position_id: newPositionId ? parseInt(newPositionId) : undefined,
         notes: notes || undefined,
       }
@@ -140,7 +145,7 @@ export function ContractRenewDialog({
       onSuccess?.()
       onClose()
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || 'Lỗi khi gia hạn hợp đồng')
+      toast.error(err?.message || 'Lỗi khi gia hạn hợp đồng')
     } finally {
       setLoading(false)
     }
@@ -148,15 +153,18 @@ export function ContractRenewDialog({
 
   if (!open || !contract) return null
 
-  const isAuto = renewDuration === '1_YEAR' || renewDuration === '2_YEAR' || renewDuration === '3_YEAR'
+  const effectiveInsurance = parseFloat(newInsuranceSalary) || contract.insurance_salary || 0
 
   return (
     <div
       className="modal-overlay"
       onClick={(e) => !loading && e.target === e.currentTarget && onClose()}
     >
-      <div className="modal" style={{ maxWidth: '640px' }}>
-        <form onSubmit={handleSubmit}>
+      <div className="modal" style={{ maxWidth: '640px', maxHeight: '90vh' }}>
+        <form
+          onSubmit={handleSubmit}
+          style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}
+        >
           {/* Header */}
           <div className="modal-header">
             <h3 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -177,7 +185,7 @@ export function ContractRenewDialog({
           </div>
 
           {/* Body */}
-          <div className="modal-body" style={{ padding: '20px' }}>
+          <div className="modal-body" style={{ padding: '20px', flex: 1, minHeight: 0, overflowY: 'auto' }}>
             {/* Contract Summary Box */}
             <div
               style={{
@@ -229,13 +237,12 @@ export function ContractRenewDialog({
                 <label className="form-label" style={{ fontWeight: 500, fontSize: '13px', display: 'block', marginBottom: '6px' }}>
                   Thời hạn hợp đồng gia hạn <span style={{ color: 'var(--status-error)' }}>*</span>
                 </label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '8px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
                   {[
                     { key: '1_YEAR', label: '1 năm' },
                     { key: '2_YEAR', label: '2 năm' },
                     { key: '3_YEAR', label: '3 năm' },
                     { key: 'INDEFINITE', label: 'Vô thời hạn' },
-                    { key: 'CUSTOM', label: 'Tùy chỉnh' },
                   ].map((item) => (
                     <button
                       key={item.key}
@@ -260,6 +267,7 @@ export function ContractRenewDialog({
                   className="form-input"
                   value={newStartDate}
                   onChange={(e) => handleStartDateChange(e.target.value)}
+                  min={earliestStart}
                   required
                 />
               </div>
@@ -278,7 +286,7 @@ export function ContractRenewDialog({
                     readOnly
                     style={{ background: 'var(--surface-subtle)', color: 'var(--text-tertiary)', cursor: 'not-allowed' }}
                   />
-                ) : isAuto ? (
+                ) : (
                   <div>
                     <input
                       type="date"
@@ -290,18 +298,9 @@ export function ContractRenewDialog({
                       required
                     />
                     <div style={{ fontSize: '11.5px', color: 'var(--status-info)', marginTop: '4px' }}>
-                      ✓ Tự động tính theo ngày bắt đầu ({renewDuration.replace('_', ' ').toLowerCase()})
+                      ✓ Tự động tính theo ngày bắt đầu ({DURATION_YEARS[renewDuration]} năm)
                     </div>
                   </div>
-                ) : (
-                  <input
-                    type="date"
-                    className="form-input"
-                    value={newEndDate}
-                    onChange={(e) => setNewEndDate(e.target.value)}
-                    min={newStartDate}
-                    required
-                  />
                 )}
               </div>
 
@@ -321,13 +320,42 @@ export function ContractRenewDialog({
                 />
               </div>
 
+              {/* Working hours per week */}
+              <div className="form-group">
+                <label className="form-label" style={{ fontWeight: 500, fontSize: '13px', display: 'block', marginBottom: '6px' }}>
+                  Thời giờ làm việc <span style={{ color: 'var(--status-error)' }}>*</span>
+                </label>
+                <select
+                  className="form-select"
+                  value={newWorkingHours}
+                  onChange={(e) => setNewWorkingHours(Number(e.target.value) as WorkingHoursPerWeek)}
+                  required
+                >
+                  <option value={48}>48 giờ/tuần</option>
+                  <option value={44}>44 giờ/tuần</option>
+                  <option value={40}>40 giờ/tuần</option>
+                </select>
+              </div>
+
+              {/* Insurance Salary */}
+              <div className="form-group">
+                <label className="form-label" style={{ fontWeight: 500, fontSize: '13px', display: 'block', marginBottom: '6px' }}>
+                  Lương đóng bảo hiểm mới (VNĐ)
+                </label>
+                <input
+                  type="number"
+                  className="form-input"
+                  value={newInsuranceSalary}
+                  onChange={(e) => setNewInsuranceSalary(e.target.value)}
+                  min="0"
+                  step="100000"
+                  placeholder={contract.insurance_salary?.toString() || 'Giữ mức hiện tại'}
+                />
+              </div>
+
               {/* Insurance Deduction - Auto-calculated */}
               {(() => {
-                const effectiveSalary = newBasicSalary ? (parseFloat(newBasicSalary) || 0) : (contract.basic_salary || 0)
-                const totalInsuranceDeduction = effectiveSalary * 0.105
-                const bhxhAmount = effectiveSalary * 0.08
-                const bhytAmount = effectiveSalary * 0.015
-                const bhtnAmount = effectiveSalary * 0.01
+                const totalInsuranceDeduction = effectiveInsurance * 0.105
 
                 return (
                   <div className="form-group">
@@ -350,14 +378,14 @@ export function ContractRenewDialog({
                     <input
                       type="text"
                       className="form-input"
-                      value={effectiveSalary ? `- ${formatCurrency(totalInsuranceDeduction)}` : '0 VNĐ'}
+                      value={effectiveInsurance ? `- ${formatCurrency(totalInsuranceDeduction)}` : '0 VNĐ'}
                       readOnly
                       disabled
                       style={{
                         backgroundColor: 'var(--surface-subtle)',
                         cursor: 'not-allowed',
                         fontWeight: 600,
-                        color: effectiveSalary ? 'var(--status-error)' : 'var(--text-secondary)',
+                        color: effectiveInsurance ? 'var(--status-error)' : 'var(--text-secondary)',
                         fontFamily: 'var(--font-mono)'
                       }}
                     />
@@ -367,10 +395,9 @@ export function ContractRenewDialog({
 
               {/* Insurance Breakdown Box */}
               {(() => {
-                const effectiveSalary = newBasicSalary ? (parseFloat(newBasicSalary) || 0) : (contract.basic_salary || 0)
-                const bhxhAmount = effectiveSalary * 0.08
-                const bhytAmount = effectiveSalary * 0.015
-                const bhtnAmount = effectiveSalary * 0.01
+                const bhxhAmount = effectiveInsurance * 0.08
+                const bhytAmount = effectiveInsurance * 0.015
+                const bhtnAmount = effectiveInsurance * 0.01
 
                 return (
                   <div style={{
@@ -392,10 +419,10 @@ export function ContractRenewDialog({
                       paddingBottom: '6px'
                     }}>
                       <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                        Mức lương làm căn cứ đóng BH (100% lương CB sau gia hạn):
+                        Mức lương làm căn cứ đóng BH sau gia hạn:
                       </span>
                       <strong style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>
-                        {formatCurrency(effectiveSalary)}
+                        {formatCurrency(effectiveInsurance)}
                       </strong>
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 12px' }}>
@@ -449,6 +476,7 @@ export function ContractRenewDialog({
           <div
             className="modal-footer"
             style={{
+              flexShrink: 0,
               padding: '16px 20px',
               borderTop: '1px solid var(--border-default)',
               display: 'flex',

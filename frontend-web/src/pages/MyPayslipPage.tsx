@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useSearchParams } from 'react-router-dom'
 import { Icons } from '../components/common/Icons'
+import { useCompanyProfile } from '../hooks/useCompanyProfile'
 import { StatCard } from '../components/common/StatCard'
 import { EmptyState } from '../components/common/EmptyState'
 import { formatCurrency, formatDate } from '../utils/formatters'
@@ -102,6 +103,7 @@ function parsePrintDate(dateStr?: string) {
 }
 
 export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPayslipPageProps) {
+  const company = useCompanyProfile()
   const [searchParams, setSearchParams] = useSearchParams()
   const tabParam = searchParams.get('tab') as 'monthly' | 'annual' | 'contracts' | null
 
@@ -1636,7 +1638,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
                           <tr>
                             <td style={{ padding: '9px 12px', color: 'var(--text-secondary)' }}>Người đại diện ký</td>
                             <td style={{ padding: '9px 12px' }}>
-                              {(displayContract as any).signer_name || 'Tổng Giám Đốc TechZone Retail'}
+                              {(displayContract as any).signer_name || `Đại diện ${company.name ?? ''}`}
                             </td>
                           </tr>
                           <tr>
@@ -1732,7 +1734,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
                   {/* 1. Header 2 cột Quốc hiệu - Tên cơ quan */}
                   <div className="payslip-a4-national-header">
                     <div className="payslip-hdr-org">
-                      <div className="payslip-org-name">{monthlyPrintData.company?.name || 'CÔNG TY CỔ PHẦN CÔNG NGHỆ TECHZONE VIỆT NAM'}</div>
+                      <div className="payslip-org-name">{monthlyPrintData.company?.name}</div>
                       <div className="payslip-org-sub">HỆ THỐNG PHÂN PHỐI & CHUỖI BÁN LẺ TOÀN QUỐC</div>
                       <div style={{ fontSize: '10.5px', color: '#1e3a8a', fontWeight: 600, marginTop: '1px' }}>
                         Đơn vị: {monthlyPrintData.employee?.store_name || 'Hệ thống TechZone'}
@@ -1938,12 +1940,12 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
                 {/* Header */}
                 <div className="payslip-a4-header">
                   <div>
-                    <div className="payslip-a4-company-name">{monthlyPrintData.company?.name || 'TECHZONE RETAIL'}</div>
+                    <div className="payslip-a4-company-name">{monthlyPrintData.company?.name}</div>
                     {monthlyPrintData.company?.address && (
                       <div className="payslip-a4-company-sub">Địa chỉ: {monthlyPrintData.company.address}</div>
                     )}
-                    {monthlyPrintData.company?.tax_id && (
-                      <div className="payslip-a4-company-sub">Mã số thuế: {monthlyPrintData.company.tax_id}</div>
+                    {monthlyPrintData.company?.tax_code && (
+                      <div className="payslip-a4-company-sub">Mã số thuế: {monthlyPrintData.company.tax_code}</div>
                     )}
                   </div>
                   <div style={{ textAlign: 'right' }}>
@@ -2172,7 +2174,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
                   {/* 1. Header 2 cột Quốc hiệu - Tên cơ quan */}
                   <div className="payslip-a4-national-header">
                     <div className="payslip-hdr-org">
-                      <div className="payslip-org-name">{annualData.company?.name || 'CÔNG TY CỔ PHẦN CÔNG NGHỆ TECHZONE VIỆT NAM'}</div>
+                      <div className="payslip-org-name">{annualData.company?.name}</div>
                       <div className="payslip-org-sub">HỆ THỐNG PHÂN PHỐI & CHUỖI BÁN LẺ TOÀN QUỐC</div>
                       <div style={{ fontSize: '10.5px', color: '#1e3a8a', fontWeight: 600, marginTop: '1px' }}>
                         Đơn vị: {annualData.employee?.store_name || 'Hệ thống TechZone'}
@@ -2208,7 +2210,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
                     <div>Họ và tên nhân viên: <strong style={{ textTransform: 'uppercase' }}>{annualData.employee?.full_name}</strong></div>
                     <div>Mã số nhân viên: <strong>{annualData.employee?.employee_code}</strong></div>
                     <div>Chức danh / Vị trí: <strong>{annualData.employee?.position || annualData.employee?.position_name || 'Nhân viên'}</strong></div>
-                    <div>Đơn vị / Chi nhánh: <strong>{annualData.employee?.store_name || 'TechZone Retail'}</strong></div>
+                    <div>Đơn vị / Chi nhánh: <strong>{annualData.employee?.store_name || annualData.company?.name}</strong></div>
                     <div>Số CMND / CCCD: <strong>{annualData.employee?.id_card_number || '—'}</strong></div>
                     <div>Mã số thuế cá nhân: <strong>{annualData.employee?.tax_code || '—'}</strong></div>
                   </div>

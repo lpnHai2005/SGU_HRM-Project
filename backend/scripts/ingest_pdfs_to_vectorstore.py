@@ -31,7 +31,7 @@ from sqlalchemy import text
 
 DOC_CONFIG = {
     "TZ-DOC-01": {"category": "NOI_QUY", "title": "Nội quy lao động & Kỷ luật chuỗi bán lẻ", "roles": ["ALL"]},
-    "TZ-DOC-02": {"category": "TIEN_LUONG", "title": "Quy chế tiền lương & Phúc lợi 26 công chuẩn", "roles": ["ALL"]},
+    "TZ-DOC-02": {"category": "TIEN_LUONG", "title": "Quy chế tiền lương, Hoa hồng & Phúc lợi", "roles": ["ALL"]},
     "TZ-DOC-03": {"category": "DU_AN", "title": "Quy chế quản trị dự án & Phụ cấp dự án vào lương", "roles": ["ALL"]},
     "TZ-DOC-04": {"category": "NGHI_PHEP", "title": "Quy trình nghỉ phép, thai sản & thôi việc 2 cấp", "roles": ["ALL"]},
     "TZ-DOC-05": {"category": "CHAM_CONG", "title": "Quy chuẩn chấm công Geofence & Tăng ca OT", "roles": ["ALL"]},

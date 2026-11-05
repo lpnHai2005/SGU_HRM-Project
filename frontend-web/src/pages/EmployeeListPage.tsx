@@ -9,8 +9,8 @@ import { getInitials, getRoleFromUser, formatDate, formatCurrency } from '../uti
 import type { Employee, EmployeeCreate, Lookups, Contract, PromotionCreate } from '../types'
 import { EMPTY_ADDRESS, composeAddress, parseAddress, type AddressParts } from '../utils/address'
 import {
+  AdvancedSearchFilterBar,
   EmployeeAdvancedSearchModal,
-  describeConditionsInNaturalLanguage,
   type SearchCondition,
   type Province,
 } from '../components/EmployeeAdvancedSearchModal'
@@ -1425,36 +1425,12 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
           </div>
         </div>
 
-        {advancedSearch.length > 0 && (
-          <div className="employee-advanced-filter-bar">
-            <div className="employee-filter-bar-content">
-              <span className="employee-filter-mode-badge">
-                {Icons.filter}
-                <span>{searchMatchMode === 'AND' ? 'Khớp TẤT CẢ (VÀ)' : 'Khớp BẤT KỲ (HOẶC)'}</span>
-              </span>
-              <span className="employee-filter-bar-desc">
-                {describeConditionsInNaturalLanguage(advancedSearch, searchMatchMode)}
-              </span>
-            </div>
-            <div className="employee-filter-bar-actions">
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={() => setShowAdvancedModal(true)}
-              >
-                {Icons.edit} Chỉnh sửa
-              </button>
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                title="Xóa bộ lọc nâng cao"
-                onClick={clearAdvancedSearch}
-              >
-                {Icons.close} Xóa
-              </button>
-            </div>
-          </div>
-        )}
+        <AdvancedSearchFilterBar
+          conditions={advancedSearch}
+          matchMode={searchMatchMode}
+          onEdit={() => setShowAdvancedModal(true)}
+          onClear={clearAdvancedSearch}
+        />
 
         {isLoading ? (
           <div className="card-body" style={{ textAlign: 'center', padding: '40px' }}>

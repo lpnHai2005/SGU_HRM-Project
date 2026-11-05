@@ -7,7 +7,7 @@ import { Toaster } from 'sonner'
 import { ActivityPage } from './pages/ActivityPage'
 import { PersonalSchedulesPage } from './pages/PersonalSchedulesPage'
 import { assignedShift } from './services/assignedShift'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Routes, Route, Navigate, useSearchParams } from 'react-router-dom'
 import './App.css'
 import { useAuth } from './contexts/AuthContext'
@@ -17,6 +17,7 @@ import { Sidebar } from './components/layout/Sidebar'
 import { Topbar } from './components/layout/Topbar'
 import { BottomNav } from './components/layout/BottomNav'
 import { getRoleFromUser } from './utils/formatters'
+import { IDLE_LOGOUT_FLAG, watchIdle } from './utils/idleWatch'
 import { canAccessPath } from './constants/navigation'
 import { UserAccessPage } from './pages/UserAccessPage'
 import { SalesCommissionPage } from './pages/SalesCommissionPage'
@@ -104,12 +105,23 @@ export function App() {
     // Handled automatically by AuthProvider state
   }
 
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
     try {
       sessionStorage.removeItem('greeting_shown')
     } catch {}
     await logout()
-  }
+  }, [logout])
+
+  useEffect(() => {
+    if (!isAuthenticated) return
+    return watchIdle(window, () => {
+      sessionStorage.setItem(IDLE_LOGOUT_FLAG, '1')
+      handleLogout().catch(() => {}) // AuthContext đã xóa phiên kể cả khi gọi API thất bại
+    }, warn => {
+      if (warn) toast.warning('Bạn sắp bị đăng xuất do không hoạt động. Di chuột hoặc nhấn phím để tiếp tục làm việc.', { id: 'idle-warning', duration: Infinity })
+      else toast.dismiss('idle-warning')
+    })
+  }, [isAuthenticated, handleLogout])
 
   const handleCheckIn = async () => {
     setAttendanceLoading(true)

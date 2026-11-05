@@ -3,6 +3,7 @@
 // ============================================
 
 import { resolveApiBaseUrl } from './apiBaseUrl';
+import { IDLE_ACTIVITY_KEY } from '../utils/idleWatch';
 
 const API_BASE_URL = resolveApiBaseUrl(
   import.meta.env.VITE_API_URL,
@@ -101,6 +102,7 @@ export const userService = {
 export const clearAuth = () => {
   tokenService.remove();
   userService.remove();
+  localStorage.removeItem(IDLE_ACTIVITY_KEY);
 };
 
 // ============================================
@@ -751,7 +753,7 @@ export const payrollApi = {
   },
 
   getCommissions: async (month: string): Promise<any[]> => {
-    return api.get(`/payrolls/commissions/calculate/${month}`);
+    return api.get('/payrolls/commissions', { period: month });
   },
 
   getProjects: async (): Promise<Project[]> => {
@@ -970,6 +972,10 @@ export const payrollApi = {
 // ============================================
 
 export const reportApi = {
+  getCompanyProfile: async (): Promise<any> => {
+    return api.get('/reports/company-profile');
+  },
+
   getDashboardStats: async (period?: string, storeId?: number): Promise<any> => {
     const params: Record<string, any> = {};
     if (period) params.period = period;

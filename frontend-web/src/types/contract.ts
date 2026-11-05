@@ -86,6 +86,23 @@ export const getContractTypeLabel = (type: string | null | undefined): string =>
   return type;
 };
 
+// Ngày theo giờ máy (YYYY-MM-DD); toISOString sẽ lùi một ngày trước 7h sáng ở múi giờ VN
+export const toLocalDateString = (d: Date = new Date()): string =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+// Ngày kết thúc của HĐ n năm: trước ngày kỷ niệm một ngày
+export const addYearsToContractStart = (start: string, years: number): string => {
+  const [y, m, day] = start.split('-').map(Number);
+  if (!y || !m || !day) return '';
+  return toLocalDateString(new Date(y + years, m - 1, day - 1));
+};
+
+export const addDaysToDate = (date: string, days: number): string => {
+  const [y, m, day] = date.split('-').map(Number);
+  if (!y || !m || !day) return '';
+  return toLocalDateString(new Date(y, m - 1, day + days));
+};
+
 // Status badge CSS classes matching Vero design system
 export const getContractStatusClass = (status: string | null | undefined): string => {
   switch (status) {

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { Icons } from '../components/common/Icons'
+import { useCompanyProfile } from '../hooks/useCompanyProfile'
 import { StatCard } from '../components/common/StatCard'
 import { EmptyState } from '../components/common/EmptyState'
 import { formatCurrency, formatDate } from '../utils/formatters'
@@ -16,39 +17,7 @@ import { AttendanceRegulationDialog } from './AttendanceRegulationDialog'
 import { PayrollReopenDialog } from './PayrollReopenDialog'
 import { PayrollUnconfirmDialog } from './PayrollUnconfirmDialog'
 import { toast } from 'sonner'
-import { Filter, X } from 'lucide-react'
-import {
-  AdvancedSearchModal,
-  evaluateAdvancedSearch,
-  type SearchCondition,
-  type SearchFieldConfig,
-} from '../components/common/AdvancedSearchModal'
 
-const PAYROLL_FILTER_FIELDS: SearchFieldConfig[] = [
-  { key: 'employee_name', label: 'Họ và tên nhân sự', type: 'string' },
-  { key: 'employee_code', label: 'Mã nhân viên', type: 'string' },
-  { key: 'store_name', label: 'Cửa hàng / Chi nhánh', type: 'string' },
-  { key: 'position_name', label: 'Chức vụ / Vị trí', type: 'string' },
-  {
-    key: 'payment_status',
-    label: 'Trạng thái phiếu lương',
-    type: 'select',
-    options: [
-      { label: 'Bản nháp (DRAFT)', value: 'DRAFT' },
-      { label: 'Cần tính lại (NEEDS_RECALCULATION)', value: 'NEEDS_RECALCULATION' },
-      { label: 'Đã duyệt (CONFIRMED)', value: 'CONFIRMED' },
-      { label: 'Đã chi trả (PAID)', value: 'PAID' },
-    ],
-  },
-  { key: 'actual_working_days', label: 'Ngày công thực tế', type: 'number' },
-  { key: 'standard_working_days', label: 'Ngày công chuẩn', type: 'number' },
-  { key: 'contract_salary', label: 'Lương hợp đồng', type: 'number' },
-  { key: 'actual_base_salary', label: 'Lương CB thực tế', type: 'number' },
-  { key: 'gross_income', label: 'Tổng thu nhập Gross', type: 'number' },
-  { key: 'total_insurance', label: 'Bảo hiểm trích nộp (10.5%)', type: 'number' },
-  { key: 'total_deduction', label: 'Tổng giảm trừ', type: 'number' },
-  { key: 'net_salary', label: 'Thực lĩnh (NET)', type: 'number' },
-]
 
 export interface PayrollPageProps {
   user: any
@@ -123,6 +92,7 @@ function parsePrintDate(dateStr?: string) {
 }
 
 export function PayrollPage({ user }: PayrollPageProps) {
+  const company = useCompanyProfile()
   const [payrolls, setPayrolls] = useState<Payroll[]>([])
   const [selectedPeriod, setSelectedPeriod] = useState<string>(() => {
     const now = new Date()
@@ -138,10 +108,6 @@ export function PayrollPage({ user }: PayrollPageProps) {
   const [activeTab, setActiveTab] = useState<'monthly' | 'annual'>('monthly')
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'DRAFT' | 'NEEDS_RECALCULATION' | 'CONFIRMED' | 'PAID'>('all')
-
-  // Advanced Search Modal state
-  const [advSearchOpen, setAdvSearchOpen] = useState(false)
-  const [advConditions, setAdvConditions] = useState<SearchCondition[]>([])
 
   // Selected item for details & print
   const [selectedPayroll, setSelectedPayroll] = useState<Payroll | null>(null)
@@ -806,32 +772,9 @@ export function PayrollPage({ user }: PayrollPageProps) {
 
       const matchStatus = statusFilter === 'all' ? true : p.payment_status === statusFilter
 
-      const matchAdv =
-        advConditions.length === 0
-          ? true
-          : evaluateAdvancedSearch(
-              {
-                employee_name: p.employee_name || '',
-                employee_code: p.employee_code || '',
-                store_name: p.store_name || '',
-                position_name: p.position_name || '',
-                payment_status: p.payment_status || '',
-                actual_working_days: p.actual_working_days ?? 0,
-                standard_working_days: p.standard_working_days ?? 0,
-                contract_salary: p.contract_salary ?? 0,
-                actual_base_salary: p.actual_base_salary ?? 0,
-                gross_income: p.gross_income ?? 0,
-                total_insurance: p.total_insurance ?? 0,
-                total_deduction: p.total_deduction ?? 0,
-                net_salary: p.net_salary ?? 0,
-              },
-              advConditions,
-              PAYROLL_FILTER_FIELDS
-            )
-
-      return matchSearch && matchStatus && matchAdv
+      return matchSearch && matchStatus
     })
-  }, [payrolls, searchTerm, statusFilter, advConditions])
+  }, [payrolls, searchTerm, statusFilter])
 
   // Quick Metrics
   const metrics = useMemo(() => {
@@ -1211,39 +1154,13 @@ export function PayrollPage({ user }: PayrollPageProps) {
                         <option value="PAID">Đã chi trả (PAID)</option>
                       </select>
 
-                      <button
-                        type="button"
-                        className={`btn btn-sm ${advConditions.length > 0 ? 'btn-primary' : 'btn-secondary'}`}
-                        onClick={() => setAdvSearchOpen(true)}
-                        title="Tìm kiếm nâng cao bảng lương (AND, OR, NOT, phép toán >, <, =)"
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                      >
-                        <Filter size={15} />
-                        <span>Tìm nâng cao</span>
-                        {advConditions.length > 0 && (
-                          <span
-                            style={{
-                              backgroundColor: '#ffffff',
-                              color: '#1e293b',
-                              fontWeight: 700,
-                              padding: '1px 7px',
-                              borderRadius: '10px',
-                              fontSize: '11px',
-                            }}
-                          >
-                            {advConditions.length}
-                          </span>
-                        )}
-                      </button>
-
-                      {(searchTerm || statusFilter !== 'all' || advConditions.length > 0) && (
+                      {(searchTerm || statusFilter !== 'all') && (
                         <button
                           type="button"
                           className="btn btn-secondary btn-sm"
                           onClick={() => {
                             setSearchTerm('')
                             setStatusFilter('all')
-                            setAdvConditions([])
                           }}
                         >
                           Đặt lại
@@ -1255,52 +1172,6 @@ export function PayrollPage({ user }: PayrollPageProps) {
                       Hiển thị <strong>{filteredPayrolls.length}</strong> / {payrolls.length} nhân sự
                     </div>
                   </div>
-
-                  {/* Active Advanced Search Filter Chips */}
-                  {advConditions.length > 0 && (
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        padding: '8px 16px',
-                        background: 'var(--surface-subtle)',
-                        borderBottom: '1px solid var(--border-default)',
-                        fontSize: '12px',
-                        flexWrap: 'wrap',
-                      }}
-                    >
-                      <span style={{ fontWeight: 600, color: 'var(--primary-color)' }}>Bộ lọc nâng cao:</span>
-                      {advConditions.map((cond, idx) => (
-                        <span
-                          key={idx}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            background: 'var(--surface-card, #ffffff)',
-                            border: '1px solid var(--border-default)',
-                            padding: '2px 8px',
-                            borderRadius: '4px',
-                          }}
-                        >
-                          {idx > 0 && <strong style={{ color: 'var(--primary-color)' }}>{cond.logic} </strong>}
-                          {cond.isNot ? <span style={{ color: 'var(--status-danger)', fontWeight: 700 }}>NOT </span> : ''}
-                          <span>{PAYROLL_FILTER_FIELDS.find(f => f.key === cond.fieldKey)?.label || cond.fieldKey}</span>
-                          <span style={{ fontWeight: 600 }}>{cond.operator}</span>
-                          <span style={{ color: 'var(--primary-color)' }}>"{cond.value}"</span>
-                        </span>
-                      ))}
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-ghost"
-                        onClick={() => setAdvConditions([])}
-                        style={{ padding: '2px 8px', fontSize: '11px', color: 'var(--status-danger)', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
-                      >
-                        <X size={13} /> Xóa bộ lọc
-                      </button>
-                    </div>
-                  )}
 
                   {/* Table with Dynamic Columns (Compact when Subform is Open, Full when Closed) */}
                   <div style={{ overflowX: 'auto' }}>
@@ -1876,7 +1747,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <span style={{ fontSize: '12px', textTransform: 'uppercase', letterSpacing: '1px', opacity: 0.9, fontWeight: 700 }}>
-                            TECHZONE RETAIL
+                            {company.name}
                           </span>
                           <button
                             type="button"
@@ -2253,7 +2124,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                   {/* 1. Header 2 cột Quốc hiệu - Tên cơ quan */}
                   <div className="payslip-a4-national-header">
                     <div className="payslip-hdr-org">
-                      <div className="payslip-org-name">{monthlyPrintData.company?.name || 'CÔNG TY CỔ PHẦN CÔNG NGHỆ TECHZONE VIỆT NAM'}</div>
+                      <div className="payslip-org-name">{monthlyPrintData.company?.name}</div>
                       <div className="payslip-org-sub">HỆ THỐNG PHÂN PHỐI & CHUỖI BÁN LẺ TOÀN QUỐC</div>
                       <div style={{ fontSize: '10.5px', color: '#1e3a8a', fontWeight: 600, marginTop: '1px' }}>
                         Đơn vị: {monthlyPrintData.employee?.store_name || 'Hệ thống TechZone'}
@@ -2492,7 +2363,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                   {/* 1. Header 2 cột Quốc hiệu - Tên cơ quan */}
                   <div className="payslip-a4-national-header">
                     <div className="payslip-hdr-org">
-                      <div className="payslip-org-name">{annualData.company?.name || 'CÔNG TY CỔ PHẦN CÔNG NGHỆ TECHZONE VIỆT NAM'}</div>
+                      <div className="payslip-org-name">{annualData.company?.name}</div>
                       <div className="payslip-org-sub">HỆ THỐNG PHÂN PHỐI & CHUỖI BÁN LẺ TOÀN QUỐC</div>
                       <div style={{ fontSize: '10.5px', color: '#1e3a8a', fontWeight: 600, marginTop: '1px' }}>
                         Đơn vị: {annualData.employee?.store_name || 'Hệ thống TechZone'}
@@ -2528,7 +2399,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                     <div>Họ và tên nhân viên: <strong style={{ textTransform: 'uppercase' }}>{annualData.employee?.full_name}</strong></div>
                     <div>Mã số nhân viên: <strong>{annualData.employee?.employee_code}</strong></div>
                     <div>Chức danh / Vị trí: <strong>{annualData.employee?.position || annualData.employee?.position_name || 'Nhân viên'}</strong></div>
-                    <div>Đơn vị / Chi nhánh: <strong>{annualData.employee?.store_name || 'TechZone Retail'}</strong></div>
+                    <div>Đơn vị / Chi nhánh: <strong>{annualData.employee?.store_name || annualData.company?.name}</strong></div>
                     <div>Số CMND / CCCD: <strong>{annualData.employee?.id_card_number || '—'}</strong></div>
                     <div>Mã số thuế cá nhân: <strong>{annualData.employee?.tax_code || '—'}</strong></div>
                   </div>
@@ -2640,17 +2511,6 @@ export function PayrollPage({ user }: PayrollPageProps) {
           document.body
         )
       })()}
-
-      {/* Advanced Search Modal */}
-      <AdvancedSearchModal
-        isOpen={advSearchOpen}
-        onClose={() => setAdvSearchOpen(false)}
-        fields={PAYROLL_FILTER_FIELDS}
-        conditions={advConditions}
-        onApply={setAdvConditions}
-        onReset={() => setAdvConditions([])}
-        title="Tìm kiếm nâng cao bảng lương (Toán tử >, <, =, AND, OR, NOT)"
-      />
     </div>
   )
 }
