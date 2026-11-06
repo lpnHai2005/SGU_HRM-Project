@@ -635,6 +635,9 @@ async def create_leave_request(
     if not leave_type:
         raise HTTPException(status_code=404, detail="Loại đơn nghỉ phép không tồn tại.")
 
+    if leave_type["requires_attachment"] and not (req.attachment_url or "").strip():
+        raise HTTPException(status_code=400, detail=f"Loại đơn '{leave_type['type_name']}' bắt buộc phải có tệp minh chứng.")
+
     # Số ngày do server tính; giá trị client gửi lên chỉ để tương thích và không được tin.
     total_days = await count_leave_days(db, req.start_date, req.end_date, leave_type["type_code"])
     if total_days <= 0:

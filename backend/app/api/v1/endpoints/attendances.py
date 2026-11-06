@@ -612,6 +612,9 @@ async def check_in(req: CheckInRequest, current_user: dict = Depends(get_current
     """), dict(emp=emp_id, day=work_date, shift=req.shift_id))).mappings().first()
     if schedule and schedule.get('candidate_count', 1)>1 and schedule['shift_id']!=req.shift_id:
         raise HTTPException(409, 'SCHEDULE_AMBIGUOUS: actual shift must identify an assigned schedule')
+    # Số phút trễ tính theo ca gửi lên, nên không cho chọn ca khác với lịch được phân.
+    if schedule and schedule['shift_id'] != req.shift_id:
+        raise HTTPException(409, 'Ca đã chọn khác ca được phân công hôm nay. Vui lòng chọn đúng ca hoặc liên hệ cửa hàng trưởng.')
     context = attendance_context(shift, schedule, employee["store_id"])
     late = late_minutes(now, start)
     attendance_status = "LATE" if late > 15 else "NORMAL"
