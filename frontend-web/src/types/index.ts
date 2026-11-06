@@ -76,6 +76,12 @@ export interface Employee {
   education_level_name?: string | null;
   created_at?: string | null;
   basic_salary?: number;
+  identity_issued_date?: string | null;
+  identity_issued_place?: string | null;
+  tax_code?: string | null;
+  insurance_code?: string | null;
+  resignation_date?: string | null;
+  avatar?: string | null;
 }
 
 export interface EmployeeCreate {

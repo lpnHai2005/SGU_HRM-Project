@@ -59,6 +59,13 @@ SEARCH_OPS = {
 COMPARE_SQL = {"eq": "=", "gt": ">", "gte": ">=", "lt": "<", "lte": "<="}
 SENSITIVE_SEARCH_ROLES = {"ADMIN", "HR_MANAGER", "DIRECTOR"}
 MAX_SEARCH_CONDITIONS = 10
+PROFILE_DETAIL_COLUMNS = """,
+               e.identity_issued_date, e.identity_issued_place, e.tax_code, e.insurance_code, e.resignation_date,
+               COALESCE((SELECT u.avatar_url FROM users u WHERE u.employee_id = e.employee_id LIMIT 1), e.avatar) AS avatar"""
+
+
+def profile_detail_columns(user_roles) -> str:
+    return PROFILE_DETAIL_COLUMNS if SENSITIVE_SEARCH_ROLES & set(user_roles) else ""
 
 
 class SearchCondition(BaseModel):
@@ -184,13 +191,13 @@ async def list_employees(
     if "STORE_MANAGER" in user_roles and "ADMIN" not in user_roles and "HR_MANAGER" not in user_roles and "DIRECTOR" not in user_roles:
         store_id = current_user.get("store_id")
 
-    base_query = """
+    base_query = f"""
         SELECT e.employee_id, e.employee_code, e.first_name, e.last_name, e.full_name,
                e.gender, e.dob, e.identity_card, e.phone, e.personal_email, e.company_email,
                e.permanent_address, e.current_address, e.store_id, e.department_id,
                e.position_id, e.education_level_id, e.join_date, e.employment_status,
                e.bank_account_number, e.bank_name, e.created_at,
-               s.store_name, d.department_name, pos.position_name, edu.level_name as education_level_name
+               s.store_name, d.department_name, pos.position_name, edu.level_name as education_level_name{profile_detail_columns(user_roles)}
         FROM employees e
         LEFT JOIN stores s ON e.store_id = s.store_id
         JOIN departments d ON e.department_id = d.department_id
@@ -301,13 +308,13 @@ async def get_employee(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    query = text("""
+    query = text(f"""
         SELECT e.employee_id, e.employee_code, e.first_name, e.last_name, e.full_name,
                e.gender, e.dob, e.identity_card, e.phone, e.personal_email, e.company_email,
                e.permanent_address, e.current_address, e.store_id, e.department_id,
                e.position_id, e.education_level_id, e.join_date, e.employment_status,
                e.bank_account_number, e.bank_name, e.created_at,
-               s.store_name, d.department_name, pos.position_name, edu.level_name as education_level_name
+               s.store_name, d.department_name, pos.position_name, edu.level_name as education_level_name{profile_detail_columns(current_user.get('roles', []))}
         FROM employees e
         LEFT JOIN stores s ON e.store_id = s.store_id
         JOIN departments d ON e.department_id = d.department_id
