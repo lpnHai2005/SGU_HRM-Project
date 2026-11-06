@@ -7,11 +7,12 @@ from app.api.v1.endpoints.work_schedules import bounds
 
 class CalendarRules(unittest.TestCase):
     def test_week_crosses_year(self):
-        self.assertEqual(bounds(date(2026,1,1),'week'),(date(2025,12,29),date(2026,1,3)))
-    def test_week_ends_on_saturday(self):
-        self.assertEqual(bounds(date(2026,10,10),'week'),(date(2026,10,5),date(2026,10,10)))
-    def test_sunday_stays_in_its_monday_saturday_week(self):
-        self.assertEqual(bounds(date(2026,10,18),'week'),(date(2026,10,12),date(2026,10,17)))
+        self.assertEqual(bounds(date(2026,1,1),'week'),(date(2025,12,29),date(2026,1,4)))
+    def test_week_ends_on_sunday(self):
+        # Lịch xoay ca hiển thị đủ 7 ngày T2 -> CN (refactor 20261106)
+        self.assertEqual(bounds(date(2026,10,10),'week'),(date(2026,10,5),date(2026,10,11)))
+    def test_sunday_stays_in_its_monday_sunday_week(self):
+        self.assertEqual(bounds(date(2026,10,18),'week'),(date(2026,10,12),date(2026,10,18)))
     def test_leap_month(self):
         self.assertEqual(bounds(date(2028,2,5),'month'),(date(2028,2,1),date(2028,2,29)))
     def test_overnight(self):

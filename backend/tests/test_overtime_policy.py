@@ -67,10 +67,12 @@ class FakeDatabase:
                 "decision": self.old_decision}])
         if "SELECT calculated_at FROM payroll_calculation_runs" in sql:
             return Result(datetime.now(timezone.utc))
+        if "pg_get_functiondef" in sql and "fn_payable_ot_rows" in sql:
+            return Result("CREATE FUNCTION fn_payable_ot_rows AS SELECT * FROM public.v_overtime_verified_current v")
         if "pg_get_functiondef" in sql:
+            # SP VERIFIED_ONLY (migration 20261106): OT chỉ lấy qua fn_payable_ot_rows.
             return Result("""CREATE PROCEDURE sp_generate_monthly_payroll AS
-                SELECT SUM(CASE WHEN ota.decision='APPROVED' THEN ota.approved_hours ELSE 0 END) AS total_ot_hours
-                FROM attendances a LEFT JOIN attendance_overtime_approvals ota USING(attendance_id)""")
+                SELECT SUM(r.hours) FROM public.fn_payable_ot_rows(p_period) r""")
         return Result(None)
 
     async def commit(self):
@@ -102,13 +104,17 @@ class OTFix01Tests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(period_overlaps_policy("2026-09"))
             self.assertTrue(period_overlaps_policy("2026-10"))
 
-    async def test_before_cutoff_legacy_decision_still_writes(self):
-        db = FakeDatabase(work_date=date(2026, 10, 16))
-        with policy("LEGACY_ONLY_BEFORE_CUTOFF", date(2026, 10, 17)):
-            result = await payrolls.decide_overtime(11, DECISION, current_user=HR, db=db)
-        self.assertEqual(result["decision"], "APPROVED")
-        self.assertEqual(db.commits, 1)
-        self.assertEqual(len(db.writes), 2)  # approval and audit
+    async def test_legacy_decision_closed_in_every_mode(self):
+        # Sign-off 2026-11-06 #4: Payroll chỉ trả OT VERIFIED — luồng duyệt legacy đóng kể cả trước cutoff.
+        for mode, cutoff in (("DISABLED", None), ("LEGACY_ONLY_BEFORE_CUTOFF", date(2026, 10, 17))):
+            with self.subTest(mode=mode):
+                db = FakeDatabase(work_date=date(2026, 10, 16))
+                with policy(mode, cutoff):
+                    with self.assertRaises(HTTPException) as caught:
+                        await payrolls.decide_overtime(11, DECISION, current_user=HR, db=db)
+                self.assertEqual(caught.exception.detail["code"], "OT_LEGACY_APPROVAL_CLOSED")
+                self.assertEqual(db.writes, [])
+                self.assertEqual(db.commits, 0)
 
     async def test_after_cutoff_both_decisions_and_retries_write_nothing(self):
         db = FakeDatabase()

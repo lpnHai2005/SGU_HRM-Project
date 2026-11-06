@@ -101,7 +101,7 @@ class FakeDatabaseForClassify:
             return FakeResult(self.employees)
         if "FROM public.payroll_import_overrides" in sql:
             return FakeResult([FakeDbRow(d) for d in self.overrides])
-        if "attendance_overtime_approvals" in sql:
+        if "fn_payable_ot_rows" in sql:
             return FakeResult(self.approved_ot)
         if "payroll_manual_adjustments" in sql:
             return FakeResult(self.adjustments)
@@ -335,3 +335,38 @@ class PayrollImportClassifyUnitTests(unittest.IsolatedAsyncioTestCase):
 if __name__ == "__main__":
     unittest.main()
 
+
+
+class PayrollImportPitColumnTests(unittest.IsolatedAsyncioTestCase):
+    """Sign-off #6 (Phase 1): Kế toán import Thuế TNCN ở cột tùy chọn thứ 18."""
+
+    ROW = ["TZ-001", "A", None, None, None, None, None, 26, 0, None, None, None, 0, 0, 0, 0, None]
+
+    def test_pit_column_is_parsed(self):
+        from app.core.payroll_import import OPTIONAL_PIT_HEADER
+        excel = create_test_excel(headers=EXPECTED_HEADERS + [OPTIONAL_PIT_HEADER], data_rows=[self.ROW + [1_250_000]])
+        _, rows, errors = parse_import_workbook(excel, "2026-10")
+        self.assertEqual(errors, [])
+        self.assertEqual(rows[0]["personal_income_tax"], 1_250_000)
+
+    def test_old_17_column_template_keeps_existing_tax(self):
+        _, rows, errors = parse_import_workbook(create_test_excel(data_rows=[self.ROW]), "2026-10")
+        self.assertEqual(errors, [])
+        self.assertIsNone(rows[0]["personal_income_tax"])
+
+    async def test_classify_keeps_or_updates_tax(self):
+        db_ov = [{"salary_period": "2026-10", "employee_id": 1, "batch_id": 1,
+                  "unpaid_leave_days": Decimal("1.00"), "paid_leave_days": Decimal("0.00"),
+                  "extra_commission": Decimal("0"), "extra_bonus": Decimal("0"), "extra_allowance": Decimal("0"),
+                  "extra_penalty": Decimal("0"), "personal_income_tax": Decimal("800000.00"), "note": None}]
+        db = FakeDatabaseForClassify(standard_days="27.0", overrides=db_ov)
+        base = {"row_index": 4, "employee_code": "TZ-001", "actual_working_days": 26.0, "paid_leave_days": 0.0,
+                "extra_commission": 0, "extra_bonus": 0, "extra_allowance": 0, "extra_penalty": 0, "note": None}
+        kept = await classify_import_rows(db, "2026-10", [dict(base, personal_income_tax=None)])
+        self.assertEqual(kept["actions"][0]["action"], "UNCHANGED")
+        self.assertEqual(kept["actions"][0]["personal_income_tax"], 800000)
+        changed = await classify_import_rows(db, "2026-10", [dict(base, personal_income_tax=900000)])
+        self.assertEqual(changed["actions"][0]["action"], "UPDATE")
+        self.assertEqual(changed["actions"][0]["personal_income_tax"], 900000)
+        bad = await classify_import_rows(db, "2026-10", [dict(base, personal_income_tax=-5)])
+        self.assertTrue(any(e["field"] == "personal_income_tax" for e in bad["invalid_records"]))

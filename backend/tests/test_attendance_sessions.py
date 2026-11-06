@@ -34,10 +34,22 @@ class Rules(unittest.TestCase):
             else:
                 require_available(last, NOW)
 
-    def test_open_session_blocks_next_day(self):
+    def test_active_session_blocks_concurrent_checkin(self):
+        # Phiên đang hoạt động trong ca (check-in 2 tiếng trước) phải chặn check-in trùng
         with self.assertRaises(HTTPException) as caught:
-            require_available(dict(check_in_time=NOW-timedelta(days=1), check_out_time=None), NOW)
+            require_available(dict(check_in_time=NOW-timedelta(hours=2), check_out_time=None,
+                                   work_date=NOW.date(), start_time=time(8), end_time=time(16)), NOW)
         self.assertEqual(caught.exception.status_code, 409)
+
+    def test_overdue_open_session_does_not_block_next_day(self):
+        # Phiên mở quá hạn (từ ngày hôm trước) không được chặn check-in của ngày mới
+        overdue_session = dict(check_in_time=NOW-timedelta(days=1), check_out_time=None,
+                               work_date=NOW.date()-timedelta(days=1), start_time=time(8), end_time=time(16))
+        avail = availability(overdue_session, NOW)
+        self.assertTrue(avail['can_check_in'])
+        self.assertTrue(avail['is_overdue_open'])
+        # require_available không ném 409
+        require_available(overdue_session, NOW)
 
     def test_first_session(self):
         self.assertTrue(availability(None, NOW)['can_check_in'])
@@ -82,12 +94,14 @@ class Rules(unittest.TestCase):
         self.assertEqual(metrics['overtime_hours'], 0)
         self.assertEqual(metrics['status'], 'NORMAL')
 
-    def test_attendance_context_does_not_infer_break_policy(self):
-        shift = dict(shift_id=2, start_time=time(8), end_time=time(16), work_hours=8,
+    def test_attendance_context_snapshots_break_policy(self):
+        # Nghỉ giữa ca được chụp lại lúc check-in để đổi danh mục ca sau đó không làm lệch giờ công.
+        shift = dict(shift_id=2, start_time=time(8), end_time=time(17), work_hours=8,
                      break_minutes=60)
         context = attendance_context(shift, None, 1)
         self.assertEqual(context['version'], 1)
-        self.assertNotIn('break_minutes', context['actual'])
+        self.assertEqual(context['actual']['break_minutes'], 60)
+        self.assertEqual(context['actual']['planned_overtime_hours'], 0.0)
 
     def test_activity_duration_matches_attendance_elapsed_hours(self):
         row = dict(
