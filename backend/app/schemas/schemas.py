@@ -245,6 +245,12 @@ class EmployeeOut(EmployeeBase):
     store_name: Optional[str] = None
     education_level_name: Optional[str] = None
     created_at: Optional[datetime] = None
+    identity_issued_date: Optional[date] = None
+    identity_issued_place: Optional[str] = None
+    tax_code: Optional[str] = None
+    insurance_code: Optional[str] = None
+    resignation_date: Optional[date] = None
+    avatar: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

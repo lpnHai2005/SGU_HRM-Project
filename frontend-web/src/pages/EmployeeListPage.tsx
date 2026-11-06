@@ -765,9 +765,11 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
               width: '80px', height: '80px', borderRadius: '50%',
               background: 'var(--primary-color)', color: 'white',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '24px', fontWeight: 'bold', margin: '0 auto 12px'
+              fontSize: '24px', fontWeight: 'bold', margin: '0 auto 12px', overflow: 'hidden'
             }}>
-              {getInitials(emp.full_name)}
+              {emp.avatar
+                ? <img src={emp.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                : getInitials(emp.full_name)}
             </div>
             <h3 style={{ margin: '0 0 4px' }}>{emp.full_name}</h3>
             <p style={{ margin: '0', color: 'var(--text-secondary)', fontSize: '13px' }}>
@@ -784,7 +786,14 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
               <p style={{ margin: '0 0 8px' }}><strong>Điện thoại:</strong> {emp.phone || '--'}</p>
               <p style={{ margin: '0 0 8px' }}><strong>Email cá nhân:</strong> {emp.personal_email || '--'}</p>
               <p style={{ margin: '0 0 8px' }}><strong>Email công ty:</strong> {emp.company_email || '--'}</p>
-              <p style={{ margin: '0' }}><strong>Địa chỉ:</strong> {emp.current_address || emp.permanent_address || '--'}</p>
+              {canView ? (
+                <>
+                  <p style={{ margin: '0 0 8px' }}><strong>Địa chỉ thường trú:</strong> {emp.permanent_address || '--'}</p>
+                  <p style={{ margin: '0' }}><strong>Địa chỉ hiện tại:</strong> {emp.current_address || '--'}</p>
+                </>
+              ) : (
+                <p style={{ margin: '0' }}><strong>Địa chỉ:</strong> {emp.current_address || emp.permanent_address || '--'}</p>
+              )}
             </div>
           </div>
         </div>
@@ -800,14 +809,27 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
             <div><strong>Ngày sinh:</strong> {formatDate(emp.dob)}</div>
             <div><strong>Giới tính:</strong> {emp.gender === 'MALE' ? 'Nam' : emp.gender === 'FEMALE' ? 'Nữ' : '--'}</div>
             <div><strong>CMND/CCCD:</strong> {emp.identity_card || '--'}</div>
+            {canView && (
+              <>
+                <div><strong>Ngày cấp CCCD:</strong> {emp.identity_issued_date ? formatDate(emp.identity_issued_date) : '--'}</div>
+                <div><strong>Nơi cấp CCCD:</strong> {emp.identity_issued_place || '--'}</div>
+                <div><strong>Ngày thôi việc:</strong> {emp.resignation_date ? formatDate(emp.resignation_date) : '--'}</div>
+              </>
+            )}
           </div>
         </div>
 
         <div style={{ marginTop: '20px' }}>
-          <h4 style={{ margin: '0 0 12px', fontSize: '14px', color: 'var(--text-secondary)' }}>THÔNG TIN THANH TOÁN</h4>
+          <h4 style={{ margin: '0 0 12px', fontSize: '14px', color: 'var(--text-secondary)' }}>{canView ? 'THANH TOÁN, THUẾ & BẢO HIỂM' : 'THÔNG TIN THANH TOÁN'}</h4>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px', fontSize: '13px' }}>
             <div><strong>Ngân hàng:</strong> {emp.bank_name || '--'}</div>
             <div><strong>Số TK:</strong> {emp.bank_account_number || '--'}</div>
+            {canView && (
+              <>
+                <div><strong>Mã số thuế:</strong> {emp.tax_code || '--'}</div>
+                <div><strong>Mã BHXH:</strong> {emp.insurance_code || '--'}</div>
+              </>
+            )}
           </div>
         </div>
 
