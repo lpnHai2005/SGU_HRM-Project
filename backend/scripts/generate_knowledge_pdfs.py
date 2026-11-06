@@ -254,10 +254,12 @@ def generate_doc_01(pdf_dir, md_dir):
         Paragraph("<b>Điều 1. Khung thời gian làm việc và ca trực tại chuỗi cửa hàng</b>", S["article_title"]),
         Paragraph("1. Hệ thống cửa hàng bán lẻ TechZone hoạt động liên tục từ 08:00 đến 21:30 các ngày trong tuần (kể cả Thứ Bảy, Chủ Nhật và ngày Lễ).", S["body"]),
         Paragraph("2. Cán bộ nhân viên khối chi nhánh làm việc theo lịch phân ca luân phiên do Cửa hàng trưởng (Store Manager) sắp xếp hàng tuần, bao gồm các ca chuẩn sau:", S["body"]),
-        Paragraph("• <b>Ca Sáng:</b> Từ 08:00 đến 16:00 (Nghỉ giữa ca 45 phút ăn trưa).", S["bullet"]),
-        Paragraph("• <b>Ca Chiều:</b> Từ 13:00 đến 21:00 (Nghỉ giữa ca 45 phút ăn tối).", S["bullet"]),
-        Paragraph("• <b>Ca Full (Ca gộp):</b> Từ 08:00 đến 21:00 (Áp dụng trong các dịp cao điểm khai trương, sự kiện mở bán sản phẩm trọng điểm).", S["bullet"]),
-        Paragraph("3. Khối Văn phòng Trụ sở chính (HQ) làm việc theo giờ hành chính: Từ 08:00 đến 17:00, từ Thứ Hai đến hết Thứ Sáu; Thứ Bảy làm việc buổi sáng từ 08:00 đến 12:00.", S["body"]),
+        Paragraph("• <b>Ca Sáng:</b> Từ 08:00 đến 16:00 = <b>8 giờ = 1 công</b> (ăn trưa luân phiên tại cửa hàng, không trừ giờ).", S["bullet"]),
+        Paragraph("• <b>Ca Chiều:</b> Từ 13:00 đến 21:00 = <b>8 giờ = 1 công</b>.", S["bullet"]),
+        Paragraph("• <b>Ca Full (Ca gộp cuối tuần / cao điểm):</b> Từ 08:00 đến 21:00 = 13 giờ, trừ 1 giờ nghỉ = 12 giờ, hệ thống tự tách thành <b>8 giờ công chuẩn + 4 giờ OT</b>.", S["bullet"]),
+        Paragraph("3. Khối Văn phòng Trụ sở chính (HQ) làm việc theo giờ hành chính: Từ 08:00 đến 17:00, trừ 1 giờ nghỉ trưa = <b>8 giờ = 1 công</b>, từ Thứ Hai đến hết Thứ Sáu; Thứ Bảy làm việc buổi sáng từ 08:00 đến 12:00.", S["body"]),
+        Paragraph("4. <b>Quy đổi công ngày:</b> Tổng giờ làm thực tế trong ngày dưới 4 giờ = 0 công; từ 4 giờ đến dưới 7.5 giờ = 0.5 công; từ 7.5 giờ trở lên = 1 công.", S["body"]),
+        Paragraph("5. <b>Lịch tuần (Thứ Hai – Chủ Nhật):</b> Mỗi nhân viên phải có ít nhất <b>01 ngày nghỉ (OFF)</b> trong tuần; hệ thống chặn xếp ca 7/7 ngày và cảnh báo khi tổng giờ công vượt 48 giờ/tuần.", S["body"]),
 
         Paragraph("<b>Điều 2. Tiêu chuẩn tác phong, trang phục và ứng xử tại showroom</b>", S["article_title"]),
         Paragraph("1. <b>Đồng phục:</b> Toàn bộ nhân viên tư vấn bán hàng, thu ngân và kỹ thuật viên bắt buộc mặc áo polo nhận diện TechZone màu đen phối xanh ngọc, quần tây tối màu, đi giày sẫm màu sạch sẽ và đeo thẻ nhân viên có mã QR hợp lệ trong suốt ca làm việc.", S["body"]),
@@ -267,11 +269,12 @@ def generate_doc_01(pdf_dir, md_dir):
         Paragraph("CHƯƠNG II: QUY CHẾ CHẤM CÔNG, ĐI MUỘN, VỀ SỚM VÀ XỬ PHẠT VI PHẠM", S["section_heading"]),
         Paragraph("<b>Điều 3. Thời gian ân hạn và chế tài xử lý đi muộn / về sớm</b>", S["article_title"]),
         Paragraph("1. <b>Thời gian ân hạn (Grace Period):</b> Nhằm tạo điều kiện chuẩn bị trước ca trực, hệ thống cho phép ân hạn tối đa <b>15 phút</b> tính từ giờ bắt đầu chính thức của ca làm việc. Ví dụ: Ca sáng bắt đầu lúc 08:00, nhân viên check-in đến 08:15:00 được hệ thống ghi nhận là Đúng giờ (NORMAL).", S["body"]),
-        Paragraph("2. <b>Chế tài xử phạt đi muộn (LATE):</b>", S["body"]),
-        Paragraph("• Nhân viên check-in sau thời gian ân hạn (> 15 phút) sẽ bị hệ thống tự động ghi nhận trạng thái đi muộn và áp dụng mức khấu trừ kỷ luật: <b>50.000 VNĐ / lần vi phạm</b> vào kỳ lương tương ứng.", S["bullet"]),
-        Paragraph("• Đồng thời, hệ thống tự động trừ tiền lương cơ bản tương ứng với số phút đi trễ theo công thức: <code>(Lương HĐ / 26 / 8) × (Số phút trễ / 60)</code>.", S["bullet"]),
-        Paragraph("• Nhân viên đi muộn trên 60 phút mà không có lý do chính đáng và không được Cửa hàng trưởng phê duyệt trước sẽ bị trừ <b>0.5 ngày công thực tế</b> của ngày làm việc đó.", S["bullet"]),
-        Paragraph("3. <b>Về sớm không có lý do (EARLY):</b> Nhân viên tự ý check-out trước giờ kết thúc ca mà không được cấp quản lý phân công sẽ bị ghi nhận trạng thái về sớm và trừ lương theo số phút thiếu ca.", S["body"]),
+        Paragraph("2. <b>Chế tài đi muộn (LATE):</b> TechZone đã <b>bãi bỏ phạt tiền 50.000 VNĐ/lần</b> và không trừ lương theo phút đi trễ. Lần check-in trễ quá 15 phút được ghi nhận <code>LATE</code> và xét vào Phụ cấp chuyên cần (500.000 VNĐ):", S["body"]),
+        Paragraph("• Trễ quá 15 phút từ 0 đến 2 lần/tháng: hưởng <b>100%</b> phụ cấp chuyên cần (nếu đủ từ 20 công).", S["bullet"]),
+        Paragraph("• Trễ quá 15 phút 3 – 4 lần/tháng: hưởng <b>50%</b> (250.000 VNĐ).", S["bullet"]),
+        Paragraph("• Trễ quá 15 phút từ 5 lần/tháng: <b>không được hưởng</b> phụ cấp chuyên cần và hệ thống tự động lập <b>biên bản nhắc nhở đi trễ (LATE_WARNING_REPORT)</b>.", S["bullet"]),
+        Paragraph("• Bị lập biên bản đi trễ <b>3 tháng liên tiếp</b>: hồ sơ gắn cờ <b>BLACK_LIST_WARNING</b>, HR xem xét kỷ luật hoặc không gia hạn hợp đồng.", S["bullet"]),
+        Paragraph("3. <b>Về sớm không có lý do (EARLY):</b> Nhân viên tự ý check-out trước giờ kết thúc ca sẽ bị ghi nhận trạng thái về sớm; số công ngày được tính theo giờ làm thực tế (dưới 7.5 giờ chỉ được 0.5 công, dưới 4 giờ không tính công).", S["body"]),
 
         Paragraph("<b>Điều 4. Quy trình bàn giao ca và quản lý tài sản trưng bày</b>", S["article_title"]),
         Paragraph("1. Cuối mỗi ca làm việc, Trưởng ca hoặc nhân viên bàn giao có nghĩa vụ kiểm đếm toàn bộ máy mẫu trải nghiệm (Live Demo Units), phụ kiện trưng bày trên kệ và lập Biên bản bàn giao ca ký xác nhận giữa hai ca trực.", S["body"]),
@@ -283,8 +286,9 @@ def generate_doc_01(pdf_dir, md_dir):
     table_data = [
         [Paragraph("Hành vi vi phạm", S["th_style"]), Paragraph("Mức độ vi phạm", S["th_style"]), Paragraph("Chế tài xử phạt TechZone", S["th_style"])],
         [Paragraph("Check-in trễ từ 1 - 15 phút", S["td_style"]), Paragraph("Trong giới hạn ân hạn", S["td_style"]), Paragraph("Nhắc nhở nội bộ, không phạt tiền", S["td_style"])],
-        [Paragraph("Check-in trễ từ 16 - 60 phút", S["td_style"]), Paragraph("Đi muộn (LATE)", S["td_style"]), Paragraph("Phạt 50.000đ/lần + trừ lương theo phút", S["td_bold"])],
-        [Paragraph("Check-in trễ > 60 phút không phép", S["td_style"]), Paragraph("Vi phạm nghiêm trọng", S["td_style"]), Paragraph("Phạt 50.000đ + trừ 0.5 ngày công chuẩn", S["td_bold"])],
+        [Paragraph("Trễ > 15 phút 3 - 4 lần / tháng", S["td_style"]), Paragraph("Đi muộn (LATE)", S["td_style"]), Paragraph("Giảm 50% phụ cấp chuyên cần (còn 250.000đ)", S["td_bold"])],
+        [Paragraph("Trễ > 15 phút từ 5 lần / tháng", S["td_style"]), Paragraph("Vi phạm nhiều lần", S["td_style"]), Paragraph("Mất 100% phụ cấp chuyên cần + biên bản đi trễ tự động", S["td_bold"])],
+        [Paragraph("Biên bản đi trễ 3 tháng liên tiếp", S["td_style"]), Paragraph("Vi phạm nghiêm trọng", S["td_style"]), Paragraph("Gắn cờ BLACK_LIST_WARNING, HR xem xét kỷ luật", S["td_bold"])],
         [Paragraph("Tự ý bỏ ca trực / không check-out", S["td_style"]), Paragraph("Vắng mặt không phép", S["td_style"]), Paragraph("Trừ 100% công ngày + lập biên bản khiển trách", S["td_bold"])],
         [Paragraph("Sai lệch quỹ thu ngân cuối ca", S["td_style"]), Paragraph("Lệch tiền két", S["td_style"]), Paragraph("Bồi hoàn 100% số tiền thâm hụt trong 48h", S["td_bold"])],
     ]
@@ -321,17 +325,19 @@ title: "Quy chế Nội quy lao động, Tác phong Chuỗi bán lẻ và Kỷ l
 category: "NOI_QUY"
 target_roles: ["EMPLOYEE", "STORE_MANAGER", "HR_MANAGER", "ADMIN", "DIRECTOR"]
 effective_date: "2026-01-01"
-keywords: ["nội quy", "đi muộn", "đi trễ", "phạt 50000", "ân hạn 15 phút", "đồng phục", "két tiền"]
+keywords: ["nội quy", "đi muộn", "đi trễ", "chuyên cần", "biên bản đi trễ", "black list", "ân hạn 15 phút", "đồng phục", "két tiền"]
 ---
 
 # QUY CHẾ NỘI QUY LAO ĐỘNG, TÁC PHONG CHUỖI BÁN LẺ VÀ KỶ LUẬT NỘI BỘ
 *Số: {doc_code}/QĐ-TZ2026 - Ban hành ngày 01/01/2026 bởi Ban Giám Đốc TechZone*
 
 ## 1. Khung thời gian làm việc và ca trực chuỗi cửa hàng
-- **Ca Sáng:** 08:00 – 16:00 (nghỉ 45 phút ăn trưa).
-- **Ca Chiều:** 13:00 – 21:00 (nghỉ 45 phút ăn tối).
-- **Ca Full:** 08:00 – 21:00 (áp dụng trong các dịp sự kiện cao điểm).
-- **Khối Văn phòng Trụ sở (HQ):** 08:00 – 17:00 (Thứ 2 đến Thứ 6), Thứ 7 làm buổi sáng (08:00 – 12:00).
+- **Ca Sáng:** 08:00 – 16:00 = 8 giờ = 1 công (ăn trưa luân phiên, không trừ giờ).
+- **Ca Chiều:** 13:00 – 21:00 = 8 giờ = 1 công.
+- **Ca Full (cuối tuần/cao điểm):** 08:00 – 21:00 = 13 giờ − 1 giờ nghỉ = 12 giờ = **8 giờ công chuẩn + 4 giờ OT**.
+- **Quy đổi công ngày:** dưới 4 giờ = 0 công; 4 giờ – dưới 7.5 giờ = 0.5 công; từ 7.5 giờ = 1 công.
+- **Lịch tuần Thứ Hai – Chủ Nhật:** mỗi nhân viên có ít nhất 1 ngày OFF/tuần; cảnh báo khi vượt 48 giờ/tuần.
+- **Khối Văn phòng Trụ sở (HQ):** 08:00 – 17:00, trừ 1 giờ nghỉ trưa = 8 giờ (Thứ 2 đến Thứ 6), Thứ 7 làm buổi sáng (08:00 – 12:00).
 
 ## 2. Tiêu chuẩn tác phong bán lẻ
 - Mặc áo polo TechZone đen phối xanh ngọc, quần tây tối màu, đeo thẻ nhân viên có mã QR.
@@ -340,12 +346,11 @@ keywords: ["nội quy", "đi muộn", "đi trễ", "phạt 50000", "ân hạn 15
 
 ## 3. Quy định đi muộn, về sớm và chế tài xử lý
 - **Thời gian ân hạn:** 15 phút đầu ca trực (check-in trước hoặc đúng +15 phút tính là Đúng giờ NORMAL).
-- **Xử phạt đi muộn (> 15 phút):**
-  - Ghi nhận trạng thái `LATE`.
-  - Khấu trừ vi phạm: **50.000 VNĐ / lần** vào kỳ lương.
-  - Trừ lương cơ bản theo phút làm việc thiếu: `(Lương HĐ / 26 / 8) * (Số phút trễ / 60)`.
-  - Đi muộn > 60 phút không lý do bị trừ 0.5 ngày công thực tế.
-- **Về sớm không lý do:** Ghi nhận `EARLY` và trừ giờ công thiếu.
+- **Đi muộn (> 15 phút):** ghi nhận trạng thái `LATE`. **Đã bãi bỏ phạt tiền 50.000 VNĐ/lần** và không trừ lương theo phút trễ.
+  - Phụ cấp chuyên cần 500.000 VNĐ: trễ 0–2 lần = 100%; trễ 3–4 lần = 50% (250.000 VNĐ); trễ từ 5 lần hoặc dưới 20 công = 0.
+  - Trễ > 15 phút từ 5 ngày/tháng: hệ thống tự lập biên bản nhắc nhở đi trễ (`LATE_WARNING_REPORT`).
+  - Có biên bản 3 tháng liên tiếp: gắn cờ `BLACK_LIST_WARNING`, HR xem xét kỷ luật / không gia hạn hợp đồng.
+- **Về sớm không lý do:** Ghi nhận `EARLY`; công ngày tính theo giờ làm thực tế.
 
 ## 4. Quản lý tài sản và bàn giao ca
 - Kiểm đếm máy mẫu trưng bày (Demo Units) và phụ kiện trên kệ vào cuối mỗi ca.
@@ -380,8 +385,8 @@ def generate_doc_02(pdf_dir, md_dir):
 
         Paragraph("<b>Điều 2. Công thức tính thu nhập tổng quát (Gross & Net)</b>", S["article_title"]),
         Paragraph("Hệ thống tiền lương TechZone áp dụng phương pháp Bottom-up minh bạch 100%:", S["body"]),
-        Paragraph("<code><b>THU NHẬP GROSS = Lương CB thực nhận + Tăng ca OT + Phụ cấp CV + Phụ cấp thâm niên + Phụ cấp dự án + Phụ cấp cơm xe + Thưởng lễ</b></code>", S["bullet"]),
-        Paragraph("<code><b>THỰC LĨNH NET = GROSS - Bảo hiểm bắt buộc (10.5%) - Phạt vi phạm chấm công - Thuế TNCN</b></code>", S["bullet"]),
+        Paragraph("<code><b>THU NHẬP GROSS = Lương CB thực nhận + Tăng ca OT + Phụ cấp CV + Phụ cấp thâm niên + Phụ cấp dự án + Phụ cấp cơm xe + Phụ cấp chuyên cần + Thưởng lễ</b></code>", S["bullet"]),
+        Paragraph("<code><b>THỰC LĨNH NET = GROSS - Bảo hiểm bắt buộc (10.5%) - Thuế TNCN</b></code> (đã bãi bỏ khoản phạt đi muộn 50.000 VNĐ/lần).", S["bullet"]),
         Paragraph("<i>Lưu ý quan trọng: Chuỗi TechZone đã bãi bỏ toàn bộ cơ chế tính hoa hồng bán lẻ đơn hàng; thay vào đó, nhân sự tham gia các chiến dịch và dự án mở rộng chuỗi sẽ được hưởng mức Phụ cấp Dự án (Project Allowance) theo định mức được quy định chi tiết tại Quy chế Quản trị Dự án.</i>", S["callout"]),
 
         Paragraph("CHƯƠNG II: CÁC CẤU PHẦN THU NHẬP VÀ PHỤ CẤP BÁN LẺ", S["section_heading"]),
@@ -389,12 +394,13 @@ def generate_doc_02(pdf_dir, md_dir):
         Paragraph("1. Lương hợp đồng (Contract Salary) là mức lương cơ bản thỏa thuận ghi trên Hợp đồng lao động hợp lệ (từ 8.000.000đ đến 50.000.000đ tùy vị trí).", S["body"]),
         Paragraph("2. Đơn giá ngày công chuẩn: <code>Đơn giá ngày = Lương HĐ / 26.0</code>.", S["body"]),
         Paragraph("3. Đơn giá giờ làm việc chuẩn: <code>Đơn giá giờ = Lương HĐ / (26.0 × 8.0)</code>.", S["body"]),
-        Paragraph("4. Tiền giảm trừ thời gian (time_deduction_amount): <code>(Ngày nghỉ không lương × Đơn giá ngày) + (Phút đi trễ / 60 × Đơn giá giờ)</code>.", S["body"]),
-        Paragraph("5. Lương cơ bản thực nhận: <code>actual_base_salary = GREATEST(0, Lương HĐ - Tiền giảm trừ thời gian)</code>.", S["body"]),
+        Paragraph("4. Lương cơ bản thực nhận: <code>actual_base_salary = Lương HĐ / 26 × (Số công thực tế + Ngày phép có lương)</code>. <b>Không chặn trần</b>: làm 27 công được 27/26 lương HĐ (phần vượt ghi tại dòng EXTRA_WORKDAY_SALARY); thiếu công ghi tại dòng BASE_SALARY_DEDUCTION.", S["body"]),
+        Paragraph("5. Không trừ lương theo phút đi trễ; đi trễ chỉ ảnh hưởng Phụ cấp chuyên cần (Điều 6).", S["body"]),
 
         Paragraph("<b>Điều 4. Tiền làm thêm giờ (Overtime - OT)</b>", S["article_title"]),
         Paragraph("1. Chỉ các giờ OT đã được cấp có thẩm quyền phê duyệt chính thức (approved_hours) mới đủ điều kiện chi trả vào bảng lương.", S["body"]),
-        Paragraph("2. Công thức tính tiền tăng ca ngày thường: <code>overtime_salary = Giờ OT duyệt × Đơn giá giờ × 1.5 (Hệ số 150%)</code>.", S["body"]),
+        Paragraph("2. Công thức tính tiền tăng ca ngày thường: <code>overtime_salary = Giờ OT duyệt × Đơn giá giờ × 1.5 (Hệ số 150%)</code>; giờ OT ban đêm (22:00 – 08:00) hệ số <b>2.0</b>. 4 giờ OT của Ca Full được tính tự động.", S["body"]),
+        Paragraph("3. Tổng OT tối đa <b>40 giờ / tháng / nhân viên</b>; hệ thống chặn duyệt hoặc xếp ca vượt mức này.", S["body"]),
 
         Paragraph("<b>Điều 5. Các khoản phụ cấp cố định</b>", S["article_title"]),
         Paragraph("1. <b>Phụ cấp Chức vụ (Position Allowance):</b> Giám đốc: 10.000.000đ; Cửa hàng trưởng: 2.500.000đ - 3.500.000đ; Cửa hàng phó: 1.000.000đ - 1.500.000đ; Nhân viên: 0đ - 500.000đ.", S["body"]),
@@ -403,11 +409,11 @@ def generate_doc_02(pdf_dir, md_dir):
         Paragraph("• Từ 1 năm đến dưới 3 năm: <b>500.000 VNĐ / tháng</b>.", S["bullet"]),
         Paragraph("• Từ 3 năm đến dưới 5 năm: <b>1.000.000 VNĐ / tháng</b>.", S["bullet"]),
         Paragraph("• Từ 5 năm trở lên: <b>1.500.000 VNĐ / tháng</b>.", S["bullet"]),
-        Paragraph("3. <b>Phụ cấp cơm trưa và xăng xe:</b> Hỗ trợ cố định <b>1.000.000 VNĐ / tháng</b> cho toàn bộ nhân sự trực ca tại chuỗi.", S["body"]),
+        Paragraph("3. <b>Phụ cấp cơm trưa và xăng xe:</b> <code>1.000.000 VNĐ / 26 × Số công thực tế</code>, tối đa <b>1.000.000 VNĐ / tháng</b> (đủ từ 26 công). Ví dụ: 24 công nhận 923.077 VNĐ.", S["body"]),
 
         Paragraph("<b>Điều 6. Tiền thưởng Lễ và Chuyên cần</b>", S["article_title"]),
         Paragraph("1. <b>Thưởng Lễ theo hệ số chức vụ:</b> <code>Tiền thưởng = 1.000.000 VNĐ cơ sở × Hệ số chức vụ (position_coefficient)</code>. Ví dụ: Giám đốc (hệ số 3.0) nhận 3.000.000đ; CHT (hệ số 1.5) nhận 1.500.000đ; Nhân viên (hệ số 1.0) nhận 1.000.000đ.", S["body"]),
-        Paragraph("2. <b>Thưởng chuyên cần:</b> Thưởng nóng 500.000 VNĐ/tháng nếu nhân viên đi làm đủ 26 ngày công chuẩn và không phát sinh lần đi trễ nào trong tháng.", S["body"]),
+        Paragraph("2. <b>Phụ cấp chuyên cần (500.000 VNĐ/tháng):</b> Dưới 20 công hoặc trễ quá 15 phút từ 5 lần: 0đ; trễ 3 – 4 lần: 50% (250.000đ); còn lại: 100%.", S["body"]),
 
         Paragraph("CHƯƠNG III: CÁC KHOẢN TRÍCH NỘP VÀ KHẤU TRỪ BẮT BUỘC", S["section_heading"]),
         Paragraph("<b>Điều 7. Trích nộp Bảo hiểm bắt buộc và Thuế TNCN</b>", S["article_title"]),
@@ -421,15 +427,16 @@ def generate_doc_02(pdf_dir, md_dir):
     table_data = [
         [Paragraph("Mã cấu phần", S["th_style"]), Paragraph("Tên khoản lương", S["th_style"]), Paragraph("Phân loại", S["th_style"]), Paragraph("Căn cứ & Công thức tính", S["th_style"])],
         [Paragraph("CONTRACT_SALARY", S["td_bold"]), Paragraph("Lương cơ bản HĐLĐ", S["td_style"]), Paragraph("EARNING", S["td_style"]), Paragraph("Mức lương ghi trong hợp đồng lao động", S["td_style"])],
-        [Paragraph("BASE_SALARY_DEDUCTION", S["td_bold"]), Paragraph("Khấu trừ thời gian thiếu", S["td_style"]), Paragraph("DEDUCTION", S["td_style"]), Paragraph("(Lương HĐ / 26) * Ngày không lương + Đi trễ", S["td_style"])],
+        [Paragraph("BASE_SALARY_DEDUCTION", S["td_bold"]), Paragraph("Khấu trừ công thiếu", S["td_style"]), Paragraph("DEDUCTION", S["td_style"]), Paragraph("(Lương HĐ / 26) * (26 - Công thực tế - Phép có lương)", S["td_style"])],
+        [Paragraph("EXTRA_WORKDAY_SALARY", S["td_bold"]), Paragraph("Lương công vượt chuẩn", S["td_style"]), Paragraph("EARNING", S["td_style"]), Paragraph("(Lương HĐ / 26) * (Công thực tế - 26)", S["td_style"])],
         [Paragraph("OVERTIME", S["td_bold"]), Paragraph("Làm thêm giờ (OT)", S["td_style"]), Paragraph("EARNING", S["td_style"]), Paragraph("Giờ OT duyệt * (Lương HĐ / 26 / 8) * 150%", S["td_style"])],
         [Paragraph("POSITION_ALLOWANCE", S["td_bold"]), Paragraph("Phụ cấp chức vụ", S["td_style"]), Paragraph("ALLOWANCE", S["td_style"]), Paragraph("Định mức chức vụ (CHT: 2.5M-3.5M, NV: 0-500K)", S["td_style"])],
         [Paragraph("SENIORITY_ALLOWANCE", S["td_bold"]), Paragraph("Phụ cấp thâm niên", S["td_style"]), Paragraph("ALLOWANCE", S["td_style"]), Paragraph("1-3 năm: 500K; 3-5 năm: 1M; >=5 năm: 1.5M", S["td_style"])],
         [Paragraph("PROJECT_ALLOWANCE", S["td_bold"]), Paragraph("Phụ cấp dự án chuỗi", S["td_style"]), Paragraph("ALLOWANCE", S["td_style"]), Paragraph("Theo vai trò thành viên các dự án đang chạy", S["td_style"])],
-        [Paragraph("MEAL_ALLOWANCE", S["td_bold"]), Paragraph("Phụ cấp cơm trưa xăng xe", S["td_style"]), Paragraph("ALLOWANCE", S["td_style"]), Paragraph("1.000.000 VNĐ / tháng cố định toàn chuỗi", S["td_style"])],
+        [Paragraph("MEAL_ALLOWANCE", S["td_bold"]), Paragraph("Phụ cấp cơm trưa xăng xe", S["td_style"]), Paragraph("ALLOWANCE", S["td_style"]), Paragraph("1.000.000 / 26 * Công thực tế (tối đa 1.000.000)", S["td_style"])],
+        [Paragraph("ATTENDANCE_ALLOWANCE", S["td_bold"]), Paragraph("Phụ cấp chuyên cần", S["td_style"]), Paragraph("ALLOWANCE", S["td_style"]), Paragraph("500.000; trễ 3-4 lần: 50%; trễ >= 5 lần hoặc < 20 công: 0", S["td_style"])],
         [Paragraph("HOLIDAY_BONUS", S["td_bold"]), Paragraph("Thưởng lễ hệ số", S["td_style"]), Paragraph("BONUS", S["td_style"]), Paragraph("1.000.000 VNĐ * Hệ số chức vụ", S["td_style"])],
         [Paragraph("INSURANCE", S["td_bold"]), Paragraph("Bảo hiểm bắt buộc 10.5%", S["td_style"]), Paragraph("DEDUCTION", S["td_style"]), Paragraph("10.5% * Lương đóng bảo hiểm (BHXH+BHYT+BHTN)", S["td_style"])],
-        [Paragraph("PENALTY", S["td_bold"]), Paragraph("Phạt vi phạm đi muộn", S["td_style"]), Paragraph("DEDUCTION", S["td_style"]), Paragraph("50.000 VNĐ / lần check-in trễ > 15 phút", S["td_style"])],
     ]
     t = Table(table_data, colWidths=[110, 130, 80, 167])
     t.setStyle(TableStyle([
@@ -471,21 +478,20 @@ keywords: ["tiền lương", "gross", "net", "công chuẩn 26", "phụ cấp ch
 - **Kỳ hạch toán:** Từ ngày 01 đến ngày cuối tháng; chuyển khoản từ ngày 05 đến 10 tháng sau.
 
 ## 2. Công thức tính lương tổng quát
-- **GROSS** = Lương CB thực nhận + Tăng ca OT + Phụ cấp CV + Phụ cấp thâm niên + **Phụ cấp dự án** + Phụ cấp cơm xe + Thưởng lễ.
-- **NET** = GROSS - Bảo hiểm bắt buộc (10.5%) - Phạt vi phạm chấm công - Thuế TNCN.
+- **GROSS** = Lương CB thực nhận + Tăng ca OT + Phụ cấp CV + Phụ cấp thâm niên + **Phụ cấp dự án** + Phụ cấp cơm xe + Phụ cấp chuyên cần + Thưởng lễ.
+- **NET** = GROSS - Bảo hiểm bắt buộc (10.5%) - Thuế TNCN. **Đã bãi bỏ khoản phạt đi muộn 50.000 VNĐ/lần.**
 
 > *Lưu ý:* TechZone hoàn toàn không áp dụng hoa hồng bán hàng theo doanh số sản phẩm. Thay vào đó, thu nhập tăng thêm được chi trả theo **Phụ cấp tham gia Dự án & Chiến dịch chuỗi** (Project Allowance).
 
 ## 3. Các cấu phần thu nhập chi tiết
-- **Khấu trừ thời gian thiếu:** `(Ngày không lương * Lương HĐ / 26) + (Phút trễ / 60 * Lương HĐ / 26 / 8)`.
-- **Lương CB thực nhận:** `GREATEST(0, Lương HĐ - Khấu trừ thời gian thiếu)`.
-- **Tăng ca OT:** `Giờ OT duyệt * (Lương HĐ / 26 / 8) * 1.5`.
+- **Lương CB thực nhận:** `Lương HĐ / 26 * (Công thực tế + Phép có lương)`, không chặn trần (27 công → 27/26 lương HĐ, dòng `EXTRA_WORKDAY_SALARY`). Thiếu công ghi tại `BASE_SALARY_DEDUCTION`. Không trừ lương theo phút đi trễ.
+- **Tăng ca OT:** `Giờ OT duyệt * (Lương HĐ / 26 / 8) * 1.5`; OT ban đêm 22:00–08:00 hệ số 2.0; Ca Full tự cộng 4 giờ OT. Tối đa 40 giờ OT/tháng.
 - **Phụ cấp chức vụ:** Giám đốc 10tr, CHT 2.5tr-3.5tr, CHP 1tr-1.5tr, NV 0-500k.
 - **Phụ cấp thâm niên:** <1 năm: 0; 1-3 năm: 500k; 3-5 năm: 1M; >=5 năm: 1.5M.
-- **Phụ cấp cơm xe:** Cố định 1.000.000 VNĐ / tháng toàn chuỗi.
+- **Phụ cấp cơm xe:** `1.000.000 / 26 * Công thực tế`, tối đa 1.000.000 VNĐ/tháng (24 công → 923.077 VNĐ).
+- **Phụ cấp chuyên cần:** 500.000 VNĐ; trễ > 15 phút 3–4 lần = 50%; trễ từ 5 lần hoặc dưới 20 công = 0.
 - **Thưởng lễ:** `1.000.000 VNĐ * position_coefficient` (Giám đốc 3.0, CHT 1.5, NV 1.0).
 - **Bảo hiểm 10.5%:** BHXH 8%, BHYT 1.5%, BHTN 1% tính trên `insurance_salary`.
-- **Phạt đi muộn:** 50.000 VNĐ / lần trễ > 15 phút.
 """
     with open(md_path, "w", encoding="utf-8") as f:
         f.write(md_content)
@@ -788,6 +794,11 @@ def generate_doc_05(pdf_dir, md_dir):
         Paragraph("• Làm thêm vào ca ngày làm việc bình thường: Hệ số <b>150% (1.5)</b>.", S["bullet"]),
         Paragraph("• Làm thêm vào ngày nghỉ hàng tuần (Off-day của nhân viên): Hệ số <b>200% (2.0)</b>.", S["bullet"]),
         Paragraph("• Làm thêm vào ngày Lễ, Tết hưởng lương theo quy định Nhà nước: Hệ số <b>300% (3.0)</b>.", S["bullet"]),
+        Paragraph("• Làm thêm ban đêm (22:00 – 08:00): Hệ số <b>200% (2.0)</b>.", S["bullet"]),
+        Paragraph("<b>Điều 5. Ca Full và giới hạn OT</b>", S["article_title"]),
+        Paragraph("1. Ca Full 08:00 – 21:00 (13 giờ) trừ 1 giờ nghỉ = 12 giờ, hệ thống tự tách <b>8 giờ công chuẩn + 4 giờ OT</b> mà không cần đơn OT riêng.", S["body"]),
+        Paragraph("2. Tổng OT tối đa <b>40 giờ / tháng / nhân viên</b>. Hệ thống chặn duyệt đơn OT, xác nhận đối soát hoặc xếp Ca Full nếu vượt mức này.", S["body"]),
+        Paragraph("3. Lịch phân ca theo tuần Thứ Hai – Chủ Nhật; mỗi nhân viên có ít nhất 1 ngày OFF và được cảnh báo khi vượt 48 giờ công/tuần.", S["body"]),
         Spacer(1, 10),
     ]
 
@@ -797,6 +808,7 @@ def generate_doc_05(pdf_dir, md_dir):
         [Paragraph("Tăng ca ngày làm việc thường", S["td_bold"]), Paragraph("<b>150% (1.5x)</b>", S["td_style"]), Paragraph("Lương HĐ / 26 / 8", S["td_style"]), Paragraph("Đăng ký trước ca + CHT xác nhận", S["td_style"])],
         [Paragraph("Tăng ca ngày nghỉ tuần (Off-day)", S["td_bold"]), Paragraph("<b>200% (2.0x)</b>", S["td_style"]), Paragraph("Lương HĐ / 26 / 8", S["td_style"]), Paragraph("CHT đề xuất + HR phê duyệt Cấp 2", S["td_style"])],
         [Paragraph("Tăng ca ngày Lễ, Tết toàn quốc", S["td_bold"]), Paragraph("<b>300% (3.0x)</b>", S["td_style"]), Paragraph("Lương HĐ / 26 / 8", S["td_style"]), Paragraph("Kế hoạch trực Lễ phê duyệt bởi Giám đốc", S["td_style"])],
+        [Paragraph("Tăng ca ban đêm 22:00 - 08:00", S["td_bold"]), Paragraph("<b>200% (2.0x)</b>", S["td_style"]), Paragraph("Lương HĐ / 26 / 8", S["td_style"]), Paragraph("Đối soát OT + HR xác nhận", S["td_style"])],
     ]
     t_ot = Table(ot_table, colWidths=[140, 100, 117, 140])
     t_ot.setStyle(TableStyle([
@@ -827,7 +839,7 @@ title: "Quy chuẩn Chấm công Đa phương thức, Phân ca kíp và Quản t
 category: "CHAM_CONG"
 target_roles: ["EMPLOYEE", "STORE_MANAGER", "HR_MANAGER", "ADMIN", "DIRECTOR"]
 effective_date: "2026-01-01"
-keywords: ["chấm công", "geofence", "gps", "selfie", "cooldown 60s", "làm thêm giờ", "ot", "hệ số 150", "hệ số 200", "hệ số 300"]
+keywords: ["chấm công", "geofence", "gps", "selfie", "cooldown 60s", "làm thêm giờ", "ot", "hệ số 150", "hệ số 200", "hệ số 300", "ot đêm", "40 giờ", "ca full"]
 ---
 
 # QUY CHUẨN CHẤM CÔNG ĐA PHƯƠNG THỨC, PHÂN CA KÍP VÀ QUẢN TRỊ LÀM THÊM GIỜ OT
@@ -845,6 +857,10 @@ keywords: ["chấm công", "geofence", "gps", "selfie", "cooldown 60s", "làm th
   - Ngày thường: **150% (1.5x)**.
   - Ngày nghỉ hàng tuần: **200% (2.0x)**.
   - Ngày Lễ, Tết: **300% (3.0x)**.
+  - Ban đêm 22:00–08:00: **200% (2.0x)**.
+- **Ca Full 08:00–21:00:** 13 giờ − 1 giờ nghỉ = 12 giờ = 8 giờ công + 4 giờ OT tự động.
+- **Trần OT:** tối đa 40 giờ/tháng/nhân viên, hệ thống chặn cứng khi vượt.
+- **Lịch tuần Thứ Hai – Chủ Nhật:** ít nhất 1 ngày OFF/tuần; cảnh báo khi vượt 48 giờ/tuần.
 """
     with open(md_path, "w", encoding="utf-8") as f:
         f.write(md_content)
@@ -1081,7 +1097,7 @@ def generate_doc_08(pdf_dir, md_dir):
 
         Paragraph("CHỦ ĐỀ B: TIỀN LƯƠNG, CÔNG CHUẨN VÀ CÁC KHOẢN KHẤU TRỪ (12 TÌNH HUỐNG)", S["section_heading"]),
         Paragraph("<b>Hỏi 6: Công thức tính lương Net của TechZone là gì?</b>", S["article_title"]),
-        Paragraph("<b>Trả lời:</b> <code>NET = GROSS - Bảo hiểm (10.5%) - Phạt vi phạm chấm công - Thuế TNCN</code>. Trong đó: <code>GROSS = Lương CB thực nhận + Tăng ca OT + 3 Phụ cấp (Chức vụ, Thâm niên, Dự án) + Phụ cấp cơm xe (1M) + Thưởng lễ</code>.", S["body"]),
+        Paragraph("<b>Trả lời:</b> <code>NET = GROSS - Bảo hiểm (10.5%) - Thuế TNCN</code>. Trong đó: <code>GROSS = Lương CB thực nhận (Lương HĐ / 26 × công) + Tăng ca OT + 3 Phụ cấp (Chức vụ, Thâm niên, Dự án) + Phụ cấp cơm xe (tối đa 1M, theo công) + Phụ cấp chuyên cần (500k) + Thưởng lễ</code>. Không còn khoản phạt đi muộn.", S["body"]),
         Paragraph("<b>Hỏi 7: Định mức ngày công chuẩn tháng này là bao nhiêu?</b>", S["article_title"]),
         Paragraph("<b>Trả lời:</b> Định mức công chuẩn tại TechZone là <b>26.0 ngày / tháng</b>.", S["body"]),
         Paragraph("<b>Hỏi 8: Nếu tôi nghỉ không hưởng lương 1 ngày thì bị trừ bao nhiêu tiền?</b>", S["article_title"]),
@@ -1095,13 +1111,13 @@ def generate_doc_08(pdf_dir, md_dir):
         Paragraph("<b>Hỏi 11: Tôi đi làm trễ 10 phút có bị phạt tiền không?</b>", S["article_title"]),
         Paragraph("<b>Trả lời:</b> <b>KHÔNG BỊ PHẠT.</b> TechZone có thời gian ân hạn 15 phút đầu ca trực. Đi trễ trong vòng 15 phút đầu hệ thống vẫn ghi nhận là Đúng giờ (NORMAL).", S["body"]),
         Paragraph("<b>Hỏi 12: Tôi đi làm trễ 20 phút thì bị chế tài như thế nào?</b>", S["article_title"]),
-        Paragraph("<b>Trả lời:</b> Do vượt quá 15 phút ân hạn, bạn bị ghi nhận <code>LATE</code>, bị phạt hành chính <b>50.000 VNĐ / lần</b> và bị trừ lương thời gian theo số phút đi trễ: <code>(Lương HĐ / 26 / 8) × (20/60)</code>.", S["body"]),
+        Paragraph("<b>Trả lời:</b> Do vượt quá 15 phút ân hạn, bạn bị ghi nhận <code>LATE</code>. Bạn <b>không bị phạt tiền và không bị trừ lương theo phút</b>, nhưng lần trễ này được tính vào Phụ cấp chuyên cần: trễ 3 – 4 lần/tháng còn 50%; từ 5 lần mất phụ cấp chuyên cần và bị lập biên bản đi trễ; biên bản 3 tháng liên tiếp bị gắn cờ BLACK_LIST_WARNING.", S["body"]),
         Paragraph("<b>Hỏi 13: Khi hết ca tôi quên bấm check-out trên app thì phải làm sao?</b>", S["article_title"]),
         Paragraph("<b>Trả lời:</b> Bạn cần liên hệ ngay với Cửa hàng trưởng để làm biên bản giải trình sự cố chấm công. Cửa hàng trưởng sẽ đối soát camera showroom và cập nhật giờ về thực tế cho bạn trên hệ thống.", S["body"]),
         Paragraph("<b>Hỏi 14: Tại sao ứng dụng báo tôi đứng ngoài vùng chấm công?</b>", S["article_title"]),
         Paragraph("<b>Trả lời:</b> Ứng dụng yêu cầu định vị GPS trong bán kính Geofence 100m của showroom. Bạn hãy kiểm tra đã bật GPS chính xác cao trên điện thoại, kết nối vào Wi-Fi cửa hàng và di chuyển lại gần khu vực sảnh chính showroom để bấm check-in.", S["body"]),
         Paragraph("<b>Hỏi 15: Giờ làm thêm (OT) được nhân hệ số mấy?</b>", S["article_title"]),
-        Paragraph("<b>Trả lời:</b> Ngày làm việc thường nhân hệ số 150% (1.5x); Ngày nghỉ hàng tuần nhân hệ số 200% (2.0x); Ngày Lễ, Tết nhân hệ số 300% (3.0x).", S["body"]),
+        Paragraph("<b>Trả lời:</b> Ngày làm việc thường nhân hệ số 150% (1.5x); Ngày nghỉ hàng tuần nhân hệ số 200% (2.0x); Ngày Lễ, Tết nhân hệ số 300% (3.0x); OT ban đêm 22:00 – 08:00 hệ số 200% (2.0x). Tổng OT tối đa 40 giờ/tháng.", S["body"]),
 
         Paragraph("CHỦ ĐỀ D: ĐƠN NGHỈ PHÉP VÀ THÔI VIỆC (12 TÌNH HUỐNG)", S["section_heading"]),
         Paragraph("<b>Hỏi 16: Tôi kết hôn thì được nghỉ mấy ngày hưởng nguyên lương?</b>", S["article_title"]),
@@ -1152,7 +1168,7 @@ keywords: ["faq", "hỏi đáp", "tình huống", "quên checkout", "lỗi gps",
 5. **Dừng nhận phụ cấp khi nào?** Khi dự án hoàn thành (`COMPLETED`), hủy bỏ (`CANCELLED`), hoặc rời dự án.
 
 ## Chủ đề B: Tiền lương và Khấu trừ
-6. **Công thức Net:** `NET = GROSS - BHXH/BHYT/BHTN (10.5%) - Phạt đi muộn - Thuế TNCN`.
+6. **Công thức Net:** `NET = GROSS - BHXH/BHYT/BHTN (10.5%) - Thuế TNCN` (đã bãi bỏ phạt đi muộn).
 7. **Công chuẩn:** 26.0 ngày/tháng.
 8. **Nghỉ không lương:** Trừ `(Lương HĐ / 26) * số ngày nghỉ`.
 9. **Thâm niên:** <1 năm: 0; 1-3 năm: 500k; 3-5 năm: 1M; >=5 năm: 1.5M.
@@ -1160,10 +1176,10 @@ keywords: ["faq", "hỏi đáp", "tình huống", "quên checkout", "lỗi gps",
 
 ## Chủ đề C: Chấm công và OT
 11. **Đi muộn <= 15 phút:** Trong giới hạn ân hạn, không phạt tiền, tính Đúng giờ (NORMAL).
-12. **Đi muộn > 15 phút:** Phạt 50.000 VNĐ / lần + trừ lương theo phút trễ.
+12. **Đi muộn > 15 phút:** Không phạt tiền, không trừ lương theo phút; trễ 3–4 lần/tháng còn 50% phụ cấp chuyên cần, từ 5 lần mất phụ cấp chuyên cần + biên bản đi trễ; 3 tháng liên tiếp có biên bản → cờ BLACK_LIST_WARNING.
 13. **Quên check-out:** Báo Cửa hàng trưởng lập biên bản giải trình, đối soát camera để cập nhật giờ thực tế.
 14. **Lỗi Geofence:** Bật GPS chính xác cao, kết nối Wi-Fi showroom và đứng trong bán kính 100m.
-15. **Hệ số OT:** Ngày thường 150%, ngày nghỉ tuần 200%, ngày lễ tết 300%.
+15. **Hệ số OT:** Ngày thường 150%, ngày nghỉ tuần 200%, ngày lễ tết 300%, ban đêm 22:00–08:00 200%. Tối đa 40 giờ OT/tháng.
 
 ## Chủ đề D: Nghỉ phép và Thôi việc
 16. **Nghỉ kết hôn:** 3 ngày hưởng nguyên lương.

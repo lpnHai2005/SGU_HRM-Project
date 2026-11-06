@@ -44,8 +44,8 @@ EXTENDED_GOLDEN_DATASET = [
         "category": "NOI_QUY",
         "doc_code": "TZ-DOC-01",
         "question": "Quy định xử lý nhân viên đi trễ trên 15 phút tại chuỗi cửa hàng TechZone như thế nào?",
-        "ground_truth": "Nhân viên đi trễ trên 15 phút không có lý do chính đáng sẽ bị ghi nhận trạng thái LATE và bị trừ 50.000 VNĐ/lần vào kỳ lương tương ứng.",
-        "key_facts": ["đi trễ", "15 phút", "late", "50.000", "trừ"]
+        "ground_truth": "Nhân viên đi trễ trên 15 phút bị ghi nhận trạng thái LATE, không bị phạt tiền; trễ 3-4 lần/tháng chỉ còn 50% phụ cấp chuyên cần, từ 5 lần mất phụ cấp chuyên cần và bị lập biên bản đi trễ.",
+        "key_facts": ["đi trễ", "15 phút", "late", "chuyên cần", "biên bản"]
     },
     # 2. Quy định đồng phục & Tác phong (TZ-DOC-01)
     {
