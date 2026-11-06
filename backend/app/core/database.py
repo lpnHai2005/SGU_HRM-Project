@@ -1,5 +1,6 @@
 from typing import AsyncGenerator
 from sqlalchemy import create_engine
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import declarative_base, sessionmaker
 from app.core.config import settings
@@ -43,6 +44,14 @@ if settings.SYNC_DATABASE_URL:
 
 # 3. Base class cho SQLAlchemy Models
 Base = declarative_base()
+
+async def release_connection(db: AsyncSession) -> None:
+    """Trả kết nối về pool: pool chỉ có 3 kết nối, không được giữ khi chờ Mistral hay Cloudinary."""
+    try:
+        await db.commit()
+    except SQLAlchemyError:
+        await db.rollback()
+
 
 # 4. Dependency cấp phát Database Session cho FastAPI
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

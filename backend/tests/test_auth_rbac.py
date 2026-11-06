@@ -15,6 +15,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
+from app.core.config import settings
 from app.main import app
 
 # 5 Tài khoản thử nghiệm chuẩn của dự án TechZone
@@ -50,13 +51,15 @@ async def run_tests():
         # TEST 2: Kiểm tra danh sách 5 tài khoản test (/auth/test-accounts)
         # -------------------------------------------------------------
         print("\n[TEST 2] Lấy danh sách 5 tài khoản test demo (/api/v1/auth/test-accounts)...")
+        settings.ENABLE_DEMO_ACCOUNTS = True
         res = await client.get("/api/v1/auth/test-accounts")
+        settings.ENABLE_DEMO_ACCOUNTS = False
         assert res.status_code == 200
         accounts = res.json()
         print(f" -> Số tài khoản demo: {len(accounts)}")
         for acc in accounts:
             print(f"    * {acc['username']} ({acc['role']}): {acc['name']}")
-        assert len(accounts) == 5
+        assert len(accounts) == 6
         print(" [PASS] TEST 2 thành công: Danh sách tài khoản test đầy đủ!")
 
         # -------------------------------------------------------------
