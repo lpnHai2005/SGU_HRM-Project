@@ -4,6 +4,7 @@ import { EmptyState } from '../components/common/EmptyState'
 import { formatDateTime } from '../utils/formatters'
 import { auditApi } from '../services/api'
 import type { AuditLog } from '../types'
+import { TablePagination } from '../components/common/TablePagination'
 import './AuditLogPage.css'
 
 interface AuditLogPageProps {
@@ -69,18 +70,11 @@ export function AuditLogPage(_props: AuditLogPageProps) {
   const [error, setError] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
-  const [totalPages, setTotalPages] = useState(1)
-  const [jumpPage, setJumpPage] = useState('1')
   const [filters, setFilters] = useState({ action: '', entity_name: '', start_date: '', end_date: '' })
   const [availableActions, setAvailableActions] = useState<string[]>([])
   const [availableEntities, setAvailableEntities] = useState<string[]>([])
   const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null)
   const [refreshTrigger, setRefreshTrigger] = useState(0)
-
-  // Sync input jump page whenever page changes
-  useEffect(() => {
-    setJumpPage(String(page))
-  }, [page])
 
   // Fetch filter options
   useEffect(() => {
@@ -122,30 +116,23 @@ export function AuditLogPage(_props: AuditLogPageProps) {
 
         let itemsData: AuditLog[] = []
         let totalCount = 0
-        let pagesCount = 1
 
         if (Array.isArray(result)) {
           itemsData = result
           totalCount = result.length
-          pagesCount = Math.max(1, Math.ceil(totalCount / pageSize))
         } else if (result && typeof result === 'object') {
           itemsData = Array.isArray(result.items) ? result.items : []
           totalCount = typeof result.total === 'number' ? result.total : itemsData.length
-          pagesCount = Math.max(1, typeof result.total_pages === 'number'
-            ? result.total_pages
-            : Math.ceil(totalCount / pageSize))
         }
 
         setItems(itemsData)
         setTotal(totalCount)
-        setTotalPages(pagesCount)
       } catch (e: any) {
         if (active) {
           console.error('Logs load error:', e)
           setError(e?.message || 'Không thể tải dữ liệu')
           setItems([])
           setTotal(0)
-          setTotalPages(1)
         }
       } finally {
         if (active) setIsLoading(false)
@@ -163,30 +150,6 @@ export function AuditLogPage(_props: AuditLogPageProps) {
   const clearFilters = () => {
     setFilters({ action: '', entity_name: '', start_date: '', end_date: '' })
     setPage(1)
-  }
-
-  const handlePageChange = (newPage: number) => {
-    const maxPage = Math.max(1, totalPages)
-    const targetPage = Math.min(Math.max(1, newPage), maxPage)
-    if (targetPage !== page) {
-      setPage(targetPage)
-      try { window.scrollTo({ top: 0, behavior: 'smooth' }) } catch {}
-    }
-  }
-
-  const handleJumpSubmit = (e?: React.FormEvent) => {
-    if (e) e.preventDefault()
-    const parsed = parseInt(jumpPage, 10)
-    const maxPage = Math.max(1, totalPages)
-    if (isNaN(parsed)) {
-      setJumpPage(String(page))
-      return
-    }
-    const validPage = Math.min(Math.max(1, parsed), maxPage)
-    setJumpPage(String(validPage))
-    if (validPage !== page) {
-      handlePageChange(validPage)
-    }
   }
 
   const selectedLogChanges = useMemo(() => {
@@ -318,111 +281,17 @@ export function AuditLogPage(_props: AuditLogPageProps) {
           </table>
         </div>
 
-        {/* Enhanced Pagination with search / jump to page input */}
         {!isLoading && !error && (
-          <div className="audit-pagination-bar">
-            <div className="audit-pagination-info">
-              <span>
-                {total > 0 ? (
-                  <>
-                    Hiển thị <strong>{(page - 1) * pageSize + 1}</strong> – <strong>{Math.min(page * pageSize, total)}</strong> trong <strong>{total.toLocaleString('vi-VN')}</strong> bản ghi
-                  </>
-                ) : (
-                  <span>Không có bản ghi nào</span>
-                )}
-              </span>
-              <label className="audit-page-size-selector">
-                <span>Dòng/trang:</span>
-                <select
-                  className="audit-page-size-select"
-                  value={pageSize}
-                  onChange={e => {
-                    setPageSize(Number(e.target.value))
-                    setPage(1)
-                  }}
-                >
-                  <option value={10}>10</option>
-                  <option value={20}>20</option>
-                  <option value={50}>50</option>
-                  <option value={100}>100</option>
-                </select>
-              </label>
-            </div>
-
-            <div className="audit-pagination-controls">
-              <button
-                className="pagination-btn"
-                onClick={() => handlePageChange(1)}
-                disabled={page <= 1}
-                type="button"
-                title="Trang đầu"
-                aria-label="Trang đầu"
-              >
-                {Icons.chevronsLeft}
-              </button>
-              <button
-                className="pagination-btn"
-                onClick={() => handlePageChange(page - 1)}
-                disabled={page <= 1}
-                type="button"
-                title="Trang trước"
-                aria-label="Trang trước"
-              >
-                {Icons.chevronLeft}
-              </button>
-
-              {/* Ô ở giữa để search trang cần tới */}
-              <form
-                className="pagination-jump-box"
-                onSubmit={handleJumpSubmit}
-              >
-                <span>Trang</span>
-                <div className="pagination-input-wrap">
-                  <input
-                    type="number"
-                    min={1}
-                    max={Math.max(1, totalPages)}
-                    value={jumpPage}
-                    onChange={e => setJumpPage(e.target.value)}
-                    onBlur={() => handleJumpSubmit()}
-                    className="pagination-input"
-                    aria-label="Nhập trang cần tới"
-                    title="Nhập số trang và nhấn Enter hoặc icon kính lúp để chuyển trang"
-                  />
-                  <button
-                    type="submit"
-                    className="pagination-search-btn"
-                    title="Đi tới trang"
-                    aria-label="Đi tới trang"
-                  >
-                    {Icons.search}
-                  </button>
-                </div>
-                <span>/ {Math.max(1, totalPages)}</span>
-              </form>
-
-              <button
-                className="pagination-btn"
-                onClick={() => handlePageChange(page + 1)}
-                disabled={page >= totalPages}
-                type="button"
-                title="Trang sau"
-                aria-label="Trang sau"
-              >
-                {Icons.chevronRight}
-              </button>
-              <button
-                className="pagination-btn"
-                onClick={() => handlePageChange(totalPages)}
-                disabled={page >= totalPages}
-                type="button"
-                title="Trang cuối"
-                aria-label="Trang cuối"
-              >
-                {Icons.chevronsRight}
-              </button>
-            </div>
-          </div>
+          <TablePagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            onPageChange={setPage}
+            onPageSizeChange={size => {
+              setPageSize(size)
+              setPage(1)
+            }}
+          />
         )}
       </div>
 

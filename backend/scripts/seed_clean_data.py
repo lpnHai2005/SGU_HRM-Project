@@ -93,10 +93,44 @@ FEMALE = ["Anh", "Châu", "Chi", "Diệp", "Dung", "Giang", "Hà", "Hạnh", "Hi
 SURNAMES = ["Nguyễn", "Trần", "Lê", "Phạm", "Hoàng", "Huỳnh", "Phan", "Vũ", "Võ", "Đặng", "Bùi", "Đỗ", "Hồ", "Ngô", "Dương"]
 MIDDLE_M = ["Văn", "Quốc", "Minh", "Đức", "Hữu", "Thanh", "Gia", "Anh"]
 MIDDLE_F = ["Thị", "Ngọc", "Thu", "Mai", "Thanh", "Kim", "Bích", "Hoài"]
-STREETS = [("Lý Tự Trọng", "Phường Sài Gòn"), ("Tú Xương", "Phường Xuân Hòa"), ("Phan Đăng Lưu", "Phường Bình Thạnh"),
-           ("Trường Chinh", "Phường Tân Bình"), ("Thành Thái", "Phường Diên Hồng"), ("Quang Trung", "Phường Gò Vấp"),
-           ("Tôn Đức Thắng", "Phường Sài Gòn"), ("Trần Quốc Thảo", "Phường Xuân Hòa"), ("Hậu Giang", "Phường Bình Tiên"),
-           ("An Dương Vương", "Phường Chợ Quán"), ("Cộng Hòa", "Phường Tân Sơn Nhất"), ("Lê Văn Sỹ", "Phường Nhiêu Lộc")]
+# Phường/xã lấy từ frontend-web/public/data/province.json (sau sáp nhập 07/2025).
+# Tên đường lấy từ địa chỉ trụ sở UBND phường đã công bố, nên chắc chắn nằm trong đúng phường đó.
+# Một số tên trong province.json có 2 dấu cách; giữ nguyên để form sửa nhân viên khớp đúng phường.
+PERMANENT_AREAS = {
+    "Thành phố Hà Nội": {"Phường Hoàn Kiếm": ["Hàng Trống"], "Phường Ba Đình": ["Trúc Bạch", "Hàng Than"], "Phường Đống Đa": ["Hoàng Cầu"]},
+    "Thành phố Hải Phòng": {"Phường An Biên": ["Nguyễn Công Hòa"]},
+    "Thành phố Đà Nẵng": {"Phường Hải Châu": ["Lê Hồng Phong"], "Phường Thanh Khê": ["Trần Cao Vân"],
+                          "Phường Tam Kỳ": ["Hùng Vương", "Trưng Nữ Vương"], "Phường Hội An": ["Trần Hưng Đạo", "Hoàng Diệu"]},
+    "Thành phố Huế": {"Phường Thuận Hóa": ["Lê Viết Lượng"]},
+    "Thành phố Cần Thơ": {"Phường Ninh Kiều": ["Hòa Bình"]},
+    "Thanh Hóa": {"Phường Hạc Thành": ["Đại lộ Lê Lợi"]},
+    "Khánh Hòa": {"Phường Nha Trang": ["Lạc Long Quân"], "Phường Bắc Nha Trang": ["2 Tháng 4"], "Phường Tây Nha Trang": ["Lương Định Của"]},
+    "Đắk Lắk": {"Phường  Buôn Ma Thuột": ["Lý Nam Đế", "Trường Chinh"]},
+    "An Giang": {"Phường Rạch Giá": ["Nam Kỳ Khởi Nghĩa"]},
+    "Quảng Ninh": {"Phường Hạ Long": ["Nguyễn Văn Cừ"]},
+    "Lâm Đồng": {"Phường Xuân Hương - Đà Lạt": ["Đinh Tiên Hoàng"]},
+    "Gia Lai": {"Phường Quy Nhơn": ["Nguyễn Huệ"]},
+    "Đồng Nai": {"Phường Trấn Biên": ["Võ Thị Sáu", "Hưng Đạo Vương"]},
+}
+HCM = "Thành phố Hồ Chí Minh"
+HCM_WARDS = {
+    "Phường Sài Gòn": ["Lê Duẩn"], "Phường Tân Định": ["Nguyễn Đình Chiểu"], "Phường Bến Thành": ["Nguyễn Trãi", "Đề Thám"],
+    "Phường Cầu Ông Lãnh": ["Trần Đình Xu"], "Phường Bàn Cờ": ["Nguyễn Thiện Thuật"], "Phường Xuân Hòa": ["Trần Quốc Thảo"],
+    "Phường Nhiêu Lộc": ["Bà Huyện Thanh Quan"], "Phường Xóm Chiếu": ["Đoàn Như Hài"], "Phường Khánh Hội": ["Bến Vân Đồn"],
+    "Phường Vĩnh Hội": ["Tôn Thất Thuyết"], "Phường Chợ Quán": ["An Dương Vương"], "Phường An Đông": ["An Dương Vương"],
+    "Phường Chợ Lớn": ["Triệu Quang Phục"], "Phường Bình Tây": ["Hậu Giang"], "Phường Bình Tiên": ["Cao Văn Lầu"],
+    "Phường Diên Hồng": ["Thành Thái"], "Phường Vườn Lài": ["Hùng Vương"], "Phường Hòa Hưng": ["Tam Đảo"],
+    "Phường Hòa Bình": ["Lạc Long Quân"], "Phường Phú Thọ": ["Lê Đại Hành", "Bình Thới"], "Phường Minh Phụng": ["Thuận Kiều"],
+    "Phường Tân Bình": ["Trường Chinh"], "Phường Tân Sơn Hòa": ["Lê Văn Sỹ"], "Phường Tân Sơn Nhất": ["Hoàng Việt"],
+    "Phường Bảy Hiền": ["Lạc Long Quân"], "Phường Phú Nhuận": ["Nguyễn Văn Trỗi"], "Phường Cầu Kiệu": ["Đoàn Thị Điểm"],
+    "Phường Đức Nhuận": ["Nguyễn Kiệm"], "Phường Gia Định": ["Hoàng Hoa Thám", "Phan Bội Châu"], "Phường Bình Thạnh": ["Phan Đăng Lưu"],
+    "Phường Bình Lợi Trung": ["Nơ Trang Long"], "Phường Thạnh Mỹ Tây": ["Phạm Viết Chánh"], "Phường Gò Vấp": ["Quang Trung"],
+    "Phường An Hội Tây": ["Phan Huy Ích"], "Phường Hạnh Thông": ["Nguyễn Văn Nghi"], "Phường  An Nhơn": ["Nguyễn Văn Lượng"],
+    "Phường Thông Tây Hội": ["Nguyễn Văn Khối"], "Phường An Hội Đông": ["Thống Nhất"], "Phường Tân Phú": ["Thoại Ngọc Hầu"],
+    "Phường Phú Thạnh": ["Nguyễn Sơn"], "Phường Tân Thuận": ["Huỳnh Tấn Phát"], "Phường Phú Thuận": ["Huỳnh Tấn Phát"],
+    "Phường Thủ Đức": ["Nguyễn Công Trứ"], "Phường Linh Xuân": ["Kha Vạn Cân", "Hoàng Cầm"],
+}
+PERMANENT_AREAS[HCM] = HCM_WARDS
 BANKS = ["Vietcombank CN HCM", "Techcombank CN Tân Bình", "Vietinbank CN Quận 1", "MB Bank CN TP.HCM", "ACB CN Bến Thành"]
 STORE_SLUG = {1: "q1", 2: "q3", 3: "q6", 4: "bt", 5: "tb", 6: "q5"}
 # Đơn nghỉ ốm/thai sản bắt buộc có minh chứng (TZ-DOC-04): dùng lại tệp đã upload trong dữ liệu cũ.
@@ -107,6 +141,22 @@ LEAVE_REASONS = {1: ["Về quê thăm gia đình", "Nghỉ phép năm đi du l�
                  5: ["Việc cá nhân đột xuất", "Chăm người nhà nằm viện"]}
 OT_REASONS = ["Tăng ca kiểm kê hàng tồn kho", "Tăng ca phụ trách đợt khuyến mãi", "Tăng ca chốt doanh thu quầy thu ngân",
               "Tăng ca nhận và sắp xếp lô hàng mới", "Tăng ca xử lý đơn bảo hành tồn"]
+
+
+def addresses_for(employee_id):
+    """(thường trú, hiện tại). Thường trú trải đều 14 tỉnh thành để lọc tìm kiếm; hiện tại ở TP.HCM nơi nhân viên làm việc."""
+    rng = random.Random(f"address-{employee_id}")
+
+    def pick(province, wards):
+        ward = rng.choice(sorted(wards))
+        return f"{rng.randint(3, 150)} {rng.choice(wards[ward])}, {ward}, {province}"
+
+    provinces = sorted(PERMANENT_AREAS)
+    province = provinces[employee_id * 5 % len(provinces)]  # bước 5 đi qua đủ 14 tỉnh thành
+    permanent, current = pick(province, PERMANENT_AREAS[province]), pick(HCM, HCM_WARDS)
+    while current == permanent:
+        current = pick(HCM, HCM_WARDS)
+    return permanent, current
 
 
 def shift_times(shift_id, day):
@@ -162,6 +212,7 @@ def wipe(cur):
     cur.execute("DELETE FROM users")
     cur.execute("DELETE FROM employees")
     cur.execute("DELETE FROM departments WHERE department_code='BGD'")  # trùng với BOD
+    reset_sequences(cur)  # bảng vừa xóa bắt đầu lại từ id 1
 
 
 def build_people(rng):
@@ -250,11 +301,10 @@ def apply_story(people):
 def seed_people(cur, rng, people, pw_hash):
     emp, users, roles = [], [], []
     for p in people:
-        street, ward = rng.choice(STREETS)
-        address = f"{rng.randint(5, 480)} {street}, {ward}, Thành phố Hồ Chí Minh"
+        permanent_address, current_address = addresses_for(p["id"])
         emp.append((p["id"], p["code"], p["first"], p["last"], "FEMALE" if p["female"] else "MALE", p["dob"],
                     p["identity"], date(2021, 4, 12), "Cục Cảnh sát QLHC về TTXH",
-                    p["phone"], f"{p['personal']}@gmail.com", f"{p['mail']}@techzone.vn", address, address,
+                    p["phone"], f"{p['personal']}@gmail.com", f"{p['mail']}@techzone.vn", permanent_address, current_address,
                     p["store"], 5 if p["store"] else (1 if p["pos"] in ("DIRECTOR", "ADMIN_SYS") else 2), POS[p["pos"]],
                     4 if p["pos"] in ("HR_DIR", "HR_STAFF", "ADMIN_SYS", "STORE_MGR", "DIRECTOR") else rng.choice((1, 2, 3)),
                     p["join"], p["status"], p["account"], p["bank"], p["tax"], f"79{p['id'] + 26000000:08d}"))
@@ -347,7 +397,7 @@ def seed_leaves(cur, rng, people, by_role):
     managers = {p["store"]: p for p in people if p["pos"] == "STORE_MGR"}
     staff = [p for p in people if p["store"] and p["pos"] != "STORE_MGR" and p["status"] == "ACTIVE" and not p["resign"]]
     used, rows, leave_days, used_annual = set(), [], {}, {}
-    type_names = {1: "Nghỉ phép năm", 2: "Nghỉ ốm đau (Hưởng BHXH)", 4: "Nghỉ việc riêng hưởng nguyên lương", 5: "Nghỉ không hưởng lương"}
+    type_names = {1: "Nghỉ phép năm", 2: "Nghỉ ốm đau (Hưởng BHXH)", 4: "Nghỉ việc riêng hưởng nguyên lương (Kết hôn, tang chế)", 5: "Nghỉ không hưởng lương"}
 
     def pick_range(p, lo, hi, length):
         for _ in range(60):
@@ -375,7 +425,8 @@ def seed_leaves(cur, rng, people, by_role):
         store_at = approved if mgr and status in ("STORE_APPROVED", "HR_APPROVED") else None
         final_hr = hr["id"] if status == "HR_APPROVED" and not is_office_lead else None
         final_dir = director["id"] if status == "HR_APPROVED" and is_office_lead else None
-        rows.append((p["id"], ltype, days[0], days[-1], float(len(days)), rng.choice(LEAVE_REASONS[ltype]),
+        rid = len(rows) + 1
+        rows.append((rid, p["id"], ltype, days[0], days[-1], float(len(days)), rng.choice(LEAVE_REASONS[ltype]),
                      PROOF_URL if ltype == 2 else None, status,
                      mgr if store_at else None, store_at, "Đồng ý, đã sắp xếp người thay ca" if store_at else None,
                      final_hr, hr_at if final_hr else None, reject,
@@ -383,7 +434,7 @@ def seed_leaves(cur, rng, people, by_role):
                      hr_at if final_dir else None, created))
         if status == "HR_APPROVED":
             state = "ANNUAL_LEAVE" if ltype in (1, 4) else "UNPAID_LEAVE"
-            note = f"{type_names[ltype]} - {'Hưởng lương' if state == 'ANNUAL_LEAVE' else 'Có trừ lương'}"
+            note = f"Đơn nghỉ phép #{rid} ({type_names[ltype]}) - {'Hưởng lương' if state == 'ANNUAL_LEAVE' else 'Có trừ lương'}"
             leave_days.update({(p["id"], d): (state, note) for d in days})
 
     past_hi = date(2026, 10, 30)
@@ -424,10 +475,10 @@ def seed_leaves(cur, rng, people, by_role):
     mother = next(p for p in people if p.get("maternity"))
     start = mother["maternity"]
     approved = vn(start, time(9)) - timedelta(days=20)
-    rows.append((mother["id"], 3, start, start + timedelta(days=179), 180.0, "Nghỉ chế độ thai sản theo quy định luật lao động",
+    rows.append((len(rows) + 1, mother["id"], 3, start, start + timedelta(days=179), 180.0, "Nghỉ chế độ thai sản theo quy định luật lao động",
                  PROOF_URL, "HR_APPROVED", managers[mother["store"]]["id"], approved - timedelta(hours=6), "Đồng ý, đã sắp xếp người thay ca",
                  hr["id"], approved, None, None, None, None, None, approved - timedelta(days=1)))
-    insert(cur, "leave_requests", ["employee_id", "leave_type_id", "start_date", "end_date", "total_days", "reason", "attachment_url", "status",
+    insert(cur, "leave_requests", ["request_id", "employee_id", "leave_type_id", "start_date", "end_date", "total_days", "reason", "attachment_url", "status",
                                    "store_manager_id", "store_approved_at", "store_manager_note", "hr_approver_id", "hr_approved_at",
                                    "rejection_reason", "rejected_by_id", "rejected_at", "director_approver_id",
                                    "director_approved_at", "created_at"], rows)
@@ -654,6 +705,7 @@ def seed_projects(cur, rng, people):
     new_codes = ["PRJ-SALES-TRAINING", "PRJ-BTS-2026", "PRJ-BLACKFRIDAY-2026"]
     cur.execute("DELETE FROM project_role_allowances WHERE id>8")
     cur.execute("DELETE FROM projects WHERE project_code=ANY(%s)", (new_codes,))
+    reset_sequences(cur)
     new = [(new_codes[0], "Chương trình Đào tạo Kỹ năng Tư vấn Bán hàng 2026", "2026-08-10", "2026-12-15", 150_000_000, "IN_PROGRESS",
             "Nâng cao kỹ năng tư vấn cho đội ngũ bán hàng toàn chuỗi"),
            (new_codes[1], "Chiến dịch Back to School 2026", "2026-06-01", "2026-07-31", 300_000_000, "COMPLETED",
@@ -785,6 +837,11 @@ def self_check(cur):
         "60 nhân viên, 60 tài khoản, 58 đăng nhập được":
             ("""SELECT (SELECT count(*) FROM employees)=60 AND (SELECT count(*) FROM users)=60
                 AND (SELECT count(*) FROM users WHERE is_active)=58""",),
+        "thường trú trải đủ 14 tỉnh thành, khác địa chỉ hiện tại":
+            ("""SELECT count(DISTINCT split_part(permanent_address, ', ', 3))=14
+                AND count(*) FILTER (WHERE permanent_address=current_address)=0 FROM employees""",),
+        "id đơn nghỉ và phiếu lương bắt đầu từ 1":
+            ("SELECT (SELECT min(request_id) FROM leave_requests)=1 AND (SELECT min(payroll_id) FROM payrolls)=1",),
         "9 nhân sự gốc giữ đúng mã": ("""SELECT count(*)=9 FROM employees WHERE employee_code IN
             ('TZ-001','TZ-002','TZ-003','TZ-004','TZ-005','TZ-006','TZ-007','TZ-008','TZ-DIR')""",),
         "Giám đốc tên Phạm Nguyệt Vượng": ("SELECT count(*)=1 FROM employees WHERE employee_code='TZ-DIR' AND full_name='Phạm Nguyệt Vượng'",),

@@ -475,11 +475,11 @@ export function DashboardPage({
             </div>
             <div className="efficiency-row">
               <div className="efficiency-header">
-                <span className="efficiency-label">Đang nghỉ phép (ON_LEAVE)</span>
+                <span className="efficiency-label">Đang nghỉ thai sản</span>
                 <span className="efficiency-val">{onLeaveEmployees.length} nhân sự ({employees.length ? Math.round((onLeaveEmployees.length / employees.length) * 100) : 0}%)</span>
               </div>
               <div className="efficiency-bar">
-                <div className="efficiency-bar-fill" style={{ width: `${employees.length ? (onLeaveEmployees.length / employees.length) * 100 : 0}%`, background: 'var(--color-amber-500)' }}></div>
+                <div className="efficiency-bar-fill" style={{ width: `${employees.length ? (onLeaveEmployees.length / employees.length) * 100 : 0}%`, background: 'var(--status-info)' }}></div>
               </div>
             </div>
             <div className="efficiency-row">

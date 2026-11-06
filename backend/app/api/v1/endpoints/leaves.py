@@ -9,8 +9,10 @@ from PIL import Image
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Request, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
+from app.core.attendance import local_now
 from app.core.database import get_db
 from app.core.config import settings
+from app.core.employee_status import apply_status_rules
 from app.core.leave_days import count_leave_days, leave_working_dates
 from app.api.deps import get_current_user, require_roles, log_audit
 from app.schemas.schemas import (
@@ -983,15 +985,7 @@ async def hr_approve_leave(
             "user_id": hr_user_id
         })
 
-    # 2. Đơn nghỉ thai sản (type_code = 'THAI_SAN' hoặc leave_type_id = 3)
-    elif leave_req["type_code"] == "THAI_SAN" or leave_req["leave_type_id"] == 3:
-        await db.execute(text("""
-            UPDATE employees 
-            SET employment_status = 'ON_LEAVE', updated_at = CURRENT_TIMESTAMP
-            WHERE employee_id = :eid
-        """), {"eid": leave_req["employee_id"]})
-
-    # 3. Đồng bộ hóa ngày nghỉ phép vào bảng chấm công (attendances) để tính công & giảm trừ lương tự động
+    # 2. Đồng bộ hóa ngày nghỉ phép vào bảng chấm công (attendances) để tính công & giảm trừ lương tự động
     is_unpaid = (leave_req["type_code"] == "KHONG_LUONG") or (leave_req["leave_type_id"] == 5)
     lt_res = await db.execute(text("SELECT is_paid FROM leave_types WHERE leave_type_id = :ltid"), {"ltid": leave_req["leave_type_id"]})
     lt_row = lt_res.first()
@@ -1033,6 +1027,10 @@ async def hr_approve_leave(
             })
 
     await db.commit()
+
+    # Thai sản: ON_LEAVE chỉ có hiệu lực trong thời gian nghỉ, đơn tương lai để job đầu ngày xử lý
+    if leave_req["type_code"] == "THAI_SAN" or leave_req["leave_type_id"] == 3:
+        await apply_status_rules(db, local_now().date(), current_user.get("user_id"), leave_req["employee_id"])
 
     # Ghi nhật ký thanh tra
     client_ip = request.client.host if request.client else None
@@ -1198,15 +1196,12 @@ async def reject_leave(
                 "eid": leave_req["employee_id"],
                 "reason": f"Nghỉ việc theo đơn xin thôi việc (Leave Request #{request_id})",
             })
-        # 2. Hoàn nguyên nếu là đơn thai sản
-        elif leave_req["type_code"] == "THAI_SAN" or leave_req["leave_type_id"] == 3:
-            await db.execute(text("""
-                UPDATE employees 
-                SET employment_status = 'ACTIVE', updated_at = CURRENT_TIMESTAMP
-                WHERE employee_id = :eid
-            """), {"eid": leave_req["employee_id"]})
 
     await db.commit()
+
+    # Hoàn nguyên đơn thai sản đã duyệt, trả về đúng ACTIVE hoặc PROBATION theo hợp đồng
+    if old_status == "HR_APPROVED" and (leave_req["type_code"] == "THAI_SAN" or leave_req["leave_type_id"] == 3):
+        await apply_status_rules(db, local_now().date(), current_user.get("user_id"), leave_req["employee_id"])
 
     # Ghi nhật ký thanh tra
     client_ip = request.client.host if request.client else None

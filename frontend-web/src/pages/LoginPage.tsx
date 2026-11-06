@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Eye, EyeOff } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { Icons } from '../components/common/Icons'
 import { IDLE_LOGOUT_FLAG } from '../utils/idleWatch'
@@ -18,6 +19,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const { login } = useAuth()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState(() =>
     sessionStorage.getItem(IDLE_LOGOUT_FLAG) ? 'Phiên đăng nhập đã kết thúc do không hoạt động. Vui lòng đăng nhập lại.' : ''
   )
@@ -69,16 +71,28 @@ export function LoginPage({ onLogin }: LoginPageProps) {
 
             <div className="form-group">
               <label className="form-label" htmlFor="password">Mật khẩu xác thực</label>
-              <input
-                type="password"
-                id="password"
-                className="form-input"
-                placeholder="Nhập mật khẩu"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
-                disabled={isLoading}
-              />
+              <div className="login-password-field">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  id="password"
+                  className="form-input"
+                  placeholder="Nhập mật khẩu"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
+                  disabled={isLoading}
+                />
+                <button
+                  type="button"
+                  className="password-toggle-btn"
+                  onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                  aria-pressed={showPassword}
+                  disabled={isLoading}
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
             </div>
 
             {error && (

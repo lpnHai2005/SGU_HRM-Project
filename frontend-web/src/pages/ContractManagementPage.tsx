@@ -9,6 +9,7 @@ import { createPortal } from 'react-dom'
 import { Icons } from '../components/common/Icons'
 import { StatCard } from '../components/common/StatCard'
 import { EmptyState } from '../components/common/EmptyState'
+import { TablePagination } from '../components/common/TablePagination'
 import { ContractFormDialog } from '../components/ContractFormDialog'
 import { ContractRenewDialog } from '../components/ContractRenewDialog'
 import { ContractTerminateDialog } from '../components/ContractTerminateDialog'
@@ -39,8 +40,7 @@ export function ContractManagementPage({ user }: ContractManagementPageProps) {
   const [loading, setLoading] = useState(true)
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
-  const [pageSize] = useState(20)
-  const [totalPages, setTotalPages] = useState(0)
+  const [pageSize, setPageSize] = useState(20)
 
   // Lookups & Employees for forms and filters
   const [lookups, setLookups] = useState<any>(null)
@@ -138,7 +138,6 @@ export function ContractManagementPage({ user }: ContractManagementPageProps) {
       const response = await contractApi.list(params)
       setContracts(response.data || [])
       setTotal(response.total)
-      setTotalPages(response.total_pages)
     } catch (err: any) {
       console.error('Error fetching contracts:', err)
       toast.error('Lỗi khi tải danh sách hợp đồng')
@@ -863,31 +862,16 @@ export function ContractManagementPage({ user }: ContractManagementPageProps) {
               </table>
             </div>
 
-            {/* Table Pagination matching EmployeeListPage */}
-            <div className="table-pagination">
-              <span>
-                Hiển thị {contracts.length} trên tổng số {total} hợp đồng
-              </span>
-              <div className="table-pagination-nav">
-                <button
-                  className="btn btn-secondary btn-sm"
-                  disabled={page === 1 || loading}
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
-                >
-                  ‹ Trước
-                </button>
-                <span style={{ fontSize: '12px', color: 'var(--text-secondary)', padding: '0 4px' }}>
-                  Trang {page} / {Math.max(1, totalPages)}
-                </span>
-                <button
-                  className="btn btn-secondary btn-sm"
-                  disabled={page >= totalPages || loading}
-                  onClick={() => setPage(p => p + 1)}
-                >
-                  Sau ›
-                </button>
-              </div>
-            </div>
+            <TablePagination
+              page={page}
+              pageSize={pageSize}
+              total={total}
+              onPageChange={setPage}
+              onPageSizeChange={size => {
+                setPageSize(size)
+                setPage(1)
+              }}
+            />
           </>
         )}
       </div>

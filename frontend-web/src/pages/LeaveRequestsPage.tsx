@@ -8,6 +8,7 @@ import { LEAVE_STATUS_LABELS } from '../constants/navigation'
 import { formatDate } from '../utils/formatters'
 import type { LeaveRequest, LeaveBalance, LeaveType, LeaveRequestCreate, Employee } from '../types'
 import { leaveApi, employeeApi } from '../services/api'
+import { TablePagination, useClientPagination } from '../components/common/TablePagination'
 import './PayslipPrint.css'
 import './LeavePrint.css'
 
@@ -707,6 +708,8 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
     })
   }, [leaveRequests, activeTab, selectedTypeFilter, searchTerm])
 
+  const { pageItems: pagedRequests, paginationProps } = useClientPagination(filteredRequests, `${activeTab}|${selectedTypeFilter}|${searchTerm}`)
+
   const showNotification = (type: 'success' | 'error', text: string) => {
     setFeedbackMessage({ type, text })
     setTimeout(() => {
@@ -1189,7 +1192,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredRequests.map((req) => {
+                  {pagedRequests.map((req) => {
                     const isOwner = req.employee_id === user?.employee_id
                     const isRejected = req.status === 'REJECTED'
                     const wasDirectorApprovedBeforeReject = isRejected && Boolean(req.director_approved_at)
@@ -1575,6 +1578,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                   )}
                 </tbody>
               </table>
+              <TablePagination {...paginationProps} />
             </div>
           )
         ) : (
