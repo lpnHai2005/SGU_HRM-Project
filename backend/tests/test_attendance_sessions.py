@@ -427,11 +427,12 @@ class Endpoints(unittest.IsolatedAsyncioTestCase):
         saved = json.loads(self.db.execute.call_args.args[1]['context'])
         self.assertEqual(saved, body['attendance_context'])
 
-    async def test_wrong_assigned_shift_preserves_both_ids(self):
-        body = await self.check_in_for_schedule(dict(schedule_id=10, shift_id=2, store_id=1))
-        self.assertEqual(body['schedule_status'], 'SHIFT_MISMATCH')
-        self.assertEqual(body['attendance_context']['planned']['shift_id'], 2)
-        self.assertEqual(body['attendance_context']['actual']['shift_id'], 1)
+    async def test_wrong_assigned_shift_is_rejected(self):
+        self.db.execute.side_effect = [result(dict(employee_id=3, store_id=1, full_name='Test')),
+            result(None), result(dict(shift_id=1, start_time=time(8), end_time=time(16), work_hours=7)),
+            result(dict(schedule_id=10, shift_id=2, store_id=1))]
+        response = await self.client.post('/attendances/check-in', json={'shift_id':1})
+        self.assertEqual(response.status_code, 409, response.text)
 
     async def test_afternoon_grace_boundary(self):
         start = NOW.replace(hour=13, minute=0, second=0)

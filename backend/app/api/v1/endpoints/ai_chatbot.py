@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
 from app.core.config import settings
+from app.core.rate_limit import UserRateLimiter
 from app.core.database import get_db
 from app.api.deps import get_current_user, log_audit
 from app.schemas.schemas import (
@@ -37,78 +38,6 @@ router = APIRouter()
 # ===================================================================================
 # RATE LIMITER PER USER (1.8, 1B.11)
 # ===================================================================================
-
-class UserRateLimiter:
-    """Sliding Window Rate Limiter hỗ trợ phân tán qua Redis và In-Memory an toàn với TTL purge (1.8, 1B.11)."""
-    def __init__(self, max_requests: int = 20, window_seconds: int = 60):
-        self.max_requests = max_requests
-        self.window_seconds = window_seconds
-        self.history = defaultdict(deque)
-        self._call_count = 0
-        self._redis_client = None
-        self._redis_checked = False
-
-    def _get_redis(self):
-        if not self._redis_checked:
-            self._redis_checked = True
-            redis_url = getattr(settings, "REDIS_URL", None)
-            if redis_url:
-                try:
-                    import redis
-                    self._redis_client = redis.Redis.from_url(
-                        redis_url,
-                        decode_responses=True,
-                        socket_timeout=0.5,
-                        socket_connect_timeout=0.5
-                    )
-                    self._redis_client.ping()
-                except Exception as e:
-                    logger.warning(f"Rate Limiter Redis kết nối thất bại ({e}). Tự động dùng In-Memory.")
-                    self._redis_client = None
-        return self._redis_client
-
-    def is_allowed(self, user_id: int) -> bool:
-        now = time.time()
-        cutoff = now - self.window_seconds
-
-        # 1. Thử Redis Sliding Window nếu có
-        r = self._get_redis()
-        if r:
-            try:
-                key = f"ai_ratelimit:{user_id}"
-                pipe = r.pipeline()
-                pipe.zremrangebyscore(key, 0, cutoff)
-                pipe.zcard(key)
-                results = pipe.execute()
-                current_count = results[1]
-                if current_count >= self.max_requests:
-                    return False
-                pipe2 = r.pipeline()
-                pipe2.zadd(key, {f"{now}_{self._call_count}": now})
-                pipe2.expire(key, self.window_seconds + 5)
-                pipe2.execute()
-                return True
-            except Exception as e:
-                logger.warning(f"Lỗi Redis rate limit: {e}")
-
-        # 2. Fallback In-Memory Sliding Window kèm Garbage Collection
-        self._call_count += 1
-
-        # Định kỳ mỗi 100 lần gọi dọn dẹp các user không còn request nào trong window (tránh rò rỉ RAM)
-        if self._call_count % 100 == 0:
-            stale_uids = [u for u, d in list(self.history.items()) if not d or d[-1] < cutoff]
-            for u in stale_uids:
-                self.history.pop(u, None)
-
-        dq = self.history[user_id]
-        while dq and dq[0] < cutoff:
-            dq.popleft()
-        if len(dq) >= self.max_requests:
-            return False
-        dq.append(now)
-
-        return True
-
 
 ai_chatbot_rate_limiter = UserRateLimiter(
     max_requests=getattr(settings, "AI_CHATBOT_RATE_LIMIT_PER_MINUTE", 20),
@@ -365,7 +294,7 @@ async def confirm_chatbot_action(
             start_d=s_date_obj,
             end_d=e_date_obj,
             reason=reason,
-            attachment_url=attachment_url
+            attachment_url=attachment_url or ""  # bước xác nhận cuối: None không còn nghĩa là "bổ sung sau"
         )
         if not val["valid"]:
             raise HTTPException(status_code=val.get("status_code", 400), detail=val["error"])
