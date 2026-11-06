@@ -27,9 +27,9 @@ class Cancel(BaseModel):
 
 def bounds(day, view):
     if view == 'week':
-        # Week starts on Monday and ends on Saturday
+        # Tuần làm việc xoay ca T2 -> CN (7 ngày)
         start = day - timedelta(days=day.weekday())
-        end = start + timedelta(days=5)
+        end = start + timedelta(days=6)
         return start, end
     if view == 'month':
         start = day.replace(day=1)

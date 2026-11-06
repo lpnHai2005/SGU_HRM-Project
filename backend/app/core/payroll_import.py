@@ -31,6 +31,11 @@ EXPECTED_HEADERS = [
     "Ghi chú",
 ]
 
+# Cột tùy chọn thứ 18 (sign-off 2026-11-06 #6): Kế toán tính Thuế TNCN bên ngoài rồi import giá trị cuối cùng
+# vào phiếu DRAFT. File mẫu cũ 17 cột vẫn hợp lệ — khi không có cột này, giữ nguyên thuế đã import trước đó.
+OPTIONAL_PIT_HEADER = "Thuế TNCN (Kế toán)"
+PIT_COLUMN_INDEX = len(EXPECTED_HEADERS)  # 0-based → cột R
+
 
 class ImportFileError(Exception):
     """Lỗi định dạng cấu trúc file import (trả về 400 Bad Request)."""
@@ -70,7 +75,7 @@ def parse_import_workbook(content: bytes, period: str) -> Tuple[str, List[Dict[s
 
         # 1. Kiểm tra B1 và C1
         # iter_rows lấy dòng 1..3
-        header_rows_data = list(ws_data.iter_rows(min_row=1, max_row=3, max_col=17, values_only=True))
+        header_rows_data = list(ws_data.iter_rows(min_row=1, max_row=3, max_col=18, values_only=True))
         if len(header_rows_data) < 3:
             raise ImportFileError("File không đúng mẫu, thiếu thông tin tiêu đề")
 
@@ -92,7 +97,8 @@ def parse_import_workbook(content: bytes, period: str) -> Tuple[str, List[Dict[s
 
         # Dòng 3: danh sách header
         row3 = header_rows_data[2]
-        actual_headers = [str(col).strip() if col is not None else "" for col in row3[:17]]
+        actual_headers = [str(col).strip() if col is not None else "" for col in row3[:18]]
+        has_pit_column = len(actual_headers) > PIT_COLUMN_INDEX and actual_headers[PIT_COLUMN_INDEX] == OPTIONAL_PIT_HEADER
         if len(actual_headers) < len(EXPECTED_HEADERS):
             raise ImportFileError("File không đúng mẫu, hãy tải mẫu mới")
         for idx, expected_h in enumerate(EXPECTED_HEADERS):
@@ -100,9 +106,9 @@ def parse_import_workbook(content: bytes, period: str) -> Tuple[str, List[Dict[s
                 raise ImportFileError(f"Cột {idx+1} không đúng mẫu (kỳ vọng '{expected_h}', thực tế '{actual_headers[idx]}'), hãy tải mẫu mới")
 
         # Đọc dữ liệu từ dòng 4 tới tối đa FIRST_DATA_ROW + MAX_ROWS
-        # min_row=4, max_row=504, max_col=17
-        data_rows = list(ws_data.iter_rows(min_row=FIRST_DATA_ROW, max_row=FIRST_DATA_ROW + MAX_ROWS, max_col=17, values_only=True))
-        formula_rows = list(ws_formula.iter_rows(min_row=FIRST_DATA_ROW, max_row=FIRST_DATA_ROW + MAX_ROWS, max_col=17, values_only=True))
+        # min_row=4, max_row=504, max_col=18 (cột 18 = Thuế TNCN, tùy chọn)
+        data_rows = list(ws_data.iter_rows(min_row=FIRST_DATA_ROW, max_row=FIRST_DATA_ROW + MAX_ROWS, max_col=18, values_only=True))
+        formula_rows = list(ws_formula.iter_rows(min_row=FIRST_DATA_ROW, max_row=FIRST_DATA_ROW + MAX_ROWS, max_col=18, values_only=True))
 
         # Kiểm tra nếu dòng 501 còn dữ liệu -> lỗi quá 500 dòng
         if len(data_rows) == MAX_ROWS + 1:
@@ -230,6 +236,12 @@ def parse_import_workbook(content: bytes, period: str) -> Tuple[str, List[Dict[s
             # P: Khấu trừ vi phạm
             extra_penalty, _ = parse_number_cell(r_data[15], r_form[15], "extra_penalty")
 
+            # R: Thuế TNCN (tùy chọn). None = file không có cột này → giữ thuế đã import trước đó.
+            pit = None
+            if has_pit_column and len(r_data) > PIT_COLUMN_INDEX:
+                pit, _ = parse_number_cell(r_data[PIT_COLUMN_INDEX], r_form[PIT_COLUMN_INDEX], "personal_income_tax")
+                pit = 0.0 if pit is None else pit
+
             # Q: Ghi chú
             q_val = r_data[16] if len(r_data) > 16 else None
             note = str(q_val).strip()[:255] if q_val is not None and str(q_val).strip() != "" else None
@@ -244,6 +256,7 @@ def parse_import_workbook(content: bytes, period: str) -> Tuple[str, List[Dict[s
                     "extra_bonus": extra_bonus if extra_bonus is not None else 0.0,
                     "extra_allowance": extra_allowance if extra_allowance is not None else 0.0,
                     "extra_penalty": extra_penalty if extra_penalty is not None else 0.0,
+                    "personal_income_tax": pit,
                     "note": note,
                     "ot_file": (ot_norm, ot_wknd, ot_holi),
                 })
@@ -256,29 +269,21 @@ def parse_import_workbook(content: bytes, period: str) -> Tuple[str, List[Dict[s
 
 
 async def get_approved_ot_hours(db, period: str) -> Dict[int, Tuple[float, float, float]]:
-    """Đọc số giờ OT đã duyệt chia 3 mức (thường, chủ nhật, lễ) theo employee_id."""
+    """Đọc số giờ OT được trả lương chia 3 mức (thường, chủ nhật, lễ) theo employee_id.
+
+    Nguồn duy nhất (VERIFIED_ONLY): fn_payable_ot_rows = đơn OT đã đối soát VERIFIED + OT tự động Ca Full.
+    """
     res = await db.execute(text("""
-        SELECT 
-            a.employee_id,
-            SUM(CASE 
-                WHEN h.holiday_date IS NOT NULL THEN 0 
-                WHEN EXTRACT(DOW FROM a.work_date) = 0 THEN 0 
-                ELSE COALESCE(ota.approved_hours, 0) 
-            END) AS ot_normal_hours,
-            SUM(CASE 
-                WHEN h.holiday_date IS NOT NULL THEN 0 
-                WHEN EXTRACT(DOW FROM a.work_date) = 0 THEN COALESCE(ota.approved_hours, 0) 
-                ELSE 0 
-            END) AS ot_weekend_hours,
-            SUM(CASE 
-                WHEN h.holiday_date IS NOT NULL THEN COALESCE(ota.approved_hours, 0) 
-                ELSE 0 
-            END) AS ot_holiday_hours
-        FROM attendances a
-        JOIN attendance_overtime_approvals ota ON a.attendance_id = ota.attendance_id AND ota.decision = 'APPROVED'
-        LEFT JOIN public.public_holidays h ON a.work_date = h.holiday_date
-        WHERE TO_CHAR(a.work_date, 'YYYY-MM') = :period
-        GROUP BY a.employee_id
+        SELECT
+            r.employee_id,
+            SUM(CASE WHEN h.holiday_date IS NOT NULL OR EXTRACT(DOW FROM r.work_date) = 0 THEN 0
+                     ELSE r.hours END) AS ot_normal_hours,
+            SUM(CASE WHEN h.holiday_date IS NULL AND EXTRACT(DOW FROM r.work_date) = 0 THEN r.hours
+                     ELSE 0 END) AS ot_weekend_hours,
+            SUM(CASE WHEN h.holiday_date IS NOT NULL THEN r.hours ELSE 0 END) AS ot_holiday_hours
+        FROM public.fn_payable_ot_rows(:period) r
+        LEFT JOIN public.public_holidays h ON r.work_date = h.holiday_date
+        GROUP BY r.employee_id
     """), {"period": period})
 
     ot_map = {}
@@ -297,6 +302,7 @@ def _norm(rec: Dict[str, Any]) -> Tuple:
         int(round(float(rec.get("extra_bonus") or 0))),
         int(round(float(rec.get("extra_allowance") or 0))),
         int(round(float(rec.get("extra_penalty") or 0))),
+        int(round(float(rec.get("personal_income_tax") or 0))),
         (str(rec.get("note")).strip() if rec.get("note") and str(rec.get("note")).strip() else None)
     )
 
@@ -322,7 +328,7 @@ async def classify_import_rows(db, period: str, rows: List[Dict[str, Any]]) -> D
     # 3. Đọc override hiện có trong DB
     ov_res = await db.execute(text("""
         SELECT salary_period, employee_id, batch_id, unpaid_leave_days, paid_leave_days,
-               extra_commission, extra_bonus, extra_allowance, extra_penalty, note
+               extra_commission, extra_bonus, extra_allowance, extra_penalty, personal_income_tax, note
         FROM public.payroll_import_overrides
         WHERE salary_period = :period
     """), {"period": period})
@@ -435,7 +441,10 @@ async def classify_import_rows(db, period: str, rows: List[Dict[str, Any]]) -> D
             ("extra_bonus", "Thưởng bổ sung"),
             ("extra_allowance", "Phụ cấp đặc thù"),
             ("extra_penalty", "Khấu trừ vi phạm / bồi hoàn"),
+            ("personal_income_tax", OPTIONAL_PIT_HEADER),
         ]
+        if r.get("personal_income_tax") is None:  # file mẫu cũ không có cột thuế → giữ giá trị đang có
+            r = {**r, "personal_income_tax": float((db_overrides.get(emp_id) or {}).get("personal_income_tax") or 0)}
 
         parsed_money: Dict[str, int] = {}
         for key, label in money_fields:
@@ -482,6 +491,7 @@ async def classify_import_rows(db, period: str, rows: List[Dict[str, Any]]) -> D
             "extra_bonus": parsed_money["extra_bonus"],
             "extra_allowance": parsed_money["extra_allowance"],
             "extra_penalty": parsed_money["extra_penalty"],
+            "personal_income_tax": parsed_money["personal_income_tax"],
             "note": note_str if not is_empty_row else None
         }
 
@@ -545,6 +555,7 @@ async def classify_import_rows(db, period: str, rows: List[Dict[str, Any]]) -> D
             "extra_bonus": parsed_money["extra_bonus"],
             "extra_allowance": parsed_money["extra_allowance"],
             "extra_penalty": parsed_money["extra_penalty"],
+            "personal_income_tax": parsed_money["personal_income_tax"],
             "note": note_str if not is_empty_row else None
         })
 

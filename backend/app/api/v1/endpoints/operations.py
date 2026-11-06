@@ -15,6 +15,8 @@ import logging
 import os
 import re
 from app.api.deps import get_current_user
+from app.core.attendance import net_work_hours
+from app.core.payroll_rules import attendance_allowance_tier, needs_late_warning_report, work_day_credit
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.work_schedule import scope
@@ -25,7 +27,7 @@ logger=logging.getLogger(__name__)
 
 DEFAULT_LATE_TOLERANCE_MINUTES = 15
 PROJECT_GRACE_PERIOD_MINUTES = DEFAULT_LATE_TOLERANCE_MINUTES
-DEFAULT_LATE_PENALTY_AMOUNT = 50000
+DEFAULT_LATE_PENALTY_AMOUNT = 0  # Đã bãi bỏ phạt tiền đi trễ (migration 20261106)
 VIETNAM_TZ = timezone(timedelta(hours=7))
 
 # ATT-UI-04 Standardized Anomaly & Quality Thresholds
@@ -171,7 +173,7 @@ async def get_late_policy_settings(db: AsyncSession) -> tuple[int, int]:
     Read late policy settings from system settings / company policy table if present,
     otherwise fallback safely to standard company regulations:
     LATE_TOLERANCE_MINUTES = 15
-    LATE_PENALTY_AMOUNT = 50000
+    Phạt tiền đi trễ đã bãi bỏ: penalty luôn = 0; vi phạm xử lý qua chuyên cần & biên bản.
     """
     tolerance = DEFAULT_LATE_TOLERANCE_MINUTES
     penalty = DEFAULT_LATE_PENALTY_AMOUNT
@@ -182,8 +184,6 @@ async def get_late_policy_settings(db: AsyncSession) -> tuple[int, int]:
             for k, v in rows:
                 if k == 'LATE_TOLERANCE_MINUTES' and v:
                     tolerance = int(float(v))
-                elif k == 'LATE_PENALTY_AMOUNT' and v:
-                    penalty = int(float(v))
     except Exception as e:
         logger.debug("Policy settings query failed, falling back to defaults: %s", e)
     return tolerance, penalty
@@ -513,19 +513,23 @@ async def monthly_attendance(period:str=Query(...,pattern=r'^\d{4}-(0[1-9]|1[0-2
     user=Depends(get_current_user),db:AsyncSession=Depends(get_db)):
     """Month-level workforce view; keep each attendance session for drill-down."""
     tolerance_minutes, penalty_amount = await get_late_policy_settings(db)
-    
-    # Lấy ngày công chuẩn động theo lịch & ghi đè từ view v_payroll_period_working_days
-    # (Migration 20261031_flexible_standard_days_and_multi_tier_ot.sql - Commit b80a8c4)
+    blacklisted_ids = set()
+    try:
+        async with db.begin_nested():
+            blacklisted_ids = set((await db.execute(text(
+                "SELECT employee_id FROM employees WHERE is_blacklisted_warning"))).scalars().all())
+    except Exception:
+        pass  # Chưa chạy migration 20261106
+
+    # Công chuẩn thống nhất với SP tính lương (migration 20261106): kỳ đã chốt → HR ghi đè → 26.
     standard_working_days = 26.0
     standard_working_days_info = None
     try:
-        std_row = (await db.execute(text("""
-            SELECT salary_period, calendar_days, sundays_count, holidays_count,
-                   auto_standard_days, manual_standard_days, locked_standard_days,
-                   applied_standard_days, is_manual_override, is_locked, reason
-            FROM public.v_payroll_period_working_days
-            WHERE salary_period = :period
-        """), {"period": period})).mappings().first()
+        async with db.begin_nested():
+            std_row = (await db.execute(text("""
+                SELECT * FROM public.v_payroll_period_working_days
+                WHERE salary_period = :period
+            """), {"period": period})).mappings().first()
         if std_row and std_row.get("applied_standard_days") is not None:
             standard_working_days = float(std_row["applied_standard_days"])
             standard_working_days_info = {
@@ -538,6 +542,7 @@ async def monthly_attendance(period:str=Query(...,pattern=r'^\d{4}-(0[1-9]|1[0-2
                 "calendar_days": int(std_row["calendar_days"]) if std_row.get("calendar_days") is not None else None,
                 "sundays_count": int(std_row["sundays_count"]) if std_row.get("sundays_count") is not None else None,
                 "holidays_count": int(std_row["holidays_count"]) if std_row.get("holidays_count") is not None else None,
+                "calendar_working_days": float(std_row["calendar_working_days"]) if std_row.get("calendar_working_days") is not None else None,
                 "reason": std_row.get("reason"),
             }
     except Exception as e:
@@ -657,6 +662,11 @@ async def monthly_attendance(period:str=Query(...,pattern=r'^\d{4}-(0[1-9]|1[0-2
         unreviewed_early_minutes = sum(int(s.get("early_minutes") or 0) for s in rows if s.get("needs_hr_review"))
 
         valid_work_rows = [r for r in rows if not r.get('is_excluded') and not r.get('payroll_hold')]
+        hours_by_day = {}
+        for r in valid_work_rows:
+            if r.get('check_out_time'):
+                hours_by_day[r['work_date']] = hours_by_day.get(r['work_date'], 0.0) + float(r.get('actual_work_hours') or 0)
+        work_day_credits = sum(work_day_credit(h) for h in hours_by_day.values())
         person.update(
             sessions=rows,
             scheduled_days=sched_info['days'],
@@ -677,6 +687,10 @@ async def monthly_attendance(period:str=Query(...,pattern=r'^\d{4}-(0[1-9]|1[0-2
             grace_late_session_count=grace_late_session_count,
             grace_late_minutes=grace_late_minutes,
             late_dates=late_dates,
+            work_day_credits=work_day_credits,
+            attendance_allowance_tier=attendance_allowance_tier(late_day_count, work_day_credits),
+            late_warning_report=needs_late_warning_report(late_day_count),
+            is_blacklisted_warning=person['employee_id'] in blacklisted_ids,
             early_day_count=early_day_count,
             early_session_count=early_session_count,
             verified_early_minutes=verified_early_minutes,
@@ -722,6 +736,8 @@ async def monthly_attendance(period:str=Query(...,pattern=r'^\d{4}-(0[1-9]|1[0-2
                                     if verified_ot_source_available else None),
         'verified_ot_source_available': verified_ot_source_available,
         'standard_working_days': standard_working_days,
+        'late_warning_reports': sum(1 for p in result if p['late_warning_report']),
+        'blacklist_warnings': sum(1 for p in result if p['is_blacklisted_warning']),
     }
     return {
         'period': period,
@@ -1251,6 +1267,7 @@ class ResolveSessionRequest(BaseModel):
     reason: str
     new_shift_id: int | None = None
     version: int | None = None
+    verified_check_out_time: datetime | None = None
 
 
 @router.get('/work-shifts')
@@ -1273,6 +1290,53 @@ async def list_work_shifts(
     for s in shifts:
         s["work_hours"] = float(s["work_hours"]) if s.get("work_hours") is not None else 0.0
     return {"shifts": shifts}
+
+
+def verified_session_hours(check_in, check_out, ctx, shift_break_minutes=None):
+    """Giờ làm khi HR xác minh giờ ra: trừ nghỉ giữa ca giống check-out thường.
+
+    Ưu tiên giờ nghỉ đã chụp vào attendance_context lúc check-in, sau đó mới tới cấu hình ca hiện tại.
+    """
+    elapsed = max(0.0, (check_out - check_in).total_seconds() / 3600.0)
+    snapshot_break = ((ctx or {}).get("actual") or {}).get("break_minutes")
+    if snapshot_break is None:
+        snapshot_break = shift_break_minutes
+    return round(net_work_hours(elapsed, int(snapshot_break or 0)), 2)
+
+
+def verified_checkout_metrics(session: dict, ctx: dict | None, check_out) -> dict:
+    """Tính lại toàn bộ chỉ số dẫn xuất khi HR xác minh giờ ra (giống check-out thường).
+
+    Trả về actual_work_hours, overtime_hours (giờ ngoài ca thô, chưa phải OT trả lương) và early_minutes.
+    Giờ ca lấy từ snapshot lúc check-in, nếu không có thì lấy cấu hình ca hiện tại.
+    """
+    check_in = _as_vietnam_datetime(session.get("check_in_time"))
+    check_out = _as_vietnam_datetime(check_out)
+    if not check_in or not check_out:
+        raise HTTPException(422, "Thiếu giờ vào hoặc giờ ra để xác minh.")
+    if check_out <= check_in:
+        raise HTTPException(422, "Giờ ra phải sau giờ vào.")
+    actual = (ctx or {}).get("actual") or {}
+
+    def _t(value, fallback):
+        if isinstance(value, str):
+            return time.fromisoformat(value[:8])
+        return value or fallback
+
+    shift_start = _t(actual.get("start_time"), session.get("scheduled_start"))
+    shift_end = _t(actual.get("end_time"), session.get("scheduled_end"))
+    work_hours = float(actual.get("work_hours") or session.get("scheduled_hours") or 8.0)
+    hours = verified_session_hours(check_in, check_out, ctx, session.get("break_minutes"))
+    early = 0
+    work_date = session.get("work_date")
+    if shift_start and shift_end and work_date:
+        _, early = _shift_deviation_minutes(check_in, check_out, work_date, shift_start, shift_end)
+    return {
+        "check_out_time": check_out,
+        "actual_work_hours": hours,
+        "overtime_hours": round(max(0.0, hours - work_hours), 2),
+        "early_minutes": int(early or 0),
+    }
 
 
 @router.post('/attendance-sessions/{session_id}/resolve')
@@ -1299,7 +1363,7 @@ async def resolve_attendance_session(
     if decision == 'SHIFT_REASSIGNED' and not body.new_shift_id:
         raise HTTPException(400, "Vui lòng chọn ca làm việc thay thế.")
 
-    # RBAC Check: Only HR_MANAGER, ADMIN, DIRECTOR can edit/resolve attendance sessions.
+    # RBAC: chỉ HR_MANAGER, DIRECTOR được xử lý/sửa giờ phiên chấm công. ADMIN (IT) chỉ xem nghiệp vụ.
     # STORE_MANAGER is strictly forbidden from editing and will receive 403.
     user_roles = user.get("roles") or []
     if not any(r in user_roles for r in ('HR_MANAGER', 'DIRECTOR')):
@@ -1312,6 +1376,7 @@ async def resolve_attendance_session(
                a.early_minutes, a.overtime_hours, a.status, a.notes, a.attendance_context,
                COALESCE(a.attendance_context->>'schedule_status','LEGACY_UNKNOWN') AS schedule_status,
                sh.shift_name, sh.start_time AS scheduled_start, sh.end_time AS scheduled_end, sh.work_hours AS scheduled_hours,
+               sh.break_minutes AS break_minutes,
                s.store_name AS attendance_store_name
         FROM attendances a
         LEFT JOIN work_shifts sh USING(shift_id)
@@ -1351,6 +1416,30 @@ async def resolve_attendance_session(
     new_shift_id = session_dict["shift_id"]
     new_late_minutes = session_dict["late_minutes"]
     new_early_minutes = session_dict["early_minutes"]
+
+    if decision == 'CONFIRMED_LATE' and body.verified_check_out_time:
+        # Tính lại đồng bộ giờ làm, phút về sớm và giờ ngoài ca; chặn giờ ra <= giờ vào.
+        metrics = verified_checkout_metrics(session_dict, ctx, body.verified_check_out_time)
+        await db.execute(text('''
+            UPDATE attendances
+            SET check_out_time = :check_out_time,
+                actual_work_hours = :actual_work_hours,
+                overtime_hours = :overtime_hours,
+                early_minutes = :early_minutes,
+                updated_at = NOW()
+            WHERE attendance_id = :session_id
+        '''), {**metrics, "session_id": session_id})
+        session_dict.update(metrics)
+        new_early_minutes = metrics["early_minutes"]
+
+    elif decision == 'EXCLUDED_INVALID':
+        await db.execute(text('''
+            UPDATE attendances
+            SET actual_work_hours = 0.0,
+                updated_at = NOW()
+            WHERE attendance_id = :session_id
+        '''), {"session_id": session_id})
+        session_dict["actual_work_hours"] = 0.0
 
     if decision == 'SHIFT_REASSIGNED':
         # Validate new shift exists
@@ -1420,6 +1509,7 @@ async def resolve_attendance_session(
         "reviewed_at": now_iso,
         "old_shift_id": session_dict["shift_id"],
         "new_shift_id": new_shift_id,
+        "verified_check_out_time": body.verified_check_out_time.isoformat() if body.verified_check_out_time else None,
         "version": new_version
     }
 

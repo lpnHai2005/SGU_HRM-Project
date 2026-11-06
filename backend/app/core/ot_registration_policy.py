@@ -7,9 +7,12 @@ from app.core.config import settings
 
 
 LEGACY_OT_LOCK_MESSAGE = (
-    "Phiên thuộc giai đoạn đăng ký OT mới. Không thể duyệt giờ ngoài ca qua luồng cũ; "
-    "giờ ngoài ca đã ghi nhận vẫn được giữ để đối chiếu. Liên hệ HR để xử lý theo quy chế mới."
+    "Luồng duyệt OT cũ (theo giờ ngoài ca) đã đóng. Bảng lương chỉ trả OT đã được HR đối soát "
+    "VERIFIED trong quy trình Đăng ký & đối soát OT. Giờ ngoài ca đã ghi nhận vẫn được giữ để đối chiếu."
 )
+
+# Sign-off 2026-11-06 #4: Payroll chỉ dùng một nguồn OT (VERIFIED_ONLY) — luồng duyệt legacy đóng vĩnh viễn.
+LEGACY_OT_APPROVAL_CLOSED = True
 
 
 def legacy_decision_locked(work_date: date) -> bool:

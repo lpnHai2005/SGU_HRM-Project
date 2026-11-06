@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_roles
 from app.core.database import get_db
+from app.core.ot_cap import require_ot_within_cap
 from app.core.overtime_requests import VIETNAM_TZ, local_interval, require_transition
 
 router = APIRouter()
@@ -698,6 +699,10 @@ async def approve_request(request_id: int, user=Depends(require_roles(["HR_MANAG
     _ensure_request_store(row, employee)
     _require_future_start(row["starts_at"])
     await _validate_interval(db, employee, row["work_date"], row["starts_at"], row["ends_at"], request_id)
+    # Trần OT 40h/tháng: chặn cứng khi duyệt đơn làm tổng OT tháng vượt trần.
+    await require_ot_within_cap(db, row["employee_id"], row["work_date"].strftime("%Y-%m"),
+                                (row["ends_at"] - row["starts_at"]).total_seconds() / 3600,
+                                exclude_request_ids=[request_id])
     await _persist_status(db, row, user, "APPROVE", "APPROVED", reason="Approved by HR")
     await db.commit()
     return await _get_request(db, request_id)
@@ -922,6 +927,9 @@ async def approve_amendment(request_id: int, user=Depends(require_roles(["HR_MAN
     _ensure_request_store(child, employee)
     await _validate_interval(db, employee, child["work_date"], child["starts_at"], child["ends_at"],
                              exclude_id=child["request_id"], exclude_parent_id=parent["request_id"])
+    await require_ot_within_cap(db, child["employee_id"], child["work_date"].strftime("%Y-%m"),
+                                (child["ends_at"] - child["starts_at"]).total_seconds() / 3600,
+                                exclude_request_ids=[child["request_id"], parent["request_id"]])
     await _persist_status(db, child, user, "AMEND_APPROVE", "APPROVED", reason="Approved as replacement OT")
     replaced = (await db.execute(text("""UPDATE overtime_requests
         SET status='REPLACED',replaced_by_request_id=:replacement,updated_at=clock_timestamp()

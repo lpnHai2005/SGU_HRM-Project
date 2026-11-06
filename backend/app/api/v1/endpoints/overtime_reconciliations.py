@@ -12,6 +12,7 @@ from app.api.deps import get_current_user, require_roles
 from app.api.v1.endpoints.overtime_requests import (
     _assert_read_scope, _get_request, _lock_request,
 )
+from app.core.ot_cap import require_ot_within_cap
 from app.core.database import get_db
 from app.core.ot_reconciliation import (
     derive_execution_status, reconcile_intervals, union_intervals,
@@ -549,6 +550,11 @@ async def _decide(db: AsyncSession, request_id: int, user: dict, expected_versio
         if competing:
             raise HTTPException(409, {"code": "OT_VERIFIED_INTERVAL_CONFLICT",
                                       "message": "Nhân viên đã có giờ OT được xác nhận trong khung giờ giao nhau."})
+        # Trần OT 40h/tháng: giờ xác nhận + OT đã cam kết khác trong tháng không được vượt trần.
+        await require_ot_within_cap(db, request["employee_id"], request["work_date"].strftime("%Y-%m"),
+                                    row["proposed_microseconds"] / 3_600_000_000,
+                                    exclude_request_ids=[request_id],
+                                    exclude_attendance_ids=[int(x) for x in (row.get("attendance_ids") or [])])
     clean_reason = reason.strip() if reason else None
     if decision == "REJECTED" and (not clean_reason or len(clean_reason) < 3):
         raise HTTPException(422, "Từ chối đối soát phải nêu lý do ít nhất 3 ký tự.")

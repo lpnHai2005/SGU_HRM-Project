@@ -13,14 +13,14 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side, Protection
 
 from app.core.payroll_import import (
-    ImportFileError, MAX_FILE_BYTES, MAX_ROWS, FIRST_DATA_ROW, EXPECTED_HEADERS,
+    ImportFileError, MAX_FILE_BYTES, MAX_ROWS, FIRST_DATA_ROW, EXPECTED_HEADERS, OPTIONAL_PIT_HEADER,
     sanitize_file_name, parse_import_workbook, classify_import_rows, get_approved_ot_hours,
 )
 
 from app.core.database import get_db
 from app.core.config import settings
 from app.core.ot_registration_policy import (
-    LEGACY_OT_LOCK_MESSAGE, legacy_decision_locked, period_overlaps_policy,
+    LEGACY_OT_APPROVAL_CLOSED, LEGACY_OT_LOCK_MESSAGE, legacy_decision_locked, period_overlaps_policy,
 )
 from app.api.deps import get_current_user, require_roles
 from app.core.vietnamese_number import currency_to_vietnamese_words
@@ -49,21 +49,47 @@ async def lock_payroll_period(db, period):
     await db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:key))"), {"key": f"payroll:{period}"})
 
 
-async def _payroll_procedure_code(db) -> str:
-    body = (await db.execute(text("""SELECT pg_get_functiondef(p.oid) FROM pg_proc p
-        WHERE p.proname='sp_generate_monthly_payroll' AND p.prokind='p' AND p.pronargs=2
-          AND pg_function_is_visible(p.oid) LIMIT 1"""))).scalar_one_or_none() or ""
-    body = re.sub(r"/\*.*?\*/", "", body, flags=re.S)
+def _normalize_sql(body: str) -> str:
+    body = re.sub(r"/\*.*?\*/", "", body or "", flags=re.S)
     body = re.sub(r"--[^\n]*", "", body)
     return re.sub(r"\s+", " ", body.lower())
 
 
+async def _payroll_procedure_code(db) -> str:
+    body = (await db.execute(text("""SELECT pg_get_functiondef(p.oid) FROM pg_proc p
+        WHERE p.proname='sp_generate_monthly_payroll' AND p.prokind='p' AND p.pronargs=2
+          AND pg_function_is_visible(p.oid) LIMIT 1"""))).scalar_one_or_none() or ""
+    return _normalize_sql(body)
+
+
+async def _payable_ot_function_code(db) -> str:
+    body = (await db.execute(text("""SELECT pg_get_functiondef(p.oid) FROM pg_proc p
+        WHERE p.proname='fn_payable_ot_rows' AND p.prokind='f' AND pg_function_is_visible(p.oid) LIMIT 1"""
+    ))).scalar_one_or_none() or ""
+    return _normalize_sql(body)
+
+
 async def ensure_payroll_ot_procedure_is_approval_gated(db):
-    """Fail closed before payroll writes if the installed procedure pays raw attendance OT."""
+    """Fail closed before payroll writes if the installed procedure pays raw attendance OT.
+
+    Chỉ chấp nhận VERIFIED_ONLY (migration 20261106, sign-off #4): SP lấy OT từ fn_payable_ot_rows,
+    và hàm này chỉ đọc v_overtime_verified_current (đơn đã đối soát VERIFIED) — không đọc giờ ngoài ca
+    thô hay đơn chưa đối soát. SP kiểu cũ đọc attendance_overtime_approvals bị từ chối.
+    """
     code = await _payroll_procedure_code(db)
-    if ("attendance_overtime_approvals" not in code
-            or not re.search(r"\bdecision\s*=\s*'approved'", code)
-            or "overtime_requests" in code):
+    # So theo ranh giới từ: planned_overtime_hours (OT tự động của ca) không phải giờ ngoài ca thô.
+    reads_raw_ot = re.compile(r"\bovertime_hours\b")
+    reads_requests = re.compile(r"\bovertime_requests\b")
+    if reads_requests.search(code):
+        ok = False
+    elif re.search(r"\bfn_payable_ot_rows\b", code):
+        fn = await _payable_ot_function_code(db)
+        ok = (bool(re.search(r"\bv_overtime_verified_current\b", fn))
+              and not reads_raw_ot.search(fn)
+              and not reads_requests.search(fn))
+    else:
+        ok = False
+    if not ok:
         raise HTTPException(
             status_code=409,
             detail=(
@@ -120,13 +146,19 @@ def populate_payroll_breakdown_from_details(pr_dict: dict, details_list: list):
     """Bottom-Up architecture helper: derives granular breakdown fields from payroll_details."""
     det_map = {d["item_code"]: float(d["amount"] or 0) for d in details_list}
     time_ded = det_map.get("BASE_SALARY_DEDUCTION", 0.0)
+    extra_days_pay = det_map.get("EXTRA_WORKDAY_SALARY", 0.0)
     contract_sal = float(pr_dict.get("contract_salary") or 0.0)
     pr_dict["time_deduction_amount"] = time_ded
-    pr_dict["actual_base_salary"] = max(0.0, contract_sal - time_ded)
+    pr_dict["extra_workday_salary"] = extra_days_pay
+    # Lương CB theo công = lương HĐ − thiếu công + công vượt chuẩn (27/26 được vượt lương HĐ).
+    pr_dict["actual_base_salary"] = max(0.0, contract_sal - time_ded) + extra_days_pay
     std_days = float(pr_dict.get("standard_working_days") or 26.0)
     act_days = float(pr_dict.get("actual_working_days") or 0.0)
     daily_price = round(contract_sal / std_days, 0) if std_days > 0 else 0
-    if time_ded > 0:
+    if extra_days_pay > 0:
+        pr_dict["actual_base_salary_formula"] = (f"Lương HĐ: {contract_sal:,.0f} đ ÷ {std_days:g} × {act_days:g} công "
+                                                 f"(vượt chuẩn +{extra_days_pay:,.0f} đ)")
+    elif time_ded > 0:
         base_deduct_obj = next((d for d in details_list if d.get("item_code") == "BASE_SALARY_DEDUCTION"), None)
         ded_form = base_deduct_obj.get("calculation_formula") if base_deduct_obj else f"-{time_ded:,.0f} đ"
         pr_dict["actual_base_salary_formula"] = f"Lương HĐ: {contract_sal:,.0f} đ (Đơn giá {daily_price:,.0f} đ/ngày) | Thực tế: {act_days:g}/{std_days:g} ngày | {ded_form}"
@@ -137,6 +169,7 @@ def populate_payroll_breakdown_from_details(pr_dict: dict, details_list: list):
     pr_dict["seniority_allowance"] = det_map.get("SENIORITY_ALLOWANCE", 0.0)
     pr_dict["project_allowance"] = det_map.get("PROJECT_ALLOWANCE", 0.0)
     pr_dict["meal_transport_allowance"] = det_map.get("MEAL_ALLOWANCE", 0.0)
+    pr_dict["attendance_allowance"] = det_map.get("ATTENDANCE_ALLOWANCE", 0.0)
     pr_dict["commission_amount"] = det_map.get("COMMISSION", 0.0)
     pr_dict["holiday_bonus"] = det_map.get("HOLIDAY_BONUS", det_map.get("TET_BONUS", 0.0))
     pr_dict["productivity_bonus"] = det_map.get("PRODUCTIVITY_BONUS", 0.0)
@@ -223,7 +256,7 @@ async def list_overtime_approvals(period:str=Query(...,pattern=r'^\d{4}-(0[1-9]|
         WHERE to_char(a.work_date,'YYYY-MM')=:period AND a.overtime_hours>0 AND a.check_out_time IS NOT NULL
         ORDER BY a.work_date,e.full_name,a.attendance_id'''),params)).mappings().all()]
     for row in rows:
-        locked = legacy_decision_locked(row['work_date'])
+        locked = LEGACY_OT_APPROVAL_CLOSED or legacy_decision_locked(row['work_date'])
         row['legacy_decision_locked'] = locked
         row['legacy_decision_message'] = LEGACY_OT_LOCK_MESSAGE if locked else None
         row['actual_overtime_label'] = ('Giờ ngoài ca ghi nhận — có quyết định HR lịch sử'
@@ -250,7 +283,7 @@ async def decide_overtime(attendance_id:int,req:OvertimeDecision,
         if not user_store_id or row['store_id'] != user_store_id:
             raise HTTPException(403, 'Chỉ được duyệt OT cho nhân viên thuộc cửa hàng được phân công.')
 
-    if legacy_decision_locked(row['work_date']):
+    if LEGACY_OT_APPROVAL_CLOSED or legacy_decision_locked(row['work_date']):
         raise HTTPException(409, {"code": "OT_LEGACY_APPROVAL_CLOSED", "message": LEGACY_OT_LOCK_MESSAGE})
     if not row['check_out_time'] or not row['overtime_hours'] or row['overtime_hours']<=0:
         raise HTTPException(409,'Chỉ duyệt OT cho phiên đã check-out và có giờ OT thực tế')
@@ -325,8 +358,10 @@ async def list_payrolls(
             COALESCE(SUM(CASE WHEN a.late_minutes > 15 THEN a.late_minutes ELSE 0 END),0) AS attendance_late_minutes,
             COALESCE(SUM(a.early_minutes),0) AS attendance_early_minutes,
             COALESCE(SUM(a.overtime_hours),0) AS attendance_actual_overtime_hours,
-            COALESCE(SUM(CASE WHEN ota.decision='APPROVED' THEN ota.approved_hours ELSE 0 END),0) AS attendance_approved_overtime_hours
-            FROM attendances a LEFT JOIN attendance_overtime_approvals ota USING(attendance_id)
+            -- OT được trả lương: chỉ đối soát VERIFIED + OT tự động Ca Full (cùng nguồn với SP lương)
+            (SELECT COALESCE(SUM(r.hours),0) FROM public.fn_payable_ot_rows(p.salary_period) r
+             WHERE r.employee_id=p.employee_id) AS attendance_approved_overtime_hours
+            FROM attendances a
             WHERE a.employee_id=p.employee_id AND to_char(a.work_date,'YYYY-MM')=p.salary_period) att ON TRUE
         LEFT JOIN payroll_manual_adjustments adj USING(payroll_id)
         WHERE p.salary_period = :period
@@ -637,23 +672,9 @@ async def get_annual_salary(
         populate_payroll_breakdown_from_details(m, details_list)
         monthly_list.append(m)
 
-    # Lấy dữ liệu tổng hợp năm từ View
-    row = None
-    try:
-        res = await db.execute(text("""
-            SELECT * FROM v_annual_salary_summary
-            WHERE employee_id = :eid AND salary_year = :year
-        """), {"eid": employee_id, "year": year})
-        row = res.mappings().first()
-    except Exception as e:
-        logger.warning(f"Không thể đọc view v_annual_salary_summary: {e}")
-        await db.rollback()
-        row = None
-
-    if not set(roles) & {'ADMIN', 'HR_MANAGER', 'DIRECTOR'}:
-        row = None  # The legacy view includes drafts; self-service uses released rows only.
-
-    if not row and not monthly_list:
+    # Tổng năm luôn cộng từ chính các phiếu đã CONFIRMED/PAID ở trên, để khớp từng dòng tháng.
+    # (View v_annual_salary_summary cộng cả phiếu DRAFT nên không dùng cho bảng in/quyết toán.)
+    if not monthly_list:
         return {
             "message": "Chưa có dữ liệu bảng lương trong năm này",
             "employee_id": employee_id,
@@ -662,32 +683,33 @@ async def get_annual_salary(
             "monthly_records": []
         }
 
-    # Nếu View có dữ liệu thì lấy, nếu không tính tổng trực tiếp từ monthly_list
-    if row:
-        row_dict = dict(row)
-    else:
-        row_dict = {
-            "employee_id": employee_id,
-            "employee_code": emp_info["employee_code"],
-            "full_name": emp_info["full_name"],
-            "salary_year": year,
-            "total_paid_months": len(monthly_list),
-            "total_contract_salary_year": sum(float(m.get("contract_salary") or 0) for m in monthly_list),
-            "total_time_deducted_year": sum(float(m.get("time_deduction_amount") or 0) for m in monthly_list),
-            "total_base_salary_year": sum(float(m.get("actual_base_salary") or 0) for m in monthly_list),
-            "total_position_allowance_year": sum(float(m.get("position_allowance") or 0) for m in monthly_list),
-            "total_seniority_allowance_year": sum(float(m.get("seniority_allowance") or 0) for m in monthly_list),
-            "total_project_allowance_year": sum(float(m.get("project_allowance") or 0) for m in monthly_list),
-            "total_commission_year": sum(float(m.get("commission_amount") or 0) for m in monthly_list),
-            "total_holiday_bonus_year": sum(float(m.get("holiday_bonus") or 0) for m in monthly_list),
-            "total_productivity_bonus_year": sum(float(m.get("productivity_bonus") or 0) for m in monthly_list),
-            "total_bonus_year": sum(float(m.get("bonus_amount") or 0) for m in monthly_list),
-            "total_overtime_year": sum(float(m.get("overtime_salary") or 0) for m in monthly_list),
-            "total_gross_income_year": sum(float(m.get("gross_income") or 0) for m in monthly_list),
-            "total_insurance_deducted_year": sum(float(m.get("total_insurance") or 0) for m in monthly_list),
-            "total_tax_deducted_year": sum(float(m.get("personal_income_tax") or 0) for m in monthly_list),
-            "total_net_salary_year": sum(float(m.get("net_salary") or 0) for m in monthly_list)
-        }
+    def _year_sum(key: str) -> float:
+        return sum(float(m.get(key) or 0) for m in monthly_list)
+
+    row_dict = {
+        "employee_id": employee_id,
+        "employee_code": emp_info["employee_code"],
+        "full_name": emp_info["full_name"],
+        "salary_year": year,
+        "total_paid_months": len(monthly_list),
+        "total_contract_salary_year": _year_sum("contract_salary"),
+        "total_time_deducted_year": _year_sum("time_deduction_amount"),
+        "total_base_salary_year": _year_sum("actual_base_salary"),
+        "total_position_allowance_year": _year_sum("position_allowance"),
+        "total_seniority_allowance_year": _year_sum("seniority_allowance"),
+        "total_project_allowance_year": _year_sum("project_allowance"),
+        "total_meal_allowance_year": _year_sum("meal_transport_allowance"),
+        "total_attendance_allowance_year": _year_sum("attendance_allowance"),
+        "total_commission_year": _year_sum("commission_amount"),
+        "total_holiday_bonus_year": _year_sum("holiday_bonus"),
+        "total_productivity_bonus_year": _year_sum("productivity_bonus"),
+        "total_bonus_year": _year_sum("bonus_amount"),
+        "total_overtime_year": _year_sum("overtime_salary"),
+        "total_gross_income_year": _year_sum("gross_income"),
+        "total_insurance_deducted_year": _year_sum("total_insurance"),
+        "total_tax_deducted_year": _year_sum("personal_income_tax"),
+        "total_net_salary_year": _year_sum("net_salary"),
+    }
 
     net_total = float(row_dict.get("total_net_salary_year") or 0)
     row_dict["net_salary_in_words"] = currency_to_vietnamese_words(net_total)
@@ -1801,6 +1823,7 @@ class PayrollImportRecord(BaseModel):
     extra_bonus: Money = 0
     extra_allowance: Money = 0
     extra_penalty: Money = 0
+    personal_income_tax: Money = 0
     note: Optional[str] = Field(None, max_length=255)
 
 class PayrollImportConfirm(BaseModel):
@@ -1867,7 +1890,7 @@ async def download_payroll_import_template(
 
     ov_res = await db.execute(text("""
         SELECT employee_id, unpaid_leave_days, paid_leave_days,
-               extra_commission, extra_bonus, extra_allowance, extra_penalty, note
+               extra_commission, extra_bonus, extra_allowance, extra_penalty, personal_income_tax, note
         FROM public.payroll_import_overrides
         WHERE salary_period = :period
     """), {"period": period})
@@ -1914,7 +1937,7 @@ async def download_payroll_import_template(
     c_ins.font = font_instruction
 
     # Row 3 (Headers)
-    for c_idx, h in enumerate(EXPECTED_HEADERS, start=1):
+    for c_idx, h in enumerate(EXPECTED_HEADERS + [OPTIONAL_PIT_HEADER], start=1):
         cell = ws.cell(row=3, column=c_idx, value=h)
         cell.font = font_header
         cell.fill = fill_header
@@ -1942,6 +1965,7 @@ async def download_payroll_import_template(
         extra_bon = float(ov["extra_bonus"]) if (ov and float(ov.get("extra_bonus") or 0) > 0) else None
         extra_all = float(ov["extra_allowance"]) if (ov and float(ov.get("extra_allowance") or 0) > 0) else None
         extra_pen = float(ov["extra_penalty"]) if (ov and float(ov.get("extra_penalty") or 0) > 0) else None
+        pit_val = float(ov["personal_income_tax"]) if (ov and float(ov.get("personal_income_tax") or 0) > 0) else None
         note_val = ov.get("note") if ov else None
 
         row_data = [
@@ -1962,6 +1986,7 @@ async def download_payroll_import_template(
             (extra_all, "n", False, "#,##0", "right"),
             (extra_pen, "n", False, "#,##0", "right"),
             (note_val, "s", False, None, "left"),
+            (pit_val, "n", False, "#,##0", "right"),
         ]
 
         for col_idx, item in enumerate(row_data, start=1):
@@ -1981,7 +2006,7 @@ async def download_payroll_import_template(
 
         row_num += 1
 
-    col_widths = [14, 24, 20, 18, 16, 14, 14, 14, 14, 14, 16, 16, 18, 16, 16, 22, 28]
+    col_widths = [14, 24, 20, 18, 16, 14, 14, 14, 14, 14, 16, 16, 18, 16, 16, 22, 28, 18]
     for i, w in enumerate(col_widths, start=1):
         col_letter = openpyxl.utils.get_column_letter(i)
         ws.column_dimensions[col_letter].width = w
@@ -2051,11 +2076,11 @@ async def preview_payroll_import(
                     await db.execute(text("""
                         INSERT INTO public.payroll_import_overrides (
                             salary_period, employee_id, batch_id, unpaid_leave_days, paid_leave_days,
-                            extra_commission, extra_bonus, extra_allowance, extra_penalty, note,
+                            extra_commission, extra_bonus, extra_allowance, extra_penalty, personal_income_tax, note,
                             imported_by, imported_at
                         ) VALUES (
                             :period, :eid, NULL, :unpaid, :paid,
-                            :extra_comm, :extra_bon, :extra_allow, :extra_pen, :note,
+                            :extra_comm, :extra_bon, :extra_allow, :extra_pen, :pit, :note,
                             :user_id, clock_timestamp()
                         )
                         ON CONFLICT (salary_period, employee_id) DO UPDATE SET
@@ -2066,6 +2091,7 @@ async def preview_payroll_import(
                             extra_bonus = EXCLUDED.extra_bonus,
                             extra_allowance = EXCLUDED.extra_allowance,
                             extra_penalty = EXCLUDED.extra_penalty,
+                            personal_income_tax = EXCLUDED.personal_income_tax,
                             note = EXCLUDED.note,
                             imported_by = EXCLUDED.imported_by,
                             imported_at = EXCLUDED.imported_at
@@ -2074,6 +2100,7 @@ async def preview_payroll_import(
                         "unpaid": a["unpaid_leave_days"], "paid": a["paid_leave_days"],
                         "extra_comm": a["extra_commission"], "extra_bon": a["extra_bonus"],
                         "extra_allow": a["extra_allowance"], "extra_pen": a["extra_penalty"],
+                "pit": a.get("personal_income_tax", 0),
                         "note": a["note"], "user_id": user_id
                     })
                 elif a["action"] == "DELETE":
@@ -2133,6 +2160,7 @@ async def preview_payroll_import(
             "extra_bonus": a["extra_bonus"],
             "extra_allowance": a["extra_allowance"],
             "extra_penalty": a["extra_penalty"],
+            "personal_income_tax": a.get("personal_income_tax", 0),
             "note": a["note"],
             "net_before": net_before_map.get(eid),
             "net_after": net_after_map.get(eid) if act in ("CREATE", "UPDATE", "DELETE") else net_before_map.get(eid)
@@ -2188,7 +2216,7 @@ async def confirm_payroll_import(
 
     old_ov_res = await db.execute(text("""
         SELECT employee_id, unpaid_leave_days, paid_leave_days,
-               extra_commission, extra_bonus, extra_allowance, extra_penalty, note
+               extra_commission, extra_bonus, extra_allowance, extra_penalty, personal_income_tax, note
         FROM public.payroll_import_overrides
         WHERE salary_period = :period AND employee_id = ANY(:ids)
     """), {"period": period, "ids": affected_emp_ids})
@@ -2212,11 +2240,11 @@ async def confirm_payroll_import(
             await db.execute(text("""
                 INSERT INTO public.payroll_import_overrides (
                     salary_period, employee_id, batch_id, unpaid_leave_days, paid_leave_days,
-                    extra_commission, extra_bonus, extra_allowance, extra_penalty, note,
+                    extra_commission, extra_bonus, extra_allowance, extra_penalty, personal_income_tax, note,
                     imported_by, imported_at
                 ) VALUES (
                     :period, :eid, :batch_id, :unpaid, :paid,
-                    :extra_comm, :extra_bon, :extra_allow, :extra_pen, :note,
+                    :extra_comm, :extra_bon, :extra_allow, :extra_pen, :pit, :note,
                     :user_id, clock_timestamp()
                 )
                 ON CONFLICT (salary_period, employee_id) DO UPDATE SET
@@ -2227,6 +2255,7 @@ async def confirm_payroll_import(
                     extra_bonus = EXCLUDED.extra_bonus,
                     extra_allowance = EXCLUDED.extra_allowance,
                     extra_penalty = EXCLUDED.extra_penalty,
+                    personal_income_tax = EXCLUDED.personal_income_tax,
                     note = EXCLUDED.note,
                     imported_by = EXCLUDED.imported_by,
                     imported_at = EXCLUDED.imported_at
@@ -2235,6 +2264,7 @@ async def confirm_payroll_import(
                 "unpaid": a["unpaid_leave_days"], "paid": a["paid_leave_days"],
                 "extra_comm": a["extra_commission"], "extra_bon": a["extra_bonus"],
                 "extra_allow": a["extra_allowance"], "extra_pen": a["extra_penalty"],
+                "pit": a.get("personal_income_tax", 0),
                 "note": a["note"], "user_id": user_id
             })
         elif a["action"] == "DELETE":
@@ -2298,7 +2328,7 @@ async def revert_payroll_import(
 
     cur_ov_res = await db.execute(text("""
         SELECT employee_id, unpaid_leave_days, paid_leave_days,
-               extra_commission, extra_bonus, extra_allowance, extra_penalty, note
+               extra_commission, extra_bonus, extra_allowance, extra_penalty, personal_income_tax, note
         FROM public.payroll_import_overrides
         WHERE salary_period = :period
     """), {"period": period})
@@ -2825,7 +2855,7 @@ async def get_printable_payslip(
     det_map = {d["item_code"]: float(d["amount"] or 0) for d in details}
     time_ded = det_map.get("BASE_SALARY_DEDUCTION", 0.0)
     contract_sal = float(row.get("contract_salary") or 0.0)
-    actual_base = max(0.0, contract_sal - time_ded)
+    actual_base = max(0.0, contract_sal - time_ded) + det_map.get("EXTRA_WORKDAY_SALARY", 0.0)
 
     return {
         "payroll_id": row["payroll_id"],

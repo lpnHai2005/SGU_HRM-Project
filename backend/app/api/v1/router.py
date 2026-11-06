@@ -6,7 +6,8 @@ from app.core.database import get_db
 from app.api.v1.endpoints import (
     auth, users, roles, audit_logs,
     employees, attendances, leaves, payrolls, reports, ai_chatbot, mobile_attendance,
-    work_schedules, fixed_schedules, operations, overtime_requests, overtime_reconciliations, contracts, resignations
+    work_schedules, fixed_schedules, operations, overtime_requests, overtime_reconciliations, contracts, resignations,
+    discipline
 )
 
 api_router = APIRouter()
@@ -16,6 +17,7 @@ api_router.include_router(fixed_schedules.router, prefix="/fixed-schedules", tag
 api_router.include_router(work_schedules.router, prefix="/work-schedules", tags=["Work Schedule"])
 api_router.include_router(overtime_requests.router, prefix="/overtime-requests", tags=["Overtime Requests"])
 api_router.include_router(overtime_reconciliations.router, prefix="/overtime-reconciliations", tags=["Overtime Reconciliation"])
+api_router.include_router(discipline.router, prefix="/discipline", tags=["Kỷ luật & Danh mục ca"])
 api_router.include_router(mobile_attendance.router, prefix="/mobile-attendance", tags=["Mobile Attendance"])
 
 # 1. Mount các phân hệ API

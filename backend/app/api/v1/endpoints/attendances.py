@@ -14,7 +14,8 @@ from app.schemas.schemas import (
     AttendanceSummaryOut, TodayAttendanceStatusOut
 )
 
-from app.core.attendance import local_now, VIETNAM_TZ, availability, require_available, session_metrics, late_minutes, attendance_context, require_checkout_ready
+from app.core.payroll_rules import attendance_allowance_tier, needs_late_warning_report, work_day_credit
+from app.core.attendance import local_now, VIETNAM_TZ, availability, require_available, session_metrics, late_minutes, attendance_context, require_checkout_ready, is_session_overdue
 
 logger = logging.getLogger(__name__)
 
@@ -72,11 +73,28 @@ async def authorize_employee(db, user, employee_id, lock=False):
 
 
 async def latest_session(db, employee_id):
-    return (await db.execute(text("""
-        SELECT attendance_id, check_in_time, check_out_time FROM attendances
-        WHERE employee_id = :id AND check_in_time IS NOT NULL
-        ORDER BY (check_out_time IS NULL) DESC, check_in_time DESC, attendance_id DESC LIMIT 1
-    """), {"id": employee_id})).mappings().first()
+    rows = (await db.execute(text("""
+        SELECT a.attendance_id, a.employee_id, a.store_id, a.shift_id, a.work_date,
+               a.check_in_time, a.check_out_time, a.status, a.late_minutes, a.early_minutes,
+               a.actual_work_hours, a.overtime_hours, a.attendance_context,
+               ws.start_time, ws.end_time, ws.work_hours
+        FROM attendances a
+        LEFT JOIN work_shifts ws ON ws.shift_id = a.shift_id
+        WHERE a.employee_id = :id AND a.check_in_time IS NOT NULL
+        ORDER BY a.check_in_time DESC, a.attendance_id DESC
+        LIMIT 10
+    """), {"id": employee_id})).mappings().all()
+    if not rows:
+        return None
+    now = local_now()
+    # Ưu tiên phiên đang thực sự mở và chưa quá hạn
+    for r in rows:
+        d = dict(r)
+        if d.get("check_in_time") and not d.get("check_out_time"):
+            if not is_session_overdue(d, now):
+                return d
+    # Nếu không có phiên đang mở hợp lệ, trả về phiên gần nhất
+    return dict(rows[0])
 
 
 
@@ -90,10 +108,11 @@ async def list_work_shifts(db: AsyncSession = Depends(get_db)):
     Truy vấn danh mục ca làm việc:
     - Ca Sáng (08:00 - 16:00, 8h)
     - Ca Chiều (13:00 - 21:00, 8h)
-    - Ca Full (08:00 - 21:00, 12h)
+    - Ca Hành chính (08:00 - 17:00, nghỉ 1h = 8h)
+    - Ca Full (08:00 - 21:00, nghỉ 1h = 8h công + 4h OT)
     """
     query = text("""
-        SELECT shift_id, shift_code, shift_name, start_time, end_time, work_hours
+        SELECT *
         FROM work_shifts
         ORDER BY shift_id ASC
     """)
@@ -141,8 +160,12 @@ async def get_today_attendance_status(
     """)
     res = await db.execute(query, {"emp_id": target_emp_id, "today": today})
     att = res.mappings().first()
+    now = local_now()
+    # Nếu phiên truy vấn được là phiên mở nhưng đã quá hạn từ ngày trước -> không chiếm dụng hôm nay
+    if att and att["check_in_time"] and not att["check_out_time"] and is_session_overdue(dict(att), now):
+        att = None
 
-    state = availability(await latest_session(db, target_emp_id), local_now())
+    state = availability(await latest_session(db, target_emp_id), now)
 
     if not att:
         # Kiểm tra xem có lịch phân ca hôm nay không
@@ -206,6 +229,42 @@ async def get_today_attendance_status(
 # 3. TỔNG HỢP BẢNG CHẤM CÔNG THEO THÁNG (THEO MẪU CHUCNANG1.JPG)
 # ===================================================================================
 
+async def payable_ot_summary(db: AsyncSession, employee_id: int, period: str) -> dict:
+    """Tổng hợp OT được trả lương của 1 nhân viên trong kỳ từ fn_payable_ot_rows (migration 20261106)."""
+    empty = dict(payable_hours=0.0, verified_hours=0.0, shift_planned_hours=0.0, night_hours=0.0,
+                 normal_hours=0.0, weekend_hours=0.0, holiday_hours=0.0, days=0, source_available=False)
+    try:
+        async with db.begin_nested():
+            row = (await db.execute(text("""
+                SELECT COALESCE(SUM(r.hours), 0) AS payable_hours,
+                       COALESCE(SUM(r.hours) FILTER (WHERE r.source = 'VERIFIED'), 0) AS verified_hours,
+                       COALESCE(SUM(r.hours) FILTER (WHERE r.source = 'SHIFT_PLANNED'), 0) AS shift_planned_hours,
+                       COALESCE(SUM(r.night_hours) FILTER (WHERE h.holiday_date IS NULL
+                                AND EXTRACT(DOW FROM r.work_date) <> 0), 0) AS night_hours,
+                       COALESCE(SUM(r.hours) FILTER (WHERE h.holiday_date IS NULL
+                                AND EXTRACT(DOW FROM r.work_date) <> 0), 0) AS weekday_hours,
+                       COALESCE(SUM(r.hours) FILTER (WHERE h.holiday_date IS NULL
+                                AND EXTRACT(DOW FROM r.work_date) = 0), 0) AS weekend_hours,
+                       COALESCE(SUM(r.hours) FILTER (WHERE h.holiday_date IS NOT NULL), 0) AS holiday_hours,
+                       COUNT(DISTINCT r.work_date) AS days
+                FROM public.fn_payable_ot_rows(:period) r
+                LEFT JOIN public.public_holidays h ON h.holiday_date = r.work_date
+                WHERE r.employee_id = :emp_id
+            """), {"emp_id": employee_id, "period": period})).mappings().one()
+    except Exception as exc:  # chưa áp migration 20261106
+        logger.warning("Không đọc được OT đã xác minh (fn_payable_ot_rows): %s", exc)
+        return empty
+    r1 = lambda v: round(float(v or 0), 2)  # noqa: E731
+    night = r1(row["night_hours"])
+    return dict(
+        payable_hours=r1(row["payable_hours"]), verified_hours=r1(row["verified_hours"]),
+        shift_planned_hours=r1(row["shift_planned_hours"]), night_hours=night,
+        normal_hours=r1(float(row["weekday_hours"] or 0) - night),
+        weekend_hours=r1(row["weekend_hours"]), holiday_hours=r1(row["holiday_hours"]),
+        days=int(row["days"] or 0), source_available=True,
+    )
+
+
 @router.get("/my-summary", response_model=AttendanceSummaryOut, summary="Tổng hợp bảng chấm công tháng cá nhân (Khớp giao diện chucnang1.jpg)")
 async def get_my_attendance_summary(
     period: Optional[str] = Query(None, pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$", description="Kỳ tháng tra cứu (YYYY-MM), ví dụ: 2026-09"),
@@ -264,17 +323,13 @@ async def get_my_attendance_summary(
         "reason": None,
     }
     try:
-        std_res = await db.execute(
-            text("""
-                SELECT salary_period, calendar_days, sundays_count, holidays_count,
-                       auto_standard_days, manual_standard_days, locked_standard_days,
-                       applied_standard_days, is_manual_override, is_locked, reason
-                FROM public.v_payroll_period_working_days
-                WHERE salary_period = :period
-            """),
-            {"period": period_str}
-        )
-        std_row = std_res.mappings().first()
+        # Công chuẩn thống nhất với SP lương: kỳ đã chốt → HR ghi đè → 26 (migration 20261106).
+        async with db.begin_nested():
+            std_res = await db.execute(
+                text("SELECT * FROM public.v_payroll_period_working_days WHERE salary_period = :period"),
+                {"period": period_str}
+            )
+            std_row = std_res.mappings().first()
         if std_row and std_row.get("applied_standard_days") is not None:
             standard_days = float(std_row["applied_standard_days"])
             std_info = {
@@ -286,10 +341,13 @@ async def get_my_attendance_summary(
                 "is_manual_override": bool(std_row.get("is_manual_override")),
                 "is_locked": bool(std_row.get("is_locked")),
                 "reason": std_row.get("reason"),
+                "calendar_working_days": (float(std_row["calendar_working_days"])
+                                          if std_row.get("calendar_working_days") is not None else None),
             }
         else:
-            fn_res = await db.execute(text("SELECT public.fn_payroll_standard_days(:period)"), {"period": period_str})
-            val = fn_res.scalar_one_or_none()
+            async with db.begin_nested():
+                fn_res = await db.execute(text("SELECT public.fn_payroll_standard_days(:period)"), {"period": period_str})
+                val = fn_res.scalar_one_or_none()
             if val is not None:
                 standard_days = float(val)
                 std_info["auto_standard_days"] = standard_days
@@ -320,7 +378,31 @@ async def get_my_attendance_summary(
     att_res = await db.execute(att_query, {"emp_id": target_emp_id, "period": period_str})
     att_stats = att_res.mappings().first()
 
-    actual_days = float(att_stats["actual_days"] or 0)
+    present_days = float(att_stats["actual_days"] or 0)
+    # Công quy đổi giống SP tính lương: mỗi ngày <4h = 0, 4h–<7.5h = 0.5, ≥7.5h = 1 công.
+    day_hours = (await db.execute(text("""
+        SELECT work_date, SUM(COALESCE(actual_work_hours, 0)) AS hours
+        FROM attendances
+        WHERE employee_id = :emp_id AND TO_CHAR(work_date, 'YYYY-MM') = :period
+          AND check_out_time IS NOT NULL
+        GROUP BY work_date
+    """), {"emp_id": target_emp_id, "period": period_str})).all()
+    actual_days = float(sum(work_day_credit(float(row[1] or 0)) for row in day_hours))
+
+    # Ngày trễ hợp lệ — cùng quy tắc với bảng công & SP lương (fn_attendance_counts_as_late).
+    try:
+        async with db.begin_nested():
+            late_days = int((await db.execute(text("""
+                SELECT COUNT(DISTINCT work_date) FROM attendances
+                WHERE employee_id = :emp_id AND TO_CHAR(work_date, 'YYYY-MM') = :period
+                  AND public.fn_attendance_counts_as_late(late_minutes, check_in_time, check_out_time,
+                                                          attendance_context, 15)
+            """), {"emp_id": target_emp_id, "period": period_str})).scalar() or 0)
+    except Exception:  # chưa áp migration 20261106
+        late_days = int((await db.execute(text("""
+            SELECT COUNT(DISTINCT work_date) FROM attendances
+            WHERE employee_id = :emp_id AND TO_CHAR(work_date, 'YYYY-MM') = :period AND late_minutes > 15
+        """), {"emp_id": target_emp_id, "period": period_str})).scalar() or 0)
     total_hours = round(float(att_stats["total_hours"] or 0), 1)
     payroll_time_adjustment_minutes = int(att_stats['payroll_time_adjustment_minutes'] or 0)
     late_count = int(att_stats["late_count"] or 0)
@@ -330,34 +412,10 @@ async def get_my_attendance_summary(
     ot_shifts = int(att_stats["ot_shifts_count"] or 0)
     total_ot_hours = round(float(att_stats["total_ot_hours"] or 0), 1)
 
-    # 3. Phân tách OT đa tầng (Multi-tier OT: 1.5x ngày thường, 2.0x chủ nhật, 3.0x lễ/tết)
-    ot_tier_res = await db.execute(
-        text("""
-            SELECT 
-                COALESCE(SUM(ota.approved_hours), 0) as approved_hours,
-                COALESCE(SUM(CASE 
-                    WHEN h.holiday_date IS NOT NULL THEN 0 
-                    WHEN EXTRACT(DOW FROM a.work_date) = 0 THEN 0 
-                    ELSE COALESCE(ota.approved_hours, 0) 
-                END), 0) AS ot_normal_hours,
-                COALESCE(SUM(CASE 
-                    WHEN h.holiday_date IS NOT NULL THEN 0 
-                    WHEN EXTRACT(DOW FROM a.work_date) = 0 THEN COALESCE(ota.approved_hours, 0) 
-                    ELSE 0 
-                END), 0) AS ot_weekend_hours,
-                COALESCE(SUM(CASE 
-                    WHEN h.holiday_date IS NOT NULL THEN COALESCE(ota.approved_hours, 0) 
-                    ELSE 0 
-                END), 0) AS ot_holiday_hours
-            FROM attendances a
-            LEFT JOIN attendance_overtime_approvals ota ON a.attendance_id = ota.attendance_id AND ota.decision = 'APPROVED'
-            LEFT JOIN public.public_holidays h ON a.work_date = h.holiday_date
-            WHERE a.employee_id = :emp_id
-              AND TO_CHAR(a.work_date, 'YYYY-MM') = :period
-        """),
-        {"emp_id": target_emp_id, "period": period_str}
-    )
-    ot_tier = ot_tier_res.mappings().first() or {}
+    # 3. OT TÍNH LƯƠNG (VERIFIED_ONLY) — cùng nguồn với SP lương (fn_payable_ot_rows):
+    #    chỉ đơn OT đã được HR đối soát VERIFIED + OT tự động của Ca Full. Giờ ngoài ca thô
+    #    (attendances.overtime_hours) chỉ hiển thị để tham khảo, KHÔNG được xem là OT hợp lệ.
+    ot_tier = await payable_ot_summary(db, target_emp_id, period_str)
 
     # 2. Truy vấn quỹ phép & nghỉ thực tế trong kỳ từ bảng leave_requests & employees
     seniority_bonus = 0.0
@@ -432,6 +490,7 @@ async def get_my_attendance_summary(
         working_days={
             "standard_days": standard_days,
             "actual_days": actual_days,
+            "present_days": present_days,
             "total_hours": total_hours,
             "payroll_time_adjustment_minutes": payroll_time_adjustment_minutes,
             "payroll_time_adjustment_hours": round(payroll_time_adjustment_minutes / 60.0, 2),
@@ -443,6 +502,7 @@ async def get_my_attendance_summary(
             "is_manual_override": std_info["is_manual_override"],
             "is_locked": std_info["is_locked"],
             "reason": std_info["reason"],
+            "calendar_working_days": std_info.get("calendar_working_days"),
         },
         leave_quota={
             "annual_leave": annual_total,
@@ -452,24 +512,32 @@ async def get_my_attendance_summary(
         late_arrivals={
             "count": late_count,
             "minutes": total_late_minutes,
+            "days": late_days,
+            "allowance_tier": attendance_allowance_tier(late_days, actual_days),
+            "late_warning_report": needs_late_warning_report(late_days),
         },
         early_departures={
             "count": early_count,
             "minutes": total_early_minutes,
         },
         extra_work={
-            "hours": total_ot_hours,
+            "hours": total_ot_hours,  # giờ ngoài ca thô, chưa xác minh — không tính lương
         },
         business_trips={
             "days": trip_days,
         },
         overtime={
-            "shifts_count": ot_shifts,
-            "hours": total_ot_hours,
-            "approved_hours": round(float(ot_tier.get("approved_hours") or 0), 1),
-            "normal_hours": round(float(ot_tier.get("ot_normal_hours") or 0), 1),
-            "weekend_hours": round(float(ot_tier.get("ot_weekend_hours") or 0), 1),
-            "holiday_hours": round(float(ot_tier.get("ot_holiday_hours") or 0), 1),
+            "shifts_count": ot_tier["days"],
+            "hours": ot_tier["payable_hours"],
+            "approved_hours": ot_tier["verified_hours"],
+            "verified_hours": ot_tier["verified_hours"],
+            "shift_planned_hours": ot_tier["shift_planned_hours"],
+            "unverified_outside_hours": total_ot_hours,
+            "night_hours": ot_tier["night_hours"],
+            "normal_hours": ot_tier["normal_hours"],
+            "weekend_hours": ot_tier["weekend_hours"],
+            "holiday_hours": ot_tier["holiday_hours"],
+            "source_available": ot_tier["source_available"],
         },
         compensatory_leave={
             "total": compensatory_leave_days,
@@ -653,9 +721,9 @@ async def check_out(req: CheckOutRequest, current_user: dict = Depends(get_curre
         condition = "a.employee_id = :id AND a.check_in_time IS NOT NULL AND a.check_out_time IS NULL"
         params = {"id": emp_id}
     att = (await db.execute(text("""
-        SELECT a.*, ws.start_time, ws.end_time, ws.work_hours
+        SELECT a.*, ws.start_time, ws.end_time, ws.work_hours, ws.break_minutes
         FROM attendances a JOIN work_shifts ws ON ws.shift_id = a.shift_id
-        WHERE """ + condition + " ORDER BY a.attendance_id DESC LIMIT 1 FOR UPDATE OF a"),
+        WHERE """ + condition + " ORDER BY a.check_in_time DESC, a.attendance_id DESC LIMIT 1 FOR UPDATE OF a"),
         params)).mappings().first()
     if not att:
         raise HTTPException(404, "Không có lượt đang mở để check-out.")

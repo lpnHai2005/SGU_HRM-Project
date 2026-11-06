@@ -85,6 +85,7 @@ class MobileRequest(BaseModel):
     accuracy_meters: float = Field(gt=0, le=100, allow_inf_nan=False)
     captured_at: datetime
     shift_id: int = Field(1, gt=0)
+    attendance_id: int | None = None
 
 
 def verify_photo(token, employee_id):
@@ -100,8 +101,11 @@ def verify_photo(token, employee_id):
 
 async def target_store(db, user):
     employee = await attendances.authorize_employee(db, user, user.get('employee_id'))
-    active = (await db.execute(text('SELECT store_id FROM attendances WHERE employee_id=:id AND check_in_time IS NOT NULL AND check_out_time IS NULL LIMIT 1'), {'id':user['employee_id']})).mappings().first()
-    return active['store_id'] if active else employee['store_id']
+    latest = await attendances.latest_session(db, user['employee_id'])
+    now = attendances.local_now()
+    if latest and latest.get('check_in_time') and not latest.get('check_out_time') and not attendances.is_session_overdue(latest, now):
+        return latest['store_id']
+    return employee['store_id']
 
 
 @router.get('/geofence')
@@ -196,7 +200,7 @@ async def perform(kind, req, user, db):
             await require_assigned_shift(db, employee, req.shift_id)
             result = await attendances.check_in(CheckInRequest(shift_id=req.shift_id), user, AtomicSession(db))
         else:
-            result = await attendances.check_out(CheckOutRequest(), user, AtomicSession(db))
+            result = await attendances.check_out(CheckOutRequest(attendance_id=req.attendance_id), user, AtomicSession(db))
     await db.execute(text('''INSERT INTO mobile_attendance_proofs
         (request_id,employee_id,store_id,attendance_id,check_type,latitude,longitude,accuracy_meters,
          distance_meters,radius_meters,photo_url,photo_nonce,verification_status,result)

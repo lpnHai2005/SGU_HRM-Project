@@ -487,6 +487,9 @@ class WorkShiftOut(BaseModel):
     start_time: Any
     end_time: Any
     work_hours: float
+    break_minutes: int = 0
+    planned_overtime_hours: float = 0
+    is_active: Optional[bool] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -542,7 +545,8 @@ class AttendanceOut(AttendanceContextOut):
 
 class AttendanceWorkingDaysSummary(BaseModel):
     standard_days: float = 26.0
-    actual_days: float = 0.0
+    actual_days: float = 0.0  # công quy đổi (0 / 0.5 / 1 mỗi ngày), cùng số công đưa vào lương
+    present_days: float = 0.0  # số ngày có mặt (đếm ngày có check-in)
     total_hours: float = 0.0
     payroll_time_adjustment_minutes: int = 0
     payroll_time_adjustment_hours: float = 0.0
@@ -551,6 +555,7 @@ class AttendanceWorkingDaysSummary(BaseModel):
     holidays_count: Optional[int] = None
     auto_standard_days: Optional[float] = None
     manual_standard_days: Optional[float] = None
+    calendar_working_days: Optional[float] = None  # ngày làm việc theo lịch tháng — chỉ tham khảo
     is_manual_override: bool = False
     is_locked: bool = False
     reason: Optional[str] = None
@@ -567,13 +572,25 @@ class AttendanceCountAndMinutes(BaseModel):
     minutes: int = 0
 
 
+class AttendanceLateSummary(AttendanceCountAndMinutes):
+    days: int = 0  # số ngày trễ hợp lệ (> ân hạn) — căn cứ phụ cấp chuyên cần & biên bản
+    allowance_tier: Optional[str] = None  # FULL / HALF / LATE_REPORT / NOT_ENOUGH_DAYS
+    late_warning_report: bool = False
+
+
 class AttendanceOvertimeSummary(BaseModel):
-    shifts_count: int = 0
-    hours: float = 0.0
-    approved_hours: float = 0.0
+    """OT tính lương (VERIFIED_ONLY). Giờ ngoài ca thô chỉ để tham khảo."""
+    shifts_count: int = 0  # số ngày có OT được trả lương
+    hours: float = 0.0  # OT được trả lương = verified_hours + shift_planned_hours
+    approved_hours: float = 0.0  # giữ tương thích: = verified_hours
+    verified_hours: float = 0.0  # đơn OT HR đã đối soát VERIFIED
+    shift_planned_hours: float = 0.0  # OT tự động của Ca Full
+    unverified_outside_hours: float = 0.0  # giờ ngoài ca thô từ máy chấm công — KHÔNG tính lương
+    night_hours: float = 0.0
     normal_hours: float = 0.0
     weekend_hours: float = 0.0
     holiday_hours: float = 0.0
+    source_available: bool = True
 
 
 class AttendanceSingleValue(BaseModel):
@@ -588,7 +605,7 @@ class AttendanceSummaryOut(BaseModel):
     employee_name: Optional[str] = None
     working_days: AttendanceWorkingDaysSummary
     leave_quota: AttendanceLeaveQuotaSummary
-    late_arrivals: AttendanceCountAndMinutes
+    late_arrivals: AttendanceLateSummary
     early_departures: AttendanceCountAndMinutes
     extra_work: dict
     business_trips: dict
@@ -777,6 +794,8 @@ class PayrollOut(BaseModel):
     seniority_allowance: Optional[float] = 0.0
     project_allowance: Optional[float] = 0.0
     meal_transport_allowance: Optional[float] = 0.0
+    attendance_allowance: Optional[float] = 0.0
+    extra_workday_salary: Optional[float] = 0.0
     commission_amount: Optional[float] = 0.0
     bonus_amount: Optional[float] = 0.0
     holiday_bonus: Optional[float] = 0.0
