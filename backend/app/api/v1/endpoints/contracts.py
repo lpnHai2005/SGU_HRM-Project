@@ -1170,100 +1170,15 @@ async def sync_employee_statuses(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Quét qua toàn bộ nhân viên và tài khoản người dùng để đồng bộ trạng thái phù hợp với hợp đồng:
-    - Nhân viên còn HĐ ACTIVE: employment_status = ACTIVE, tài khoản mở.
-    - Nhân viên hết HĐ ACTIVE:
-      + Đã TERMINATED: employment_status = TERMINATED, tài khoản khóa.
-      + Đã EXPIRED: employment_status = RESIGNED, tài khoản khóa.
+    Áp các quy tắc trong app.core.employee_status cho toàn bộ nhân viên, giống job đầu ngày,
+    và khôi phục thêm người đã nghỉ nhưng vẫn còn hợp đồng ACTIVE.
     """
-    res = await db.execute(text("""
-        SELECT 
-            e.employee_id, e.employee_code, e.full_name, e.employment_status, e.resignation_date,
-            u.user_id, u.username, u.is_active as user_active,
-            COUNT(c.contract_id) as total_contracts,
-            COUNT(c.contract_id) FILTER (WHERE c.status = 'ACTIVE') as active_contracts,
-            COUNT(c.contract_id) FILTER (WHERE c.status = 'EXPIRED') as expired_contracts,
-            COUNT(c.contract_id) FILTER (WHERE c.status = 'TERMINATED') as terminated_contracts,
-            MAX(c.end_date) as max_end_date,
-            MAX(c.termination_date) as max_termination_date
-        FROM employees e
-        LEFT JOIN users u ON e.employee_id = u.employee_id
-        LEFT JOIN contracts c ON e.employee_id = c.employee_id
-        GROUP BY e.employee_id, e.employee_code, e.full_name, e.employment_status, e.resignation_date, u.user_id, u.username, u.is_active
-        ORDER BY e.employee_id;
-    """))
-    rows = res.mappings().fetchall()
+    from app.core.attendance import local_now
+    from app.core.employee_status import apply_status_rules
 
-    updates = []
-    for r in rows:
-        emp_id = r["employee_id"]
-        curr_emp_status = r["employment_status"]
-        curr_user_active = r["user_active"]
-        active_cnt = r["active_contracts"]
-        term_cnt = r["terminated_contracts"]
-        exp_cnt = r["expired_contracts"]
-        total_cnt = r["total_contracts"]
-        
-        target_emp_status = curr_emp_status
-        target_user_active = curr_user_active
-        target_resignation_date = r["resignation_date"]
-        
-        if active_cnt > 0:
-            if curr_emp_status in ["RESIGNED", "TERMINATED"]:
-                target_emp_status = "ACTIVE"
-                target_resignation_date = None
-            if curr_user_active is False:
-                target_user_active = True
-        elif total_cnt > 0 and active_cnt == 0:
-            if term_cnt > 0:
-                target_emp_status = "TERMINATED"
-                target_user_active = False
-                if not target_resignation_date:
-                    target_resignation_date = r["max_termination_date"] or r["max_end_date"]
-            elif exp_cnt > 0:
-                target_emp_status = "RESIGNED"
-                target_user_active = False
-                if not target_resignation_date:
-                    target_resignation_date = r["max_end_date"]
-        elif total_cnt == 0:
-            if curr_emp_status in ["RESIGNED", "TERMINATED"] and curr_user_active is not None:
-                target_user_active = False
-        
-        needs_update = (target_emp_status != curr_emp_status or 
-                        target_user_active != curr_user_active or 
-                        target_resignation_date != r["resignation_date"])
-        
-        if needs_update:
-            updates.append({
-                "employee_id": emp_id,
-                "name": r["full_name"],
-                "old_status": curr_emp_status,
-                "new_status": target_emp_status
-            })
-            await db.execute(text("""
-                UPDATE employees 
-                SET employment_status = :status,
-                    resignation_date = :res_date,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE employee_id = :emp_id
-            """), {
-                "status": target_emp_status,
-                "res_date": target_resignation_date,
-                "emp_id": emp_id
-            })
-            
-            if r["user_id"]:
-                await db.execute(text("""
-                    UPDATE users
-                    SET is_active = :is_active,
-                        updated_at = CURRENT_TIMESTAMP
-                    WHERE user_id = :uid
-                """), {
-                    "is_active": target_user_active,
-                    "uid": r["user_id"]
-                })
-
-    await db.commit()
+    updates = await apply_status_rules(
+        db, local_now().date(), actor_id=current_user.get("user_id"), revive_left=True
+    )
 
     return {
         "message": f"Đã quét và đồng bộ thành công {len(updates)} nhân viên và tài khoản!",

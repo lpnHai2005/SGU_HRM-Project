@@ -10,6 +10,7 @@ import { employeeApi, overtimeReconciliationApi, overtimeRequestApi } from '../s
 import { OVERTIME_REQUEST_STATUS_OPTIONS, overtimeStatusClass, overtimeStatusLabel } from '../components/schedule/overtimeDisplay'
 import { OvertimeReconciliationSection } from '../components/schedule/OvertimeReconciliationSection'
 import { toast } from 'sonner'
+import { TablePagination, useClientPagination } from '../components/common/TablePagination'
 import './OvertimeApprovalsPanel.css'
 
 export interface OvertimeRequestsPageProps {
@@ -318,6 +319,8 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
       return true
     })
   }, [requests, activeTab, filterVerifiedOnly, reconciliationByRequest, dateFrom, dateTo, statusFilter, searchTerm])
+
+  const { pageItems: pagedRequests, paginationProps } = useClientPagination(filteredRequests, `${activeTab}|${filterVerifiedOnly}|${dateFrom}|${dateTo}|${statusFilter}|${searchTerm}`)
 
   // Calculate Stat counts
   const statCounts = useMemo(() => {
@@ -938,7 +941,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
                 </tr>
               </thead>
               <tbody>
-                {filteredRequests.map((req, index) => {
+                {pagedRequests.map((req, index) => {
                   const hours = durationHours(req)
                   const isAssignedToMe = Number(req.employee_id) === Number(user?.employee_id)
                   const isCreator = req.created_by === user?.user_id
@@ -948,7 +951,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
                     (isCreator || isAssignedToMe)
                   const canRevoke = req.status === 'APPROVED' && !req.revoke_requested_at && (isReviewer || isStoreManager || isAssignedToMe || isCreator)
                   const hasAnyAction = true
-                  const isNearBottom = index >= filteredRequests.length - 2 && filteredRequests.length > 2
+                  const isNearBottom = index >= pagedRequests.length - 2 && pagedRequests.length > 2
 
                   return (
                     <tr
@@ -1222,6 +1225,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
                 )}
               </tbody>
             </table>
+            <TablePagination {...paginationProps} />
           </div>
         )}
       </div>}

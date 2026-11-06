@@ -28,16 +28,16 @@
 
 > **TechZone HRM** là hệ sinh thái phần mềm quản trị nguồn nhân lực (Human Resource Management) chuyên biệt hóa cho mô hình chuỗi bán lẻ thiết bị công nghệ (**TechZone Retail**). Hệ thống số hóa 100% các quy trình nghiệp vụ nhân sự đa chi nhánh, ca kíp phức tạp và cơ chế đãi ngộ gắn liền với doanh số bán hàng:
 >
-> - **Cơ sở dữ liệu Quan hệ Chuẩn hóa 3NF:** Vận hành trên Supabase PostgreSQL với **51 bảng dữ liệu, 6 Views phân tích** và các Stored Procedures tính toán lương tự động ở mức cơ sở dữ liệu (`sp_calculate_monthly_commission`, `sp_generate_monthly_payroll`).
+> - **Cơ sở dữ liệu Quan hệ Chuẩn hóa 3NF:** Vận hành trên Supabase PostgreSQL với **56 bảng dữ liệu, 7 Views phân tích** và các Stored Procedures tính toán lương tự động ở mức cơ sở dữ liệu (`sp_calculate_monthly_commission`, `sp_generate_monthly_payroll`).
 > - **Phân quyền RBAC Đa tầng & Nguyên tắc No Self-Approval:** Hệ thống thiết lập **5 vai trò chính** (`ADMIN`, `DIRECTOR`, `HR_MANAGER`, `STORE_MANAGER`, `EMPLOYEE`) cùng **18 quyền chức năng chi tiết** phân bổ theo 7 phân hệ. Cung cấp cơ chế duyệt chéo chống xung đột lợi ích: Đơn từ của HR và Admin bắt buộc phải được Ban Giám đốc (`DIRECTOR`) phê duyệt.
-> - **Chấm công Đa phương thức & Định vị Geofence:** Quản lý 3 ca xoay (Sáng 08:00–16:00, Chiều 13:00–21:00, Full 08:00–21:00), xác thực vị trí thời gian thực qua **GPS Geofence bán kính 100m** bằng công thức Haversine, xác thực khuôn mặt bằng ảnh chụp Selfie tại quầy, cơ chế khóa nút Cooldown 60s và đối soát làm thêm giờ (OT Reconciliation) chặt chẽ.
+> - **Chấm công Đa phương thức & Định vị Geofence:** Quản lý 4 ca làm việc (Sáng 08:00–16:00, Chiều 13:00–21:00, Full cuối tuần 08:00–21:00, Hành chính 08:00–17:00), bắt buộc chấm đúng ca được phân, xác thực vị trí thời gian thực qua **GPS Geofence bán kính 100m** bằng công thức Haversine, lưu ảnh Selfie làm bằng chứng, chấm công Web giới hạn theo mạng cửa hàng, cơ chế khóa nút Cooldown 60s và đối soát làm thêm giờ (OT Reconciliation) chặt chẽ.
 > - **Quy trình Phê duyệt Đơn từ 2 Cấp (Two-level Approval Workflow):** Xét duyệt tuần tự hoặc phân cấp: Cửa hàng trưởng duyệt sơ bộ Cấp 1 $\rightarrow$ Trưởng phòng HR duyệt chính thức Cấp 2 $\rightarrow$ Giám đốc duyệt cấp cao cho các loại đơn: Phép năm, Nghỉ ốm đau, Thai sản, Nghỉ không lương, Làm thêm giờ (OT) và Đơn thôi việc kèm bàn giao tài sản.
-> - **Tính lương Doanh số Bán lẻ & Tự động hóa Payroll:** Thuật toán tính lương bám sát thực tế: Công chuẩn 26 ngày, hoa hồng lũy kế theo nhóm thiết bị (Điện thoại & Laptop 1%, Phụ kiện 3%), thưởng vượt KPI doanh số (1.000.000đ – 2.000.000đ), phụ cấp chức vụ, thâm niên, dự án, trích nộp bảo hiểm 10.5% (BHXH 8%, BHYT 1.5%, BHTN 1%), thuế TNCN và bẻ nhỏ 12 cấu phần minh bạch vào `payroll_details`.
+> - **Tính lương Doanh số Bán lẻ & Tự động hóa Payroll:** Thuật toán tính lương bám sát thực tế: Công chuẩn linh hoạt theo từng kỳ (trừ Chủ nhật và ngày Lễ, HR/Giám đốc có thể ghi đè), hoa hồng lũy kế theo nhóm thiết bị (Điện thoại & Laptop 1%, Phụ kiện 3%), thưởng vượt KPI doanh số (1.000.000đ – 2.000.000đ), phụ cấp chức vụ, thâm niên, dự án, trích nộp bảo hiểm 10.5% (BHXH 8%, BHYT 1.5%, BHTN 1%) và bẻ nhỏ 14 khoản minh bạch vào `payroll_details`. Hệ thống chưa tự tính thuế TNCN.
 > - **Trợ lý AI Agentic RAG Doanh nghiệp:** Bộ máy **LangGraph + Mistral AI** với cơ chế tìm kiếm lai (Hybrid Search: Vector Embeddings + Full-text BM25 + Reciprocal Rank Fusion RRF), Self-RAG Grader, Guardrails chặn Prompt Injection/bảo vệ dữ liệu nhạy cảm PII, cùng Tool-calling hỗ trợ nhân viên tra cứu lương/công và tự động nộp đơn nghỉ phép qua hội thoại tự nhiên.
-> - **Đa nền tảng Web Quản trị & Mobile Tác nghiệp:** Web Quản trị (React 19 + TypeScript + Vite) dành cho Quản lý & HR; Mobile App (React Native Expo) dành cho nhân viên bán lẻ tác nghiệp tại cửa hàng.
+> - **Đa nền tảng Web Quản trị & Mobile Tác nghiệp:** Web Quản trị (React 19 + TypeScript + Vite) dành cho Quản lý & HR; Mobile App (React Native Expo) dành cho nhân viên bán lẻ tác nghiệp tại cửa hàng, kèm các màn hình theo dõi và xử lý nhanh cho cấp quản lý.
 
-Hồ sơ đặc tả yêu cầu và ngữ cảnh master: **[`TECHZONE_HRM_MASTER_CONTEXT.md`](TECHZONE_HRM_MASTER_CONTEXT.md)** và **[`PRODUCT.md`](PRODUCT.md)**.  
-Kế hoạch triển khai & quy trình thực thi: **[`HRM-Project-Workflow.md`](HRM-Project-Workflow.md)**.  
+Hồ sơ đặc tả yêu cầu và ngữ cảnh master: **[`TECHZONE_HRM_MASTER_CONTEXT.md`](docs/specs/TECHZONE_HRM_MASTER_CONTEXT.md)** và **[`PRODUCT.md`](PRODUCT.md)**.  
+Kế hoạch triển khai & quy trình thực thi: **[`HRM-Project-Workflow.md`](docs/specs/HRM-Project-Workflow.md)**.  
 Báo cáo kiểm thử định lượng năng lực AI bằng Ragas: **[`backend/data/ragas_evaluation_report.json`](backend/data/ragas_evaluation_report.json)**.
 
 ---
@@ -64,8 +64,8 @@ Báo cáo kiểm thử định lượng năng lực AI bằng Ragas: **[`backend
 - [Cấu Trúc Thư Mục](#cấu-trúc-thư-mục)
 - [Bài Toán & Bối Cảnh Nghiệp Vụ](#bài-toán--bối-cảnh-nghiệp-vụ)
 - [Thiết Kế Cơ Sở Dữ Liệu (Database Architecture)](#thiết-kế-cơ-sở-dữ-liệu-database-architecture)
-  - [1. Danh mục 51 Bảng Dữ Liệu Theo Phân Hệ](#1-danh-mục-51-bảng-dữ-liệu-theo-phân-hệ)
-  - [2. Danh mục 6 Views Cơ Sở Dữ Liệu](#2-danh-mục-6-views-cơ-sở-dữ-liệu)
+  - [1. Danh mục 56 Bảng Dữ Liệu Theo Phân Hệ](#1-danh-mục-56-bảng-dữ-liệu-theo-phân-hệ)
+  - [2. Danh mục 7 Views Cơ Sở Dữ Liệu](#2-danh-mục-7-views-cơ-sở-dữ-liệu)
   - [3. Stored Procedures & Database Functions Cốt Lõi](#3-stored-procedures--database-functions-cốt-lõi)
 - [Hệ Thống Phân Quyền Bảo Mật (RBAC System)](#hệ-thống-phân-quyền-bảo-mật-rbac-system)
   - [1. Danh mục 5 Vai Trò Cốt Lõi (Roles)](#1-danh-mục-5-vai-trò-cốt-lõi-roles)
@@ -95,10 +95,12 @@ Báo cáo kiểm thử định lượng năng lực AI bằng Ragas: **[`backend
 SGU_HRM-Project/
 ├── README.md                          # Tài liệu chính giới thiệu dự án (File này)
 ├── run.py                             # Script Python điều phối kiểm tra phụ thuộc và chạy song song Web + API
+├── start_all.bat                      # Khởi chạy nhanh trên Windows (kích hoạt venv rồi gọi run.py)
 ├── PRODUCT.md                         # Đặc tả sản phẩm, vai trò, nghiệp vụ và quy định thương hiệu
+├── DESIGN.md                          # Hệ thống thiết kế giao diện Web và Mobile
 ├── docs/
 │   ├── specs/                         # Đặc tả: MASTER_CONTEXT, Workflow, chấm công, nghỉ phép, lương
-│   ├── knowledge_base_sources/        # Nguồn tài liệu quy chế cho AI Chatbot
+│   ├── knowledge_base_sources/        # 8 văn bản quy chế chuẩn hóa làm nguồn tri thức cho AI RAG
 │   └── Nhóm HTTT.docx                 # Đề cương đồ án môn học nhóm HTTT (SGU)
 ├── LICENSE                            # Giấy phép bản quyền mã nguồn mở MIT
 │
@@ -108,11 +110,12 @@ SGU_HRM-Project/
 │   │   │   ├── deps.py                # Dependencies kiểm tra JWT, RBAC Role Checker, Strict RBAC, Audit Log
 │   │   │   └── v1/
 │   │   │       ├── router.py          # Bộ định tuyến API tập trung
-│   │   │       └── endpoints/         # 18 Tuyến API phân hệ nghiệp vụ:
+│   │   │       └── endpoints/         # 19 Tuyến API phân hệ nghiệp vụ:
 │   │   │           ├── auth.py        # Đăng nhập, /me, đổi mật khẩu, danh sách test accounts
 │   │   │           ├── users.py       # Quản trị tài khoản người dùng, kích hoạt/khóa tài khoản
 │   │   │           ├── roles.py       # Danh mục Roles, Permissions và Ma trận RBAC Matrix
-│   │   │           ├── employees.py   # Hồ sơ nhân sự, hợp đồng, thăng chức tự đổi quyền
+│   │   │           ├── employees.py   # Hồ sơ nhân sự, tìm kiếm nâng cao, thăng chức tự đổi quyền
+│   │   │           ├── contracts.py   # Vòng đời hợp đồng: tạo, kích hoạt, gia hạn, chấm dứt, xuất PDF
 │   │   │           ├── stores.py      # Mạng lưới cửa hàng, cấu hình Geofence tọa độ GPS
 │   │   │           ├── attendances.py # Chấm công, giám sát vào/ra ca, bảng công tháng
 │   │   │           ├── work_schedules.py # Phân ca tuần, đăng ký ca làm, đổi ca
@@ -135,9 +138,15 @@ SGU_HRM-Project/
 │   │   │   ├── ai_chatbot_tools.py    # Công cụ nghiệp vụ cho AI (Tạo đơn phép, tra cứu bảng lương)
 │   │   │   ├── ai_chatbot_db.py       # Lưu trữ ngữ cảnh hội thoại và lịch sử phiên chat
 │   │   │   ├── ai_chatbot_cache.py    # Bộ nhớ đệm Policy Cache và Redis caching
+│   │   │   ├── attendance.py          # Quy tắc chấm công: ân hạn, đi muộn, về sớm
+│   │   │   ├── company.py             # Đọc hồ sơ công ty dùng cho hợp đồng và biểu mẫu in
+│   │   │   ├── contract_service.py    # Nghiệp vụ hợp đồng, sinh mã HD-YYYY-NNNN
+│   │   │   ├── contract_cron.py       # Tác vụ định kỳ: hết hạn hợp đồng, đồng bộ trạng thái nhân viên
 │   │   │   ├── contract_pdf.py        # Xuất hợp đồng lao động điện tử sang định dạng PDF
+│   │   │   ├── payroll_import.py      # Đọc và kiểm tra file Excel nhập dữ liệu lương
+│   │   │   ├── rate_limit.py          # Giới hạn tần suất đăng nhập sai và gọi AI Chatbot
 │   │   │   ├── excel_exporter.py      # Xuất báo cáo thống kê nhân sự và công lương sang Excel
-│   │   │   └── storage.py             # Dịch vụ upload và lưu trữ hình ảnh đám mây Cloudinary
+│   │   │   └── storage.py             # Upload ảnh lên Cloudinary, tự lưu cục bộ nếu chưa cấu hình
 │   │   ├── models/
 │   │   │   └── entities.py            # Định nghĩa các Thực thể ORM SQLAlchemy
 │   │   └── schemas/
@@ -147,6 +156,7 @@ SGU_HRM-Project/
 │   │   └── ragas_evaluation_report.json # Kết quả đánh giá định lượng năng lực AI bằng Ragas
 │   ├── migrations/                    # SQL Migration, đặt tên YYYYMMDD_<mô_tả>.sql cập nhật lược đồ CSDL
 │   ├── scripts/
+│   │   ├── seed_clean_data.py         # Nạp lại bộ dữ liệu demo sạch 60 nhân viên (XÓA dữ liệu nghiệp vụ)
 │   │   ├── generate_knowledge_pdfs.py # Script sinh văn bản pháp quy, nội quy lao động PDF chuẩn A4
 │   │   ├── ingest_pdfs_to_vectorstore.py # Script nạp dữ liệu tri thức vào Vector Store Supabase
 │   │   ├── evaluate_ragas.py          # Kịch bản kiểm thử tự động bộ số liệu Benchmark Ragas
@@ -159,14 +169,14 @@ SGU_HRM-Project/
 ├── frontend-web/                      # Phân hệ Web Quản trị (React 19 + TypeScript + Vite)
 │   ├── src/
 │   │   ├── components/
-│   │   │   ├── common/                # Thành phần UI dùng chung (Button, StatCard, Badge, EmptyState...)
+│   │   │   ├── common/                # Thành phần UI dùng chung (StatCard, EmptyState, DatePicker, TablePagination...)
 │   │   │   ├── layout/                # Khung giao diện: Sidebar điều hướng, Topbar thông tin, BottomNav
 │   │   │   ├── ai/                    # Trợ lý ảo AI: AiChatbotWidget.tsx, AiChatbotWidget.css
 │   │   │   ├── charts/                # Biểu đồ phân tích và thống kê (Recharts)
-│   │   │   ├── reports/               # Thành phần xem và in báo cáo (ReportsPrintModal.tsx)
+│   │   │   ├── reports/               # Xem chi tiết số liệu báo cáo (ReportDrilldownModal.tsx)
 │   │   │   └── schedule/              # Thành phần phân ca và xem lịch làm việc
-│   │   ├── pages/                     # 25 Màn hình chức năng quản lý chuyên sâu:
-│   │   │   ├── DashboardPage.tsx      # Tổng quan tình hình nhân sự, quân số, quỹ lương
+│   │   ├── pages/                     # Màn hình chức năng chính:
+│   │   │   ├── OverviewPage.tsx       # Trang chủ theo vai trò, chấm công nhanh, tổng quan nhân sự
 │   │   │   ├── EmployeeListPage.tsx   # Danh sách và hồ sơ chi tiết nhân viên
 │   │   │   ├── ContractManagementPage.tsx # Quản lý hợp đồng lao động và phụ lục
 │   │   │   ├── StoreManagementPage.tsx # Quản trị cửa hàng, định vị Geofence trên bản đồ
@@ -177,38 +187,43 @@ SGU_HRM-Project/
 │   │   │   ├── LeaveRequestsPage.tsx  # Quản lý phê duyệt đơn nghỉ phép 2 cấp
 │   │   │   ├── ResignationManagementPage.tsx # Quản trị thôi việc và bàn giao
 │   │   │   ├── PayrollPage.tsx        # Bảng tính lương tháng, hoa hồng bán lẻ, chốt lương
+│   │   │   ├── PayrollFundPage.tsx    # Quỹ lương toàn chuỗi và theo chi nhánh
+│   │   │   ├── PayrollSettlementsPage.tsx # Quyết toán thu nhập
+│   │   │   ├── SalesCommissionPage.tsx # Doanh số và hoa hồng bán lẻ
 │   │   │   ├── MyPayslipPage.tsx      # Tra cứu phiếu lương chi tiết cá nhân & giải trình công thức
 │   │   │   ├── ProjectsPage.tsx       # Quản lý dự án nội bộ và phụ cấp thành viên
 │   │   │   ├── ReportsPage.tsx        # Báo cáo phân tích biểu đồ & xuất file
+│   │   │   ├── ActivityPage.tsx       # Nhật ký hoạt động đội ngũ và cá nhân
 │   │   │   ├── AuditLogPage.tsx       # Nhật ký kiểm toán hệ thống
 │   │   │   ├── UserAccessPage.tsx     # Quản lý tài khoản và ma trận phân quyền người dùng
 │   │   │   └── LoginPage.tsx          # Màn hình đăng nhập hệ thống
-│   │   ├── services/                  # Các lớp API Client (Axios wrapper, Token Interceptor)
-│   │   ├── contexts/                  # React Contexts (AuthContext, ThemeContext)
-│   │   ├── utils/                     # Tiện ích định dạng tiền tệ VNĐ, ngày giờ, xuất PDF
+│   │   ├── services/                  # Các lớp API Client (Fetch API, tự gắn Bearer Token)
+│   │   ├── contexts/                  # React Context (AuthContext)
+│   │   ├── hooks/                     # Custom hooks (useCompanyProfile)
+│   │   ├── utils/                     # Tiện ích định dạng tiền tệ VNĐ, ngày giờ, địa chỉ, điều kiện tìm kiếm
 │   │   ├── App.tsx                    # Định tuyến ứng dụng React Router v7
 │   │   └── App.css                    # Hệ thống định kiểu CSS Enterprise Theme (Light/Dark mode)
 │   ├── package.json                   # Cấu hình gói và thư viện Web
 │   └── vite.config.ts                 # Cấu hình trình đóng gói Vite
 │
-├── mobile/                            # Phân hệ Mobile App (React Native & Expo Router)
-│   ├── src/
-│   │   ├── app/                       # File-based routing theo Expo Router:
-│   │   │   ├── (staff)/               # Nhóm màn hình tác nghiệp cho nhân viên bán lẻ:
-│   │   │   │   ├── dashboard.tsx      # Trang chủ: Thẻ công nhanh, ca làm việc hôm nay
-│   │   │   │   ├── attendance.tsx     # Chấm công GPS Geofence + chụp ảnh Selfie tại quầy
-│   │   │   │   ├── schedules.tsx      # Xem lịch làm việc phân ca theo tuần
-│   │   │   │   ├── requests.tsx       # Tạo và theo dõi tiến trình duyệt đơn nghỉ phép / OT
-│   │   │   │   ├── summary.tsx        # Tra cứu tổng hợp ngày công và thu nhập tháng
-│   │   │   │   └── account.tsx        # Cập nhật thông tin cá nhân và cài đặt ứng dụng
-│   │   │   └── login.tsx              # Màn hình đăng nhập di động
-│   │   ├── services/                  # Dịch vụ GPS Geofence, chụp ảnh, gửi API chấm công
-│   │   └── contexts/                  # Quản lý phiên làm việc, định vị và thông báo
-│   ├── app.json                       # Cấu hình Expo Application
-│   └── package.json                   # Danh mục thư viện ứng dụng di động
-│
-└── docs/                              # Tài nguyên tri thức và tài liệu tham chiếu
-    └── knowledge_base_sources/        # 8 văn bản quy chế chuẩn hóa làm nguồn tri thức cho AI RAG
+└── mobile/                            # Phân hệ Mobile App (React Native & Expo Router)
+    ├── src/
+    │   ├── app/                       # File-based routing theo Expo Router:
+    │   │   ├── (staff)/               # Nhóm màn hình tác nghiệp (giao diện đổi theo vai trò):
+    │   │   │   ├── dashboard.tsx      # Trang chủ: Thẻ công nhanh, ca làm việc hôm nay
+    │   │   │   ├── attendance.tsx     # Chấm công GPS Geofence + chụp ảnh Selfie tại quầy
+    │   │   │   ├── schedules.tsx      # Xem lịch làm việc phân ca theo tuần
+    │   │   │   ├── requests.tsx       # Tạo và theo dõi tiến trình duyệt đơn nghỉ phép / OT
+    │   │   │   ├── activity.tsx       # Lịch sử cá nhân hoặc hoạt động đội ngũ với cấp quản lý
+    │   │   │   ├── summary.tsx        # Tra cứu tổng hợp ngày công và thu nhập tháng
+    │   │   │   ├── account.tsx        # Thông tin cá nhân
+    │   │   │   ├── settings.tsx       # Cài đặt ứng dụng
+    │   │   │   └── password.tsx       # Đổi mật khẩu
+    │   │   └── login.tsx              # Màn hình đăng nhập di động
+    │   ├── services/                  # Dịch vụ GPS Geofence, chụp ảnh, gửi API chấm công
+    │   └── contexts/                  # Quản lý phiên đăng nhập, tùy chọn và thông báo
+    ├── app.json                       # Cấu hình Expo Application
+    └── package.json                   # Danh mục thư viện ứng dụng di động
 ```
 
 ---
@@ -217,20 +232,22 @@ SGU_HRM-Project/
 
 Tại chuỗi cửa hàng bán lẻ thiết bị công nghệ TechZone, các hoạt động quản trị nguồn nhân lực phải đối mặt với các bài toán đặc thù của ngành bán lẻ:
 
-1. **Vận hành phân tán đa chi nhánh & Phân ca kíp phức tạp:** Các cửa hàng Flagship (Quận 1, Quận 3, Quận 6, Bình Thạnh, Tân Bình...) mở cửa từ 08:00 đến 21:00 hàng ngày, tổ chức thành 3 ca xoay:
-   - **Ca Sáng:** 08:00 – 16:00
-   - **Ca Chiều:** 13:00 – 21:00
-   - **Ca Full:** 08:00 – 21:00
+1. **Vận hành phân tán đa chi nhánh & Phân ca kíp phức tạp:** Các cửa hàng Flagship (Quận 1, Quận 3, Quận 6, Bình Thạnh, Tân Bình...) mở cửa từ 08:00 đến 21:00 hàng ngày, tổ chức thành 3 ca cho cửa hàng cùng 1 ca hành chính cho khối văn phòng:
+   - **Ca Sáng:** 08:00 – 16:00 (7 giờ công)
+   - **Ca Chiều:** 13:00 – 21:00 (8 giờ công)
+   - **Ca Full cuối tuần:** 08:00 – 21:00 (11 giờ công)
+   - **Ca Hành chính:** 08:00 – 17:00 (8 giờ công), Thứ 7 làm 08:00 – 12:00
    Nhân viên thường xuyên chuyển đổi ca, làm thêm giờ (OT) hoặc nhận lệnh tăng cường giữa các cửa hàng. Việc chấm công bằng vân tay truyền thống hay sổ sách thủ công bộc lộ nhiều kẽ hở, khó phát hiện gian lận và tốn hàng tuần đối soát ngày công cuối tháng.
 2. **Quy tắc trễ giờ & Giảm trừ lương theo thời gian:**
    - Ân hạn điểm danh (Grace Period): Nhân viên được phép check-in trong vòng 15 phút đầu ca (Ví dụ: Ca sáng 08:00, check-in trước hoặc đúng 08:15 được tính đúng giờ).
-   - Đi muộn sau phút thứ 15: Bị đánh dấu `LATE`, phạt vi phạm nội quy 50.000đ/lần và bị trừ lương cơ bản theo phút vắng mặt.
-   - Đi muộn trên 60 phút: Trừ 0.5 ngày công thực tế.
+   - Đi muộn sau phút thứ 15: Bị đánh dấu `LATE`, phạt vi phạm nội quy 50.000đ/lần và bị trừ lương theo toàn bộ số phút trễ.
+   - Về sớm: Đánh dấu `EARLY` và trừ lương theo số phút về sớm, không có ân hạn.
+   - Vắng không phép: Trừ 1 ngày công.
 3. **Thu nhập gắn liền doanh số bán thiết bị (Hoa hồng công nghệ):** Thu nhập của nhân viên bán lẻ bao gồm:
    - Hoa hồng Điện thoại & Laptop: **1.0%** doanh số.
    - Hoa hồng Linh phụ kiện biên lợi nhuận cao: **3.0%** doanh số.
    - Thưởng vượt chỉ tiêu KPI: Đạt $\ge 100\%$ thưởng nóng **1.000.000đ**; Đạt $\ge 120\%$ thưởng nóng **2.000.000đ**.
-   - Khấu trừ nghỉ không lương: `(Lương HĐ / 26) × Ngày nghỉ`.
+   - Khấu trừ nghỉ không lương: `(Lương HĐ / Công chuẩn của kỳ) × Ngày nghỉ`.
 4. **Quy trình phê duyệt phân cấp & Chống tự duyệt (No Self-Approval):**
    - Đơn xin nghỉ phép, nghỉ ốm, thai sản của nhân viên chi nhánh: Cửa hàng trưởng (Cấp 1) duyệt sơ bộ về quân số $\rightarrow$ Trưởng phòng HR (Cấp 2) duyệt chính thức về mặt quy chế.
    - Đơn xin nghỉ phép của HR Manager hoặc Admin: **Tuyệt đối không được tự duyệt cho bản thân** mà phải được chuyển lên Ban Giám đốc (`DIRECTOR`) xét duyệt.
@@ -239,9 +256,9 @@ Tại chuỗi cửa hàng bán lẻ thiết bị công nghệ TechZone, các ho�
 
 ## **Thiết Kế Cơ Sở Dữ Liệu (Database Architecture)**
 
-Cơ sở dữ liệu của hệ thống được xây dựng trên **Supabase Cloud (PostgreSQL 15+)** với cấu trúc chuẩn hóa mức **3NF (Third Normal Form)**, gồm **51 bảng dữ liệu, 6 Views phân tích và các Stored Procedures / Functions** chuyên biệt:
+Cơ sở dữ liệu của hệ thống được xây dựng trên **Supabase Cloud (PostgreSQL 17)** với cấu trúc chuẩn hóa mức **3NF (Third Normal Form)**, gồm **56 bảng dữ liệu, 7 Views phân tích và các Stored Procedures / Functions** chuyên biệt:
 
-### 1. Danh mục 51 Bảng Dữ Liệu Theo Phân Hệ
+### 1. Danh mục 56 Bảng Dữ Liệu Theo Phân Hệ
 
 ```mermaid
 erDiagram
@@ -274,59 +291,65 @@ erDiagram
 | 8 | | `stores` | Danh mục các chi nhánh cửa hàng TechZone (Địa chỉ, số điện thoại, ngày mở cửa). |
 | 9 | | `education_levels` | Danh mục trình độ học vấn (Đại học, Cao đẳng, Trung cấp, THPT...). |
 | 10 | | `positions` | Danh mục vị trí chức danh, hệ số chức vụ, định mức phụ cấp và khoảng lương cơ bản. |
-| 11 | **Hồ sơ Nhân sự & Hợp đồng** | `employees` | Bảng thực thể trung tâm: CCCD, thông tin liên lạc, mã nhân viên `TZ-xxx`, cột tự sinh `full_name`. |
-| 12 | | `contracts` | Hợp đồng lao động điện tử: Mã `HDLD-TZ-xxx-yyyy`, loại HĐ, lương cơ bản, lương đóng BH. |
-| 13 | | `position_histories` | Lịch sử bổ nhiệm, điều chuyển cửa hàng và thăng chức của nhân viên. |
-| 14 | | `resignation_requests` | Hồ sơ đơn xin thôi việc, biên bản bàn giao thiết bị, thanh lý hợp đồng. |
-| 15 | **Chấm công & Định vị Geofence** | `work_shifts` | Danh mục 3 ca làm việc (Ca Sáng, Ca Chiều, Ca Full). |
-| 16 | | `work_schedules` | Lịch phân ca chi nhánh (Unique ràng buộc: `employee_id` + `work_date`). |
-| 17 | | `work_schedule_audits` | Nhật ký kiểm toán lịch sử điều chỉnh phân ca. |
-| 18 | | `fixed_schedule_rules` | Quy tắc phân ca cố định theo ngày trong tuần của chi nhánh. |
-| 19 | | `fixed_schedule_audits` | Lịch sử sửa đổi các quy tắc phân ca cố định. |
-| 20 | | `attendances` | Dữ liệu chấm công hàng ngày: Giờ vào, giờ ra, số phút trễ, về sớm, giờ OT, trạng thái ngày công. |
-| 21 | | `attendance_photo_proofs` | Ảnh chụp selfie xác thực khuôn mặt lúc check-in/out tại cửa hàng. |
-| 22 | | `mobile_attendance_proofs` | Bằng chứng điểm danh từ ứng dụng di động kèm tọa độ GPS và thiết bị. |
-| 23 | | `store_geofences` | Tọa độ GPS ranh giới ảo cửa hàng (Latitude, Longitude, Radius mét). |
-| 24 | | `mobile_store_geofences` | Cấu hình Geofence đồng bộ dành riêng cho ứng dụng di động. |
-| 25 | | `store_web_attendance_networks`| Cấu hình dải mạng IP / Wi-Fi điểm danh tại quầy POS cửa hàng. |
-| 26 | | `attendance_overtime_approvals`| Bản ghi phê duyệt làm thêm giờ gắn liền với phiên chấm công. |
-| 27 | **Quản lý Làm thêm giờ (Overtime - OT)**| `overtime_requests` | Đơn đăng ký làm thêm giờ của nhân viên trước hoặc sau ca làm việc. |
-| 28 | | `overtime_request_events` | Chuỗi sự kiện trạng thái đơn OT (State Machine Append-Only). |
-| 29 | | `overtime_reconciliations` | Dữ liệu đối soát giữa giờ làm thêm đăng ký và thời gian thực tế ghi nhận trên bảng công. |
-| 30 | | `overtime_reconciliation_cases` | Hồ sơ giải quyết các trường hợp bất thường hoặc sai lệch giờ OT. |
-| 31 | | `overtime_reconciliation_events`| Nhật ký sự kiện đối soát OT bất biến (Append-Only Audit). |
-| 32 | | `overtime_reconciliation_case_events`| Nhật ký chi tiết tiến trình xử lý vụ việc đối soát OT. |
-| 33 | **Nghỉ phép & Đơn từ 2 Cấp** | `leave_types` | Danh mục loại phép: `ANNUAL` (Phép năm), `SICK` (Ốm đau), `MATERNITY` (Thai sản), `UNPAID` (Không lương). |
-| 34 | | `leave_requests` | Đơn xin nghỉ phép với các trường định danh người duyệt Cấp 1, Cấp 2 và Giám đốc. |
-| 35 | **Doanh số, Tiền lương & Hoa hồng** | `employee_sales` | Doanh thu bán lẻ 3 ngành hàng (Điện thoại, Laptop, Phụ kiện) và tỷ lệ đạt KPI. |
-| 36 | | `commissions` | Tiền hoa hồng chi tiết được trích theo tỷ lệ sản phẩm công nghệ. |
-| 37 | | `payrolls` | Bảng lương tháng tổng hợp: Lương CB, OT, phụ cấp, hoa hồng, bảo hiểm, phạt, Net thực lĩnh. |
-| 38 | | `payroll_details` | Chi tiết 12 cấu phần công thức tính lương của từng nhân viên phục vụ tra cứu minh bạch. |
-| 39 | | `payroll_calculation_runs` | Nhật ký các phiên chạy chốt lương toàn chuỗi. |
-| 40 | | `payroll_manual_adjustments` | Các khoản điều chỉnh lương bổ sung thủ công có lý do phê duyệt. |
-| 41 | | `payroll_period_bonuses` | Các khoản tiền thưởng theo kỳ (Thưởng lễ theo hệ số chức vụ, thưởng nóng KPI). |
-| 42 | | `payroll_policy_settings` | Bảng cấu hình các thông số chính sách lương động toàn hệ thống. |
-| 43 | **Quản trị Dự án & Phụ cấp** | `projects` | Danh mục các dự án nâng cấp kinh doanh và mở điểm bán mới. |
-| 44 | | `project_roles` | Danh mục vai trò trong dự án: `PROJECT_MANAGER`, `CORE_MEMBER`, `MEMBER`. |
-| 45 | | `project_role_allowances` | Định mức tiền phụ cấp hàng tháng theo từng vai trò dự án. |
-| 46 | | `project_members` | Danh sách nhân viên tham gia dự án và phụ cấp được nhận. |
-| 47 | **Thông báo & Tương tác** | `notifications` | Hộp thư thông báo hệ thống gửi đến người dùng. |
-| 48 | | `notification_reads` | Trạng thái đã đọc thông báo của người dùng. |
-| 49 | **Trí tuệ Nhân tạo (AI RAG)** | `policy_embeddings` | Bảng vector lưu trữ các đoạn văn bản quy chế (`pgvector`, `mistral-embed-2312` 1024 chiều). |
-| 50 | | `ai_chat_messages` | Lịch sử tin nhắn hội thoại giữa nhân viên và trợ lý ảo AI. |
-| 51 | | `ai_chat_action_proposals` | Đề xuất hành động nghiệp vụ có xác nhận của con người (HITL Action Proposals). |
+| 11 | | `company_profile` | Hồ sơ pháp lý công ty dùng cho hợp đồng và các biểu mẫu in. |
+| 12 | **Hồ sơ Nhân sự & Hợp đồng** | `employees` | Bảng thực thể trung tâm: CCCD, thông tin liên lạc, mã nhân viên `TZ-xxx`, cột tự sinh `full_name`. |
+| 13 | | `contracts` | Hợp đồng lao động điện tử: Mã `HD-YYYY-NNNN`, loại HĐ, lương cơ bản, lương đóng BH. |
+| 14 | | `position_histories` | Lịch sử bổ nhiệm, điều chuyển cửa hàng và thăng chức của nhân viên. |
+| 15 | | `resignation_requests` | Hồ sơ đơn xin thôi việc, biên bản bàn giao thiết bị, thanh lý hợp đồng. |
+| 16 | **Chấm công & Định vị Geofence** | `work_shifts` | Danh mục 4 ca làm việc (Ca Sáng, Ca Chiều, Ca Full cuối tuần, Ca Hành chính). |
+| 17 | | `work_schedules` | Lịch phân ca chi nhánh (Unique ràng buộc: `employee_id` + `work_date`). |
+| 18 | | `work_schedule_audits` | Nhật ký kiểm toán lịch sử điều chỉnh phân ca. |
+| 19 | | `fixed_schedule_rules` | Quy tắc phân ca cố định theo ngày trong tuần của chi nhánh. |
+| 20 | | `fixed_schedule_audits` | Lịch sử sửa đổi các quy tắc phân ca cố định. |
+| 21 | | `attendances` | Dữ liệu chấm công hàng ngày: Giờ vào, giờ ra, số phút trễ, về sớm, giờ OT, trạng thái ngày công. |
+| 22 | | `attendance_photo_proofs` | Ảnh chụp selfie làm bằng chứng lúc check-in/out tại cửa hàng. |
+| 23 | | `mobile_attendance_proofs` | Bằng chứng điểm danh từ ứng dụng di động kèm tọa độ GPS và thiết bị. |
+| 24 | | `store_geofences` | Tọa độ GPS ranh giới ảo cửa hàng (Latitude, Longitude, Radius mét). |
+| 25 | | `mobile_store_geofences` | Cấu hình Geofence đồng bộ dành riêng cho ứng dụng di động. |
+| 26 | | `store_web_attendance_networks`| Cấu hình dải mạng IP / Wi-Fi điểm danh tại quầy POS cửa hàng. |
+| 27 | | `attendance_overtime_approvals`| Bản ghi phê duyệt làm thêm giờ gắn liền với phiên chấm công. |
+| 28 | **Quản lý Làm thêm giờ (Overtime - OT)**| `overtime_requests` | Đơn đăng ký làm thêm giờ của nhân viên trước hoặc sau ca làm việc. |
+| 29 | | `overtime_request_events` | Chuỗi sự kiện trạng thái đơn OT (State Machine Append-Only). |
+| 30 | | `overtime_reconciliations` | Dữ liệu đối soát giữa giờ làm thêm đăng ký và thời gian thực tế ghi nhận trên bảng công. |
+| 31 | | `overtime_reconciliation_cases` | Hồ sơ giải quyết các trường hợp bất thường hoặc sai lệch giờ OT. |
+| 32 | | `overtime_reconciliation_events`| Nhật ký sự kiện đối soát OT bất biến (Append-Only Audit). |
+| 33 | | `overtime_reconciliation_case_events`| Nhật ký chi tiết tiến trình xử lý vụ việc đối soát OT. |
+| 34 | **Nghỉ phép & Đơn từ 2 Cấp** | `leave_types` | Danh mục loại đơn: `PHEP_NAM` (Phép năm), `NGHI_OM` (Ốm đau), `THAI_SAN` (Thai sản), `VIEC_RIENG` (Việc riêng hưởng lương), `KHONG_LUONG` (Không lương), `THOI_VIEC` (Thôi việc). |
+| 35 | | `leave_requests` | Đơn xin nghỉ phép với các trường định danh người duyệt Cấp 1, Cấp 2 và Giám đốc. |
+| 36 | **Doanh số, Tiền lương & Hoa hồng** | `employee_sales` | Doanh thu bán lẻ 3 ngành hàng (Điện thoại, Laptop, Phụ kiện) và tỷ lệ đạt KPI. |
+| 37 | | `commissions` | Tiền hoa hồng chi tiết được trích theo tỷ lệ sản phẩm công nghệ. |
+| 38 | | `payrolls` | Bảng lương tháng tổng hợp: Lương CB, OT, phụ cấp, hoa hồng, bảo hiểm, phạt, Net thực lĩnh. |
+| 39 | | `payroll_details` | Chi tiết các khoản và công thức tính lương của từng nhân viên phục vụ tra cứu minh bạch. |
+| 40 | | `payroll_calculation_runs` | Nhật ký các phiên chạy chốt lương toàn chuỗi. |
+| 41 | | `payroll_manual_adjustments` | Các khoản điều chỉnh lương bổ sung thủ công có lý do phê duyệt. |
+| 42 | | `payroll_period_bonuses` | Các khoản tiền thưởng theo kỳ (Thưởng lễ theo hệ số chức vụ, thưởng nóng KPI). |
+| 43 | | `payroll_policy_settings` | Bảng cấu hình các thông số chính sách lương động toàn hệ thống. |
+| 44 | | `public_holidays` | Danh mục ngày Lễ, Tết dùng để tính công chuẩn và hệ số OT. |
+| 45 | | `payroll_period_overrides` | Giá trị công chuẩn ghi đè và khóa theo từng kỳ lương. |
+| 46 | | `payroll_import_batches` | Các lô nhập dữ liệu lương từ file Excel. |
+| 47 | | `payroll_import_overrides` | Số liệu ghi đè theo nhân viên từ lô nhập Excel. |
+| 48 | **Quản trị Dự án & Phụ cấp** | `projects` | Danh mục các dự án nâng cấp kinh doanh và mở điểm bán mới. |
+| 49 | | `project_roles` | Danh mục vai trò trong dự án: `PROJECT_MANAGER`, `CORE_MEMBER`, `MEMBER`. |
+| 50 | | `project_role_allowances` | Định mức tiền phụ cấp hàng tháng theo từng vai trò dự án. |
+| 51 | | `project_members` | Danh sách nhân viên tham gia dự án và phụ cấp được nhận. |
+| 52 | **Thông báo & Tương tác** | `notifications` | Hộp thư thông báo hệ thống gửi đến người dùng. |
+| 53 | | `notification_reads` | Trạng thái đã đọc thông báo của người dùng. |
+| 54 | **Trí tuệ Nhân tạo (AI RAG)** | `policy_embeddings` | Bảng vector lưu trữ các đoạn văn bản quy chế (`pgvector`, `mistral-embed-2312` 1024 chiều). |
+| 55 | | `ai_chat_messages` | Lịch sử tin nhắn hội thoại giữa nhân viên và trợ lý ảo AI. |
+| 56 | | `ai_chat_action_proposals` | Đề xuất hành động nghiệp vụ có xác nhận của con người (HITL Action Proposals). |
 
 ---
 
-### 2. Danh mục 6 Views Cơ Sở Dữ Liệu
+### 2. Danh mục 7 Views Cơ Sở Dữ Liệu
 
-Hệ thống tối ưu hóa hiệu năng truy vấn và kết xuất báo cáo thông qua 6 Views quản trị:
+Hệ thống tối ưu hóa hiệu năng truy vấn và kết xuất báo cáo thông qua 7 Views quản trị:
 1. **`v_annual_salary_summary`**: Tổng hợp thu nhập 12 tháng của nhân viên (Tổng Gross, Tổng Net, Tổng Bảo hiểm, Tổng Thuế TNCN) phục vụ quyết toán thuế và in phiếu lương năm chuẩn A4.
 2. **`v_monthly_hr_status_report`**: Thống kê biến động nhân sự hàng tháng theo trạng thái (`ACTIVE`, `PROBATION`, `ON_LEAVE`, `RESIGNED`), tỷ trọng biên chế và biểu đồ tuyển dụng.
 3. **`v_hr_demographics_report`**: Phân tích cơ cấu nhân sự đa chiều phục vụ biểu đồ Dashboard: Theo trình độ học vấn, theo thâm niên làm việc và theo 4 khung bậc mức lương.
 4. **`v_user_active_permissions`**: Phân giải tự động toàn bộ quyền chức năng hiệu lực của người dùng dựa trên tất cả các vai trò được gán, loại bỏ trùng lặp.
 5. **`v_attendance_photo_proof_monitor`**: Giám sát bằng chứng ảnh chụp selfie khi check-in/out đối chiếu với tọa độ GPS Geofence.
 6. **`v_overtime_verified_current`**: Bảng tổng hợp các giờ làm thêm OT đã được xác thực và đối soát hợp lệ trong kỳ lương hiện hành.
+7. **`v_payroll_period_working_days`**: Công chuẩn từng kỳ lương: số ngày tự tính (trừ Chủ nhật, ngày Lễ), giá trị ghi đè thủ công và giá trị đã khóa khi chốt kỳ.
 
 ---
 
@@ -337,7 +360,9 @@ Toàn bộ logic tính toán tài chính nhạy cảm được đóng gói thàn
 - **`sp_calculate_monthly_commission(period VARCHAR)`**:  
   Tự động duyệt qua toàn bộ bản ghi bán hàng trong kỳ `period`, tính hoa hồng lũy kế (1% Điện thoại, 1% Laptop, 3% Phụ kiện) và thưởng nóng KPI (1.000.000đ khi đạt 100%, 2.000.000đ khi đạt 120%), sau đó ghi vào bảng `commissions`.
 - **`sp_generate_monthly_payroll(period VARCHAR, hr_id INT)`**:  
-  Thủ tục chốt lương toàn chuỗi: Tính số ngày công chuẩn (26 ngày), trừ lương do vắng mặt/đi trễ (`time_deduction_amount`), cộng tiền OT, cộng 3 loại phụ cấp (chức vụ, thâm niên, dự án), cộng 2 loại thưởng (thưởng lễ theo hệ số `holiday_bonus = 1.000.000đ × position_coefficient`, thưởng KPI), trừ bảo hiểm bắt buộc 10.5%, trừ phạt đi muộn, trừ thuế TNCN và tự động sinh 12 dòng giải trình toán học vào `payroll_details`.
+  Thủ tục tính lương toàn chuỗi: Lấy công chuẩn của kỳ từ `fn_payroll_standard_days`, trừ lương do vắng mặt/đi trễ (`time_deduction_amount`), cộng tiền OT, cộng 3 loại phụ cấp (chức vụ, thâm niên, dự án), cộng 2 loại thưởng (thưởng lễ theo hệ số `holiday_bonus = 1.000.000đ × position_coefficient`, thưởng KPI), trừ bảo hiểm bắt buộc 10.5%, trừ phạt đi muộn và tự động sinh tối đa 14 dòng giải trình toán học vào `payroll_details`.
+- **`fn_payroll_standard_days(period)`**:  
+  Trả về công chuẩn áp dụng cho kỳ lương theo lịch, ngày Lễ và giá trị ghi đè của kỳ.
 - **`fn_verify_store_geofence(p_store_id, p_lat, p_lng, p_radius)`**:  
   Hàm tính toán khoảng cách Haversine giữa tọa độ GPS của thiết bị điểm danh và tọa độ gốc của cửa hàng trên mặt cầu Trái Đất, trả về kết quả hợp lệ nếu trong bán kính quy định.
 - **`match_policy_documents_mistral(query_embedding, match_threshold, match_count)`**:  
@@ -452,20 +477,21 @@ Hệ thống áp dụng nghiêm ngặt nguyên tắc quản trị xung đột l�
 ## **Tổng Quan Kiến Trúc & Công Nghệ**
 
 ### 1. Backend API (FastAPI & SQLAlchemy 2.0 Async)
-- **FastAPI Framework:** Kiến trúc ASGI xử lý bất đồng bộ (Asynchronous I/O), phản hồi siêu tốc dưới 50ms cho các API giao dịch.
-- **PostgreSQL Async Engine:** Sử dụng thư viện `asyncpg` kết hợp `SQLAlchemy 2.0 AsyncSession` đảm bảo khả năng mở rộng hàng nghìn kết nối đồng thời.
-- **Bảo mật & Token:** Mật khẩu được mã hóa an toàn qua thuật toán `bcrypt` với muối băm tự sinh; JWT Token được ký bảo mật bằng thuật toán `HS256` có thời hạn 480 phút.
+- **FastAPI Framework:** Kiến trúc ASGI xử lý bất đồng bộ (Asynchronous I/O).
+- **PostgreSQL Async Engine:** Sử dụng thư viện `asyncpg` kết hợp `SQLAlchemy 2.0 AsyncSession` cho truy cập CSDL không chặn luồng.
+- **Bảo mật & Token:** Mật khẩu được mã hóa an toàn qua thuật toán `bcrypt` với muối băm tự sinh; JWT Token được ký bảo mật bằng thuật toán `HS256` có thời hạn 480 phút; tạm chặn đăng nhập sau 5 lần sai trong 5 phút theo từng IP và tài khoản.
 
 ### 2. Frontend Web Portal (React 19 & TypeScript)
-- **React 19 & Vite 6:** Trình dựng giao diện thế hệ mới nhất với tốc độ tải trang gần như tức thì.
+- **React 19 & Vite 8:** Trình dựng giao diện thế hệ mới nhất với tốc độ tải trang gần như tức thì.
 - **Bản đồ TrackAsia GL:** Tích hợp dịch vụ bản đồ số Việt Nam hiển thị trực quan mạng lưới cửa hàng và bán kính điểm danh Geofence.
 - **Biểu đồ Quản trị Recharts:** Trực quan hóa dữ liệu cơ cấu học vấn, thâm niên, biến động tuyển dụng và quỹ lương.
 - **In ấn Phiếu lương & Hợp đồng chuẩn A4:** Định dạng CSS Print chuyên nghiệp cho phép in hợp đồng lao động và phiếu lương chuẩn trang A4 sắc nét.
 
 ### 3. Mobile Application (React Native & Expo Router)
-- **Expo SDK 52+ & React Native 0.86:** Kiến trúc File-based Router hiện đại, hỗ trợ biên dịch đa nền tảng Android / iOS.
+- **Expo SDK 58 & React Native 0.88:** Kiến trúc File-based Router hiện đại, hỗ trợ biên dịch đa nền tảng Android / iOS.
 - **Định vị Geofence tại quầy:** Module `expo-location` đo đạc khoảng cách GPS với cửa hàng chi nhánh, tự động khóa nút check-in nếu nằm ngoài bán kính 100m.
-- **Xác thực khuôn mặt tại chỗ:** Module `expo-image-picker` kết hợp nén ảnh chụp selfie gửi kèm phiên điểm danh.
+- **Ảnh selfie làm bằng chứng:** Module `expo-image-picker` kết hợp nén ảnh chụp selfie gửi kèm phiên điểm danh.
+- **Giao diện theo vai trò:** Nhân viên dùng các màn hình tác nghiệp; cấp quản lý có thêm dashboard, hoạt động đội ngũ, phân ca và xử lý đơn.
 
 ### 4. AI Chatbot Engine (LangGraph & Agentic RAG)
 
@@ -490,7 +516,7 @@ flowchart TD
     Sanitizer --> End([Trả lời người dùng trên Widget])
 ```
 
-- **Mô hình ngôn ngữ:** `Mistral AI` (`mistral-large-latest` cho suy luận nghiệp vụ, `mistral-embed-2312` cho biểu diễn vector ngữ nghĩa 1024 chiều).
+- **Mô hình ngôn ngữ:** `Mistral AI` (model chat cấu hình qua `MISTRAL_CHAT_MODEL`, mặc định `ministral-14b-2512`; `mistral-embed-2312` cho biểu diễn vector ngữ nghĩa 1024 chiều).
 - **Hybrid Retrieval & RRF:** Kết hợp tìm kiếm tương đồng Cosine Similarity trên `pgvector` với tìm kiếm từ khóa toàn văn `BM25`, hợp nhất kết quả theo thuật toán `Reciprocal Rank Fusion`.
 - **Self-RAG Relevance Grader:** Tự động đánh giá sự liên quan giữa tài liệu trích xuất và câu hỏi; nếu độ liên quan thấp, tự động viết lại truy vấn (Query Rewriter tối đa 2 lần).
 - **Human-In-The-Loop (HITL) Action Proposals:** Khi nhân viên yêu cầu nộp đơn nghỉ phép hoặc hủy đơn qua AI, hệ thống không tự ý ghi vào CSDL mà tạo một thẻ đề xuất (Proposal Card) để nhân viên bấm xác nhận trực quan.
@@ -499,10 +525,10 @@ flowchart TD
 
 ## **Tính Năng Nổi Bật**
 
-1. **Quản lý Vòng đời Nhân sự Tập trung:** Tự động sinh mã nhân viên chuẩn `TZ-xxx`, mã hợp đồng `HDLD-TZ-xxx-yyyy`, lưu trữ hợp đồng PDF có chữ ký số doanh nghiệp, theo dõi thăng chức và tự động đồng bộ vai trò RBAC của User.
-2. **Chấm công Thông minh Geofence:** Điểm danh GPS Geofence trong bán kính 100m tại chi nhánh kèm ảnh chụp selfie; phát hiện đi trễ sau 15 phút ân hạn; phạt vi phạm và đối soát giờ OT tự động.
+1. **Quản lý Vòng đời Nhân sự Tập trung:** Tự động sinh mã nhân viên chuẩn `TZ-xxx`, mã hợp đồng `HD-YYYY-NNNN`, xuất hợp đồng PDF theo hồ sơ công ty, tìm kiếm nhân sự nâng cao (nhiều trường, `AND`/`OR`/`NOT`), theo dõi thăng chức và tự động đồng bộ vai trò RBAC của User.
+2. **Chấm công Thông minh Geofence:** Điểm danh GPS Geofence trong bán kính 100m tại chi nhánh kèm ảnh chụp selfie; bắt buộc đúng ca được phân; phát hiện đi trễ sau 15 phút ân hạn; phạt vi phạm và đối soát giờ OT tự động.
 3. **Quy trình Duyệt đơn 2 Cấp Minh bạch:** Xử lý đơn nghỉ phép năm, ốm đau, thai sản, không lương và thôi việc với 2 cấp duyệt phân quyền; tự động tính và trừ số dư ngày phép năm còn lại.
-4. **Động cơ Lương Doanh số Bán lẻ Thiết bị:** Tự động tính hoa hồng 1% ĐT/Laptop, 3% Phụ kiện, thưởng KPI 1M-2M, trích nộp bảo hiểm 10.5%, thuế TNCN và bẻ nhỏ 12 cấu phần toán học vào phiếu lương.
+4. **Động cơ Lương Doanh số Bán lẻ Thiết bị:** Tự động tính hoa hồng 1% ĐT/Laptop, 3% Phụ kiện, thưởng KPI 1M-2M, trích nộp bảo hiểm 10.5%, công chuẩn và hệ số OT theo kỳ (150%, 200%, 300%), nhập dữ liệu lương từ Excel và bẻ nhỏ các khoản vào phiếu lương.
 5. **Trợ lý AI Doanh nghiệp (Agentic RAG):** Giải đáp thắc mắc quy chế, hướng dẫn xử lý quên check-out, tra cứu bảng lương/bảng công cá nhân an toàn và hỗ trợ tạo đơn nghỉ phép tự động.
 6. **Báo cáo & Thống kê Quản trị Toàn diện:** Dashboard thời gian thực, báo cáo biến động nhân sự, báo cáo cơ cấu trình độ học vấn, thâm niên, khung bậc lương, xuất file Excel (`.xlsx`) và CSV chuẩn UTF-8.
 
@@ -518,9 +544,21 @@ Hệ thống đã nạp sẵn **5 tài khoản đại diện cho 5 vai trò** đ
 | 2 | `tzdir` | `TechZone@2026` | **`DIRECTOR`** | Phạm Nguyệt Vượng | Giám đốc điều hành (Ban Giám đốc) | Xem báo cáo nhân sự & bảng lương toàn chuỗi, **phê duyệt đơn nghỉ/thôi việc của HR và Admin** (No Self-Approval), duyệt tăng ca (OT), xem nhật ký kiểm toán. |
 | 3 | `tz002` | `TechZone@2026` | **`HR_MANAGER`** | Trần Thị Bình | Trưởng phòng Nhân sự | Quản lý hồ sơ nhân viên, duyệt đơn Cấp 2, thăng chức nhân viên, bấm nút chốt lương toàn chuỗi, xuất báo cáo Excel. |
 | 4 | `tz003` | `TechZone@2026` | **`STORE_MANAGER`** | Lê Văn Cường | Cửa hàng trưởng TechZone Q1 | Quản lý nhân viên chi nhánh Q1, phân ca tuần, duyệt đơn Cấp 1, nhập doanh số bán lẻ 3 ngành hàng. |
-| 5 | `tz004` | `TechZone@2026` | **`EMPLOYEE`** | Phạm Quốc Dũng | Nhân viên bán lẻ xuất sắc (Q1) | Chấm công GPS Geofence + Selfie trên Mobile, nộp đơn nghỉ phép, xem doanh số đạt KPI, tra cứu phiếu lương cá nhân. |
+| 5 | `tz004` | `TechZone@2026` | **`EMPLOYEE`** | Phạm Quốc Dũng | Nhân viên Tư vấn Bán hàng (Q3) | Chấm công GPS Geofence + Selfie trên Mobile, nộp đơn nghỉ phép, xem doanh số đạt KPI, tra cứu phiếu lương cá nhân. |
 
-*(Ngoài ra còn có tài khoản phụ `tz005` / `TechZone@2026` - Vai trò `EMPLOYEE` đại diện cho Kỹ thuật viên chi nhánh Quận 3).*
+*(Ngoài ra còn có tài khoản phụ `tz005` / `TechZone@2026` - Vai trò `EMPLOYEE` đại diện cho Kỹ thuật viên chi nhánh Tân Bình).*
+
+Bộ dữ liệu demo gồm 60 nhân viên, được nạp bằng `backend/scripts/seed_clean_data.py`.
+
+> ⚠️ Script này **xóa dữ liệu nhân sự và nghiệp vụ**. Luôn chạy thử trước, và chỉ trỏ `SEED_DATABASE_URL` vào database demo:
+> ```powershell
+> cd backend
+> $env:SEED_DATABASE_URL="postgresql://..."
+> python scripts/seed_clean_data.py --dry-run    # Chạy thử rồi rollback
+> python scripts/seed_clean_data.py --yes-wipe   # Ghi thật
+> ```
+
+Endpoint `/auth/test-accounts` chỉ hoạt động khi đặt `ENABLE_DEMO_ACCOUNTS=true` trong `backend/.env`.
 
 ---
 
@@ -528,7 +566,7 @@ Hệ thống đã nạp sẵn **5 tài khoản đại diện cho 5 vai trò** đ
 
 ### Yêu Cầu Môi Trường Tiên Quyết
 - **Python**: Phiên bản 3.12 trở lên.
-- **Node.js**: Phiên bản 20.x hoặc 22.x LTS trở lên (kèm `npm`).
+- **Node.js**: Phiên bản 20.19+ hoặc 22.12+ (kèm `npm`).
 - **Git**: Đã cài đặt trên hệ điều hành.
 
 ---
@@ -539,9 +577,11 @@ Tại thư mục gốc dự án, thực thi script điều phối thông minh:
 ```powershell
 python run.py
 ```
-> Script sẽ tự động kiểm tra phụ thuộc Python và npm, sao chép file `.env` mẫu nếu thiếu và khởi chạy song song cả Backend FastAPI lẫn Frontend React Vite trong cùng một terminal. Nhấn `Ctrl + C` để dừng toàn bộ.
+> Script sẽ tự động kiểm tra phụ thuộc Python và npm, sao chép file `.env` mẫu nếu thiếu và khởi chạy song song cả Backend FastAPI lẫn Frontend React Vite trong cùng một terminal. Nhấn `Ctrl + C` để dừng toàn bộ. Trên Windows có thể chạy `start_all.bat` để tự kích hoạt `venv` trước.
+>
+> Sau lần chạy đầu, điền `DATABASE_URL`, `SYNC_DATABASE_URL` và `JWT_SECRET_KEY` vào `backend/.env`. Dùng Trợ lý AI cần thêm `MISTRAL_API_KEY`.
 
-- **Frontend Web Portal:** `http://localhost:3000` (hoặc `http://localhost:5173`)
+- **Frontend Web Portal:** `http://localhost:3000`
 - **Backend API Server:** `http://localhost:8000`
 - **Tài liệu API Swagger UI:** `http://localhost:8000/docs`
 
@@ -589,8 +629,8 @@ npx expo start
 - **Swagger UI Interactive Documentation:** [http://localhost:8000/docs](http://localhost:8000/docs)
 - **ReDoc Technical Specification:** [http://localhost:8000/redoc](http://localhost:8000/redoc)
 
-### 2. Bộ Kiểm Thử Hồi Quy Tự Động (Backend Automated Tests)
-Dự án được bảo vệ nghiêm ngặt bằng bộ kịch bản kiểm thử tích hợp bao phủ toàn diện từ phân quyền RBAC, quy trình duyệt nghỉ 2 cấp, đối soát OT đến chốt bảng lương:
+### 2. Bộ Kiểm Thử Tự Động
+Backend có **355 test case trong 48 file**, bao phủ phân quyền RBAC, quy trình duyệt nghỉ 2 cấp, đối soát OT và chốt bảng lương:
 
 ```powershell
 cd backend
@@ -598,7 +638,11 @@ $env:PYTHONPATH="."
 pytest tests -v
 ```
 
-**Kết quả kiểm thử:** Toàn bộ **35 / 35 test suites** đều vượt qua (100% Passed):
+> Một số test cần kết nối PostgreSQL thật qua `DATABASE_URL`. Các file `tests/test_*_postgres.py` còn có thể chạy riêng, ví dụ `python -m tests.test_attendance_postgres`.
+
+Ứng dụng Mobile có bộ test riêng: `cd mobile && npm test`.
+
+**Một số bộ test tiêu biểu:**
 - `tests/test_phase1_security.py`: Kiểm thử xác thực JWT, mã hóa mật khẩu và phân quyền RBAC theo vai trò.
 - `tests/test_phase1b_to_5.py`: Kiểm thử bộ máy LangGraph AI Chatbot, cơ chế Hybrid Retrieval, bảo mật Guardrails và Tool Calling.
 - `tests/test_production_readiness.py`: Kiểm thử bộ nhớ đệm Policy Cache, tỷ lệ chịu lỗi và độ trễ phản hồi.
@@ -609,7 +653,7 @@ pytest tests -v
 
 ## **Kết Quả Đánh Giá & Benchmark Ragas**
 
-Bộ máy AI Chatbot Agentic RAG của TechZone HRM đã được đánh giá định lượng bằng framework **Ragas** trên tập 25 ca kiểm thử thực tế đa dạng:
+Bộ máy AI Chatbot Agentic RAG của TechZone HRM đã được đánh giá định lượng bằng framework **Ragas** trên tập 25 ca kiểm thử thực tế đa dạng (lần đo ngày 27/10/2026):
 
 | Chỉ số đánh giá (Ragas Metric) | Kết quả đạt được | Ngưỡng yêu cầu tiêu chuẩn | Trạng thái đánh giá | Ý nghĩa thực tiễn |
 |---|:---:|:---:|:---:|---|
@@ -637,12 +681,12 @@ Hệ thống tuân thủ nghiêm ngặt các quy ước kỹ thuật sau nhằm 
    - **Database (PostgreSQL):** Định dạng `snake_case`, tên bảng ở dạng số nhiều (`employees`, `attendances`, `payrolls`, `stores`).
    - **Mã nguồn Python:** Định dạng `snake_case` cho hàm và biến (`calculate_payroll`, `employee_id`); `PascalCase` cho Classes (`EmployeeModel`, `UserBase`).
    - **API Payload (JSON):** Định dạng `camelCase` khi trao đổi giữa Frontend và Backend (`employeeId`, `workDate`, `grossIncome`).
-   - **Frontend React/TypeScript:** Định dạng `PascalCase` cho tên Component (`DashboardPage.tsx`, `AiChatbotWidget.tsx`); `camelCase` cho hooks và utility functions (`useAttendanceGps.ts`).
+   - **Frontend React/TypeScript:** Định dạng `PascalCase` cho tên Component (`DashboardPage.tsx`, `AiChatbotWidget.tsx`); `camelCase` cho hooks và utility functions (`useCompanyProfile.ts`).
 
 2. **Quy chuẩn định danh nghiệp vụ:**
    - **Mã nhân viên:** Định dạng `TZ-xxx` (Ví dụ: `TZ-001`, `TZ-002`).
-   - **Mã hợp đồng lao động:** Định dạng `HDLD-TZ-xxx-yyyy` (Ví dụ: `HDLD-TZ-001-2026`).
-   - **Trạng thái nhân sự:** `PROBATION` (Thử việc), `ACTIVE` (Chính thức), `ON_LEAVE` (Nghỉ phép dài ngày/thai sản), `RESIGNED` (Đã thôi việc).
+   - **Mã hợp đồng lao động:** Định dạng `HD-YYYY-NNNN` (Ví dụ: `HD-2026-0001`).
+   - **Trạng thái nhân sự:** `PROBATION` (Thử việc), `ACTIVE` (Chính thức), `ON_LEAVE` (Nghỉ phép dài ngày/thai sản), `RESIGNED` (Đã thôi việc), `TERMINATED` (Chấm dứt).
    - **Trạng thái đơn từ:** `PENDING` (Chờ duyệt) $\rightarrow$ `STORE_APPROVED` (Cửa hàng trưởng duyệt) $\rightarrow$ `HR_APPROVED` (HR duyệt hoàn tất) hoặc `REJECTED` (Từ chối).
 
 ---
@@ -652,6 +696,7 @@ Hệ thống tuân thủ nghiêm ngặt các quy ước kỹ thuật sau nhằm 
 ### Hạn chế hiện tại:
 - Ứng dụng Mobile hiện yêu cầu thiết bị phải có kết nối Internet liên tục để gửi dữ liệu chấm công về máy chủ (chưa hỗ trợ lưu ngoại tuyến và đồng bộ ngầm khi mất mạng).
 - Việc xác thực khuôn mặt khi chấm công tại cửa hàng hiện dựa trên ảnh chụp Selfie đối chiếu trực quan, chưa tích hợp mô hình AI nhận diện khuôn mặt sinh trắc học tự động (Face ID Verification).
+- Bảng lương chưa tự tính thuế TNCN.
 - Hệ thống chưa kết nối trực tiếp với các dòng máy chấm công vân tay vật lý (như ZKTeco, Ronald Jack) tại các cửa hàng cũ.
 
 ### Hướng phát triển trong tương lai:

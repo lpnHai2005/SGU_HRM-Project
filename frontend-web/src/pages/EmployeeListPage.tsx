@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { createPortal } from 'react-dom'
 import { Icons } from '../components/common/Icons'
 import { EmptyState } from '../components/common/EmptyState'
+import { TablePagination, useClientPagination } from '../components/common/TablePagination'
 import { DatePicker } from '../components/common/DatePicker'
 import { ContractHistory } from '../components/ContractHistory'
 import { getInitials, getRoleFromUser, formatDate, formatCurrency } from '../utils/formatters'
@@ -250,6 +251,10 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
 
   // Từ khóa đã được server lọc (không dấu); lọc lại ở client sẽ loại mất kết quả không dấu
   const filteredEmployees = employees.filter(emp => !filterPosition || emp.position_id === filterPosition)
+  const { pageItems: pagedEmployees, paginationProps } = useClientPagination(
+    filteredEmployees,
+    `${filterStore}|${filterStatus}|${filterPosition}|${searchTerm}|${JSON.stringify(advancedSearch)}`,
+  )
 
   const clearAdvancedSearch = () => {
     setAdvancedSearch([])
@@ -711,7 +716,7 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
     switch (status) {
       case 'ACTIVE': return 'running'
       case 'PROBATION': return 'paused'
-      case 'ON_LEAVE': return 'paused'
+      case 'ON_LEAVE': return 'info'
       case 'RESIGNED': return 'rejected'
       default: return ''
     }
@@ -721,7 +726,7 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
     switch (status) {
       case 'ACTIVE': return 'Đang làm việc'
       case 'PROBATION': return 'Thử việc'
-      case 'ON_LEAVE': return 'Nghỉ phép'
+      case 'ON_LEAVE': return 'Nghỉ thai sản'
       case 'RESIGNED': return 'Đã nghỉ việc'
       default: return status || 'N/A'
     }
@@ -1011,7 +1016,7 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
               <option value="PROBATION">Thử việc</option>
               <option value="ACTIVE">Đang làm việc</option>
               {isEdit && <>
-                <option value="ON_LEAVE">Nghỉ phép</option>
+                <option value="ON_LEAVE">Nghỉ thai sản</option>
                 <option value="RESIGNED">Đã nghỉ việc</option>
               </>}
             </select>
@@ -1389,7 +1394,7 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
               <option value="all">Tất cả trạng thái</option>
               <option value="ACTIVE">Đang làm việc</option>
               <option value="PROBATION">Thử việc</option>
-              <option value="ON_LEAVE">Nghỉ phép</option>
+              <option value="ON_LEAVE">Nghỉ thai sản</option>
               <option value="RESIGNED">Đã nghỉ việc</option>
             </select>
             {/* Bộ lọc chức vụ */}
@@ -1465,7 +1470,7 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
                       </td>
                     </tr>
                   ) : (
-                    filteredEmployees.map((emp, index) => (
+                    pagedEmployees.map((emp, index) => (
                       <tr key={emp.employee_id}>
                         <td>
                           <div className="table-user-cell">
@@ -1543,7 +1548,7 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
                                 className={`btn btn-secondary btn-sm btn-icon ${openMenuId === emp.employee_id ? 'active' : ''}`}
                                 disabled={role === 'STORE_MANAGER' && emp.employee_id === user?.employee_id}
                                   title={role === 'STORE_MANAGER' && emp.employee_id === user?.employee_id ? 'Bạn không thể tự quản lý hồ sơ/phân ca của chính mình.' : 'Tùy chọn'}
-                                onClick={(e) => handleToggleMenu(e, emp.employee_id, index, filteredEmployees.length)}
+                                onClick={(e) => handleToggleMenu(e, emp.employee_id, index, pagedEmployees.length)}
                               >
                                 {Icons.moreVertical}
                               </button>
@@ -1556,9 +1561,7 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
                 </tbody>
               </table>
             </div>
-            <div className="table-pagination">
-              <span>Hiển thị {filteredEmployees.length} trên {employees.length} nhân sự</span>
-            </div>
+            <TablePagination {...paginationProps} />
           </>
         )}
       </div>

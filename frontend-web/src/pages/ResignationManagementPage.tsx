@@ -10,6 +10,7 @@ import { useNavigate } from 'react-router-dom'
 import { Icons } from '../components/common/Icons'
 import { StatCard } from '../components/common/StatCard'
 import { EmptyState } from '../components/common/EmptyState'
+import { TablePagination } from '../components/common/TablePagination'
 import { ResignationCreateDialog } from '../components/ResignationCreateDialog'
 import { ResignationDetailDialog } from '../components/ResignationDetailDialog'
 import {
@@ -49,8 +50,7 @@ export function ResignationManagementPage({ user }: ResignationManagementPagePro
   const [loading, setLoading] = useState(true)
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
-  const [pageSize] = useState(20)
-  const [totalPages, setTotalPages] = useState(0)
+  const [pageSize, setPageSize] = useState(20)
 
   // Floating Action Menu state (Portal-based)
   const [openMenuId, setOpenMenuId] = useState<number | null>(null)
@@ -176,7 +176,6 @@ export function ResignationManagementPage({ user }: ResignationManagementPagePro
 
       setResignations(res.items || [])
       setTotal(res.total || 0)
-      setTotalPages(res.total_pages || 0)
     } catch (err: any) {
       console.error('Error fetching resignations:', err)
       toast.error('Lỗi khi tải danh sách đơn thôi việc')
@@ -725,33 +724,16 @@ export function ResignationManagementPage({ user }: ResignationManagementPagePro
               </table>
             </div>
 
-            {/* Table Pagination matching ContractManagementPage */}
-            <div className="table-pagination">
-              <span>
-                Hiển thị {resignations.length} trên tổng số {total} đơn thôi việc
-              </span>
-              <div className="table-pagination-nav">
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  disabled={page === 1 || loading}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                >
-                  ‹ Trước
-                </button>
-                <span style={{ fontSize: '12px', color: 'var(--text-secondary)', padding: '0 4px', display: 'flex', alignItems: 'center' }}>
-                  Trang {page} / {Math.max(1, totalPages)}
-                </span>
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  disabled={page >= totalPages || loading}
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                >
-                  Sau ›
-                </button>
-              </div>
-            </div>
+            <TablePagination
+              page={page}
+              pageSize={pageSize}
+              total={total}
+              onPageChange={setPage}
+              onPageSizeChange={size => {
+                setPageSize(size)
+                setPage(1)
+              }}
+            />
           </>
         )}
       </div>
