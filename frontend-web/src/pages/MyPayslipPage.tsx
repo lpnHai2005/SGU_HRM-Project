@@ -493,14 +493,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
       {/* ========================================================================= */}
       <div className="page-header no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--text-tertiary)', marginBottom: '4px' }}>
-            <span>TechZone</span>
-            <span>›</span>
-            <span>Cá Nhân</span>
-            <span>›</span>
-            <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>Thu Nhập & Hợp Đồng</span>
-          </div>
-          <h1 className="page-title" style={{ margin: 0 }}>Thu Nhập & Hợp Đồng Của Tôi</h1>
+          <h1 className="page-title" style={{ margin: 0 }}>Thu nhập & hợp đồng của tôi</h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginTop: '4px', margin: 0 }}>
             Tra cứu phiếu lương tháng, tổng hợp quyết toán thuế năm và hợp đồng lao động chính thức
           </p>
@@ -515,7 +508,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
               onClick={() => handleTabChange('monthly')}
             >
               {Icons.calendar}
-              <span>Bảng Lương Tháng</span>
+              <span>Bảng lương tháng</span>
             </button>
             <button
               type="button"
@@ -523,7 +516,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
               onClick={() => handleTabChange('annual')}
             >
               {Icons.chart}
-              <span>Bảng Lương Năm</span>
+              <span>Bảng lương năm</span>
             </button>
             <button
               type="button"
@@ -531,7 +524,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
               onClick={() => handleTabChange('contracts')}
             >
               {Icons.fileText}
-              <span>Hợp Đồng Lao Động</span>
+              <span>Hợp đồng lao động</span>
             </button>
           </div>
         </div>
@@ -590,7 +583,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
             <StatCard
               icon={Icons.wallet}
               iconColor="blue"
-              label="LƯƠNG CƠ BẢN THỰC TẾ"
+              label="Lương cơ bản thực tế"
               value={formatCurrency(statPayroll?.actual_base_salary ?? 0)}
               footerNote={
                 statPayroll
@@ -601,7 +594,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
             <StatCard
               icon={Icons.trendingUp}
               iconColor="green"
-              label="TỔNG THU NHẬP (GROSS)"
+              label="Tổng thu nhập (GROSS)"
               value={formatCurrency(statPayroll?.gross_income ?? 0)}
               footerNote={
                 statPayroll
@@ -612,7 +605,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
             <StatCard
               icon={Icons.shield}
               iconColor="amber"
-              label="BẢO HIỂM & KHẤU TRỪ"
+              label="Bảo hiểm & khấu trừ"
               value={statPayroll ? `-${formatCurrency(statPayroll.total_deduction ?? statPayroll.total_deductions ?? 0)}` : '0 VNĐ'}
               footerNote={
                 statPayroll
@@ -623,7 +616,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
             <StatCard
               icon={Icons.dollar}
               iconColor="green"
-              label="THỰC LĨNH CHUYỂN KHOẢN (NET)"
+              label="Thực lĩnh chuyển khoản (NET)"
               value={formatCurrency(statPayroll?.net_salary ?? 0)}
               footerNote={
                 statPayroll
@@ -642,7 +635,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
               <div className="card" style={{ overflow: 'hidden' }}>
                 <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                   <h3 className="card-title" style={{ margin: 0, fontSize: '15px' }}>
-                    Lịch Sử Các Kỳ Lương Năm {selectedYear}
+                    Lịch sử các kỳ lương Năm {selectedYear}
                   </h3>
                   <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>
                     <strong>{monthlyRecords.length}</strong> kỳ đã phát hành
@@ -880,7 +873,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
                                     tooltipTitle="Phụ cấp trách nhiệm chức vụ"
                                     tooltipLines={[
                                       { label: 'Căn cứ:', value: 'Định mức chức danh công việc theo HĐLĐ' },
-                                      { label: 'Mức phụ cấp:', value: '+' + formatCurrency(displayPayroll.position_allowance), isHighlight: true, color: '#10b981' }
+                                      { label: 'Mức phụ cấp:', value: '+' + formatCurrency(displayPayroll.position_allowance), isHighlight: true, color: 'var(--status-success)' }
                                     ]}
                                   />
                                 </td>
@@ -897,7 +890,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
                                     tooltipTitle="Phụ cấp thâm niên công tác"
                                     tooltipLines={[
                                       { label: 'Căn cứ:', value: 'Thời gian cống hiến thực tế tại công ty' },
-                                      { label: 'Mức phụ cấp:', value: '+' + formatCurrency(displayPayroll.seniority_allowance), isHighlight: true, color: '#10b981' }
+                                      { label: 'Mức phụ cấp:', value: '+' + formatCurrency(displayPayroll.seniority_allowance), isHighlight: true, color: 'var(--status-success)' }
                                     ]}
                                   />
                                 </td>
@@ -914,7 +907,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
                                     tooltipTitle="Phụ cấp tham gia dự án & chiến dịch"
                                     tooltipLines={[
                                       { label: 'Căn cứ:', value: 'Vai trò thành viên dự án đang hoạt động' },
-                                      { label: 'Mức phụ cấp:', value: '+' + formatCurrency(displayPayroll.project_allowance), isHighlight: true, color: '#10b981' }
+                                      { label: 'Mức phụ cấp:', value: '+' + formatCurrency(displayPayroll.project_allowance), isHighlight: true, color: 'var(--status-success)' }
                                     ]}
                                   />
                                 </td>
@@ -931,7 +924,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
                                     tooltipTitle="Chế độ phúc lợi cố định"
                                     tooltipLines={[
                                       { label: 'Căn cứ:', value: 'Chế độ phụ cấp cơm trưa & xăng xe toàn chuỗi' },
-                                      { label: 'Mức phụ cấp:', value: '+' + formatCurrency(displayPayroll.meal_transport_allowance), isHighlight: true, color: '#10b981' }
+                                      { label: 'Mức phụ cấp:', value: '+' + formatCurrency(displayPayroll.meal_transport_allowance), isHighlight: true, color: 'var(--status-success)' }
                                     ]}
                                   />
                                 </td>
@@ -948,7 +941,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
                                     tooltipTitle="Thưởng nóng chỉ tiêu KPI"
                                     tooltipLines={[
                                       { label: 'Căn cứ:', value: 'Đạt hoặc vượt chỉ tiêu định mức doanh số KPI' },
-                                      { label: 'Mức thưởng:', value: '+' + formatCurrency(displayPayroll.productivity_bonus), isHighlight: true, color: '#10b981' }
+                                      { label: 'Mức thưởng:', value: '+' + formatCurrency(displayPayroll.productivity_bonus), isHighlight: true, color: 'var(--status-success)' }
                                     ]}
                                   />
                                 </td>
@@ -965,7 +958,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
                                     tooltipTitle="Hoa hồng doanh số bán lẻ POS"
                                     tooltipLines={[
                                       { label: 'Công thức:', value: '1% Doanh số Phone & Laptop + 3% Phụ kiện' },
-                                      { label: 'Tiền hoa hồng:', value: '+' + formatCurrency(displayPayroll.commission_amount), isHighlight: true, color: '#10b981' }
+                                      { label: 'Tiền hoa hồng:', value: '+' + formatCurrency(displayPayroll.commission_amount), isHighlight: true, color: 'var(--status-success)' }
                                     ]}
                                   />
                                 </td>
@@ -982,7 +975,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
                                     tooltipTitle="Tiền lương làm thêm giờ (Overtime)"
                                     tooltipLines={[
                                       { label: 'Công thức:', value: 'Giờ OT duyệt × Đơn giá giờ × Hệ số làm thêm' },
-                                      { label: 'Tiền lương OT:', value: '+' + formatCurrency(displayPayroll.overtime_salary), isHighlight: true, color: '#10b981' }
+                                      { label: 'Tiền lương OT:', value: '+' + formatCurrency(displayPayroll.overtime_salary), isHighlight: true, color: 'var(--status-success)' }
                                     ]}
                                   />
                                 </td>
@@ -999,7 +992,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
                                     tooltipTitle="Thưởng Lễ / Tết chính thức"
                                     tooltipLines={[
                                       { label: 'Căn cứ:', value: 'Chính sách tiền thưởng Lễ/Tết của công ty' },
-                                      { label: 'Mức tiền thưởng:', value: '+' + formatCurrency(displayPayroll.holiday_bonus), isHighlight: true, color: '#10b981' }
+                                      { label: 'Mức tiền thưởng:', value: '+' + formatCurrency(displayPayroll.holiday_bonus), isHighlight: true, color: 'var(--status-success)' }
                                     ]}
                                   />
                                 </td>
@@ -1027,7 +1020,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
                                   tooltipTitle="Bảo hiểm Xã hội bắt buộc (8%)"
                                   tooltipLines={[
                                     { label: 'Tỷ lệ người lao động:', value: '8.00% trích nộp' },
-                                    { label: 'Mức trích nộp:', value: '-' + formatCurrency(displayPayroll?.details?.find(d => d.item_code === 'BHXH')?.amount ?? displayPayroll.bhxh_amount), isHighlight: true, color: '#ef4444' }
+                                    { label: 'Mức trích nộp:', value: '-' + formatCurrency(displayPayroll?.details?.find(d => d.item_code === 'BHXH')?.amount ?? displayPayroll.bhxh_amount), isHighlight: true, color: 'var(--status-error)' }
                                   ]}
                                 />
                               </td>
@@ -1042,7 +1035,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
                                   tooltipTitle="Bảo hiểm Y tế bắt buộc (1.5%)"
                                   tooltipLines={[
                                     { label: 'Tỷ lệ người lao động:', value: '1.50% trích nộp' },
-                                    { label: 'Mức trích nộp:', value: '-' + formatCurrency(displayPayroll?.details?.find(d => d.item_code === 'BHYT')?.amount ?? displayPayroll.bhyt_amount), isHighlight: true, color: '#ef4444' }
+                                    { label: 'Mức trích nộp:', value: '-' + formatCurrency(displayPayroll?.details?.find(d => d.item_code === 'BHYT')?.amount ?? displayPayroll.bhyt_amount), isHighlight: true, color: 'var(--status-error)' }
                                   ]}
                                 />
                               </td>
@@ -1057,7 +1050,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
                                   tooltipTitle="Bảo hiểm Thất nghiệp (1%)"
                                   tooltipLines={[
                                     { label: 'Tỷ lệ người lao động:', value: '1.00% trích nộp' },
-                                    { label: 'Mức trích nộp:', value: '-' + formatCurrency(displayPayroll?.details?.find(d => d.item_code === 'BHTN')?.amount ?? displayPayroll.bhtn_amount), isHighlight: true, color: '#ef4444' }
+                                    { label: 'Mức trích nộp:', value: '-' + formatCurrency(displayPayroll?.details?.find(d => d.item_code === 'BHTN')?.amount ?? displayPayroll.bhtn_amount), isHighlight: true, color: 'var(--status-error)' }
                                   ]}
                                 />
                               </td>
@@ -1073,7 +1066,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
                                     tooltipTitle="Thuế TNCN tạm khấu trừ"
                                     tooltipLines={[
                                       { label: 'Căn cứ:', value: 'Biểu thuế lũy tiến từng phần Luật Thuế TNCN' },
-                                      { label: 'Mức khấu trừ:', value: '-' + formatCurrency(displayPayroll.personal_income_tax), isHighlight: true, color: '#ef4444' }
+                                      { label: 'Mức khấu trừ:', value: '-' + formatCurrency(displayPayroll.personal_income_tax), isHighlight: true, color: 'var(--status-error)' }
                                     ]}
                                   />
                                 </td>
@@ -1091,7 +1084,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
                                     tooltipLines={[
                                       { label: 'Quy định phạt:', value: '50.000 VNĐ / lần đi muộn quá hạn (> 15 phút)' },
                                       { label: 'Công thức phạt:', value: `${lateAttendances.filter(a => (a.late_minutes || 0) > 15).length || Math.round((displayPayroll.penalty_deduction || 0) / 50000)} lần × 50.000 VNĐ` },
-                                      { label: 'Tổng tiền phạt:', value: '-' + formatCurrency(displayPayroll.penalty_deduction), isHighlight: true, color: '#ef4444' }
+                                      { label: 'Tổng tiền phạt:', value: '-' + formatCurrency(displayPayroll.penalty_deduction), isHighlight: true, color: 'var(--status-error)' }
                                     ]}
                                   />
                                 </td>
@@ -1217,21 +1210,21 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
                 <StatCard
                   icon={Icons.wallet}
                   iconColor="blue"
-                  label="TỔNG GROSS CẢ NĂM"
+                  label="Tổng GROSS cả năm"
                   value={formatCurrency(annualData.total_gross_income_year)}
                   footerNote={`Đã chốt ${annualData.total_paid_months || annualData.monthly_records?.length || 0} tháng`}
                 />
                 <StatCard
                   icon={Icons.dollar}
                   iconColor="green"
-                  label="TỔNG THỰC LĨNH CẢ NĂM (NET)"
+                  label="Tổng thực lĩnh cả năm (NET)"
                   value={formatCurrency(annualData.total_net_salary_year)}
                   footerNote="Thu nhập thực tế chuyển khoản ngân hàng"
                 />
                 <StatCard
                   icon={Icons.trendingUp}
                   iconColor="blue"
-                  label="THU NHẬP TRUNG BÌNH / THÁNG"
+                  label="Thu nhập trung bình / tháng"
                   value={formatCurrency(
                     annualData.total_paid_months > 0
                       ? Math.round(annualData.total_net_salary_year / annualData.total_paid_months)
@@ -1242,7 +1235,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
                 <StatCard
                   icon={Icons.shield}
                   iconColor="amber"
-                  label="BẢO HIỂM TRÍCH NỘP CẢ NĂM"
+                  label="Bảo hiểm trích nộp cả năm"
                   value={formatCurrency(annualData.total_insurance_deducted_year)}
                   footerNote="10.5% (BHXH 8%, BHYT 1.5%, BHTN 1%)"
                 />
@@ -1252,7 +1245,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
               <div className="card" style={{ overflow: 'hidden' }}>
                 <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <h3 className="card-title" style={{ margin: 0, fontSize: '15px' }}>
-                    Chi Tiết Thu Nhập 12 Tháng Năm {selectedYear}
+                    Chi tiết thu nhập 12 tháng năm {selectedYear}
                     {annualData.employee && (
                       <span style={{ fontWeight: 400, color: 'var(--text-secondary)', marginLeft: '8px' }}>
                         — {annualData.employee.full_name} ({annualData.employee.employee_code})
@@ -1357,28 +1350,28 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
             <StatCard
               icon={Icons.fileText}
               iconColor="blue"
-              label="TỔNG SỐ HỢP ĐỒNG"
+              label="Tổng số hợp đồng"
               value={contracts.length}
               footerNote="Lịch sử các hợp đồng lao động đã ký"
             />
             <StatCard
               icon={Icons.checkCircle}
               iconColor="green"
-              label="HỢP ĐỒNG HIỆN HÀNH"
+              label="Hợp đồng hiện hành"
               value={activeContract ? (activeContract.status === 'ACTIVE' ? 'Đang hiệu lực' : 'Đã ký') : 'Chưa có'}
               footerNote={activeContract?.contract_type || 'Chưa cập nhật'}
             />
             <StatCard
               icon={Icons.wallet}
               iconColor="blue"
-              label="LƯƠNG CƠ BẢN HỢP ĐỒNG"
+              label="Lương cơ bản hợp đồng"
               value={formatCurrency(displayContract?.basic_salary ?? activeContract?.basic_salary ?? 0)}
               footerNote={`Tỷ lệ hưởng lương: ${displayContract?.salary_percentage ?? activeContract?.salary_percentage ?? 100}%`}
             />
             <StatCard
               icon={Icons.shield}
               iconColor="amber"
-              label="LƯƠNG ĐÓNG BẢO HIỂM"
+              label="Lương đóng bảo hiểm"
               value={formatCurrency(displayContract?.insurance_salary ?? activeContract?.insurance_salary ?? displayContract?.basic_salary ?? 0)}
               footerNote="Trích nộp BH Bắt buộc: 10.5% (BHXH 8%, BHYT 1.5%, BHTN 1%)"
             />
@@ -1425,7 +1418,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
                 <div className="card" style={{ overflow: 'hidden' }}>
                   <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                     <h3 className="card-title" style={{ margin: 0, fontSize: '15px' }}>
-                      Hồ Sơ Hợp Đồng Lao Động Cá Nhân
+                      Hồ sơ hợp đồng lao động cá nhân
                     </h3>
                     <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>
                       Hiển thị <strong>{filteredContracts.length}</strong> / {contracts.length} hợp đồng

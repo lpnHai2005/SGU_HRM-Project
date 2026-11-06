@@ -185,7 +185,7 @@ export function ResignationCreateDialog({
               <span
                 className="modal-title-icon"
                 style={{
-                  background: 'var(--brand-primary-light, rgba(59, 130, 246, 0.1))',
+                  background: 'var(--status-info-bg)',
                   color: 'var(--brand-primary)',
                   border: '1px solid var(--brand-primary)',
                 }}
@@ -329,7 +329,7 @@ export function ResignationCreateDialog({
                       padding: '3px 8px',
                       borderRadius: '12px',
                       border: '1px solid var(--border-default)',
-                      background: reason === preset ? 'var(--brand-primary-light, rgba(59, 130, 246, 0.15))' : 'var(--surface-ground)',
+                      background: reason === preset ? 'var(--status-info-bg)' : 'var(--surface-ground)',
                       color: reason === preset ? 'var(--brand-primary)' : 'var(--text-secondary)',
                       cursor: 'pointer',
                       transition: 'all 0.15s ease',
@@ -387,7 +387,7 @@ export function ResignationCreateDialog({
                 <div style={{ flex: 1, minWidth: 0, fontSize: '12px', color: 'var(--text-secondary)' }}>
                   {file ? (
                     <span style={{ fontWeight: 600, color: 'var(--brand-primary)' }}>
-                      📄 {file.name} ({(file.size / 1024).toFixed(0)} KB)
+                      {Icons.fileText} {file.name} ({(file.size / 1024).toFixed(0)} KB)
                     </span>
                   ) : (
                     <span>Chấp nhận PDF, PNG, JPG (tối đa 10MB)</span>

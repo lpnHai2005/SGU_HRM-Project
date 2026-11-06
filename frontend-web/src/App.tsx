@@ -4,6 +4,7 @@ import { MonthlyAttendancePage } from './pages/MonthlyAttendancePage'
 import { StoresPage } from './pages/StoreManagementPage'
 import { toast } from 'sonner'
 import { Toaster } from 'sonner'
+import { ConfirmHost } from './components/common/ConfirmDialog'
 import { ActivityPage } from './pages/ActivityPage'
 import { PersonalSchedulesPage } from './pages/PersonalSchedulesPage'
 import { assignedShift } from './services/assignedShift'
@@ -176,7 +177,7 @@ export function App() {
   const userRole = getRoleFromUser(user)
 
   return (
-    <div className="app-layout"><Toaster richColors closeButton theme={theme} position="top-right" />
+    <div className="app-layout"><Toaster richColors closeButton theme={theme} position="top-right" /><ConfirmHost />
       <Sidebar
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}

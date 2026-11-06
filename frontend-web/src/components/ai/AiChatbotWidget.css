@@ -208,7 +208,7 @@
 
 [data-theme="dark"] .ai-message.user .ai-message-bubble {
   background: #27272a;
-  color: #f4f4f5;
+  color: var(--surface-subtle);
   border-color: #3f3f46;
 }
 
@@ -399,7 +399,7 @@
 
 [data-theme="dark"] .ai-hitl-lock-banner {
   background: rgba(245, 158, 11, 0.15);
-  color: #fbbf24;
+  color: var(--status-warning);
 }
 
 .ai-lock-icon {

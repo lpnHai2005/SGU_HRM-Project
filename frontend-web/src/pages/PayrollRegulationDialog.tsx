@@ -1,3 +1,4 @@
+import { confirmAction } from '../components/common/ConfirmDialog'
 import React, { useState, useEffect } from 'react'
 import { Icons } from '../components/common/Icons'
 import { payrollApi } from '../services/api'
@@ -401,7 +402,7 @@ export function PayrollRegulationDialog({ onClose, initialTab }: PayrollRegulati
 
   // Xóa khoản thưởng kỳ
   const handleDeleteBonus = async (bonusId: number, name: string) => {
-    if (!window.confirm(`Xác nhận xóa khoản thưởng "${name}" của kỳ này?`)) return
+    if (!(await confirmAction(`Xác nhận xóa khoản thưởng "${name}" của kỳ này?`))) return
     try {
       await payrollApi.deletePeriodBonus(bonusId)
       toast.success('Đã xóa khoản thưởng kỳ!')
@@ -510,7 +511,7 @@ export function PayrollRegulationDialog({ onClose, initialTab }: PayrollRegulati
 
   // Xóa ngày lễ
   const handleDeleteHoliday = async (h: PublicHoliday) => {
-    if (!window.confirm(`Bạn có chắc chắn muốn xóa ngày lễ "${h.holiday_name}" (${h.holiday_date})? Ngày công chuẩn của tháng tương ứng sẽ tự động tăng thêm.`)) {
+    if (!(await confirmAction(`Bạn có chắc chắn muốn xóa ngày lễ "${h.holiday_name}" (${h.holiday_date})? Ngày công chuẩn của tháng tương ứng sẽ tự động tăng thêm.`))) {
       return
     }
     try {
@@ -1344,7 +1345,7 @@ export function PayrollRegulationDialog({ onClose, initialTab }: PayrollRegulati
                   width: '32px',
                   height: '32px',
                   borderRadius: '50%',
-                  background: 'rgba(37, 99, 235, 0.1)',
+                  background: 'var(--status-info-bg)',
                   color: 'var(--primary-color, #2563eb)',
                   display: 'flex',
                   alignItems: 'center',

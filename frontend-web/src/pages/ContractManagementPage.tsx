@@ -457,7 +457,7 @@ export function ContractManagementPage({ user }: ContractManagementPageProps) {
       {/* Page Header matching EmployeeListPage */}
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <h1 className="page-title">Quản lý Hợp đồng lao động</h1>
+          <h1 className="page-title">Quản lý hợp đồng lao động</h1>
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           {canView && (

@@ -1328,7 +1328,7 @@ export function ReportsPage({ user }: ReportsPageProps) {
       {/* Header trang */}
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
         <div>
-          <h1 className="page-title">Trung tâm Báo cáo & Thống kê</h1>
+          <h1 className="page-title">Trung tâm báo cáo & thống kê</h1>
           <p className="page-subtitle" style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
             Hệ thống phân tích nguồn nhân lực, chi phí quỹ lương và hiệu suất chuỗi cửa hàng TechZone
           </p>
@@ -1371,12 +1371,12 @@ export function ReportsPage({ user }: ReportsPageProps) {
             label="Kỳ thống kê"
           />
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-secondary)' }}>
+            <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
               Cơ sở áp dụng:
             </span>
             <select
-              className="form-control"
-              style={{ fontSize: '13px', padding: '6px 12px', minWidth: '240px' }}
+              className="form-select"
+              style={{ minWidth: 'min(240px, 100%)' }}
               value={selectedStoreId || ''}
               onChange={(e) => {
                 const val = e.target.value
@@ -2128,8 +2128,8 @@ export function ReportsPage({ user }: ReportsPageProps) {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>Năm thống kê:</span>
                       <select
-                        className="form-control"
-                        style={{ fontSize: '13px', padding: '6px 12px', width: 'auto', fontWeight: 600 }}
+                        className="form-select"
+                        style={{ width: 'auto' }}
                         value={matrixYear}
                         onChange={(e) => setMatrixYear(Number(e.target.value))}
                       >
@@ -2195,7 +2195,7 @@ export function ReportsPage({ user }: ReportsPageProps) {
                           <th style={{ textAlign: 'right', minWidth: '130px' }}>Quý 2</th>
                           <th style={{ textAlign: 'right', minWidth: '130px' }}>Quý 3</th>
                           <th style={{ textAlign: 'right', minWidth: '130px' }}>Quý 4</th>
-                          <th style={{ textAlign: 'right', minWidth: '150px', background: 'rgba(37, 99, 235, 0.08)' }}>CẢ NĂM {matrixYear}</th>
+                          <th style={{ textAlign: 'right', minWidth: '150px', background: 'var(--status-info-bg)' }}>CẢ NĂM {matrixYear}</th>
                           <th style={{ textAlign: 'center', width: '80px' }}>Subform</th>
                         </tr>
                       </thead>
@@ -2279,7 +2279,7 @@ export function ReportsPage({ user }: ReportsPageProps) {
                                 </td>
                                 <td
                                   className="matrix-cell-interactive"
-                                  style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 800, background: 'rgba(37, 99, 235, 0.04)' }}
+                                  style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 800, background: 'var(--status-info-bg)' }}
                                   title="Nhấp để xem toàn bộ chứng từ cả năm ở Subform"
                                   onClick={() => openSubform({
                                     title: `Tổng hợp bảng lương cả năm ${matrixYear}`,
@@ -2328,7 +2328,7 @@ export function ReportsPage({ user }: ReportsPageProps) {
                           <th style={{ textAlign: 'right', minWidth: '120px' }}>Quý 2 (Net)</th>
                           <th style={{ textAlign: 'right', minWidth: '120px' }}>Quý 3 (Net)</th>
                           <th style={{ textAlign: 'right', minWidth: '120px' }}>Quý 4 (Net)</th>
-                          <th style={{ textAlign: 'right', minWidth: '140px', background: 'rgba(37, 99, 235, 0.08)' }}>TỔNG NET NĂM</th>
+                          <th style={{ textAlign: 'right', minWidth: '140px', background: 'var(--status-info-bg)' }}>TỔNG NET NĂM</th>
                           <th style={{ textAlign: 'right', minWidth: '140px' }}>Tổng Gross</th>
                           <th style={{ textAlign: 'center', width: '90px' }}>Nhân sự</th>
                           <th style={{ textAlign: 'center', width: '80px' }}>Subform</th>
@@ -2406,7 +2406,7 @@ export function ReportsPage({ user }: ReportsPageProps) {
                               </td>
                               <td
                                 className="matrix-cell-interactive"
-                                style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 800, color: CHART_COLORS.success, background: 'rgba(37, 99, 235, 0.04)' }}
+                                style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 800, color: CHART_COLORS.success, background: 'var(--status-info-bg)' }}
                                 onClick={() => openSubform({
                                   title: `Tổng hợp nhân sự & lương: ${row.store_name}`,
                                   subtitle: `Năm ${matrixYear} - Tổng Net: ${formatFullCurrency(row.total_net)}`,
@@ -2461,7 +2461,7 @@ export function ReportsPage({ user }: ReportsPageProps) {
                           <th style={{ textAlign: 'right', minWidth: '115px' }}>Quý 2</th>
                           <th style={{ textAlign: 'right', minWidth: '115px' }}>Quý 3</th>
                           <th style={{ textAlign: 'right', minWidth: '115px' }}>Quý 4</th>
-                          <th style={{ textAlign: 'right', minWidth: '140px', background: 'rgba(37, 99, 235, 0.08)' }}>TỔNG NET NĂM</th>
+                          <th style={{ textAlign: 'right', minWidth: '140px', background: 'var(--status-info-bg)' }}>TỔNG NET NĂM</th>
                           <th style={{ textAlign: 'center', width: '80px' }}>Subform</th>
                         </tr>
                       </thead>
@@ -2486,7 +2486,7 @@ export function ReportsPage({ user }: ReportsPageProps) {
                               <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{formatFullCurrency(emp.q2_net)}</td>
                               <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{formatFullCurrency(emp.q3_net)}</td>
                               <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{formatFullCurrency(emp.q4_net)}</td>
-                              <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 800, color: CHART_COLORS.success, background: 'rgba(37, 99, 235, 0.04)' }}>
+                              <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 800, color: CHART_COLORS.success, background: 'var(--status-info-bg)' }}>
                                 {formatFullCurrency(emp.total_net)}
                               </td>
                               <td style={{ textAlign: 'center' }}>
@@ -2545,7 +2545,7 @@ export function ReportsPage({ user }: ReportsPageProps) {
               onClick={closeSubform}
               title="Đóng chi tiết (Esc)"
             >
-              ✕
+              {Icons.x}
             </button>
           </div>
 

@@ -1365,7 +1365,7 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
     <div className="page-container">
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <h1 className="page-title">Hồ sơ Nhân sự</h1>
+          <h1 className="page-title">Hồ sơ nhân sự</h1>
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <button className="btn btn-secondary btn-sm" onClick={() => fetchEmployees()}>

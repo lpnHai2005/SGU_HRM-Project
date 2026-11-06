@@ -1,3 +1,4 @@
+import { Icons } from './Icons'
 import React, { useState, useEffect, useRef } from 'react'
 import { formatCurrency, formatDate } from '../../utils/formatters'
 
@@ -65,7 +66,7 @@ export function PayslipHoverItem({ label, tooltipTitle, tooltipLines, children }
               title="Đóng bảng ghim (Esc)"
               aria-label="Đóng"
             >
-              ✕
+              {Icons.x}
             </button>
           ) : (
             <span className="payslip-tooltip-pin-hint">Nhấp để ghim</span>
@@ -172,7 +173,7 @@ export function ActualBaseSalaryHoverItem({
               title="Đóng bảng giải trình (Esc)"
               aria-label="Đóng"
             >
-              ✕
+              {Icons.x}
             </button>
           ) : (
             <span className="payslip-tooltip-pin-hint">Nhấp để ghim</span>
@@ -192,7 +193,7 @@ export function ActualBaseSalaryHoverItem({
           {/* Mức 2: Tiền công kiếm được trước khi trừ */}
           <div className="payslip-item-tooltip-row">
             <span className="payslip-tooltip-section-title">2. Tiền công kiếm được trước khi trừ:</span>
-            <span className="payslip-tooltip-row-val" style={{ color: '#10b981', fontWeight: 700 }}>
+            <span className="payslip-tooltip-row-val" style={{ color: 'var(--status-success)', fontWeight: 700 }}>
               +{formatCurrency(totalEarned)}
             </span>
           </div>
@@ -205,7 +206,7 @@ export function ActualBaseSalaryHoverItem({
           {/* Mức 3: Khấu trừ thời gian trong tháng */}
           <div className="payslip-item-tooltip-row">
             <span className="payslip-tooltip-section-title">3. Khấu trừ thời gian trong tháng:</span>
-            <span className="payslip-tooltip-row-val" style={{ color: timeDed > 0 ? '#ef4444' : 'inherit', fontWeight: 700 }}>
+            <span className="payslip-tooltip-row-val" style={{ color: timeDed > 0 ? 'var(--status-error)' : 'inherit', fontWeight: 700 }}>
               {timeDed > 0 ? `-${formatCurrency(timeDed)}` : '0 đ'}
             </span>
           </div>
@@ -251,7 +252,7 @@ export function ActualBaseSalaryHoverItem({
             <span
               className="payslip-tooltip-row-val"
               style={{
-                color: actualBase > 0 ? '#10b981' : '#ef4444',
+                color: actualBase > 0 ? 'var(--status-success)' : 'var(--status-error)',
                 fontSize: '12px',
                 fontWeight: 700,
               }}

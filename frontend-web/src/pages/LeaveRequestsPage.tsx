@@ -1,3 +1,5 @@
+import { toast } from 'sonner'
+import { confirmAction } from '../components/common/ConfirmDialog'
 import { useCompanyProfile } from '../hooks/useCompanyProfile'
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Icons } from '../components/common/Icons'
@@ -142,7 +144,6 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
   const [calendarMonth, setCalendarMonth] = useState<string>(new Date().toISOString().slice(0, 7))
   const [isLoading, setIsLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
-  const [feedbackMessage, setFeedbackMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [openMenuId, setOpenMenuId] = useState<number | null>(null)
 
   // Modals state
@@ -711,10 +712,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
   const { pageItems: pagedRequests, paginationProps } = useClientPagination(filteredRequests, `${activeTab}|${selectedTypeFilter}|${searchTerm}`)
 
   const showNotification = (type: 'success' | 'error', text: string) => {
-    setFeedbackMessage({ type, text })
-    setTimeout(() => {
-      setFeedbackMessage(null)
-    }, 5000)
+    toast[type](text)
   }
 
   // Action: Submit Leave Request
@@ -854,7 +852,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
 
   // Action: Cancel Leave Request
   const handleCancelRequest = async (requestId: number) => {
-    if (!window.confirm('Bạn có chắc chắn muốn hủy đơn xin nghỉ phép này?')) return
+    if (!(await confirmAction('Bạn có chắc chắn muốn hủy đơn xin nghỉ phép này?'))) return
     setActionLoading(true)
     try {
       const res = await leaveApi.cancel(requestId)
@@ -870,34 +868,11 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
   return (
     <div className="page-container">
       {/* Toast Notification */}
-      {feedbackMessage && (
-        <div
-          style={{
-            position: 'fixed',
-            top: '20px',
-            right: '20px',
-            zIndex: 9999,
-            padding: '12px 20px',
-            borderRadius: '8px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-            color: '#fff',
-            backgroundColor: feedbackMessage.type === 'success' ? '#10b981' : '#ef4444',
-            fontWeight: 500,
-            animation: 'fadeIn 0.3s ease',
-          }}
-        >
-          {feedbackMessage.type === 'success' ? Icons.checkCircle : Icons.alertCircle}
-          <span>{feedbackMessage.text}</span>
-        </div>
-      )}
 
       {/* Page Header */}
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
         <div>
-          <h1 className="page-title">{isPersonalView ? 'Đơn Nghỉ Phép Của Tôi' : 'Quản lý Nghỉ Phép'}</h1>
+          <h1 className="page-title">{isPersonalView ? 'Đơn nghỉ phép của tôi' : 'Quản lý nghỉ phép'}</h1>
           <p style={{ color: 'var(--text-secondary, #6b7280)', fontSize: '0.9rem', marginTop: '4px' }}>
             {isPersonalView ? 'Theo dõi số dư phép năm và gửi đơn xin nghỉ phép cá nhân' : 'Theo dõi và phê duyệt đơn xin nghỉ phép nhân sự TechZone'}
           </p>
@@ -1317,7 +1292,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                             }
                             title={getStatusDisplayLabel(req.status, req)}
                           >
-                            {isRejected && <span style={{ color: 'var(--status-error)', fontWeight: 700, fontSize: '0.85rem' }}>✕</span>}
+                            {isRejected && <span style={{ color: 'var(--status-error)', fontWeight: 700, fontSize: '0.85rem' }}>{Icons.x}</span>}
                             {getStatusDisplayLabel(req.status, req)}
                           </span>
                         </td>
@@ -1328,7 +1303,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                           ) : isRejected && (req.rejected_by_role === 'Cửa hàng trưởng' || (!req.store_approved_at && req.rejected_by_name && !wasHrApprovedBeforeReject && req.rejected_by_role !== 'Phòng Nhân sự')) ? (
                             <div style={{ fontSize: '0.8rem', color: 'var(--status-error)', fontWeight: 600 }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <span style={{ fontWeight: 700 }}>✕</span>
+                                <span style={{ fontWeight: 700 }}>{Icons.x}</span>
                                 <span>{req.rejected_by_name || 'Cửa hàng trưởng'}</span>
                               </div>
                               <div style={{ fontSize: '0.75rem', color: 'var(--status-error)' }}>
@@ -1351,7 +1326,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                           {wasApprovedBeforeReject ? (
                             <div style={{ fontSize: '0.8rem', color: 'var(--status-error)', fontWeight: 600 }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <span style={{ fontWeight: 700 }}>✕</span>
+                                <span style={{ fontWeight: 700 }}>{Icons.x}</span>
                                 <span>{req.rejected_by_name || (wasDirectorApprovedBeforeReject ? 'Ban Giám đốc' : 'Phòng Nhân sự')}</span>
                               </div>
                               <div style={{ fontSize: '0.75rem', fontWeight: 600 }}>
@@ -1366,7 +1341,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                           ) : isRejected && (req.rejected_by_role === 'Phòng Nhân sự' || req.rejected_by_role === 'Ban Giám đốc / Admin' || req.store_approved_at || isApplicantStoreManager || isApplicantHrOrAdmin) ? (
                             <div style={{ fontSize: '0.8rem', color: 'var(--status-error)', fontWeight: 600 }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <span style={{ fontWeight: 700 }}>✕</span>
+                                <span style={{ fontWeight: 700 }}>{Icons.x}</span>
                                 <span>{req.rejected_by_name || (isApplicantHrOrAdmin ? 'Ban Giám đốc' : 'Phòng Nhân sự')}</span>
                               </div>
                               <div style={{ fontSize: '0.75rem' }}>
@@ -1528,7 +1503,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                                       setRejectModalRequest(req)
                                     }}
                                   >
-                                    <span className="action-icon icon-danger">✕</span>
+                                    <span className="action-icon icon-danger">{Icons.x}</span>
                                     <span>Từ chối đơn</span>
                                   </button>
                                 )}
@@ -1541,7 +1516,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                                       setRejectModalRequest(req)
                                     }}
                                   >
-                                    <span className="action-icon icon-danger">✕</span>
+                                    <span className="action-icon icon-danger">{Icons.x}</span>
                                     <span>Hủy duyệt & Từ chối</span>
                                   </button>
                                 )}
@@ -1554,7 +1529,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                                       handleCancelRequest(req.request_id)
                                     }}
                                   >
-                                    <span className="action-icon icon-danger">✕</span>
+                                    <span className="action-icon icon-danger">{Icons.x}</span>
                                     <span>Hủy đơn xin nghỉ</span>
                                   </button>
                                 )}
@@ -2052,7 +2027,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                 {isPersonalView ? 'Tạo Đơn Xin Nghỉ Phép Mới' : 'Tạo Đơn Nghỉ Phép Cho Nhân Viên'}
               </h3>
               <button
-                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', color: '#9ca3af' }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', color: 'var(--text-muted)' }}
                 onClick={() => setIsCreateModalOpen(false)}
               >
                 {Icons.x}
@@ -2072,7 +2047,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                     required
                   />
                   {selectedEmp && (
-                    <div style={{ fontSize: '0.8rem', color: '#059669', marginTop: '6px', display: 'flex', gap: '10px', flexWrap: 'wrap', backgroundColor: '#f0fdf4', padding: '6px 10px', borderRadius: '6px', border: '1px solid #bbf7d0' }}>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--status-success)', marginTop: '6px', display: 'flex', gap: '10px', flexWrap: 'wrap', backgroundColor: 'var(--status-success-bg)', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--status-success-border)' }}>
                       <span>Mã NV: <strong>{selectedEmp.employee_code || `#${selectedEmp.employee_id}`}</strong></span>
                       {selectedEmp.store_name && <span>Chi nhánh: <strong>{selectedEmp.store_name}</strong></span>}
                       {selectedEmp.position_name && <span>Chức vụ: <strong>{selectedEmp.position_name}</strong></span>}
@@ -2084,7 +2059,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
               {/* Loại đơn nghỉ phép */}
               <div style={{ marginBottom: '16px' }}>
                 <label style={{ display: 'block', fontWeight: 600, fontSize: '0.9rem', marginBottom: '6px' }}>
-                  Loại đơn nghỉ phép <span style={{ color: '#ef4444' }}>*</span>
+                  Loại đơn nghỉ phép <span style={{ color: 'var(--status-error)' }}>*</span>
                 </label>
                 <select
                   className="form-select"
@@ -2113,22 +2088,22 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                   <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary, #6b7280)', marginTop: '4px' }}>
                     {selectedTypeInfo.type_code === 'PHEP_NAM' && (
                       !isPersonalView && !newRequest.employee_id ? (
-                        <span style={{ color: '#d97706' }}>
+                        <span style={{ color: 'var(--status-warning)' }}>
                           Vui lòng chọn nhân viên ở trên để tra cứu số dư phép năm khả dụng.
                         </span>
                       ) : (
-                        <span style={{ color: '#2563eb' }}>
+                        <span style={{ color: 'var(--status-info)' }}>
                           Số dư phép năm khả dụng: <strong>{activeAnnualRemaining} ngày</strong> (Tổng hạn mức: {activeAnnualTotal} ngày)
                         </span>
                       )
                     )}
                     {selectedTypeInfo.type_code !== 'PHEP_NAM' && selectedTypeInfo.max_days_allowed > 0 && (
-                      <span style={{ color: '#4b5563', fontWeight: 500 }}>
+                      <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>
                         Quy định: Tối đa <strong>{selectedTypeInfo.max_days_allowed} ngày</strong> cho mỗi đợt nghỉ.
                       </span>
                     )}
                     {selectedTypeInfo.type_code === 'THOI_VIEC' && (
-                      <span style={{ color: '#dc2626', fontWeight: 500, display: 'block', marginTop: '2px' }}>
+                      <span style={{ color: 'var(--status-error)', fontWeight: 500, display: 'block', marginTop: '2px' }}>
                         Lưu ý: Sau khi HR duyệt đơn thôi việc, tài khoản của bạn sẽ tự động chấm dứt hợp đồng.
                       </span>
                     )}
@@ -2140,7 +2115,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
                 <div>
                   <label style={{ display: 'block', fontWeight: 600, fontSize: '0.9rem', marginBottom: '6px' }}>
-                    Từ ngày <span style={{ color: '#ef4444' }}>*</span>
+                    Từ ngày <span style={{ color: 'var(--status-error)' }}>*</span>
                   </label>
                   <input
                     type="date"
@@ -2152,7 +2127,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                 </div>
                 <div>
                   <label style={{ display: 'block', fontWeight: 600, fontSize: '0.9rem', marginBottom: '6px' }}>
-                    Đến ngày <span style={{ color: '#ef4444' }}>*</span>
+                    Đến ngày <span style={{ color: 'var(--status-error)' }}>*</span>
                   </label>
                   <input
                     type="date"
@@ -2207,7 +2182,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
               {/* Lý do nghỉ */}
               <div style={{ marginBottom: '16px' }}>
                 <label style={{ display: 'block', fontWeight: 600, fontSize: '0.9rem', marginBottom: '6px' }}>
-                  Lý do xin nghỉ <span style={{ color: '#ef4444' }}>*</span>
+                  Lý do xin nghỉ <span style={{ color: 'var(--status-error)' }}>*</span>
                 </label>
                 <textarea
                   className="form-input"
@@ -2226,7 +2201,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                     Minh chứng đính kèm / Link Drive (Tùy chọn)
                   </label>
                   {selectedProofFiles.length > 0 && (
-                    <span style={{ fontSize: '0.75rem', color: '#2563eb', fontWeight: 600 }}>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--status-info)', fontWeight: 600 }}>
                       Đã chọn {selectedProofFiles.length}/5 tệp
                     </span>
                   )}
@@ -2269,14 +2244,14 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                           background: 'none',
                           border: 'none',
                           cursor: 'pointer',
-                          color: '#9ca3af',
+                          color: 'var(--text-muted)',
                           fontSize: '13px',
                           padding: '4px',
                           lineHeight: 1,
                         }}
                         title="Xóa link"
                       >
-                        ✕
+                        {Icons.x}
                       </button>
                     )}
                   </div>
@@ -2415,7 +2390,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                           }}
                           title="Hủy chọn tệp này"
                         >
-                          ✕
+                          {Icons.x}
                         </button>
                       </div>
                     ))}
@@ -2635,7 +2610,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
           >
             <div className="card-header">
               <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: 'var(--status-error)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontWeight: 900 }}>✕</span>
+                <span style={{ fontWeight: 900 }}>{Icons.x}</span>
                 {rejectModalRequest.status === 'HR_APPROVED'
                   ? 'Thu Hồi Phê Duyệt & Từ Chối Đơn Nghỉ Phép'
                   : 'Từ Chối Đơn Nghỉ Phép'}
@@ -2714,7 +2689,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                   onClick={handleRejectSubmit}
                   style={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                 >
-                  <span style={{ fontWeight: 900 }}>✕</span>
+                  <span style={{ fontWeight: 900 }}>{Icons.x}</span>
                   {actionLoading
                     ? 'Đang xử lý...'
                     : rejectModalRequest.status === 'HR_APPROVED'
@@ -2773,7 +2748,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                   <span>In đơn (A4)</span>
                 </button>
                 <button
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', color: '#9ca3af', display: 'flex', alignItems: 'center' }}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}
                   onClick={() => setDetailModalRequest(null)}
                 >
                   {Icons.x}
@@ -2795,8 +2770,8 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                       width: '32px',
                       height: '32px',
                       borderRadius: '50%',
-                      backgroundColor: 'var(--status-error)',
-                      color: 'var(--action-primary-text)',
+                      backgroundColor: 'var(--status-error-solid)',
+                      color: '#fff',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -2804,7 +2779,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                       fontSize: '1.1rem',
                       flexShrink: 0
                     }}>
-                      ✕
+                      {Icons.x}
                     </div>
                     <div style={{ flex: 1 }}>
                       <div style={{ color: 'var(--status-error)', fontWeight: 700, fontSize: '1rem', textTransform: 'uppercase', marginBottom: '4px' }}>
@@ -2895,7 +2870,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                         gap: '4px'
                       } : undefined}
                     >
-                      {detailModalRequest.status === 'REJECTED' && <span style={{ fontWeight: 900 }}>✕</span>}
+                      {detailModalRequest.status === 'REJECTED' && <span style={{ fontWeight: 900 }}>{Icons.x}</span>}
                       {getStatusDisplayLabel(detailModalRequest.status, detailModalRequest)}
                     </span>
                   </div>
@@ -3601,7 +3576,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                     width: '38px',
                     height: '38px',
                     borderRadius: '8px',
-                    backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                    backgroundColor: 'var(--status-info-bg)',
                     color: 'var(--action-primary)',
                   }}
                 >

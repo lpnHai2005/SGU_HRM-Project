@@ -1,3 +1,4 @@
+import { confirmAction } from '../components/common/ConfirmDialog'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Icons } from '../components/common/Icons'
@@ -400,7 +401,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
 
   // Actions
   const handleConfirmOT = async (requestId: number) => {
-    if (!window.confirm('Bạn có chắc chắn muốn xác nhận đề xuất tăng ca này?')) return
+    if (!(await confirmAction('Bạn có chắc chắn muốn xác nhận đề xuất tăng ca này?'))) return
     setActionLoading(true)
     try {
       await overtimeRequestApi.employeeConfirm(requestId)
@@ -415,7 +416,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
   }
 
   const handleApproveOT = async (requestId: number) => {
-    if (!window.confirm('Phê duyệt đơn đăng ký tăng ca này?')) return
+    if (!(await confirmAction('Phê duyệt đơn đăng ký tăng ca này?'))) return
     setActionLoading(true)
     try {
       await overtimeRequestApi.approve(requestId)
@@ -430,7 +431,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
   }
 
   const handleApproveAmendment = async (requestId: number) => {
-    if (!window.confirm('Duyệt bản OT thay thế và giữ nguyên lịch sử đơn gốc?')) return
+    if (!(await confirmAction('Duyệt bản OT thay thế và giữ nguyên lịch sử đơn gốc?'))) return
     setActionLoading(true)
     try {
       await overtimeRequestApi.approveAmendment(requestId)
@@ -445,7 +446,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
   }
 
   const handleApproveRevocation = async (requestId: number) => {
-    if (!window.confirm('Xác nhận thu hồi đơn OT? Lịch sử yêu cầu và quyết định sẽ được giữ lại.')) return
+    if (!(await confirmAction('Xác nhận thu hồi đơn OT? Lịch sử yêu cầu và quyết định sẽ được giữ lại.'))) return
     setActionLoading(true)
     try {
       await overtimeRequestApi.approveRevocation(requestId)
@@ -498,7 +499,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
   }
 
   const handleCancelOT = async (requestId: number) => {
-    if (!window.confirm('Bạn có chắc chắn muốn hủy đơn đăng ký OT này?')) return
+    if (!(await confirmAction('Bạn có chắc chắn muốn hủy đơn đăng ký OT này?'))) return
     setActionLoading(true)
     try {
       await overtimeRequestApi.cancel(requestId)
@@ -626,7 +627,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
       {/* Page Header */}
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
         <div>
-          <h1 className="page-title">{isPersonalView ? 'Đơn OT của tôi' : isReviewer ? 'Quản lý Đăng ký & Đối soát OT' : 'Quản lý Đăng ký OT'}</h1>
+          <h1 className="page-title">{isPersonalView ? 'Đơn OT của tôi' : isReviewer ? 'Quản lý đăng ký & đối soát OT' : 'Quản lý Đăng ký OT'}</h1>
           <p style={{ color: 'var(--text-secondary, #6b7280)', fontSize: '0.9rem', marginTop: '4px' }}>
             {isPersonalView
               ? 'Theo dõi danh sách đăng ký tăng ca, xác nhận lịch OT và đối soát bảng lương cá nhân'
@@ -1144,7 +1145,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
                                       handleOpenReject(req.request_id, 'decline')
                                     }}
                                   >
-                                    <span className="action-icon icon-danger">✕</span>
+                                    <span className="action-icon icon-danger">{Icons.x}</span>
                                     <span>Từ chối đề xuất tăng ca</span>
                                   </button>
                                 </>
@@ -1171,7 +1172,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
                                       handleOpenReject(req.request_id, 'reject')
                                     }}
                                   >
-                                    <span className="action-icon icon-danger">✕</span>
+                                    <span className="action-icon icon-danger">{Icons.x}</span>
                                     <span>Từ chối duyệt đơn OT</span>
                                   </button>
                                 </>
@@ -1186,7 +1187,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
                                     handleOpenReject(req.request_id, 'revoke')
                                   }}
                                 >
-                                  <span className="action-icon icon-danger">✕</span>
+                                  <span className="action-icon icon-danger">{Icons.x}</span>
                                   <span>Yêu cầu thu hồi / Hủy duyệt</span>
                                 </button>
                               )}
@@ -1200,7 +1201,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
                                     void handleCancelOT(req.request_id)
                                   }}
                                 >
-                                  <span className="action-icon icon-danger">✕</span>
+                                  <span className="action-icon icon-danger">{Icons.x}</span>
                                   <span>Hủy đơn đăng ký OT</span>
                                 </button>
                               )}
@@ -1334,7 +1335,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
               {!isPersonalView && (
                 <div>
                   <label className="form-label" style={{ fontWeight: 600, marginBottom: '6px' }}>
-                    Chọn nhân viên <span style={{ color: '#ef4444' }}>*</span>
+                    Chọn nhân viên <span style={{ color: 'var(--status-error)' }}>*</span>
                   </label>
                   <EmployeeSearchSelect
                     employees={employees}
@@ -1354,7 +1355,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
               {/* Cửa hàng */}
               <div>
                 <label className="form-label" style={{ fontWeight: 600, marginBottom: '6px' }}>
-                  Cửa hàng áp dụng <span style={{ color: '#ef4444' }}>*</span>
+                  Cửa hàng áp dụng <span style={{ color: 'var(--status-error)' }}>*</span>
                 </label>
                 <select
                   className="form-select"
@@ -1373,7 +1374,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
               {/* Ngày tăng ca */}
               <div>
                 <label className="form-label" style={{ fontWeight: 600, marginBottom: '6px' }}>
-                  Ngày làm việc tăng ca <span style={{ color: '#ef4444' }}>*</span>
+                  Ngày làm việc tăng ca <span style={{ color: 'var(--status-error)' }}>*</span>
                 </label>
                 <input
                   type="date"
@@ -1387,7 +1388,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
                   <label className="form-label" style={{ fontWeight: 600, marginBottom: '6px' }}>
-                    Giờ bắt đầu <span style={{ color: '#ef4444' }}>*</span>
+                    Giờ bắt đầu <span style={{ color: 'var(--status-error)' }}>*</span>
                   </label>
                   <input
                     type="time"
@@ -1398,7 +1399,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
                 </div>
                 <div>
                   <label className="form-label" style={{ fontWeight: 600, marginBottom: '6px' }}>
-                    Giờ kết thúc <span style={{ color: '#ef4444' }}>*</span>
+                    Giờ kết thúc <span style={{ color: 'var(--status-error)' }}>*</span>
                   </label>
                   <input
                     type="time"
@@ -1431,7 +1432,7 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
               {/* Lý do tăng ca */}
               <div>
                 <label className="form-label" style={{ fontWeight: 600, marginBottom: '6px' }}>
-                  Lý do làm thêm giờ <span style={{ color: '#ef4444' }}>*</span>
+                  Lý do làm thêm giờ <span style={{ color: 'var(--status-error)' }}>*</span>
                 </label>
                 <textarea
                   className="form-input"

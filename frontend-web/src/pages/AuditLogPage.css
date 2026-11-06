@@ -45,7 +45,7 @@
 }
 
 [data-theme="dark"] .audit-total-icon {
-  color: #38bdf8;
+  color: var(--status-info);
 }
 
 .audit-total-label {
@@ -67,7 +67,7 @@
 }
 
 [data-theme="dark"] .audit-total-number {
-  color: #38bdf8;
+  color: var(--status-info);
 }
 
 /* Badge System for Audit Actions */
@@ -86,61 +86,61 @@
 
 .badge-slate {
   background: rgba(148, 163, 184, 0.15);
-  color: #64748b;
+  color: var(--text-secondary);
   border: 1px solid rgba(148, 163, 184, 0.25);
 }
 
 [data-theme="dark"] .badge-slate {
   background: rgba(148, 163, 184, 0.12);
-  color: #94a3b8;
+  color: var(--text-muted);
   border-color: rgba(148, 163, 184, 0.2);
 }
 
 .badge-green {
   background: rgba(16, 185, 129, 0.12);
-  color: #059669;
+  color: var(--status-success);
   border: 1px solid rgba(16, 185, 129, 0.25);
 }
 
 [data-theme="dark"] .badge-green {
   background: rgba(16, 185, 129, 0.18);
-  color: #34d399;
+  color: var(--status-success);
   border-color: rgba(52, 211, 153, 0.3);
 }
 
 .badge-blue {
   background: rgba(14, 165, 233, 0.12);
-  color: #0284c7;
+  color: var(--status-info);
   border: 1px solid rgba(14, 165, 233, 0.25);
 }
 
 [data-theme="dark"] .badge-blue {
   background: rgba(14, 165, 233, 0.18);
-  color: #38bdf8;
+  color: var(--status-info);
   border-color: rgba(56, 189, 248, 0.3);
 }
 
 .badge-amber {
   background: rgba(245, 158, 11, 0.12);
-  color: #d97706;
+  color: var(--status-warning);
   border: 1px solid rgba(245, 158, 11, 0.25);
 }
 
 [data-theme="dark"] .badge-amber {
   background: rgba(245, 158, 11, 0.18);
-  color: #fbbf24;
+  color: var(--status-warning);
   border-color: rgba(251, 191, 36, 0.3);
 }
 
 .badge-red {
   background: rgba(239, 68, 68, 0.12);
-  color: #dc2626;
+  color: var(--status-error);
   border: 1px solid rgba(239, 68, 68, 0.25);
 }
 
 [data-theme="dark"] .badge-red {
   background: rgba(239, 68, 68, 0.18);
-  color: #f87171;
+  color: var(--status-error);
   border-color: rgba(248, 113, 113, 0.3);
 }
 
@@ -168,11 +168,11 @@
 
 [data-theme="dark"] .audit-diff-table th {
   background: rgba(255, 255, 255, 0.05);
-  color: #94a3b8;
+  color: var(--text-muted);
 }
 
 .audit-diff-del {
-  color: #ef4444;
+  color: var(--status-error);
   background: rgba(239, 68, 68, 0.08);
   padding: 2px 6px;
   border-radius: 4px;
@@ -181,7 +181,7 @@
 }
 
 .audit-diff-add {
-  color: #10b981;
+  color: var(--status-success);
   background: rgba(16, 185, 129, 0.08);
   padding: 2px 6px;
   border-radius: 4px;

@@ -1,3 +1,4 @@
+import { TriangleAlert } from 'lucide-react'
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 
 interface Props {
@@ -43,7 +44,7 @@ export class ErrorBoundary extends Component<Props, State> {
             lineHeight: 1,
             color: 'var(--color-danger, #ef4444)',
           }}>
-            ⚠️
+            <TriangleAlert size={48} />
           </div>
           <h2 style={{ fontSize: '1.25rem', fontWeight: 600, margin: 0 }}>
             Đã xảy ra lỗi khi hiển thị trang

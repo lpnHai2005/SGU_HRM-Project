@@ -336,7 +336,7 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
       {/* 1. Header trang & Banner Quy định */}
       <div className="hr-att-header">
         <div>
-          <h1 className="hr-att-title page-title">Quản lý công &amp; Đối soát Đi trễ</h1>
+          <h1 className="hr-att-title page-title">Quản lý công &amp; đối soát đi trễ</h1>
           <p className="hr-att-subtitle page-subtitle">
             Bảng tổng hợp công chuẩn Enterprise HRM. Tách biệt rõ ràng giữa{' '}
             <strong className="text-muted-notice">Ngoài ca (ghi nhận thô)</strong>,{' '}
@@ -482,7 +482,7 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
                 -{formatCurrency(summary.total_late_penalty_amount || (summary.total_late_sessions || 0) * policySettings.penalty)}
               </strong>
               {summary.total_grace_late_sessions > 0 && (
-                <span style={{ color: '#059669', marginLeft: 4 }}>
+                <span style={{ color: 'var(--status-success)', marginLeft: 4 }}>
                   (Kèm {summary.total_grace_late_sessions} lần ≤15p miễn phạt)
                 </span>
               )}
@@ -1111,7 +1111,7 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
                   <div className="att-shift-info-card">
                     <div className="att-shift-info-header">
                       <span className="att-shift-info-title">
-                        <Calendar size={15} color="#2563eb" />
+                        <Calendar size={15} color="var(--status-info)" />
                         Thông tin ca làm việc
                       </span>
                       <span className={`badge ${statusBadgeClass}`}>
@@ -1157,7 +1157,7 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
                 <div className="admin-raw-json-panel">
                   <div className="admin-raw-json-header">
                     <span className="admin-raw-json-title">
-                      <Code size={13} color="#6366f1" />
+                      <Code size={13} color="var(--role-director-text)" />
                       Dữ liệu gốc (attendance_context payload - Chế độ Quản trị viên)
                     </span>
                     <button

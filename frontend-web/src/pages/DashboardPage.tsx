@@ -322,7 +322,7 @@ export function DashboardPage({
     <div className="page-container">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Tổng quan Vận hành</h1>
+          <h1 className="page-title">Tổng quan vận hành</h1>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
           <button className="btn btn-secondary btn-sm" onClick={() => toast('Đang lọc toàn bộ hệ thống TechZone')}>

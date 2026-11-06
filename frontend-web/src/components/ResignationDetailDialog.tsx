@@ -44,7 +44,7 @@ export function ResignationDetailDialog({
             <span
               className="modal-title-icon"
               style={{
-                background: 'var(--brand-primary-light, rgba(59, 130, 246, 0.1))',
+                background: 'var(--status-info-bg)',
                 color: 'var(--brand-primary)',
                 border: '1px solid var(--brand-primary)',
               }}

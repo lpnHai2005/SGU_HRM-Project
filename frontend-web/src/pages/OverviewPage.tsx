@@ -44,7 +44,7 @@ export function OverviewPage(props: DashboardPageProps) {
       {/* 1. Header Row đồng bộ chuẩn class="page-title" & chốt action bar bên góc phải */}
       <div className="fund-header-row page-header">
         <div className="fund-header-title">
-          <h1 className="page-title">{manager ? (tab === 'personal' ? 'Trang chủ Cá nhân' : (branch ? 'Quản lý Chi nhánh' : 'Tổng quan')) : 'Trang chủ'}</h1>
+          <h1 className="page-title">{manager ? (tab === 'personal' ? 'Trang chủ cá nhân' : (branch ? 'Quản lý Chi nhánh' : 'Tổng quan')) : 'Trang chủ'}</h1>
           <p className="page-subtitle">
             {manager
               ? (tab === 'personal' ? 'Theo dõi ca làm việc, chấm công và dữ liệu cá nhân của bạn' : (branch ? 'Theo dõi chỉ số và vận hành chi nhánh' : 'Báo cáo chỉ số vận hành và ngân sách toàn chuỗi TechZone'))

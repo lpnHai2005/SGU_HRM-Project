@@ -98,7 +98,7 @@
 [data-theme="dark"] .pagination-btn:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.08);
   border-color: rgba(255, 255, 255, 0.25);
-  color: #38bdf8;
+  color: var(--status-info);
 }
 
 /* Middle Jump Box */
@@ -181,5 +181,5 @@
 
 [data-theme="dark"] .pagination-search-btn:hover {
   background: rgba(255, 255, 255, 0.08);
-  color: #38bdf8;
+  color: var(--status-info);
 }

@@ -179,10 +179,10 @@ export function AccountPage({ user }: AccountPageProps) {
     if (/[0-9]/.test(newPassword)) score += 1
     if (/[^A-Za-z0-9]/.test(newPassword)) score += 1
 
-    if (score <= 1) return { score: 1, text: 'Rất yếu', color: '#ef4444', percent: 25 }
-    if (score === 2) return { score: 2, text: 'Yếu', color: '#f97316', percent: 50 }
-    if (score === 3) return { score: 3, text: 'Khá tốt', color: '#eab308', percent: 75 }
-    return { score: 4, text: 'Rất mạnh', color: '#10b981', percent: 100 }
+    if (score <= 1) return { score: 1, text: 'Rất yếu', color: 'var(--status-error)', percent: 25 }
+    if (score === 2) return { score: 2, text: 'Yếu', color: 'var(--status-warning)', percent: 50 }
+    if (score === 3) return { score: 3, text: 'Khá tốt', color: 'var(--status-warning)', percent: 75 }
+    return { score: 4, text: 'Rất mạnh', color: 'var(--status-success)', percent: 100 }
   }, [newPassword])
 
   const handleChangePassword = async (e: React.FormEvent) => {
@@ -522,8 +522,8 @@ export function AccountPage({ user }: AccountPageProps) {
                     justifyContent: 'space-between',
                   }}
                 >
-                  <span>📁 {avatarFileName} ({(avatarFileSize / 1024).toFixed(1)} KB)</span>
-                  <span style={{ color: '#10b981', fontWeight: 600 }}>✓ Đã mã hóa Base64 sẵn sàng</span>
+                  <span>{avatarFileName} ({(avatarFileSize / 1024).toFixed(1)} KB)</span>
+                  <span style={{ color: 'var(--status-success)', fontWeight: 600 }}>✓ Đã mã hóa Base64 sẵn sàng</span>
                 </div>
               )}
             </div>
@@ -681,12 +681,12 @@ export function AccountPage({ user }: AccountPageProps) {
                 </button>
               </div>
               {confirmPassword && newPassword !== confirmPassword && (
-                <span style={{ fontSize: 12, color: '#ef4444', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ fontSize: 12, color: 'var(--status-error)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
                   <AlertCircle size={12} /> Mật khẩu xác nhận không khớp
                 </span>
               )}
               {confirmPassword && newPassword === confirmPassword && (
-                <span style={{ fontSize: 12, color: '#10b981', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ fontSize: 12, color: 'var(--status-success)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
                   <CheckCircle2 size={12} /> Mật khẩu xác nhận đã trùng khớp
                 </span>
               )}
@@ -734,11 +734,13 @@ export function AccountPage({ user }: AccountPageProps) {
               <div className="account-field-item">
                 <span className="account-field-label">Trạng thái vào / ra</span>
                 <span className="account-field-value">
-                  {today?.can_check_out
-                    ? '🟢 Đã vào ca (Đang làm)'
-                    : today?.has_checked_out
-                    ? '⚪ Đã ra ca (Hoàn thành)'
-                    : '🟡 Chưa vào ca'}
+                  <span className={`status-pill ${today?.can_check_out ? 'active' : today?.has_checked_out ? 'neutral' : 'pending'}`}>
+                    {today?.can_check_out
+                      ? 'Đã vào ca (Đang làm)'
+                      : today?.has_checked_out
+                      ? 'Đã ra ca (Hoàn thành)'
+                      : 'Chưa vào ca'}
+                  </span>
                 </span>
               </div>
               <div className="account-field-item">

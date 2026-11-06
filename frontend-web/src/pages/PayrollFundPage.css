@@ -147,19 +147,19 @@
 
 .budget-status-safe {
   background: rgba(16, 185, 129, 0.12);
-  color: #059669;
+  color: var(--status-success);
   border: 1px solid rgba(16, 185, 129, 0.3);
 }
 
 .budget-status-warning {
   background: rgba(245, 158, 11, 0.12);
-  color: #d97706;
+  color: var(--status-warning);
   border: 1px solid rgba(245, 158, 11, 0.3);
 }
 
 .budget-status-danger {
   background: rgba(239, 68, 68, 0.12);
-  color: #dc2626;
+  color: var(--status-error);
   border: 1px solid rgba(239, 68, 68, 0.3);
 }
 
@@ -250,9 +250,9 @@
 
 /* Card 1: Highlight TCOW Primary */
 .flow-card.card-tcow {
-  border-color: #6366f1;
+  border-color: var(--role-director-text);
   background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, var(--surface-card) 100%);
-  border-left: 4px solid #6366f1;
+  border-left: 4px solid var(--role-director-text);
 }
 
 .flow-card.card-tcow .flow-card-value {
@@ -261,13 +261,13 @@
 
 /* Card 5: Highlight Net Success */
 .flow-card.card-net {
-  border-color: #10b981;
+  border-color: var(--status-success);
   background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, var(--surface-card) 100%);
-  border-left: 4px solid #10b981;
+  border-left: 4px solid var(--status-success);
 }
 
 .flow-card.card-net .flow-card-value {
-  color: #059669;
+  color: var(--status-success);
 }
 
 .flow-card-header {
@@ -448,7 +448,7 @@
 }
 
 .info-tooltip-box {
-  visibility: hidden;
+  display: none;
   position: absolute;
   bottom: 125%;
   left: 50%;
@@ -461,14 +461,11 @@
   white-space: nowrap;
   z-index: 50;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-  opacity: 0;
-  transition: opacity 0.2s;
   pointer-events: none;
 }
 
 .info-hover-wrap:hover .info-tooltip-box {
-  visibility: visible;
-  opacity: 1;
+  display: block;
 }
 
 /* Sub-row danh sách nhân viên */
