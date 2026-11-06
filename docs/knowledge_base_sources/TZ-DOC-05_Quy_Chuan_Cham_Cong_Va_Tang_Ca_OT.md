@@ -4,7 +4,7 @@ title: "Quy chuẩn Chấm công Đa phương thức, Phân ca kíp và Quản t
 category: "CHAM_CONG"
 target_roles: ["EMPLOYEE", "STORE_MANAGER", "HR_MANAGER", "ADMIN", "DIRECTOR"]
 effective_date: "2026-01-01"
-keywords: ["chấm công", "geofence", "gps", "selfie", "cooldown 60s", "làm thêm giờ", "ot", "hệ số 150", "hệ số 200", "hệ số 300"]
+keywords: ["chấm công", "geofence", "gps", "selfie", "cooldown 60s", "làm thêm giờ", "ot", "hệ số 150", "hệ số 200", "hệ số 300", "ot đêm", "40 giờ", "ca full"]
 ---
 
 # QUY CHUẨN CHẤM CÔNG ĐA PHƯƠNG THỨC, PHÂN CA KÍP VÀ QUẢN TRỊ LÀM THÊM GIỜ OT
@@ -22,3 +22,7 @@ keywords: ["chấm công", "geofence", "gps", "selfie", "cooldown 60s", "làm th
   - Ngày thường: **150% (1.5x)**.
   - Ngày nghỉ hàng tuần: **200% (2.0x)**.
   - Ngày Lễ, Tết: **300% (3.0x)**.
+  - Ban đêm 22:00–08:00: **200% (2.0x)**.
+- **Ca Full 08:00–21:00:** 13 giờ − 1 giờ nghỉ = 12 giờ = 8 giờ công + 4 giờ OT tự động.
+- **Trần OT:** tối đa 40 giờ/tháng/nhân viên, hệ thống chặn cứng khi vượt.
+- **Lịch tuần Thứ Hai – Chủ Nhật:** ít nhất 1 ngày OFF/tuần; cảnh báo khi vượt 48 giờ/tuần.

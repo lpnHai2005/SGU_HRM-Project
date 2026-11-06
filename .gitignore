@@ -14,6 +14,8 @@ frontend/.env.local
 /backend/.env.backup
 /backend/.env.local
 /backend/.env.supabase
+/backend/.env.supabase-local
+/backend/.env.cloud
 /backend/.env.previous
 /backend/.env.previous.*
 /backend/switch-env.ps1
@@ -54,3 +56,12 @@ skills-lock.json
 
 *.hash
 backend/.req_checked.hash
+backend/backups/
+*.dump
+
+# Supabase Local cá nhân: dump dữ liệu (hash mật khẩu, CCCD, tài khoản ngân hàng), snippet Studio, ghi chú môi trường
+/supabase/seed.sql
+/supabase/snippets/
+/supabase/config.toml
+/supabase/.gitignore
+/supabase-local.md

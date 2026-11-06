@@ -18,7 +18,7 @@ keywords: ["faq", "hỏi đáp", "tình huống", "quên checkout", "lỗi gps",
 5. **Dừng nhận phụ cấp khi nào?** Khi dự án hoàn thành (`COMPLETED`), hủy bỏ (`CANCELLED`), hoặc rời dự án.
 
 ## Chủ đề B: Tiền lương và Khấu trừ
-6. **Công thức Net:** `NET = GROSS - BHXH/BHYT/BHTN (10.5%) - Phạt đi muộn - Thuế TNCN`.
+6. **Công thức Net:** `NET = GROSS - BHXH/BHYT/BHTN (10.5%) - Thuế TNCN` (đã bãi bỏ phạt đi muộn).
 7. **Công chuẩn:** 26.0 ngày/tháng.
 8. **Nghỉ không lương:** Trừ `(Lương HĐ / 26) * số ngày nghỉ`.
 9. **Thâm niên:** <1 năm: 0; 1-3 năm: 500k; 3-5 năm: 1M; >=5 năm: 1.5M.
@@ -26,10 +26,10 @@ keywords: ["faq", "hỏi đáp", "tình huống", "quên checkout", "lỗi gps",
 
 ## Chủ đề C: Chấm công và OT
 11. **Đi muộn <= 15 phút:** Trong giới hạn ân hạn, không phạt tiền, tính Đúng giờ (NORMAL).
-12. **Đi muộn > 15 phút:** Phạt 50.000 VNĐ / lần + trừ lương theo phút trễ.
+12. **Đi muộn > 15 phút:** Không phạt tiền, không trừ lương theo phút; trễ 3–4 lần/tháng còn 50% phụ cấp chuyên cần, từ 5 lần mất phụ cấp chuyên cần + biên bản đi trễ; 3 tháng liên tiếp có biên bản → cờ BLACK_LIST_WARNING.
 13. **Quên check-out:** Báo Cửa hàng trưởng lập biên bản giải trình, đối soát camera để cập nhật giờ thực tế.
 14. **Lỗi Geofence:** Bật GPS chính xác cao, kết nối Wi-Fi showroom và đứng trong bán kính 100m.
-15. **Hệ số OT:** Ngày thường 150%, ngày nghỉ tuần 200%, ngày lễ tết 300%.
+15. **Hệ số OT:** Ngày thường 150%, ngày nghỉ tuần 200%, ngày lễ tết 300%, ban đêm 22:00–08:00 200%. Tối đa 40 giờ OT/tháng.
 
 ## Chủ đề D: Nghỉ phép và Thôi việc
 16. **Nghỉ kết hôn:** 3 ngày hưởng nguyên lương.
