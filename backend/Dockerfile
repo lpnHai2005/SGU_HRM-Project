@@ -8,11 +8,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app
 
-# Cài đặt thư viện hệ thống cần thiết (cho psycopg2, pillow, pypdfium2)
+# Cài đặt thư viện hệ thống cần thiết (cho psycopg2, pillow, pypdfium2 và font tiếng Việt Unicode cho PDF)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
     curl \
+    fonts-liberation \
+    fonts-dejavu-core \
+    fontconfig \
     && rm -rf /var/lib/apt/lists/*
 
 # Cài đặt dependencies
