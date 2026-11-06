@@ -15,7 +15,7 @@ from app.api.deps import get_current_user, record_audit_log
 from app.schemas.schemas import LoginRequest, TokenResponse, UserProfile, TestAccountResponse, AvatarUploadRequest
 import bcrypt
 import hmac
-from pydantic import BaseModel, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 router = APIRouter()
 
@@ -26,6 +26,13 @@ login_failures = UserRateLimiter(max_requests=5, window_seconds=300)
 class PasswordChange(BaseModel):
     current_password: SecretStr
     new_password: SecretStr
+
+
+class ContactUpdate(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    phone: str = Field(..., pattern=r"^0\d{9}$", description="Số điện thoại Việt Nam 10 chữ số")
+    current_address: str = Field(..., min_length=5, max_length=255)
 
 
 def _normalize_login_credentials(username_value: object, password_value: object) -> tuple[str, str]:
@@ -247,6 +254,59 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         store_name=current_user["store_name"],
         store_id=current_user["store_id"]
     )
+
+
+@router.put("/me/contact", summary="Nhân viên tự cập nhật số điện thoại và địa chỉ hiện tại")
+async def update_my_contact(
+    body: ContactUpdate,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    employee_id = current_user.get("employee_id")
+    if not employee_id:
+        raise HTTPException(status_code=400, detail="Tài khoản chưa liên kết hồ sơ nhân viên")
+
+    duplicate = await db.execute(
+        text("SELECT 1 FROM employees WHERE phone = :phone AND employee_id <> :id LIMIT 1;"),
+        {"phone": body.phone, "id": employee_id}
+    )
+    if duplicate.first():
+        raise HTTPException(status_code=409, detail="Số điện thoại đã được nhân viên khác sử dụng")
+
+    old = (await db.execute(
+        text("SELECT phone, current_address FROM employees WHERE employee_id = :id FOR UPDATE;"),
+        {"id": employee_id}
+    )).mappings().first()
+    if not old:
+        raise HTTPException(status_code=404, detail="Không tìm thấy hồ sơ nhân viên")
+
+    await db.execute(
+        text("""
+            UPDATE employees
+            SET phone = :phone, current_address = :address, updated_at = CURRENT_TIMESTAMP
+            WHERE employee_id = :id;
+        """),
+        {"phone": body.phone, "address": body.current_address, "id": employee_id}
+    )
+    # /auth/me đọc số điện thoại từ users nên phải đồng bộ cả hai bảng.
+    await db.execute(
+        text("UPDATE users SET phone = :phone, updated_at = CURRENT_TIMESTAMP WHERE user_id = :id;"),
+        {"phone": body.phone, "id": current_user["user_id"]}
+    )
+    await db.commit()
+
+    await record_audit_log(
+        db=db,
+        user_id=current_user["user_id"],
+        action="UPDATE_OWN_CONTACT",
+        entity_name="employees",
+        entity_id=str(employee_id),
+        old_values=dict(old),
+        new_values=body.model_dump(),
+        ip_address=request.client.host if request.client else "unknown"
+    )
+    return {"message": "Cập nhật thông tin liên hệ thành công!"}
 
 
 @router.post(

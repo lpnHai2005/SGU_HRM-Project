@@ -463,6 +463,11 @@ async def delete_employee(
             updated_at = CURRENT_TIMESTAMP
         WHERE employee_id = :id AND status = 'ACTIVE'
     """), {"id": employee_id, "user_id": user_id})
+    await db.execute(text("""
+        UPDATE users
+        SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP
+        WHERE employee_id = :id
+    """), {"id": employee_id})
     await db.commit()
     return {"message": "Nhân viên đã được cập nhật trạng thái thôi việc (RESIGNED)."}
 
