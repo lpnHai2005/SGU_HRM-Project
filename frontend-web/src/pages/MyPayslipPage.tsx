@@ -541,6 +541,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
               <MonthPicker
                 value={selectedPeriod || `${selectedYear}-${String(new Date().getMonth() + 1).padStart(2, '0')}`}
                 label="Kỳ tính lương"
+                inline
                 onChange={(value) => {
                   setSelectedPeriod(value)
                   setSelectedYear(value.slice(0, 4))

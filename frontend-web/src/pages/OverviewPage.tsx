@@ -90,7 +90,7 @@ export function OverviewPage(props: DashboardPageProps) {
           <section className="card overview-panel">
             <header>
               <h2>Quản lý báo cáo tổng hợp</h2>
-              <MonthPicker value={period} onChange={setPeriod} label="Chọn kỳ thống kê" />
+              <MonthPicker value={period} onChange={setPeriod} label="Chọn kỳ thống kê" inline />
             </header>
             {error && <p role="alert">{error}</p>}
             <div className="stat-grid-4">

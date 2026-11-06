@@ -18,6 +18,48 @@
     align-items: flex-start;
   }
 }
+
+.attendance-month-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+@media (max-width: 768px) {
+  .attendance-header-actions,
+  .attendance-month-nav {
+    width: 100%;
+  }
+
+  .page-header .attendance-month-nav .btn {
+    flex: none;
+    width: 38px;
+  }
+
+  .attendance-month-nav .month-picker {
+    flex: 1;
+    flex-wrap: nowrap;
+    min-width: 0;
+  }
+
+  .attendance-month-nav .month-picker .form-input {
+    flex: 1;
+    justify-content: center;
+    min-width: 0;
+    height: 38px;
+  }
+}
+
+/* Nút ‹ › và ô tháng đã đủ nghĩa; ẩn nhãn để hàng không tràn nhưng vẫn giữ cho trình đọc màn hình */
+@media (max-width: 480px) {
+  .attendance-month-nav .month-picker .form-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+  }
+}
 .attendance-personal-total-row th {
   padding: 14px 10px;
   border-top: 2px solid var(--border-strong, var(--border-default));

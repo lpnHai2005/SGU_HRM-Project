@@ -195,64 +195,44 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
               fontSize: '12px',
               padding: '4px 12px',
               borderRadius: 'var(--radius-full)',
-              background: '#000000',
-              color: '#ffffff',
-              border: '1px solid #000000',
+              background: 'var(--surface-subtle)',
+              color: 'var(--text-secondary)',
+              border: '1px solid var(--border-default)',
               fontWeight: 500,
               marginTop: '6px',
               flexWrap: 'wrap'
             }}>
-              <span className="status-pill active" style={{ fontSize: '10px', padding: '1px 6px', textTransform: 'none', background: 'rgba(255, 255, 255, 0.2)', color: '#ffffff', border: '1px solid rgba(255, 255, 255, 0.3)' }}>Công chuẩn</span>
-              <span>kỳ {periodDisplay}: <strong>{standardDays} ngày</strong></span>
+              <span className="status-pill neutral">Công chuẩn</span>
+              <span>kỳ {periodDisplay}: <strong style={{ color: 'var(--text-primary)' }}>{standardDays} ngày</strong></span>
               {calendarDays ? (
                 <>
-                  <span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>•</span>
+                  <span style={{ color: 'var(--text-muted)' }}>•</span>
                   <span>{calendarDays} ngày lịch</span>
-                  <span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>-</span>
+                  <span style={{ color: 'var(--text-muted)' }}>-</span>
                   <span>{sundaysCount} Chủ nhật</span>
                   {Boolean(holidaysCount) && (
                     <>
-                      <span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>-</span>
+                      <span style={{ color: 'var(--text-muted)' }}>-</span>
                       <span style={{ color: 'var(--status-error)', fontWeight: 600 }}>{holidaysCount} ngày lễ</span>
                     </>
                   )}
                 </>
               ) : null}
               {isManualOverride && (
-                <span style={{
-                  fontSize: '10.5px',
-                  background: 'rgba(234, 88, 12, 0.25)',
-                  color: 'var(--status-warning)',
-                  padding: '1px 6px',
-                  borderRadius: '4px',
-                  fontWeight: 600,
-                  border: '1px solid rgba(234, 88, 12, 0.4)'
-                }}>
-                  Ghi đè thủ công
-                </span>
+                <span className="status-pill warning">Ghi đè thủ công</span>
               )}
               {isLocked && (
-                <span style={{
-                  fontSize: '10.5px',
-                  background: 'rgba(16, 185, 129, 0.25)',
-                  color: 'var(--status-success)',
-                  padding: '1px 6px',
-                  borderRadius: '4px',
-                  fontWeight: 600,
-                  border: '1px solid rgba(16, 185, 129, 0.4)'
-                }}>
-                  Đã chốt kỳ
-                </span>
+                <span className="status-pill success">Đã chốt kỳ</span>
               )}
             </div>
           )}
         </div>
 
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--surface-subtle)', padding: '3px 6px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)' }}>
-            <button className="btn btn-secondary btn-sm" onClick={handlePrevMonth} title="Tháng trước" style={{ border: 'none', background: 'transparent', padding: '4px 8px' }}>‹</button>
-            <MonthPicker value={selectedPeriod} onChange={setSelectedPeriod}/>
-            <button className="btn btn-secondary btn-sm" onClick={handleNextMonth} title="Tháng sau" style={{ border: 'none', background: 'transparent', padding: '4px 8px' }}>›</button>
+        <div className="attendance-header-actions" style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <div className="attendance-month-nav">
+            <button className="btn btn-secondary btn-icon" onClick={handlePrevMonth} title="Tháng trước" aria-label="Tháng trước">{Icons.chevronLeft}</button>
+            <MonthPicker value={selectedPeriod} onChange={setSelectedPeriod} inline />
+            <button className="btn btn-secondary btn-icon" onClick={handleNextMonth} title="Tháng sau" aria-label="Tháng sau">{Icons.chevronRight}</button>
           </div>
 
           <button className="btn btn-secondary" onClick={handleExportCSV} style={{ height: '38px' }}>
