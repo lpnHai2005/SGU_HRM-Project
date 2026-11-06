@@ -1369,6 +1369,7 @@ export function ReportsPage({ user }: ReportsPageProps) {
             value={period}
             onChange={setPeriod}
             label="Kỳ thống kê"
+            inline
           />
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>

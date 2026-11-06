@@ -61,6 +61,10 @@
   margin: 0 0 16px;
 }
 
+.overview-panel header h2 {
+  margin: 0;
+}
+
 .overview-metric {
   min-width: 0;
   overflow-wrap: anywhere;

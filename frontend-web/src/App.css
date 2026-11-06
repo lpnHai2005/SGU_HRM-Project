@@ -3156,6 +3156,10 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 .notification-count{position:absolute;top:0;right:-3px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:var(--status-error-solid);color:white;font-size:10px;line-height:17px;font-weight:700;border:1px solid var(--surface-card,#fff)}
 .topbar-user,.sidebar-user-card{cursor:pointer}
 .account-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin:16px 0 24px}.account-fields dt{color:var(--text-secondary);font-size:12px}.account-fields dd{margin:4px 0;font-weight:600;overflow-wrap:anywhere}.month-picker .form-input{display:flex;align-items:center;gap:8px;cursor:pointer;white-space:nowrap}.btn:disabled{cursor:not-allowed;opacity:.5}
+.month-picker-inline { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+.month-picker-inline .form-label { margin:0; color:var(--text-secondary); white-space:nowrap; }
+.month-picker-inline .form-label::after { content:':'; }
+.month-picker-inline .form-input { width:auto; padding-block:0; }
 .month-picker-dialog { max-width:min(360px, calc(100vw - 32px)); padding:20px; }
 .month-picker-dialog > div { min-width:0; }
 .month-picker-dialog .btn { min-width:0; white-space:nowrap; }
