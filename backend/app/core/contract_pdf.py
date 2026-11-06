@@ -6,8 +6,11 @@ Hỗ trợ đầy đủ tiếng Việt có dấu (Unicode) và bố cục pháp 
 
 import os
 import io
+import logging
 from datetime import date, datetime
 from typing import Dict, Any, Optional
+
+logger = logging.getLogger("contract_pdf")
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
@@ -36,34 +39,57 @@ _FONT_INITIALIZED = False
 FONT_FAMILY = "ContractFont"
 
 
-def init_vietnamese_fonts():
+def init_vietnamese_fonts() -> str:
     """
     Tìm và đăng ký bộ font Unicode hỗ trợ tiếng Việt hoàn chỉnh.
-    Ưu tiên Times New Roman (chuẩn thể thức văn bản hành chính Việt Nam),
-    kế tiếp là Arial / Liberation / DejaVu.
+    Ưu tiên:
+    1. Bộ font đính kèm nội bộ (backend/app/assets/fonts/) - đảm bảo hoạt động 100% độc lập mọi OS/Docker/Cloud
+    2. Times New Roman (chuẩn thể thức văn bản hành chính Việt Nam Nghị định 30/2020/NĐ-CP)
+    3. Arial (Windows / macOS)
+    4. Liberation Serif / DejaVu (Linux / Docker)
     """
     global _FONT_INITIALIZED, FONT_FAMILY
-    if _FONT_INITIALIZED:
+    if _FONT_INITIALIZED and FONT_FAMILY != "Helvetica":
         return FONT_FAMILY
 
+    app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    bundled_fonts_dir = os.path.join(app_dir, "assets", "fonts")
+    win_dir = os.environ.get("WINDIR") or os.environ.get("SYSTEMROOT") or "C:/Windows"
+    win_fonts = os.path.join(win_dir, "Fonts")
+
     candidate_sets = [
-        # Windows Times New Roman
+        # 1. Bộ font nội bộ đi kèm dự án (Bundled Fonts - Ưu tiên cao nhất, chạy tốt 100% mọi môi trường)
         {
             "family": "ContractTimes",
-            "regular": "C:/Windows/Fonts/times.ttf",
-            "bold": "C:/Windows/Fonts/timesbd.ttf",
-            "italic": "C:/Windows/Fonts/timesi.ttf",
-            "boldItalic": "C:/Windows/Fonts/timesbi.ttf"
+            "regular": os.path.join(bundled_fonts_dir, "times.ttf"),
+            "bold": os.path.join(bundled_fonts_dir, "timesbd.ttf"),
+            "italic": os.path.join(bundled_fonts_dir, "timesi.ttf"),
+            "boldItalic": os.path.join(bundled_fonts_dir, "timesbi.ttf")
         },
-        # Windows Arial
         {
             "family": "ContractArial",
-            "regular": "C:/Windows/Fonts/arial.ttf",
-            "bold": "C:/Windows/Fonts/arialbd.ttf",
-            "italic": "C:/Windows/Fonts/ariali.ttf",
-            "boldItalic": "C:/Windows/Fonts/arialbi.ttf"
+            "regular": os.path.join(bundled_fonts_dir, "arial.ttf"),
+            "bold": os.path.join(bundled_fonts_dir, "arialbd.ttf"),
+            "italic": os.path.join(bundled_fonts_dir, "ariali.ttf"),
+            "boldItalic": os.path.join(bundled_fonts_dir, "arialbi.ttf")
         },
-        # Linux standard paths
+        # 2. Windows Times New Roman hệ thống
+        {
+            "family": "ContractTimes",
+            "regular": os.path.join(win_fonts, "times.ttf"),
+            "bold": os.path.join(win_fonts, "timesbd.ttf"),
+            "italic": os.path.join(win_fonts, "timesi.ttf"),
+            "boldItalic": os.path.join(win_fonts, "timesbi.ttf")
+        },
+        # 3. Windows Arial hệ thống
+        {
+            "family": "ContractArial",
+            "regular": os.path.join(win_fonts, "arial.ttf"),
+            "bold": os.path.join(win_fonts, "arialbd.ttf"),
+            "italic": os.path.join(win_fonts, "ariali.ttf"),
+            "boldItalic": os.path.join(win_fonts, "arialbi.ttf")
+        },
+        # 4. Linux standard paths (Liberation Serif chuẩn văn bản hành chính)
         {
             "family": "ContractLinuxLiberation",
             "regular": "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",
@@ -71,38 +97,71 @@ def init_vietnamese_fonts():
             "italic": "/usr/share/fonts/truetype/liberation/LiberationSerif-Italic.ttf",
             "boldItalic": "/usr/share/fonts/truetype/liberation/LiberationSerif-BoldItalic.ttf"
         },
+        # 5. Linux DejaVu Serif
+        {
+            "family": "ContractLinuxDejaVuSerif",
+            "regular": "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
+            "bold": "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
+            "italic": "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Italic.ttf",
+            "boldItalic": "/usr/share/fonts/truetype/dejavu/DejaVuSerif-BoldItalic.ttf"
+        },
+        # 6. Linux DejaVu Sans
         {
             "family": "ContractLinuxDejaVu",
             "regular": "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
             "bold": "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             "italic": "/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf",
             "boldItalic": "/usr/share/fonts/truetype/dejavu/DejaVuSans-BoldOblique.ttf"
+        },
+        # 7. macOS Times New Roman & Arial
+        {
+            "family": "ContractMacTimes",
+            "regular": "/System/Library/Fonts/Supplemental/Times New Roman.ttf",
+            "bold": "/System/Library/Fonts/Supplemental/Times New Roman Bold.ttf",
+            "italic": "/System/Library/Fonts/Supplemental/Times New Roman Italic.ttf",
+            "boldItalic": "/System/Library/Fonts/Supplemental/Times New Roman Bold Italic.ttf"
+        },
+        {
+            "family": "ContractMacTimesLib",
+            "regular": "/Library/Fonts/Times New Roman.ttf",
+            "bold": "/Library/Fonts/Times New Roman Bold.ttf",
+            "italic": "/Library/Fonts/Times New Roman Italic.ttf",
+            "boldItalic": "/Library/Fonts/Times New Roman Bold Italic.ttf"
+        },
+        {
+            "family": "ContractMacArial",
+            "regular": "/System/Library/Fonts/Supplemental/Arial.ttf",
+            "bold": "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+            "italic": "/System/Library/Fonts/Supplemental/Arial Italic.ttf",
+            "boldItalic": "/System/Library/Fonts/Supplemental/Arial Bold Italic.ttf"
         }
     ]
 
-    selected_set = None
     for cand in candidate_sets:
-        if os.path.exists(cand["regular"]):
-            selected_set = cand
-            break
+        reg_file = cand["regular"]
+        if not os.path.exists(reg_file):
+            continue
 
-    if selected_set:
         try:
-            family = selected_set["family"]
+            family = cand["family"]
             reg_name = family
             bold_name = f"{family}-Bold"
             italic_name = f"{family}-Italic"
             bi_name = f"{family}-BoldItalic"
 
-            pdfmetrics.registerFont(TTFont(reg_name, selected_set["regular"]))
+            bold_file = cand["bold"] if os.path.exists(cand.get("bold", "")) else reg_file
+            italic_file = cand["italic"] if os.path.exists(cand.get("italic", "")) else reg_file
+            bi_file = cand["boldItalic"] if os.path.exists(cand.get("boldItalic", "")) else bold_file
 
-            bold_file = selected_set["bold"] if os.path.exists(selected_set["bold"]) else selected_set["regular"]
-            italic_file = selected_set["italic"] if os.path.exists(selected_set["italic"]) else selected_set["regular"]
-            bi_file = selected_set["boldItalic"] if os.path.exists(selected_set["boldItalic"]) else bold_file
-
-            pdfmetrics.registerFont(TTFont(bold_name, bold_file))
-            pdfmetrics.registerFont(TTFont(italic_name, italic_file))
-            pdfmetrics.registerFont(TTFont(bi_name, bi_file))
+            registered_fonts = pdfmetrics.getRegisteredFontNames()
+            if reg_name not in registered_fonts:
+                pdfmetrics.registerFont(TTFont(reg_name, reg_file))
+            if bold_name not in registered_fonts:
+                pdfmetrics.registerFont(TTFont(bold_name, bold_file))
+            if italic_name not in registered_fonts:
+                pdfmetrics.registerFont(TTFont(italic_name, italic_file))
+            if bi_name not in registered_fonts:
+                pdfmetrics.registerFont(TTFont(bi_name, bi_file))
 
             # Liên kết mapping cho tags <b>, <i>, <b><i>
             addMapping(family, 0, 0, reg_name)
@@ -112,10 +171,13 @@ def init_vietnamese_fonts():
 
             FONT_FAMILY = family
             _FONT_INITIALIZED = True
+            logger.info(f"Đã đăng ký thành công font tiếng Việt cho Hợp đồng: {family} ({reg_file})")
             return FONT_FAMILY
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(f"Lỗi khi nạp bộ font {cand.get('family')} từ {reg_file}: {exc}")
+            continue
 
+    logger.error("CẢNH BÁO NGUY HIỂM: Không tìm thấy bất kỳ font Unicode tiếng Việt nào! Hợp đồng PDF sẽ bị vỡ ký tự tiếng Việt (■).")
     FONT_FAMILY = "Helvetica"
     _FONT_INITIALIZED = True
     return FONT_FAMILY
@@ -234,9 +296,10 @@ class NumberedCanvas(canvas.Canvas):
         self.saveState()
         font_name = init_vietnamese_fonts()
         try:
-            self.setFont(f"{font_name}-Italic" if f"{font_name}-Italic" in pdfmetrics.getRegisteredFontNames() else font_name, 8.5)
+            italic_font = f"{font_name}-Italic" if f"{font_name}-Italic" in pdfmetrics.getRegisteredFontNames() else font_name
+            self.setFont(italic_font, 8.5)
         except Exception:
-            self.setFont("Helvetica-Oblique", 8.5)
+            self.setFont(font_name, 8.5)
 
         self.setStrokeColor(colors.HexColor("#e5e7eb"))
         self.setLineWidth(0.5)
