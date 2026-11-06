@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
 from app.core.config import settings
+from app.core.database import release_connection
 from app.core.ai_chatbot_tools import (
     HRM_TOOLS_REGISTRY, is_hr_or_admin, is_store_manager
 )
@@ -1499,6 +1500,7 @@ async def run_ai_chatbot_pipeline(
         pass
 
     recent_history = await get_recent_thread_history(db, str(thread_id).strip(), limit=10, user_id=current_user.get("user_id"))
+    await release_connection(db)
 
     state: AgentState = {
         "query": query,
@@ -1574,6 +1576,7 @@ async def run_ai_chatbot_pipeline(
     # 2. Nhánh Retrieval (HR_POLICY, POLICY hoặc HYBRID)
     if state["intent"] in ["HR_POLICY", "POLICY", "HYBRID"]:
         ret_res = await retriever_node(state, db)
+        await release_connection(db)
         state.update(ret_res)
 
         grd_res = await grader_node(state)
@@ -1584,6 +1587,7 @@ async def run_ai_chatbot_pipeline(
             rew_res = await rewrite_node(state)
             state.update(rew_res)
             ret_res = await retriever_node(state, db)
+            await release_connection(db)
             state.update(ret_res)
             grd_res = await grader_node(state)
             state.update(grd_res)
@@ -1595,6 +1599,7 @@ async def run_ai_chatbot_pipeline(
 
         if state["tool_auth_status"] == "ALLOWED":
             tls_res = await tools_node(state, db)
+            await release_connection(db)
             state.update(tls_res)
             val_res = await validator_node(state)
             state.update(val_res)
@@ -1685,6 +1690,7 @@ async def stream_ai_chatbot_pipeline(
         pass
 
     recent_history = await get_recent_thread_history(db, str(thread_id).strip(), limit=10, user_id=current_user.get("user_id"))
+    await release_connection(db)
 
     state: AgentState = {
         "query": query,
@@ -1761,6 +1767,7 @@ async def stream_ai_chatbot_pipeline(
     if state["intent"] in ["HR_POLICY", "POLICY", "HYBRID"]:
         yield {"event": "status", "message": "Đang tra cứu cơ sở chính sách & quy chế công ty..."}
         ret_res = await retriever_node(state, db)
+        await release_connection(db)
         state.update(ret_res)
 
         grd_res = await grader_node(state)
@@ -1770,6 +1777,7 @@ async def stream_ai_chatbot_pipeline(
             rew_res = await rewrite_node(state)
             state.update(rew_res)
             ret_res = await retriever_node(state, db)
+            await release_connection(db)
             state.update(ret_res)
             grd_res = await grader_node(state)
             state.update(grd_res)
@@ -1790,6 +1798,7 @@ async def stream_ai_chatbot_pipeline(
 
         if state["tool_auth_status"] == "ALLOWED":
             tls_res = await tools_node(state, db)
+            await release_connection(db)
             state.update(tls_res)
             val_res = await validator_node(state)
             state.update(val_res)

@@ -9,6 +9,7 @@ from sqlalchemy import text
 from app.core.database import get_db
 from app.core.security import verify_password, create_access_token, get_password_hash
 from app.core.config import settings
+from app.core.rate_limit import UserRateLimiter
 from app.core.storage import upload_file_to_storage
 from app.api.deps import get_current_user, record_audit_log
 from app.schemas.schemas import LoginRequest, TokenResponse, UserProfile, TestAccountResponse, AvatarUploadRequest
@@ -17,6 +18,9 @@ import hmac
 from pydantic import BaseModel, SecretStr
 
 router = APIRouter()
+
+# 5 lần sai trong 5 phút cho cùng IP và tài khoản thì tạm chặn; đăng nhập đúng xóa bộ đếm.
+login_failures = UserRateLimiter(max_requests=5, window_seconds=300)
 
 
 class PasswordChange(BaseModel):
@@ -79,7 +83,7 @@ async def change_password(
                         "type": "object",
                         "properties": {
                             "username": {"type": "string", "example": "tz001"},
-                            "password": {"type": "string", "example": "TechZone@2026"}
+                            "password": {"type": "string", "example": "your-password"}
                         },
                         "required": ["username", "password"]
                     }
@@ -89,7 +93,7 @@ async def change_password(
                         "type": "object",
                         "properties": {
                             "username": {"type": "string", "example": "tz001"},
-                            "password": {"type": "string", "example": "TechZone@2026"}
+                            "password": {"type": "string", "example": "your-password"}
                         },
                         "required": ["username", "password"]
                     }
@@ -123,6 +127,14 @@ async def login(
             detail="Vui lòng cung cấp đầy đủ tên đăng nhập (username) và mật khẩu (password)."
         )
 
+    client_ip = request.client.host if request.client else "unknown"
+    throttle_key = f"login:{client_ip}:{username.lower()}"
+    if login_failures.is_blocked(throttle_key):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Đăng nhập sai quá nhiều lần. Vui lòng thử lại sau 5 phút."
+        )
+
     # 1. Tìm tài khoản trong CSDL Supabase
     query = text("""
         SELECT u.user_id, u.username, u.password_hash, u.is_active, u.employee_id,
@@ -137,6 +149,7 @@ async def login(
     user = res.mappings().first()
 
     if not user:
+        login_failures.is_allowed(throttle_key)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Tên đăng nhập hoặc mật khẩu không chính xác."
@@ -150,10 +163,12 @@ async def login(
 
     # 2. Xác thực mật khẩu Bcrypt
     if not verify_password(password, user["password_hash"]):
+        login_failures.is_allowed(throttle_key)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Tên đăng nhập hoặc mật khẩu không chính xác."
         )
+    login_failures.reset(throttle_key)
 
     # 3. Lấy danh sách Vai trò & Quyền chi tiết
     perm_query = text("""
@@ -178,7 +193,6 @@ async def login(
     await db.commit()
 
     # Ghi nhận nhật ký đăng nhập (Audit Log)
-    client_ip = request.client.host if request.client else "unknown"
     user_agent = request.headers.get("user-agent", "")
     await record_audit_log(
         db=db,
@@ -389,7 +403,7 @@ async def upload_avatar_file(
 @router.get(
     "/test-accounts",
     response_model=List[TestAccountResponse],
-    summary="Danh sách tài khoản test demo nhanh (Mật khẩu: TechZone@2026)",
+    summary="Danh sách tài khoản test demo nhanh",
     description="Cung cấp danh sách tài khoản demo tương ứng với các vai trò của chuỗi TechZone để hội đồng và nhóm kiểm thử nhanh."
 )
 async def get_test_accounts():

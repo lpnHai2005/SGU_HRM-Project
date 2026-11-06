@@ -5,7 +5,7 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from app.core.config import settings
-from app.core.database import get_db
+from app.core.database import get_db, release_connection
 from app.core.security import decode_token
 
 # OAuth2PasswordBearer hỗ trợ hiển thị ô Authorize trong Swagger UI
@@ -101,6 +101,7 @@ async def get_current_user(
     user_dict = dict(user_row)
     user_dict["roles"] = roles
     user_dict["permissions"] = permissions
+    await release_connection(db)
     return user_dict
 
 

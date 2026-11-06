@@ -15,7 +15,7 @@ except ImportError:
 
 class LoginRequest(BaseModel):
     username: str = Field(..., json_schema_extra={"example": "tz001"}, description="Tên đăng nhập hệ thống")
-    password: str = Field(..., json_schema_extra={"example": "TechZone@2026"}, description="Mật khẩu người dùng")
+    password: str = Field(..., json_schema_extra={"example": "your-password"}, description="Mật khẩu người dùng")
 
 
 class TokenResponse(BaseModel):
