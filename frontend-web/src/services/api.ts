@@ -308,6 +308,10 @@ export const authApi = {
     });
   },
 
+  updateMyContact: async (payload: { phone: string; current_address: string }): Promise<{ message: string }> => {
+    return api.put<{ message: string }>('/auth/me/contact', payload);
+  },
+
   uploadAvatar: async (payload: { avatar_base64: string }): Promise<{ message: string; avatar_url: string }> => {
     return api.post<{ message: string; avatar_url: string }>('/auth/avatar', payload);
   },

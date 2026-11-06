@@ -2,13 +2,15 @@ import { useEffect, useState, useRef, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useAuth } from '../contexts/AuthContext'
-import { authApi, api } from '../services/api'
+import { authApi, api, employeeApi } from '../services/api'
 import { Icons } from '../components/common/Icons'
 import { ROLE_LABELS } from '../constants/navigation'
 import { getInitials, getRoleFromUser, getRoleBadgeClass, formatTime } from '../utils/formatters'
 import { PersonalSchedulesPage } from './PersonalSchedulesPage'
 import { assignedShift } from '../services/assignedShift'
 import type { TodayAttendanceStatus, UserProfile } from '../types'
+import { EMPTY_ADDRESS, composeAddress, parseAddress, type AddressParts } from '../utils/address'
+import type { Province } from '../components/EmployeeAdvancedSearchModal'
 import {
   Camera,
   Upload,
@@ -57,6 +59,13 @@ export function AccountPage({ user }: AccountPageProps) {
   const [showNew, setShowNew] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [isChangingPassword, setIsChangingPassword] = useState(false)
+
+  // Contact state
+  const [isEditingContact, setIsEditingContact] = useState(false)
+  const [contactPhone, setContactPhone] = useState('')
+  const [contactAddress, setContactAddress] = useState<AddressParts>(EMPTY_ADDRESS)
+  const [provinces, setProvinces] = useState<Province[]>([])
+  const [isSavingContact, setIsSavingContact] = useState(false)
 
   // Shift & Attendance state
   const [today, setToday] = useState<TodayAttendanceStatus | null>(null)
@@ -220,6 +229,60 @@ export function AccountPage({ user }: AccountPageProps) {
       toast.error(err instanceof Error ? err.message : 'Đổi mật khẩu thất bại')
     } finally {
       setIsChangingPassword(false)
+    }
+  }
+
+  const contactProvince = provinces.find(item => item.name === contactAddress.province)
+  const contactWards = contactProvince?.wards || []
+
+  const openContactForm = async () => {
+    try {
+      const [employee, provinceData] = await Promise.all([
+        employeeApi.getById(p.employee_id),
+        fetch('/data/province.json').then(response => {
+          if (!response.ok) throw new Error('Không tải được dữ liệu địa chỉ')
+          return response.json() as Promise<Province[]>
+        })
+      ])
+      setProvinces(provinceData)
+      setContactPhone(employee.phone || p.phone || '')
+      setContactAddress(parseAddress(employee.current_address))
+      setIsEditingContact(true)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Không tải được thông tin liên hệ')
+    }
+  }
+
+  const handleSaveContact = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!/^0\d{9}$/.test(contactPhone.trim())) {
+      toast.warning('Số điện thoại phải gồm 10 chữ số và bắt đầu bằng 0')
+      return
+    }
+    const province = provinces.find(item => item.name === contactAddress.province)
+    if (!province) {
+      toast.warning('Vui lòng chọn Tỉnh/Thành phố cho địa chỉ hiện tại')
+      return
+    }
+    if (!province.wards.some(ward => ward.name === contactAddress.ward)) {
+      toast.warning('Vui lòng chọn Phường/Xã cho địa chỉ hiện tại')
+      return
+    }
+
+    setIsSavingContact(true)
+    try {
+      const res = await authApi.updateMyContact({
+        phone: contactPhone.trim(),
+        current_address: composeAddress(contactAddress)
+      })
+      toast.success(res.message)
+      setIsEditingContact(false)
+      await loadProfile()
+      await refreshUser()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Cập nhật thông tin liên hệ thất bại')
+    } finally {
+      setIsSavingContact(false)
     }
   }
 
@@ -387,8 +450,78 @@ export function AccountPage({ user }: AccountPageProps) {
               </div>
             </div>
 
+            {p.employee_id && isEditingContact && (
+              <form onSubmit={handleSaveContact} style={{ marginTop: 20, display: 'grid', gap: 16 }}>
+                <div className="account-form-group">
+                  <label htmlFor="contact-phone">Số điện thoại</label>
+                  <input
+                    id="contact-phone"
+                    className="form-input"
+                    type="tel"
+                    value={contactPhone}
+                    onChange={(e) => setContactPhone(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="account-form-group">
+                  <label htmlFor="contact-province">Địa chỉ hiện tại</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <select
+                      id="contact-province"
+                      className="form-select"
+                      aria-label="Địa chỉ hiện tại - Tỉnh/Thành phố"
+                      value={contactAddress.province}
+                      onChange={(e) => setContactAddress(prev => ({ ...prev, province: e.target.value, ward: '' }))}
+                    >
+                      <option value="">-- Tỉnh/Thành phố --</option>
+                      {contactAddress.province && !contactProvince && (
+                        <option value={contactAddress.province}>{contactAddress.province} (không hợp lệ)</option>
+                      )}
+                      {provinces.map(item => <option key={item.code} value={item.name}>{item.name}</option>)}
+                    </select>
+                    <select
+                      className="form-select"
+                      aria-label="Địa chỉ hiện tại - Phường/Xã"
+                      value={contactAddress.ward}
+                      disabled={!contactProvince}
+                      onChange={(e) => setContactAddress(prev => ({ ...prev, ward: e.target.value }))}
+                    >
+                      <option value="">-- Phường/Xã --</option>
+                      {contactAddress.ward && !contactWards.some(ward => ward.name === contactAddress.ward) && (
+                        <option value={contactAddress.ward}>{contactAddress.ward} (không hợp lệ)</option>
+                      )}
+                      {contactWards.map(ward => <option key={ward.code} value={ward.name}>{ward.name}</option>)}
+                    </select>
+                  </div>
+                  <input
+                    className="form-input"
+                    style={{ marginTop: 2 }}
+                    type="text"
+                    maxLength={180}
+                    aria-label="Địa chỉ hiện tại - Số nhà, tên đường"
+                    placeholder="Số nhà, tên đường (VD: 123 Nguyễn Huệ)"
+                    value={contactAddress.street}
+                    onChange={(e) => setContactAddress(prev => ({ ...prev, street: e.target.value }))}
+                  />
+                </div>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button className="btn btn-primary btn-sm" type="submit" disabled={isSavingContact}>
+                    {isSavingContact ? 'Đang lưu...' : 'Lưu thay đổi'}
+                  </button>
+                  <button className="btn btn-secondary btn-sm" type="button" onClick={() => setIsEditingContact(false)}>
+                    Hủy
+                  </button>
+                </div>
+              </form>
+            )}
+
             {p.employee_id && (
               <div style={{ marginTop: 20, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                {!isEditingContact && (
+                  <button className="btn btn-secondary btn-sm" type="button" onClick={openContactForm}>
+                    Cập nhật liên hệ
+                  </button>
+                )}
                 <Link className="btn btn-secondary btn-sm" to="/my-payroll">
                   {Icons.wallet} Xem phiếu lương của tôi
                 </Link>
