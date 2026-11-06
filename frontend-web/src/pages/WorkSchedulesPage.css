@@ -265,7 +265,7 @@
 }
 
 .week-col-header {
-  background: var(--surface-subtle);
+  background: var(--surface-card, transparent);
   text-align: center;
   padding: 10px;
   cursor: pointer;
@@ -273,8 +273,12 @@
   position: relative;
 }
 
-.week-col-header:hover {
-  background: color-mix(in srgb, var(--action-primary) 8%, var(--surface-subtle));
+.week-col-header:not(.is-today) {
+  background: var(--surface-card, transparent);
+}
+
+.week-col-header:hover:not(.is-today) {
+  background: color-mix(in srgb, var(--action-primary) 8%, var(--surface-card, transparent));
 }
 
 .week-col-header.is-today {
@@ -1336,9 +1340,106 @@
 }
 
 .employee-search-input {
-  padding-left: 32px;
+  padding-left: 12px;
   height: 36px;
   font-size: 0.8125rem;
+}
+
+/* Ô widget nhỏ tính tổng giờ tuần bên dưới weekday-pill-group */
+.weekday-summary-widget {
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  font-size: 0.775rem;
+  transition: all 0.2s ease;
+}
+
+.weekday-summary-widget.overtime-warning {
+  border-color: var(--status-warning-border, #f59e0b);
+  background: color-mix(in srgb, var(--status-warning, #f59e0b) 8%, var(--surface-card));
+}
+
+.summary-widget-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: var(--text-secondary);
+}
+
+.summary-widget-content strong {
+  color: var(--text-primary);
+}
+
+.summary-widget-divider {
+  color: var(--text-tertiary);
+}
+
+.summary-widget-alert {
+  margin-top: 6px;
+  font-size: 0.735rem;
+  font-weight: 600;
+  color: var(--status-error, #ef4444);
+  line-height: 1.4;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.summary-widget-alert .alert-icon-span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.summary-widget-alert .alert-icon-span svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Yêu cầu: Đổi màu đen, text vẫn giữ bold cho cảnh báo 7/7 ngày không có ngày nghỉ OFF */
+.summary-widget-alert.summary-widget-alert-offday {
+  color: #000000 !important;
+  font-weight: 700 !important;
+}
+
+.summary-widget-alert.summary-widget-alert-offday strong {
+  color: #000000 !important;
+  font-weight: 700 !important;
+}
+
+.summary-widget-alert.summary-widget-alert-offday .alert-icon-span svg {
+  color: #000000 !important;
+  stroke: #000000 !important;
+}
+
+/* Badge thông báo nghỉ phép & hợp đồng trong danh sách nhân viên */
+.employee-badge-alert {
+  margin-top: 4px;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-weight: 600;
+  width: fit-content;
+}
+
+.employee-badge-alert.warning {
+  background: color-mix(in srgb, var(--status-warning, #f59e0b) 12%, transparent);
+  color: var(--status-warning, #d97706);
+  border: 1px solid color-mix(in srgb, var(--status-warning, #f59e0b) 30%, transparent);
+}
+
+.employee-badge-alert.error {
+  background: color-mix(in srgb, var(--status-error, #ef4444) 12%, transparent);
+  color: var(--status-error, #dc2626);
+  border: 1px solid color-mix(in srgb, var(--status-error, #ef4444) 30%, transparent);
 }
 
 .selected-employee-chips {
@@ -1493,17 +1594,33 @@
   gap: 10px;
 }
 
-/* Modal Dialog */
+/* Modal Dialog - Chỉnh sửa phân ca / Hủy lịch phân công */
 .work-schedule-dialog {
   max-width: 520px;
+  max-height: min(90vh, 760px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
-.work-schedule-dialog-form {
+.work-schedule-dialog .work-schedule-dialog-form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.work-schedule-dialog-body {
   overflow-y: auto;
   padding: 18px 20px;
   display: flex;
   flex-direction: column;
   gap: 14px;
+  flex: 1;
+  min-height: 0;
+  max-height: 100%;
 }
 
 .work-schedule-dialog-form small,
@@ -1525,8 +1642,15 @@
 .work-schedule-dialog-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
-  margin-top: 8px;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--surface-card);
+  flex-shrink: 0;
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
 }
 
 .btn-danger {
@@ -1849,4 +1973,65 @@
 .week-summary-cell {
   background: var(--surface-subtle);
   font-weight: 700;
+}
+
+/* Danh mục ca chuẩn 8h (ShiftTemplateModal) - Layout khớp không tràn */
+.shift-template-modal {
+  max-width: min(880px, calc(100vw - 32px)) !important;
+  width: 100%;
+  max-height: min(90vh, 780px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.shift-template-modal .shift-template-body,
+.shift-template-modal .work-schedule-dialog-form {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.shift-template-modal .table-container {
+  overflow-x: auto;
+  width: 100%;
+  max-width: 100%;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-card);
+}
+
+.shift-template-modal .data-table {
+  width: 100%;
+  min-width: 620px;
+  border-collapse: collapse;
+}
+
+.shift-template-modal .data-table th,
+.shift-template-modal .data-table td {
+  padding: 10px 12px;
+  white-space: nowrap;
+}
+
+.shift-template-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 16px;
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-default);
+}
+
+.shift-template-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  align-items: end;
 }

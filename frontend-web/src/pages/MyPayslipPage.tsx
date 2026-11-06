@@ -132,7 +132,8 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
 
   const printableEarnings = useMemo(() => {
     if (!monthlyPrintData?.earnings) return []
-    return monthlyPrintData.earnings.map((e: any) => {
+    // Lương công vượt chuẩn đã gộp vào dòng lương cơ bản theo công (actual_base_salary).
+    return monthlyPrintData.earnings.filter((e: any) => e.item_code !== 'EXTRA_WORKDAY_SALARY').map((e: any) => {
       if (e.item_code === 'CONTRACT_SALARY') {
         const contractSalary = Number(monthlyPrintData.summary?.contract_salary) || 0
         const stdDays = Number(monthlyPrintData.attendance?.standard_working_days ?? 26)
@@ -926,15 +927,32 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
                                 <td style={{ padding: '8px 12px' }}>
                                   <PayslipHoverItem
                                     label="Phụ cấp ăn trưa & đi lại"
-                                    tooltipTitle="Chế độ phúc lợi cố định"
+                                    tooltipTitle="Tính theo công thực tế"
                                     tooltipLines={[
-                                      { label: 'Căn cứ:', value: 'Chế độ phụ cấp cơm trưa & xăng xe toàn chuỗi' },
+                                      { label: 'Căn cứ:', value: '1.000.000đ ÷ 26 × số công thực tế (tối đa 26 công)' },
                                       { label: 'Mức phụ cấp:', value: '+' + formatCurrency(displayPayroll.meal_transport_allowance), isHighlight: true, color: '#10b981' }
                                     ]}
                                   />
                                 </td>
                                 <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
                                   +{formatCurrency(displayPayroll.meal_transport_allowance)}
+                                </td>
+                              </tr>
+                            )}
+                            {(displayPayroll.attendance_allowance || 0) > 0 && (
+                              <tr>
+                                <td style={{ padding: '8px 12px' }}>
+                                  <PayslipHoverItem
+                                    label="Phụ cấp chuyên cần"
+                                    tooltipTitle="Quy chế chuyên cần lũy tiến"
+                                    tooltipLines={[
+                                      { label: 'Căn cứ:', value: 'Đủ ≥ 20 công & trễ >15p dưới 3 lần: 100%; 3–4 lần: 50%; ≥ 5 lần hoặc < 20 công: 0đ' },
+                                      { label: 'Mức phụ cấp:', value: '+' + formatCurrency(displayPayroll.attendance_allowance), isHighlight: true, color: '#10b981' }
+                                    ]}
+                                  />
+                                </td>
+                                <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                                  +{formatCurrency(displayPayroll.attendance_allowance)}
                                 </td>
                               </tr>
                             )}
@@ -1085,9 +1103,9 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
                                 <td style={{ padding: '8px 12px' }}>
                                   <PayslipHoverItem
                                     label="Khấu trừ khác / Phạt vi phạm"
-                                    tooltipTitle="Phạt vi phạm quy chế chấm công"
+                                    tooltipTitle="Phạt vi phạm (quy chế cũ, đã bãi bỏ từ 11/2026)"
                                     tooltipLines={[
-                                      { label: 'Quy định phạt:', value: '50.000 VNĐ / lần đi muộn quá hạn (> 15 phút)' },
+                                      { label: 'Quy định cũ:', value: '50.000 VNĐ / lần đi muộn > 15 phút — chỉ còn trên phiếu lương lịch sử' },
                                       { label: 'Công thức phạt:', value: `${lateAttendances.filter(a => (a.late_minutes || 0) > 15).length || Math.round((displayPayroll.penalty_deduction || 0) / 50000)} lần × 50.000 VNĐ` },
                                       { label: 'Tổng tiền phạt:', value: '-' + formatCurrency(displayPayroll.penalty_deduction), isHighlight: true, color: '#ef4444' }
                                     ]}
@@ -1279,7 +1297,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
                     <tbody>
                       {annualData.monthly_records && annualData.monthly_records.length > 0 ? (
                         annualData.monthly_records.map((rec: any, idx: number) => {
-                          const allowances = (rec.position_allowance || 0) + (rec.seniority_allowance || 0) + (rec.project_allowance || 0) + (rec.meal_transport_allowance || 0)
+                          const allowances = (rec.position_allowance || 0) + (rec.seniority_allowance || 0) + (rec.project_allowance || 0) + (rec.meal_transport_allowance || 0) + (rec.attendance_allowance || 0)
                           return (
                             <tr key={idx} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                               <td style={{ padding: '12px 14px', fontWeight: 600 }}>
@@ -2231,7 +2249,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
                     </thead>
                     <tbody>
                       {annualData.monthly_records?.map((rec: any, idx: number) => {
-                        const allowances = (rec.position_allowance || 0) + (rec.seniority_allowance || 0) + (rec.project_allowance || 0) + (rec.meal_transport_allowance || 0)
+                        const allowances = (rec.position_allowance || 0) + (rec.seniority_allowance || 0) + (rec.project_allowance || 0) + (rec.meal_transport_allowance || 0) + (rec.attendance_allowance || 0)
                         return (
                           <tr key={idx}>
                             <td style={{ fontWeight: 600 }}>

@@ -234,7 +234,7 @@ export function WorkScheduleCalendar({
                 {weekDays.map(d => (
                   <th
                     key={d.date}
-                    className={`week-col-header ${d.isToday ? 'is-today' : ''} ${d.date === selectedDate ? 'is-selected' : ''}`}
+                    className={`week-col-header ${d.isToday ? 'is-today' : ''} ${d.date === selectedDate ? 'is-selected' : ''}`.trim()}
                     onClick={() => onSelectDate(d.date)}
                   >
                     <div className="week-header-dayname">{d.dayName}</div>

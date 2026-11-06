@@ -1134,7 +1134,7 @@ export function PayrollRegulationDialog({ onClose, initialTab }: PayrollRegulati
                       </div>
 
                       <div className="prd-stat-box highlight">
-                        <div className="prd-stat-box-label">Công chuẩn tự động</div>
+                        <div className="prd-stat-box-label">Công chuẩn mặc định (cố định)</div>
                         <div className="prd-stat-box-value">{workingDaysData.auto_standard_days} ngày</div>
                       </div>
                     </div>
@@ -1400,9 +1400,9 @@ export function PayrollRegulationDialog({ onClose, initialTab }: PayrollRegulati
                         Phút trễ tính từ giờ bắt đầu của chính ca đó. Hệ thống chỉ gắn nhãn <code>LATE</code> và ghi nhận vi phạm khi trễ quá 15 phút (ví dụ: ca 13:00 thì sau 13:15 mới bị đánh dấu muộn).
                       </td>
                       <td>
-                        <span className="prd-badge">PHẠT VI PHẠM QUY CHẾ</span>
+                        <span className="prd-badge">XÉT CHUYÊN CẦN</span>
                         <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                          Trễ &gt; 15p bị phạt vi phạm quy chế (<code>LATE_PENALTY_AMOUNT</code>) + trừ lương theo số phút thiếu.
+                          Không phạt tiền, không trừ lương theo phút. Trễ &gt; 15p 3–4 lần/tháng còn 50% phụ cấp chuyên cần; từ 5 lần mất phụ cấp + lập biên bản.
                         </div>
                       </td>
                     </tr>
@@ -1467,15 +1467,15 @@ export function PayrollRegulationDialog({ onClose, initialTab }: PayrollRegulati
                 <div className="prd-rule-list">
                   <div className="prd-rule-item">
                     <span className="dot">•</span>
-                    <span><strong>Ngày công thực tế:</strong> Tổng ngày có check-in hợp lệ trong kỳ tính lương (<code>attendance_actual_days</code>) kết hợp cùng ngày nghỉ phép hưởng lương (<code>paid_leave_days</code>) cấu thành công hưởng lương chính thức.</span>
+                    <span><strong>Ngày công thực tế:</strong> Mỗi ngày quy đổi theo giờ làm (dưới 4h = 0, 4h–dưới 7.5h = 0.5, từ 7.5h = 1 công), cộng ngày nghỉ phép hưởng lương (<code>paid_leave_days</code>). Lương cơ bản = Lương HĐ / 26 × số công, không chặn trần (27 công được 27/26 lương HĐ).</span>
                   </div>
                   <div className="prd-rule-item">
                     <span className="dot">•</span>
-                    <span><strong>Giờ làm thêm OT được tính tiền:</strong> Chỉ số giờ làm thêm có đơn đăng ký OT và đã được cấp có thẩm quyền phê duyệt chính thức (<code>approved_overtime_hours</code>) mới được đưa vào bảng tính lương với các hệ số tương ứng (150% ngày thường, 200% Chủ Nhật, 300% Lễ Tết).</span>
+                    <span><strong>Giờ làm thêm OT được tính tiền:</strong> Chỉ số giờ làm thêm có đơn đăng ký OT và đã được cấp có thẩm quyền phê duyệt chính thức (<code>approved_overtime_hours</code>) mới được đưa vào bảng tính lương với các hệ số tương ứng (150% ngày thường, 200% Chủ Nhật, 300% Lễ Tết, 200% ban đêm 22:00–08:00). Ca Full tự cộng 4h OT; tối đa 40h OT/tháng.</span>
                   </div>
                   <div className="prd-rule-item">
                     <span className="dot">•</span>
-                    <span><strong>Khấu trừ đi trễ / về sớm:</strong> Tổng phút thiếu hụt do đi trễ và về sớm chưa xin phép sẽ được quy đổi thành số tiền khấu trừ thời gian thiếu (<code>time_deduction_amount</code>) dựa trên đơn giá lương theo phút của nhân viên.</span>
+                    <span><strong>Đi trễ / về sớm:</strong> Không trừ tiền theo phút. Thời gian thiếu chỉ ảnh hưởng số công ngày (theo mốc 4h / 7.5h) và phụ cấp chuyên cần.</span>
                   </div>
                   <div className="prd-rule-item">
                     <span className="dot">•</span>
@@ -1505,7 +1505,7 @@ export function PayrollRegulationDialog({ onClose, initialTab }: PayrollRegulati
                 <div className="prd-rule-list">
                   <div className="prd-rule-item">
                     <span className="dot">•</span>
-                    <span><strong>Ngày công chuẩn tháng (D_std):</strong> Tự động tính theo lịch thực tế từng tháng = <code>Tổng ngày trong tháng - Số ngày Chủ Nhật - Số ngày Lễ/Tết (Thứ 2 đến Thứ 7)</code>. Ban Giám đốc có thể ghi đè thủ công cho kỳ lương tại Tab <em>"Lịch Lễ, Tết & Công chuẩn"</em>.</span>
+                    <span><strong>Ngày công chuẩn tháng (D_std):</strong> Cố định <code>26 công</code> mọi tháng (tham số <code>PRORATE_STANDARD_DAYS</code>), dùng chung cho bảng công và phiếu lương. Số ngày theo lịch (trừ Chủ Nhật, Lễ/Tết) chỉ để tham khảo; Ban Giám đốc có thể ghi đè thủ công cho kỳ lương tại Tab <em>"Lịch Lễ, Tết & Công chuẩn"</em>.</span>
                   </div>
                   <div className="prd-rule-item">
                     <span className="dot">•</span>
@@ -1538,7 +1538,11 @@ export function PayrollRegulationDialog({ onClose, initialTab }: PayrollRegulati
                 <div className="prd-rule-list">
                   <div className="prd-rule-item">
                     <span className="dot">•</span>
-                    <span><strong>Cơm trưa & Đi lại:</strong> Định mức 1.000.000 đ/tháng (áp dụng toàn thể nhân sự chính thức).</span>
+                    <span><strong>Cơm trưa & Đi lại:</strong> 1.000.000 đ / 26 × số công thực tế, tối đa 1.000.000 đ/tháng (24 công = 923.077 đ).</span>
+                  </div>
+                  <div className="prd-rule-item">
+                    <span className="dot">•</span>
+                    <span><strong>Phụ cấp chuyên cần:</strong> 500.000 đ/tháng; trễ &gt; 15p 3–4 lần còn 50%; trễ từ 5 lần hoặc dưới 20 công: 0 đ.</span>
                   </div>
                   <div className="prd-rule-item">
                     <span className="dot">•</span>
@@ -1596,7 +1600,7 @@ export function PayrollRegulationDialog({ onClose, initialTab }: PayrollRegulati
                 <div className="prd-rule-list">
                   <div className="prd-rule-item">
                     <span className="dot">•</span>
-                    <span><strong>Phạt đi trễ ca:</strong> Đi trễ quá 15 phút so với giờ bắt đầu ca sẽ bị phạt 50.000 đ/lần.</span>
+                    <span><strong>Đi trễ ca:</strong> Đã bãi bỏ phạt 50.000 đ/lần. Trễ quá 15 phút từ 5 ngày/tháng tự động lập biên bản; biên bản 3 tháng liên tiếp bị gắn cờ BLACK_LIST_WARNING.</span>
                   </div>
                   <div className="prd-rule-item">
                     <span className="dot">•</span>

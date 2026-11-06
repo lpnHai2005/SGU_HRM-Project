@@ -18,11 +18,11 @@ import {
   formatDate,
   formatTime,
   formatDurationMinutes,
-  formatCurrency,
   formatQualityFlag,
   formatQualityStatus,
 } from '../utils/formatters'
 import { api } from '../services/api'
+import { allowanceTierLabel } from '../utils/attendanceAllowance'
 
 export type TabType = 'ALL' | 'LATE' | 'GRACE' | 'EARLY' | 'REVIEW'
 export type DecisionType =
@@ -113,6 +113,9 @@ export interface EmployeeSummary {
   late_day_count?: number
   late_session_count?: number
   late_penalty_amount?: number
+  attendance_allowance_tier?: string | null
+  work_day_credits?: number
+  late_warning_report?: boolean
   verified_late_minutes?: number
   grace_late_session_count?: number
   grace_late_minutes?: number
@@ -652,17 +655,17 @@ function AttendanceSessionTableRow({
     lateRecordBadge = (
       <span
         className="att-day-status-pill is-late-day"
-        title="HR đã xác nhận vi phạm trễ ca theo lịch cũ. Tính 1 lần phạt."
+        title="HR đã xác nhận vi phạm trễ ca theo lịch cũ. Tính 1 lần trễ vào phụ cấp chuyên cần."
       >
         <AlertCircle size={11} />
-        <span>HR xác nhận trễ · {session.late_minutes}p (Phạt 50.000₫)</span>
+        <span>HR xác nhận trễ · {session.late_minutes}p</span>
       </span>
     )
   } else if (session.review_decision === 'EXCLUDED_INVALID') {
     lateRecordBadge = (
       <span
         className="att-day-status-pill is-excluded"
-        title="HR đã xác nhận loại trừ phiên không hợp lệ. Miễn trừ toàn bộ công và phạt."
+        title="HR đã xác nhận loại trừ phiên không hợp lệ. Không tính công, không tính lần trễ."
       >
         <Check size={11} />
         <span>Đã loại trừ phiên (0₫)</span>
@@ -695,20 +698,20 @@ function AttendanceSessionTableRow({
       lateRecordBadge = (
         <span
           className="att-day-status-pill is-late-day"
-          title="Trễ quá hạn >15p, tính 1 ngày trễ và 1 lần phạt 50.000₫"
+          title="Trễ quá hạn >15p, tính 1 ngày trễ (xét phụ cấp chuyên cần / biên bản)"
         >
           <AlertCircle size={11} />
-          <span>+1 ngày trễ · Trễ {session.late_minutes}p · Phạt 50.000₫</span>
+          <span>+1 ngày trễ · Trễ {session.late_minutes}p</span>
         </span>
       )
     } else {
       lateRecordBadge = (
         <span
           className="att-day-status-pill is-late-second"
-          title="Trễ ca 2 cùng ngày: không tăng ngày trễ nhưng vẫn tính 1 lần phạt vi phạm"
+          title="Trễ ca 2 cùng ngày: không tăng ngày trễ"
         >
           <AlertCircle size={11} />
-          <span>Trễ ca 2 (0 ngày) · Trễ {session.late_minutes}p · Phạt 50.000₫</span>
+          <span>Trễ ca 2 (0 ngày) · Trễ {session.late_minutes}p</span>
         </span>
       )
     }
@@ -1159,8 +1162,7 @@ export function EmployeeAttendanceDetailModal({
 
   // Theo dõi phiên trễ đầu tiên trong ngày
   const seenLateDates = new Set<string>()
-  const totalLatePenalty =
-    employee.late_penalty_amount ?? (employee.late_session_count ?? 0) * 50000
+  const allowanceTier = allowanceTierLabel(employee.attendance_allowance_tier)
 
   return (
     <div className="att-detail-modal-overlay" onClick={onClose}>
@@ -1242,7 +1244,7 @@ export function EmployeeAttendanceDetailModal({
                   fontWeight: 600,
                 }}
               >
-                Tiền phạt vi phạm quy chế: {formatCurrency(totalLatePenalty)}
+                {allowanceTier}{employee.late_warning_report ? ' · Đã lập biên bản' : ''}
               </div>
             </div>
 
@@ -1290,7 +1292,7 @@ export function EmployeeAttendanceDetailModal({
                 <span className="sub-val">/ {employee.scheduled_hours?.toFixed(1) ?? '0.0'}h</span>
               </div>
               <div className="att-emp-kpi-sub">
-                {employee.working_days ?? 0} ngày làm việc thực tế
+                {employee.work_day_credits ?? employee.working_days ?? 0} công quy đổi · {employee.working_days ?? 0} ngày có mặt
               </div>
               {(employee.needs_review_session_count ?? 0) > 0 ? (
                 <div

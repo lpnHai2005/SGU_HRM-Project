@@ -8,6 +8,7 @@ import { WorkScheduleDrawer } from '../components/schedule/WorkScheduleDrawer'
 import { OvertimeRequestDrawer } from '../components/schedule/OvertimeRequestDrawer'
 import { overtimeStatusClass, overtimeStatusLabel } from '../components/schedule/overtimeDisplay'
 import { WorkScheduleCalendar } from '../components/schedule/WorkScheduleCalendar'
+import { ShiftTemplateModal } from '../components/schedule/ShiftTemplateModal'
 import type { Employee, Lookups, OvertimeRequest, WorkSchedule, WorkScheduleQuery, WorkScheduleWrite } from '../types'
 import './WorkSchedulesPage.css'
 
@@ -55,12 +56,12 @@ function periodLabel(value: string, view: ViewMode) {
   if (view === 'month') return date.toLocaleDateString('vi-VN', { month: 'long', year: 'numeric' })
   const monday = new Date(date)
   monday.setDate(date.getDate() - ((date.getDay() + 6) % 7))
-  const saturday = new Date(monday)
-  saturday.setDate(monday.getDate() + 5)
-  return `${monday.toLocaleDateString('vi-VN')} – ${saturday.toLocaleDateString('vi-VN')}`
+  const sunday = new Date(monday)
+  sunday.setDate(monday.getDate() + 6)
+  return `${monday.toLocaleDateString('vi-VN')} – ${sunday.toLocaleDateString('vi-VN')}`
 }
 
-function overtimePeriod(value: string, view: ViewMode, includeSunday: boolean) {
+function overtimePeriod(value: string, view: ViewMode) {
   const [year, month, day] = value.split('-').map(Number)
   const date = new Date(year, month - 1, day)
   if (view === 'day') return { date_from: value, date_to: value }
@@ -69,7 +70,7 @@ function overtimePeriod(value: string, view: ViewMode, includeSunday: boolean) {
   }
   date.setDate(date.getDate() - ((date.getDay() + 6) % 7))
   const monday = localDate(date)
-  date.setDate(date.getDate() + (includeSunday ? 6 : 5))
+  date.setDate(date.getDate() + 6)  // Tuần xoay ca T2 -> CN
   return { date_from: monday, date_to: localDate(date) }
 }
 
@@ -90,7 +91,11 @@ export function WorkSchedulesPage({ user }: { user: any }) {
   const [shiftFilter, setShiftFilter] = useState('')
   const [storeFilter, setStoreFilter] = useState(isStoreManager && user?.store_id ? String(user.store_id) : '')
   const [includeCancelled, setIncludeCancelled] = useState(false)
-  const [showSunday, setShowSunday] = useState(false)
+  // Lịch phân ca luôn hiển thị đủ 7 ngày T2 -> CN (xoay ca, bắt buộc 1 ngày OFF/tuần).
+  const showSunday = true
+  const [shiftCatalogOpen, setShiftCatalogOpen] = useState(false)
+  const canEditShiftCatalog = roles.includes('DIRECTOR') || roles.includes('HR_MANAGER')
+  const canViewShiftCatalog = canEditShiftCatalog || roles.includes('ADMIN') || roles.includes('STORE_MANAGER')
 
   const [schedules, setSchedules] = useState<WorkSchedule[]>([])
   const [overtimeRequests, setOvertimeRequests] = useState<OvertimeRequest[]>([])
@@ -186,7 +191,7 @@ export function WorkSchedulesPage({ user }: { user: any }) {
 
   useEffect(() => {
     let active = true
-    const range = overtimePeriod(selectedDate, view, showSunday)
+    const range = overtimePeriod(selectedDate, view)
     const params: { date_from: string; date_to: string; store_id?: number; employee_id?: number; limit: number } = { ...range, limit: 200 }
     if (storeFilter) params.store_id = Number(storeFilter)
     if (employeeFilter) params.employee_id = Number(employeeFilter)
@@ -194,7 +199,7 @@ export function WorkSchedulesPage({ user }: { user: any }) {
       .then(rows => { if (active) { setOvertimeRequests(rows); setOvertimeError('') } })
       .catch((err: unknown) => { if (active) setOvertimeError(err instanceof Error ? err.message : 'Không tải được đăng ký OT.') })
     return () => { active = false }
-  }, [selectedDate, view, showSunday, storeFilter, employeeFilter, refresh])
+  }, [selectedDate, view, storeFilter, employeeFilter, refresh])
 
   const sortedSchedules = useMemo(
     () => [...schedules].sort((a, b) =>
@@ -204,6 +209,22 @@ export function WorkSchedulesPage({ user }: { user: any }) {
     ),
     [schedules],
   )
+
+  // Cảnh báo tuần T2–CN: vượt 48h công chuẩn hoặc không còn ngày OFF.
+  const weeklyAlerts = useMemo(() => {
+    if (view !== 'week' && view !== 'table') return []
+    const byEmployee = new Map<number, { name: string; hours: number; days: Set<string> }>()
+    for (const row of schedules) {
+      if (row.cancelled_at) continue
+      const item = byEmployee.get(row.employee_id) || { name: row.employee_name, hours: 0, days: new Set<string>() }
+      item.hours += Number(row.work_hours || 0)
+      item.days.add(row.work_date)
+      byEmployee.set(row.employee_id, item)
+    }
+    return [...byEmployee.values()]
+      .filter(item => item.hours > 48 || item.days.size > 6)
+      .map(item => `${item.name}: ${item.days.size} ngày / ${item.hours}h${item.days.size > 6 ? ' (thiếu ngày OFF)' : ''}`)
+  }, [schedules, view])
 
   const visibleOvertimeRequests = useMemo(() => overtimeRequests.filter(request => {
     const employee = employees.find(row => row.employee_id === request.employee_id)
@@ -308,8 +329,9 @@ export function WorkSchedulesPage({ user }: { user: any }) {
           })
           setNotice(`Đã cập nhật mọi ca cố định từ ${displayDate(effectiveDate)} trở đi.`)
         } else {
-          await workScheduleApi.update(dialog.schedule.schedule_id, { ...form, reason: reason.trim() })
-          setNotice('Đã cập nhật lịch làm việc của ngày được chọn.')
+          const updated = await workScheduleApi.update(dialog.schedule.schedule_id, { ...form, reason: reason.trim() })
+          const warnings = (updated.warnings || []).map(w => w.replace(/^[A-Z0-9_]+:\s*/, ''))
+          setNotice('Đã cập nhật lịch làm việc của ngày được chọn.' + (warnings.length ? ` Lưu ý: ${warnings.join(' ')}` : ''))
         }
       } else {
         // Cancel action
@@ -348,8 +370,15 @@ export function WorkSchedulesPage({ user }: { user: any }) {
             Phân công ca làm việc theo ngày và ca cố định; theo dõi thời khóa biểu qua lịch Tháng, Tuần, Ngày.
           </p>
         </div>
-        {canManage && (
+        {(canManage || canViewShiftCatalog) && (
           <div className="work-schedule-header-actions">
+            {canViewShiftCatalog && (
+              <button type="button" className="btn btn-secondary" onClick={() => setShiftCatalogOpen(true)}
+                title="Xem/chỉnh khung giờ ca chuẩn 8h, nghỉ giữa ca và OT tự động của ca Full">
+                {Icons.clockOutline}<span>Danh mục ca</span>
+              </button>
+            )}
+            {canManage && <>
             {canCreateOvertime && <button type="button" className="btn btn-secondary btn-overtime-register" onClick={() => openOvertimeDrawer(selectedDate)}>
               {Icons.clockOutline}<span>+ Đăng ký OT</span>
             </button>}
@@ -371,6 +400,7 @@ export function WorkSchedulesPage({ user }: { user: any }) {
               <span className="btn-icon-custom">{Icons.plus}</span>
               <span>+ Phân ca</span>
             </button>
+            </>}
           </div>
         )}
       </header>
@@ -489,17 +519,6 @@ export function WorkSchedulesPage({ user }: { user: any }) {
 
         {/* Additional Toggles */}
         <div className="work-schedule-filter-toggles">
-          {view === 'week' && (
-            <label className="work-schedule-checkbox-toggle">
-              <input
-                type="checkbox"
-                checked={showSunday}
-                onChange={e => setShowSunday(e.target.checked)}
-              />
-              <span>Hiện Chủ nhật</span>
-            </label>
-          )}
-
           <label className="work-schedule-checkbox-toggle">
             <input
               type="checkbox"
@@ -584,6 +603,11 @@ export function WorkSchedulesPage({ user }: { user: any }) {
         {notice && <div className="work-schedule-notice" role="status">{notice}</div>}
         {error && <div className="work-schedule-error" role="alert">{error}</div>}
         {overtimeError && <div className="work-schedule-error" role="alert">Không tải được lớp đề xuất OT: {overtimeError}</div>}
+        {weeklyAlerts.length > 0 && (
+          <div className="work-schedule-error" role="alert">
+            Lịch hiện có vượt chuẩn tuần (tối đa 6 ca / 48h, bắt buộc 1 ngày OFF; ca mới vượt chuẩn sẽ bị chặn): {weeklyAlerts.join('; ')}
+          </div>
+        )}
 
         {/* Calendar or Table View */}
         {loading ? (
@@ -737,6 +761,7 @@ export function WorkSchedulesPage({ user }: { user: any }) {
             </header>
 
             <form onSubmit={submitDialog} className="work-schedule-dialog-form">
+              <div className="work-schedule-dialog-body modal-body">
               {dialog.action === 'edit' && form && (
                 <>
                   <label className="form-group">
@@ -926,8 +951,9 @@ export function WorkSchedulesPage({ user }: { user: any }) {
                   Lịch đã được dùng để ghi nhận chấm công không thể chỉnh sửa trực tiếp vì snapshot chấm công được bảo lưu.
                 </p>
               )}
+              </div>
 
-              <footer className="work-schedule-dialog-actions">
+              <footer className="work-schedule-dialog-actions modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={closeDialog} disabled={saving}>
                   Quay lại
                 </button>
@@ -943,6 +969,13 @@ export function WorkSchedulesPage({ user }: { user: any }) {
           </section>
         </div>
       )}
+
+      <ShiftTemplateModal
+        isOpen={shiftCatalogOpen}
+        canEdit={canEditShiftCatalog}
+        onClose={() => setShiftCatalogOpen(false)}
+        onSaved={msg => { setNotice(msg); setRefresh(value => value + 1) }}
+      />
 
       {/* Unified Drawer */}
       <WorkScheduleDrawer

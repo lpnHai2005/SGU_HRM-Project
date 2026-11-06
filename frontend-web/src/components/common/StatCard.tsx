@@ -5,11 +5,12 @@ export interface StatCardProps {
   iconColor?: 'blue' | 'green' | 'amber' | 'red'
   label: string
   value: string | number
-  trend?: string
+  trend?: ReactNode
   trendDirection?: 'up' | 'down' | 'warning'
-  footerNote?: string
+  footerNote?: ReactNode
   onClick?: () => void
   active?: boolean
+  className?: string
 }
 
 export function StatCard({
@@ -22,10 +23,28 @@ export function StatCard({
   footerNote,
   onClick,
   active,
+  className,
 }: StatCardProps) {
+  // Tự động bọc status-pill cho các text trạng thái thông dụng nếu truyền text trơn
+  const renderTrend = () => {
+    if (!trend) return null
+    if (typeof trend === 'string') {
+      if (['Tốt', 'Đúng giờ', 'Không phạt'].includes(trend.trim())) {
+        return <span className="status-pill active">{trend}</span>
+      }
+      if (['Có vi phạm', 'Vi phạm', 'Trễ'].includes(trend.trim())) {
+        return <span className="status-pill error">{trend}</span>
+      }
+      if (['Có về sớm', 'Cảnh báo'].includes(trend.trim())) {
+        return <span className="status-pill warning">{trend}</span>
+      }
+    }
+    return trend
+  }
+
   return (
     <div
-      className={`stat-card${active ? ' is-active' : ''}${onClick ? ' is-clickable' : ''}`}
+      className={`stat-card kpi-card ${className || ''}${active ? ' is-active' : ''}${onClick ? ' is-clickable' : ''}`.trim()}
       onClick={onClick}
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
@@ -48,14 +67,16 @@ export function StatCard({
       <div className="stat-card-value">{value}</div>
       {trend && (
         <div className={`stat-card-trend-row ${trendDirection}`}>
-          {trendDirection === 'warning' ? (
-            <span>⚠</span>
-          ) : trendDirection === 'up' ? (
-            <span>↗</span>
-          ) : (
-            <span>↘</span>
+          {typeof trend === 'string' && (
+            trendDirection === 'warning' ? (
+              <span>⚠</span>
+            ) : trendDirection === 'up' ? (
+              <span>↗</span>
+            ) : (
+              <span>↘</span>
+            )
           )}
-          <span>{trend}</span>
+          {renderTrend()}
         </div>
       )}
       {footerNote && <div className="stat-card-footer-note">{footerNote}</div>}

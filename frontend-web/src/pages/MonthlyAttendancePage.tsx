@@ -21,11 +21,12 @@ import {
   formatDate,
   formatTime,
   formatDurationMinutes,
-  formatCurrency,
   formatQualityFlag,
   formatQualityStatus,
 } from '../utils/formatters'
 import { MonthlyVerifiedOvertimePanel } from './MonthlyVerifiedOvertimePanel'
+import { DisciplineAlertPanel } from '../components/attendance/DisciplineAlertPanel'
+import { allowanceTierLabel } from '../utils/attendanceAllowance'
 import { EmployeeAttendanceDetailModal } from './EmployeeAttendanceDetailModal'
 import { EmployeeAttendancePrintModal } from './EmployeeAttendancePrintModal'
 import { scheduleLabels } from './ActivityPage'
@@ -62,12 +63,8 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
   const [options, setOptions] = useState<any>({ employees: [], departments: [], stores: [] })
   const [rows, setRows] = useState<any[]>([])
   const [summary, setSummary] = useState<any>(null)
-  const [policySettings, setPolicySettings] = useState<{ tolerance: number; penalty: number }>({
-    tolerance: 15,
-    penalty: 50000,
-  })
 
-  // Ngày công chuẩn động của kỳ (tính từ v_payroll_period_working_days)
+  // Công chuẩn kỳ (26 cố định, trừ khi HR ghi đè / kỳ đã chốt) — cùng nguồn với SP tính lương
   const [standardWorkingDays, setStandardWorkingDays] = useState<number>(26)
   const [standardDaysInfo, setStandardDaysInfo] = useState<any | null>(null)
 
@@ -113,12 +110,6 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
           }
           if (data.standard_working_days_info) {
             setStandardDaysInfo(data.standard_working_days_info)
-          }
-          if (data.late_tolerance_minutes !== undefined && data.late_penalty_amount !== undefined) {
-            setPolicySettings({
-              tolerance: data.late_tolerance_minutes,
-              penalty: data.late_penalty_amount,
-            })
           }
           if (selectedEmployeeForDetail) {
             const updated = freshEmployees.find(
@@ -183,7 +174,7 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
       'Các ngày đi trễ (DD/MM)',
       'Số lần phạt đi trễ (>15p)',
       'Tổng phút trễ quá hạn',
-      'Tiền phạt đi trễ (VNĐ)',
+      'Phụ cấp chuyên cần (500k)',
       'Số lần trễ trong hạn ≤15p (Miễn phạt)',
       'SỐ NGÀY VỀ SỚM',
       'Phút về sớm',
@@ -222,13 +213,14 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
           }).join('; ')
         : getValidLateDates(p.sessions || []).join('; ')
 
-      const presentDays = p.working_days ?? 0
+      // Công quy đổi (0 / 0.5 / 1 mỗi ngày) — cùng số công đưa vào phiếu lương
+      const presentDays = p.work_day_credits ?? p.working_days ?? 0
       const schedHours = p.scheduled_hours ?? 0
       const actualHours = p.actual_work_hours ?? 0
       const lateDays = p.late_day_count ?? 0
       const lateSessions = p.late_session_count ?? 0
       const lateMins = p.verified_late_minutes ?? 0
-      const latePenalty = p.late_penalty_amount ?? (lateSessions * policySettings.penalty)
+      const allowanceTier = allowanceTierLabel(p.attendance_allowance_tier)
       const graceSessions = p.grace_late_session_count ?? 0
       const earlyDays = p.early_day_count ?? 0
       const earlyMins = p.verified_early_minutes ?? 0
@@ -247,7 +239,7 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
       sumLateDays += lateDays
       sumLateSessions += lateSessions
       sumLateMinutes += lateMins
-      sumLatePenalty += latePenalty
+      if (p.late_warning_report) sumLatePenalty += 1
       sumGraceLateSessions += graceSessions
       sumEarlyDays += earlyDays
       sumEarlyMinutes += earlyMins
@@ -262,7 +254,7 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
         reviewSessions > 0
           ? `Cần rà soát ${reviewSessions} phiên`
           : lateDays > 0 || earlyDays > 0
-          ? `Trễ ${lateDays} ngày (-${formatCurrency(latePenalty)}) / Sớm ${earlyDays} ngày`
+          ? `Trễ ${lateDays} ngày (${allowanceTier}${p.late_warning_report ? ', lập biên bản' : ''}) / Sớm ${earlyDays} ngày`
           : 'Đúng giờ / Đạt chuẩn'
 
       return [
@@ -278,7 +270,7 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
         lateDates || '—',
         lateSessions,
         lateMins,
-        latePenalty,
+        allowanceTier,
         graceSessions,
         earlyDays,
         earlyMins,
@@ -306,7 +298,7 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
       '—',
       sumLateSessions,
       sumLateMinutes,
-      sumLatePenalty,
+      `${sumLatePenalty} biên bản`,
       sumGraceLateSessions,
       sumEarlyDays,
       sumEarlyMinutes,
@@ -350,8 +342,8 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
           <Scale size={16} className="hr-policy-icon" />
           <span className="hr-policy-text">
             <strong>Quy định công ty:</strong> Thời gian trễ cho phép tối đa (LATE_TOLERANCE_MINUTES):{' '}
-            <span className="badge-policy">15 phút (Không phạt)</span> · Mức phạt đi trễ quá hạn (&gt;15p):{' '}
-            <span className="badge-penalty">50.000 ₫/lần</span> · Công chuẩn kỳ {period}:{' '}
+            <span className="badge-policy">15 phút</span> · Không phạt tiền đi trễ; trễ &gt;15p 3–4 lần giảm 50% chuyên cần,{' '}
+            <span className="badge-penalty">≥ 5 lần: mất chuyên cần + lập biên bản</span> · Công chuẩn kỳ {period}:{' '}
             <strong style={{ fontFamily: 'var(--font-mono)' }}>{standardWorkingDays} ngày công</strong>
             {standardDaysInfo && (
               <span style={{ fontSize: '11px', opacity: 0.85, marginLeft: '4px' }}>
@@ -359,8 +351,10 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
                   ? 'Ghi đè thủ công'
                   : standardDaysInfo.is_locked
                   ? 'Kỳ đã chốt lương'
-                  : `Lịch thực tế: ${standardDaysInfo.calendar_days} ngày - ${standardDaysInfo.sundays_count} CN${
-                      standardDaysInfo.holidays_count ? ` - ${standardDaysInfo.holidays_count} ngày Lễ` : ''
+                  : `Cố định theo quy chế${
+                      standardDaysInfo.calendar_working_days != null
+                        ? `; lịch tháng có ${standardDaysInfo.calendar_working_days} ngày làm việc`
+                        : ''
                     }`})
               </span>
             )}.
@@ -473,17 +467,18 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
               <small style={{ fontSize: 13, fontWeight: 'normal', fontFamily: 'var(--font-sans)' }}>ngày</small>
             </div>
             <div className="monthly-kpi-sub">
-              {summary.total_late_sessions ?? 0} lần phạt · {summary.total_late_minutes ?? 0}p ·{' '}
+              {summary.total_late_sessions ?? 0} lần · {summary.total_late_minutes ?? 0}p ·{' '}
               {summary.employees_with_late ?? 0} nhân sự
             </div>
             <div className="monthly-kpi-penalty-sub">
-              Tiền phạt vi phạm quy chế dự kiến:{' '}
-              <strong style={{ fontFamily: 'var(--font-mono)' }}>
-                -{formatCurrency(summary.total_late_penalty_amount || (summary.total_late_sessions || 0) * policySettings.penalty)}
-              </strong>
+              Biên bản kỷ luật (≥5 ngày trễ):{' '}
+              <strong style={{ fontFamily: 'var(--font-mono)' }}>{summary.late_warning_reports ?? 0}</strong>
+              {(summary.blacklist_warnings ?? 0) > 0 && (
+                <span style={{ marginLeft: 4 }}>· {summary.blacklist_warnings} cờ BLACK_LIST</span>
+              )}
               {summary.total_grace_late_sessions > 0 && (
                 <span style={{ color: '#059669', marginLeft: 4 }}>
-                  (Kèm {summary.total_grace_late_sessions} lần ≤15p miễn phạt)
+                  (Kèm {summary.total_grace_late_sessions} lần ≤15p trong ân hạn)
                 </span>
               )}
             </div>
@@ -565,6 +560,8 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
         </div>
       )}
 
+      <DisciplineAlertPanel period={period} user={user} />
+
       {error && (
         <p role="alert" className="text-danger" style={{ margin: '12px 0' }}>
           {error}
@@ -614,7 +611,7 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
                   const unreviewedLateMins = p.unreviewed_late_minutes ?? 0
                   const unreviewedEarlyMins = p.unreviewed_early_minutes ?? 0
                   const sessionTotal = p.sessions?.length || 0
-                  const latePenalty = p.late_penalty_amount ?? (p.late_session_count || 0) * policySettings.penalty
+                  const allowanceTier = allowanceTierLabel(p.attendance_allowance_tier)
 
                   return (
                     <tr key={p.employee_id} className="hr-master-row">
@@ -633,6 +630,12 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
                             >
                               {p.employee_name}
                             </button>
+                            {p.is_blacklisted_warning && (
+                              <span className="hr-emp-review-badge" title="Bị lập biên bản đi trễ 3 tháng liên tiếp — HR cần xử lý kỷ luật">
+                                <AlertTriangle size={11} />
+                                <span>BLACK_LIST_WARNING</span>
+                              </span>
+                            )}
                             {reviewCount > 0 && (
                               <span
                                 className="hr-emp-review-badge"
@@ -652,8 +655,9 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
                       {/* Cột 2: CÔNG & GIỜ LÀM */}
                       <td style={{ textAlign: 'center' }}>
                         <div className="hr-hours-line1">
-                          <strong style={{ fontFamily: 'var(--font-mono)' }}>
-                            {p.working_days ?? 0} / {p.standard_working_days ?? standardWorkingDays} công
+                          <strong style={{ fontFamily: 'var(--font-mono)' }}
+                            title={`${p.working_days ?? 0} ngày có mặt; quy đổi <4h = 0, 4h–<7.5h = 0.5, ≥7.5h = 1 công`}>
+                            {p.work_day_credits ?? p.working_days ?? 0} / {p.standard_working_days ?? standardWorkingDays} công
                           </strong>
                         </div>
                         <div className="hr-sub-meta">
@@ -674,9 +678,9 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
                             ) : (
                               <span className="hr-pill-zero-day">0 ngày</span>
                             )}
-                            {p.late_session_count > 0 && latePenalty > 0 && (
-                              <span className="hr-penalty-pill" style={{ fontFamily: 'var(--font-mono)' }}>
-                                -{formatCurrency(latePenalty)}
+                            {p.late_warning_report && (
+                              <span className="hr-penalty-pill" title="≥ 5 ngày trễ >15 phút: tự động lập biên bản, mất 100% chuyên cần">
+                                Biên bản
                               </span>
                             )}
                           </div>
@@ -795,7 +799,7 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
                           {p.late_day_count > 0 && (
                             <span className="summary-tag tag-late">
                               <AlertCircle size={12} />
-                              <span>Đi trễ: <strong style={{ fontFamily: 'var(--font-mono)' }}>{p.late_day_count}</strong> ngày (-<span style={{ fontFamily: 'var(--font-mono)' }}>{formatCurrency(latePenalty)}</span>)</span>
+                              <span>Đi trễ: <strong style={{ fontFamily: 'var(--font-mono)' }}>{p.late_day_count}</strong> ngày · {allowanceTier}</span>
                             </span>
                           )}
                           {p.early_day_count > 0 && (

@@ -4,11 +4,11 @@ import {
   formatDate,
   formatTime,
   formatDurationMinutes,
-  formatCurrency,
   formatQualityFlag,
   formatQualityStatus,
 } from '../utils/formatters'
 import './AttendancePrint.css'
+import { allowanceTierLabel } from '../utils/attendanceAllowance'
 
 interface EmployeeAttendancePrintModalProps {
   employee: any
@@ -67,7 +67,7 @@ export function EmployeeAttendancePrintModal({
   // Theo dõi ngày công cho cột "Tính ngày trễ" (1 ngày nhiều phiên chỉ +1 ngày)
   const seenLateDates = new Set<string>()
 
-  const totalLatePenalty = employee.late_penalty_amount ?? (employee.late_session_count ?? 0) * 50000
+  const allowanceTier = allowanceTierLabel(employee.attendance_allowance_tier)
 
   // Sinh mã Checksum SHA-256 thật bằng Web Crypto API
   useEffect(() => {
@@ -79,7 +79,7 @@ export function EmployeeAttendancePrintModal({
       employee.late_day_count ?? 0,
       employee.late_session_count ?? 0,
       employee.verified_late_minutes ?? 0,
-      totalLatePenalty,
+      allowanceTier,
       employee.early_day_count ?? 0,
       (employee.verified_ot_hours ?? 0).toFixed(2),
       employee.needs_review_session_count ?? 0,
@@ -100,7 +100,7 @@ export function EmployeeAttendancePrintModal({
     } else {
       setChecksum(`TZ-${employee.employee_id}-${period.replace('-', '')}-SECURE`)
     }
-  }, [employee, period, totalLatePenalty])
+  }, [employee, period, allowanceTier])
 
   // ESC để đóng modal
   useEffect(() => {
@@ -233,7 +233,8 @@ export function EmployeeAttendancePrintModal({
             <div className="print-kpi-cell">
               <div className="print-kpi-lbl">Ngày công thực tế</div>
               <div className="print-kpi-val">
-                {employee.working_days ?? 0} / {standardWorkingDays ?? employee.standard_working_days ?? 26} ngày
+                {employee.work_day_credits ?? employee.working_days ?? 0} / {standardWorkingDays ?? employee.standard_working_days ?? 26} công
+                {' '}({employee.working_days ?? 0} ngày có mặt)
               </div>
             </div>
             <div className="print-kpi-cell">
@@ -254,13 +255,13 @@ export function EmployeeAttendancePrintModal({
             <div className="print-kpi-cell">
               <div className="print-kpi-lbl">Số ngày đi trễ (&gt;15p)</div>
               <div className={`print-kpi-val ${(employee.late_day_count ?? 0) > 0 ? 'highlight-alert' : ''}`}>
-                {employee.late_day_count ?? 0} ngày ({employee.late_session_count ?? 0} lần phạt)
+                {employee.late_day_count ?? 0} ngày ({employee.late_session_count ?? 0} lần trễ)
               </div>
             </div>
             <div className="print-kpi-cell">
-              <div className="print-kpi-lbl">Tổng phút trễ &amp; Tiền phạt</div>
-              <div className="print-kpi-val" style={{ color: totalLatePenalty > 0 ? '#b91c1c' : 'inherit' }}>
-                {employee.verified_late_minutes ?? 0}p · Phạt: {formatCurrency(totalLatePenalty)}
+              <div className="print-kpi-lbl">Tổng phút trễ &amp; Chuyên cần</div>
+              <div className="print-kpi-val" style={{ color: employee.attendance_allowance_tier && employee.attendance_allowance_tier !== 'FULL' ? '#b91c1c' : 'inherit' }}>
+                {employee.verified_late_minutes ?? 0}p · {allowanceTier}{employee.late_warning_report ? ' · Biên bản' : ''}
               </div>
             </div>
             <div className="print-kpi-cell">
@@ -446,7 +447,8 @@ export function EmployeeAttendancePrintModal({
           được HR phê duyệt theo quy trình đối soát OT.
           <br />
           - <strong>Chính sách ân hạn &amp; Xử lý vi phạm:</strong> Thời gian trễ cho phép tối đa 15 phút đầu ca (không trừ tiền).
-          Mỗi lần trễ vượt quá 15 phút bị phạt 50.000 ₫/lần theo quy chế công ty TechZone.
+          Không phạt tiền đi trễ. Trễ quá 15 phút 3–4 lần/tháng còn 50% phụ cấp chuyên cần (500.000 ₫); từ 5 lần
+          mất phụ cấp chuyên cần và tự động lập biên bản; biên bản 3 tháng liên tiếp bị gắn cờ BLACK_LIST_WARNING.
           <br />
           - <strong>Cam kết xác nhận:</strong> Người lao động có trách nhiệm kiểm tra toàn bộ mốc thời gian và phản hồi cho HR
           trong vòng 48 giờ kể từ ngày ban hành. Sau thời hạn này, bảng công được coi là chính thức chốt để lập phiếu lương.

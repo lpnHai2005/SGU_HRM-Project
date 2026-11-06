@@ -40,13 +40,16 @@ const friendlyApiMessages: Record<string, string> = {
   STORE_HANDOFF_CONFIRMATION_REQUIRED: 'Cần xác nhận phương án bàn giao nhân sự và lịch còn hiệu lực trước khi ngừng cửa hàng.',
   OVERTIME_REQUEST_CONFLICT: 'Nhân viên đã có đăng ký OT trùng khung giờ. Hãy kiểm tra lịch OT hiện có.',
   OT_SCHEMA_NOT_INSTALLED: 'Chức năng đăng ký OT chưa được kích hoạt trên máy chủ. Quản trị viên cần áp dụng migration OT đã được phê duyệt; không cần gửi lại liên tục.',
-  OT_LEGACY_APPROVAL_CLOSED: 'Phiên thuộc giai đoạn đăng ký OT mới. Không thể duyệt giờ ngoài ca qua luồng cũ; hãy liên hệ HR để đối chiếu theo quy chế mới.',
+  OT_LEGACY_APPROVAL_CLOSED: 'Luồng duyệt OT cũ đã đóng. Bảng lương chỉ trả OT đã được HR đối soát VERIFIED trong mục Đăng ký & đối soát OT.',
   OT_PAYROLL_REVIEW_REQUIRED: 'Kỳ lương có giờ ngoài ca cần đối chiếu theo quy chế OT mới. Hãy rà soát trước khi tính hoặc chốt lương.',
   OT_PAYROLL_PERIOD_ON_HOLD: 'Kỳ lương đang được giữ để rà soát OT theo quy chế mới. Chưa thể tính hoặc chốt kỳ này.',
   WORK_SCHEDULE_CONFLICT: 'Khung giờ OT trùng ca làm việc đã phân. Hãy chọn giờ khác ngoài ca.',
   LEAVE_CONFLICT: 'Nhân viên đang có đơn nghỉ trong ngày này nên không thể đăng ký OT.',
   EMPLOYEE_STORE_CHANGED: 'Nhân viên đã được chuyển cửa hàng. Hãy tải lại danh sách và tạo lại đăng ký.',
   PROOF_IMAGE_PROVIDER_ERROR: 'Nhà cung cấp ảnh chưa xử lý được minh chứng. Kiểm tra lại ảnh hoặc báo quản trị viên kèm mã HTTP hiển thị.',
+  WEEKLY_DAY_OFF_REQUIRED: 'Nhân viên phải có ít nhất 1 ngày OFF trong tuần (T2–CN). Hãy chọn ngày khác hoặc hủy bớt một ca trong tuần.',
+  WEEKLY_HOURS_OVER_48: 'Vượt 48 giờ công chuẩn/tuần (T2–CN) theo Điều 105 BLLĐ. Phần giờ vượt phải đăng ký qua quy trình Đăng ký & đối soát OT.',
+  DB_CONFLICT: 'Dữ liệu ca làm việc bị trùng lặp hoặc xung đột trên hệ thống. Vui lòng kiểm tra lại.',
 };
 
 export function formatApiError(detail: unknown, status?: number): string {
@@ -73,6 +76,12 @@ export function formatApiError(detail: unknown, status?: number): string {
   }
   if (typeof value === 'string' && value.trim()) {
     const raw = value.trim();
+    if (raw.includes('sqlalchemy') || raw.includes('asyncpg') || raw.includes('unique constraint') || raw.includes('duplicate key') || raw.includes('INSERT INTO') || raw.includes('work_schedules_pkey')) {
+      if (raw.includes('work_schedules_pkey') || raw.includes('work_schedules')) {
+        return 'Xung đột mã dữ liệu ca làm việc trên máy chủ. Vui lòng tải lại trang hoặc thử lại.';
+      }
+      return 'Lỗi xử lý dữ liệu từ máy chủ. Vui lòng thử lại hoặc liên hệ quản trị viên.';
+    }
     const prefix = raw.match(/^([A-Z][A-Z0-9_]+):\s*(.*)$/);
     if (prefix) {
       if (friendlyApiMessages[prefix[1]]) return friendlyApiMessages[prefix[1]];
@@ -542,11 +551,30 @@ import type {
   WorkShift,
   AttendanceSummary,
   TodayAttendanceStatus,
+  WorkShiftUpdate,
+  DisciplineOverview,
 } from '../types';
+
+/** Kỷ luật đi trễ tự động (>= 5 ngày trễ >15') & cảnh báo Black-list 3 tháng liên tiếp. */
+export const disciplineApi = {
+  overview: (period: string): Promise<DisciplineOverview> =>
+    api.get<DisciplineOverview>('/discipline/records', { period }),
+  evaluate: (period: string): Promise<{ period: string; active_records: number }> =>
+    api.post(`/discipline/evaluate?period=${encodeURIComponent(period)}`, {}),
+  setRecordStatus: (recordId: number, status: 'ACKNOWLEDGED' | 'VOIDED', reason: string) =>
+    api.post(`/discipline/records/${recordId}/status`, { status, reason }),
+  clearBlacklist: (employeeId: number, reason: string) =>
+    api.post(`/discipline/blacklist/${employeeId}/clear`, { reason }),
+};
 
 export const attendanceApi = {
   getShifts: async (): Promise<WorkShift[]> => {
     return api.get<WorkShift[]>('/attendances/shifts');
+  },
+
+  /** HR / Giám đốc chỉnh khung giờ ca chuẩn 8h (nghỉ giữa ca, OT tự động của ca Full). */
+  updateShift: async (shiftId: number, data: WorkShiftUpdate): Promise<WorkShift> => {
+    return api.put<WorkShift>(`/discipline/shifts/${shiftId}`, data);
   },
 
   getTodayStatus: async (employee_id?: number): Promise<TodayAttendanceStatus> => {

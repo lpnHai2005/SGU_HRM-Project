@@ -512,7 +512,7 @@ export function PersonalSchedulesPage({ user: providedUser }: { user?: any } = {
                     {weekDays.map(d => (
                       <th
                         key={d.date}
-                        className={`week-col-header ${d.isToday ? 'is-today' : ''} ${d.date === selectedDate ? 'is-selected' : ''}`}
+                        className={`week-col-header ${d.isToday ? 'is-today' : ''} ${d.date === selectedDate ? 'is-selected' : ''}`.trim()}
                         onClick={() => setSelectedDate(d.date)}
                         title={d.isToday ? 'Hôm nay' : undefined}
                       >
@@ -735,7 +735,6 @@ export function PersonalSchedulesPage({ user: providedUser }: { user?: any } = {
           </div>
           {canCreateOwnRequest && (
             <button type="button" className="btn btn-secondary btn-sm" onClick={() => setOvertimeOpen(true)}>
-              {Icons.plus}
               <span>+ Đăng ký OT</span>
             </button>
           )}

@@ -6,6 +6,7 @@ import { EmptyState } from '../components/common/EmptyState'
 import { formatDate, formatTime } from '../utils/formatters'
 import type { Attendance, AttendanceSummary } from '../types'
 import { attendanceApi } from '../services/api'
+import { allowanceTierLabel } from '../utils/attendanceAllowance'
 import './AttendancePage.css'
 const sessionLabels: Record<string,string> = { NORMAL:'Đúng giờ', LATE:'Đi muộn', EARLY:'Về sớm', LATE_AND_EARLY:'Đi muộn & về sớm', OVERTIME:'Giờ ngoài ca ghi nhận', ANNUAL_LEAVE:'Nghỉ phép' }
 
@@ -115,14 +116,13 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
     })
   }, [teamAttendances, searchEmployee, statusFilter])
 
-  // 8 Chỉ số công - Chuẩn hóa theo công tháng thực tế & Migration 20261031_flexible_standard_days_and_multi_tier_ot
+  // Công chuẩn cố định 26 (cùng nguồn với phiếu lương); "công" = công quy đổi 0 / 0.5 / 1 mỗi ngày
   const workingDays = summaryData?.working_days
   const actualDays = workingDays?.actual_days || 0
+  const presentDays = workingDays?.present_days ?? actualDays
   const standardDays = workingDays?.standard_days || 26
   const totalHours = workingDays?.total_hours || 0
-  const calendarDays = workingDays?.calendar_days
-  const sundaysCount = workingDays?.sundays_count
-  const holidaysCount = workingDays?.holidays_count
+  const calendarWorkingDays = workingDays?.calendar_working_days
   const isManualOverride = workingDays?.is_manual_override
   const isLocked = workingDays?.is_locked
 
@@ -134,6 +134,9 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
   // Đi muộn & Về sớm
   const lateCount = summaryData?.late_arrivals?.count || 0
   const lateMinutes = summaryData?.late_arrivals?.minutes || 0
+  const lateDays = summaryData?.late_arrivals?.days ?? lateCount
+  const allowanceTier = allowanceTierLabel(summaryData?.late_arrivals?.allowance_tier)
+  const lateReport = Boolean(summaryData?.late_arrivals?.late_warning_report)
   const earlyCount = summaryData?.early_departures?.count || 0
   const earlyMinutes = summaryData?.early_departures?.minutes || 0
 
@@ -141,9 +144,11 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
   const extraHours = summaryData?.extra_work?.hours || 0
   const businessTripDays = summaryData?.business_trips?.days || 0
   const otSummary = summaryData?.overtime
-  const otShifts = otSummary?.shifts_count || 0
-  const otHours = otSummary?.hours || 0
-  const otApprovedHours = otSummary?.approved_hours || 0
+  // OT tính lương = chỉ đơn OT HR đã đối soát VERIFIED + OT tự động Ca Full; giờ ngoài ca thô không tính
+  const otPayableHours = otSummary?.hours || 0
+  const otVerifiedHours = otSummary?.verified_hours ?? otSummary?.approved_hours ?? 0
+  const otShiftPlannedHours = otSummary?.shift_planned_hours || 0
+  const otNightHours = otSummary?.night_hours || 0
   const otNormalHours = otSummary?.normal_hours || 0
   const otWeekendHours = otSummary?.weekend_hours || 0
   const otHolidayHours = otSummary?.holiday_hours || 0
@@ -179,7 +184,7 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
   }
 
   return (
-    <div className="page-container">
+    <div className="page-container attendance-page">
       {/* 1. Header Bar: Tiêu đề trang & Bộ điều khiển kỳ công đồng bộ chuẩn hệ thống */}
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
         <div>
@@ -203,21 +208,15 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
               flexWrap: 'wrap'
             }}>
               <span className="status-pill active" style={{ fontSize: '10px', padding: '1px 6px', textTransform: 'none', background: 'rgba(255, 255, 255, 0.2)', color: '#ffffff', border: '1px solid rgba(255, 255, 255, 0.3)' }}>Công chuẩn</span>
-              <span>kỳ {periodDisplay}: <strong>{standardDays} ngày</strong></span>
-              {calendarDays ? (
+              <span>kỳ {periodDisplay}: <strong>{standardDays} công</strong></span>
+              {!isManualOverride && !isLocked && (
                 <>
                   <span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>•</span>
-                  <span>{calendarDays} ngày lịch</span>
-                  <span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>-</span>
-                  <span>{sundaysCount} Chủ nhật</span>
-                  {Boolean(holidaysCount) && (
-                    <>
-                      <span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>-</span>
-                      <span style={{ color: '#f87171', fontWeight: 600 }}>{holidaysCount} ngày lễ</span>
-                    </>
-                  )}
+                  <span title="Lương CB = Lương HĐ / 26 × công; phụ cấp ăn trưa tối đa ở 26 công">
+                    Cố định theo quy chế{calendarWorkingDays ? ` (lịch tháng có ${calendarWorkingDays} ngày làm việc)` : ''}
+                  </span>
                 </>
-              ) : null}
+              )}
               {isManualOverride && (
                 <span style={{
                   fontSize: '10.5px',
@@ -264,14 +263,14 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
 
       {loadError && <p role="alert">{loadError}</p>}
       {/* 2. 8 THẺ CHỈ SỐ ĐỒNG BỘ LAYOUT STAT-GRID VÀ STYLE CHUẨN VERO DESIGN SYSTEM */}
-      {activeTab === 'my_timesheet' && <div className="stat-grid-4">
+      {activeTab === 'my_timesheet' && <div className="stat-grid-4 personal-timesheet-kpis">
         {/* Card 1: Ngày công */}
         <StatCard
           icon={Icons.checkCircle}
           iconColor="green"
           label="NGÀY CÔNG THỰC TẾ"
           value={`${actualDays} / ${standardDays} công`}
-          footerNote={`Công chuẩn tháng: ${standardDays} | Làm: ${totalHours}h | Trễ/sớm tính lương: ${workingDays?.payroll_time_adjustment_hours ?? 0}h`}
+          footerNote={`Có mặt ${presentDays} ngày | Làm ${totalHours}h | Quy đổi: <4h = 0, 4h–<7.5h = 0.5, ≥7.5h = 1 công`}
         />
 
         {/* Card 2: Quỹ phép */}
@@ -288,10 +287,15 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
           icon={Icons.clock}
           iconColor={lateCount > 0 ? 'red' : 'green'}
           label="ĐI MUỘN (LATE)"
-          value={`${lateCount} lần (${lateMinutes}p)`}
-          trend={lateCount > 0 ? 'Có vi phạm' : 'Tốt'}
-          trendDirection={lateCount > 0 ? 'warning' : 'up'}
-          footerNote={lateCount > 0 ? 'Có vi phạm quy chế trễ (>15p)' : 'Đúng giờ theo phân ca'}
+          value={`${lateDays} ngày (${lateMinutes}p)`}
+          trend={lateDays > 0 ? <span className="status-pill error">Có vi phạm</span> : <span className="status-pill active">Tốt</span>}
+          trendDirection={lateDays > 0 ? 'warning' : 'up'}
+          footerNote={
+            <span>
+              {allowanceTier}{lateReport ? ' · Đã lập biên bản (≥ 5 ngày trễ)' : ''} ·{' '}
+              <span className="status-pill active">Không phạt</span> tiền
+            </span>
+          }
         />
 
         {/* Card 4: Về sớm */}
@@ -300,7 +304,7 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
           iconColor={earlyCount > 0 ? 'amber' : 'green'}
           label="VỀ SỚM (EARLY)"
           value={`${earlyCount} lần (${earlyMinutes}p)`}
-          trend={earlyCount > 0 ? 'Có về sớm' : 'Đúng giờ'}
+          trend={earlyCount > 0 ? <span className="status-pill warning">Có về sớm</span> : <span className="status-pill active">Đúng giờ</span>}
           trendDirection={earlyCount > 0 ? 'warning' : 'up'}
           footerNote={earlyCount > 0 ? 'Có về sớm trước giờ tan ca' : 'Tuân thủ giờ ca làm việc'}
         />
@@ -309,9 +313,9 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
         <StatCard
           icon={Icons.zap}
           iconColor="blue"
-          label="LÀM THÊM (EXTRA WORK)"
+          label="GIỜ NGOÀI CA (CHƯA XÁC MINH)"
           value={`${extraHours} giờ`}
-          footerNote="Ngoài ca chuẩn, duyệt bởi CHT"
+          footerNote="Máy chấm công ghi nhận · Không tính lương nếu HR chưa đối soát OT"
         />
 
         {/* Card 6: Công tác */}
@@ -327,11 +331,11 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
         <StatCard
           icon={Icons.trendingUp}
           iconColor="amber"
-          label="GIỜ NGOÀI CA & TĂNG CA OT"
-          value={`${otHours} giờ`}
-          footerNote={otApprovedHours > 0
-            ? `Đã duyệt: ${otApprovedHours}h (Thường: ${otNormalHours}h · CN: ${otWeekendHours}h · Lễ: ${otHolidayHours}h)`
-            : `${otShifts} phiên phát sinh · Hệ số: 1.5x (Thường) / 2.0x (CN) / 3.0x (Lễ)`
+          label="TĂNG CA OT (HR ĐÃ XÁC MINH)"
+          value={`${otPayableHours} giờ`}
+          footerNote={otPayableHours > 0
+            ? `HR xác minh: ${otVerifiedHours}h${otShiftPlannedHours > 0 ? ` · Ca Full: ${otShiftPlannedHours}h` : ''} · Thường ${otNormalHours}h · Đêm ${otNightHours}h · CN ${otWeekendHours}h · Lễ ${otHolidayHours}h`
+            : 'Chưa có OT được HR đối soát · Hệ số 1.5x / Đêm 2.0x / CN 2.0x / Lễ 3.0x'
           }
         />
 

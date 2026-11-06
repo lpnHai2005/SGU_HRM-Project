@@ -250,6 +250,52 @@ export interface WorkShift {
   start_time: string;
   end_time: string;
   work_hours: number;
+  /** Nghỉ giữa ca không lương (phút). VD ca hành chính / ca Full = 60. */
+  break_minutes?: number;
+  /** Giờ OT tự động của ca (ca Full 08:00–21:00 = 4h). */
+  planned_overtime_hours?: number;
+  is_active?: boolean;
+}
+
+export interface WorkShiftUpdate {
+  shift_name: string;
+  start_time: string;
+  end_time: string;
+  work_hours: number;
+  break_minutes: number;
+  planned_overtime_hours: number;
+  is_active: boolean;
+}
+
+export interface DisciplinaryRecord {
+  record_id: number;
+  employee_id: number;
+  employee_code: string;
+  full_name: string;
+  store_name?: string | null;
+  salary_period: string;
+  record_type: 'LATE_WARNING_REPORT' | string;
+  late_days: number;
+  details: { late_dates?: string[]; threshold_days?: number; grace_minutes?: number; decision_reason?: string };
+  status: 'OPEN' | 'ACKNOWLEDGED' | 'VOIDED' | string;
+  is_auto: boolean;
+  is_blacklisted_warning: boolean;
+  created_at: string;
+}
+
+export interface BlacklistWarning {
+  employee_id: number;
+  employee_code: string;
+  full_name: string;
+  store_name?: string | null;
+  blacklisted_warning_at?: string | null;
+  report_periods?: string[] | null;
+}
+
+export interface DisciplineOverview {
+  period: string;
+  records: DisciplinaryRecord[];
+  blacklist_warnings: BlacklistWarning[];
 }
 
 export interface CheckInRequest {
@@ -325,9 +371,11 @@ export interface AttendanceSummary {
     total_hours: number;
     payroll_time_adjustment_minutes: number;
     payroll_time_adjustment_hours: number;
+    present_days?: number;
     calendar_days?: number;
     sundays_count?: number;
     holidays_count?: number;
+    calendar_working_days?: number | null;
     auto_standard_days?: number;
     manual_standard_days?: number | null;
     is_manual_override?: boolean;
@@ -342,6 +390,9 @@ export interface AttendanceSummary {
   late_arrivals: {
     count: number;
     minutes: number;
+    days?: number;
+    allowance_tier?: string | null;
+    late_warning_report?: boolean;
   };
   early_departures: {
     count: number;
@@ -357,9 +408,14 @@ export interface AttendanceSummary {
     shifts_count: number;
     hours: number;
     approved_hours?: number;
+    verified_hours?: number;
+    shift_planned_hours?: number;
+    unverified_outside_hours?: number;
+    night_hours?: number;
     normal_hours?: number;
     weekend_hours?: number;
     holiday_hours?: number;
+    source_available?: boolean;
   };
   compensatory_leave: {
     total: number;
@@ -409,6 +465,8 @@ export interface WorkSchedule {
   notes?: string | null;
   cancelled_at?: string | null;
   fixed_rule_id?: number | null;
+  /** Cảnh báo không chặn từ API phân ca (VD vượt 48h/tuần). */
+  warnings?: string[];
 }
 
 export interface WorkScheduleQuery {
@@ -739,6 +797,10 @@ export interface Payroll {
   seniority_allowance?: number;
   project_allowance?: number;
   meal_transport_allowance?: number;
+  /** Phụ cấp chuyên cần lũy tiến (100% / 50% / 0). */
+  attendance_allowance?: number;
+  /** Lương công vượt chuẩn (VD 27/26 công). */
+  extra_workday_salary?: number;
   commission_amount?: number;
   bonus_amount?: number;
   holiday_bonus?: number;

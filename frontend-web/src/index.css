@@ -537,6 +537,25 @@ svg:not([width]) {
    STAT CARDS (Vero Metric Cards - Top Row)
    ========================================================================== */
 
+.kpi-card {
+  position: relative;
+  overflow: hidden;
+  min-height: 96px;
+}
+
+.kpi-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: #000000;
+  z-index: 2;
+  border-top-left-radius: var(--radius-md, 8px);
+  border-bottom-left-radius: var(--radius-md, 8px);
+}
+
 .stat-card {
   background-color: var(--surface-card);
   border: 1px solid var(--border-default);
