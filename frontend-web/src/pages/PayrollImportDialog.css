@@ -29,8 +29,8 @@
   height: 44px;
   flex: 0 0 44px;
   border-radius: 12px;
-  color: #2563eb;
-  background: #eff6ff;
+  color: var(--status-info);
+  background: var(--status-info-bg);
 }
 
 .payroll-import-header p {
@@ -84,7 +84,7 @@
 
 .payroll-import-dropzone:hover,
 .payroll-import-dropzone.is-dragging {
-  border-color: #2563eb;
+  border-color: var(--status-info);
   background: #f0f7ff;
 }
 
@@ -104,7 +104,7 @@
   gap: 12px;
   padding: 10px 14px;
   border-radius: 8px;
-  background: #f1f5f9;
+  background: var(--surface-subtle);
   font-size: 13px;
 }
 
@@ -136,20 +136,20 @@
   font-weight: 700;
 }
 
-.count-create strong { color: #16a34a; }
-.count-update strong { color: #2563eb; }
-.count-delete strong { color: #ea580c; }
-.count-unchanged strong { color: #64748b; }
-.count-invalid strong { color: #dc2626; }
-.count-warnings strong { color: #d97706; }
+.count-create strong { color: var(--status-success); }
+.count-update strong { color: var(--status-info); }
+.count-delete strong { color: var(--status-warning); }
+.count-unchanged strong { color: var(--text-secondary); }
+.count-invalid strong { color: var(--status-error); }
+.count-warnings strong { color: var(--status-warning); }
 
 /* Alerts and Warnings */
 .payroll-import-alert-error {
   padding: 12px 14px;
-  border: 1px solid #fca5a5;
+  border: 1px solid var(--status-error-border);
   border-radius: 10px;
-  background: #fef2f2;
-  color: #991b1b;
+  background: var(--status-error-bg);
+  color: var(--status-error);
   font-size: 13px;
   display: flex;
   align-items: center;
@@ -158,10 +158,10 @@
 
 .payroll-import-alert-warning {
   padding: 12px 14px;
-  border: 1px solid #fcd34d;
+  border: 1px solid var(--status-warning-border);
   border-radius: 10px;
-  background: #fffbeb;
-  color: #92400e;
+  background: var(--status-warning-bg);
+  color: var(--status-warning);
   font-size: 13px;
   display: flex;
   flex-direction: column;
@@ -170,10 +170,10 @@
 
 .payroll-import-notice {
   padding: 12px 14px;
-  border: 1px solid #93c5fd;
+  border: 1px solid var(--status-info-border);
   border-radius: 10px;
-  background: #eff6ff;
-  color: #1e40af;
+  background: var(--status-info-bg);
+  color: var(--status-info);
   font-size: 12.5px;
   line-height: 1.5;
 }
@@ -218,10 +218,10 @@
   font-weight: 700;
 }
 
-.badge-CREATE { background: #dcfce7; color: #15803d; }
-.badge-UPDATE { background: #dbeafe; color: #1d4ed8; }
-.badge-DELETE { background: #ffedd5; color: #c2410c; }
-.badge-UNCHANGED { background: #f1f5f9; color: #64748b; }
+.badge-CREATE { background: var(--status-success-bg); color: var(--status-success); }
+.badge-UPDATE { background: var(--status-info-bg); color: var(--status-info); }
+.badge-DELETE { background: var(--status-warning-bg); color: var(--status-warning); }
+.badge-UNCHANGED { background: var(--surface-subtle); color: var(--text-secondary); }
 
 /* Totals section */
 .payroll-import-totals-grid {

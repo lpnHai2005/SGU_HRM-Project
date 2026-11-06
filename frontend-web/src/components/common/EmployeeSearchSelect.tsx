@@ -22,6 +22,9 @@ export interface EmployeeSearchSelectProps {
   placeholder?: string
   disabled?: boolean
   required?: boolean
+  clearable?: boolean
+  containerStyle?: React.CSSProperties
+  fallbackEmployee?: any
   label?: string
   clearOptionLabel?: string
   getItemDisabled?: (emp: any) => boolean
@@ -35,6 +38,9 @@ export function EmployeeSearchSelect({
   placeholder = 'Tìm và chọn nhân viên...',
   disabled = false,
   required = false,
+  clearable = true,
+  containerStyle,
+  fallbackEmployee,
   label,
   clearOptionLabel,
   getItemDisabled,
@@ -50,8 +56,13 @@ export function EmployeeSearchSelect({
   // Current selected employee object
   const selectedEmployee = useMemo(() => {
     if (!value) return null
-    return employees.find((e) => String(e.employee_id) === String(value)) || null
-  }, [value, employees])
+    const found = employees.find((e) => String(e.employee_id) === String(value))
+    if (found) return found
+    if (fallbackEmployee && String(fallbackEmployee.employee_id) === String(value)) {
+      return fallbackEmployee
+    }
+    return null
+  }, [value, employees, fallbackEmployee])
 
   // Filtered employees
   const filteredEmployees = useMemo(() => {
@@ -75,13 +86,15 @@ export function EmployeeSearchSelect({
     const spaceBelow = window.innerHeight - rect.bottom
     const spaceAbove = rect.top
     const openUpwards = spaceBelow < 280 && spaceAbove > spaceBelow
+    const popoverWidth = Math.max(rect.width, 320)
+    const left = Math.min(rect.left, window.innerWidth - popoverWidth - 8)
 
     setDropdownPos({
       position: 'fixed',
       top: openUpwards ? undefined : `${rect.bottom + 4}px`,
       bottom: openUpwards ? `${window.innerHeight - rect.top + 4}px` : undefined,
-      left: `${rect.left}px`,
-      width: `${rect.width}px`,
+      left: `${Math.max(8, left)}px`,
+      width: `${Math.min(popoverWidth, window.innerWidth - 16)}px`,
       zIndex: 99999,
     })
   }, [])
@@ -133,7 +146,11 @@ export function EmployeeSearchSelect({
   }
 
   return (
-    <div className="employee-search-select-container" ref={containerRef} style={{ position: 'relative' }}>
+    <div
+      className="employee-search-select-container"
+      ref={containerRef}
+      style={{ position: 'relative', ...containerStyle }}
+    >
       {label && (
         <label
           className="form-label"
@@ -150,7 +167,7 @@ export function EmployeeSearchSelect({
           minHeight: '40px',
           padding: '6px 12px',
           background: 'var(--surface-input, var(--surface-card))',
-          border: `1px solid ${isOpen ? 'var(--brand-primary)' : 'var(--border-default)'}`,
+          border: `1px solid ${isOpen ? 'var(--brand-primary)' : 'var(--surface-input-border, var(--border-default))'}`,
           borderRadius: 'var(--radius-sm)',
           cursor: disabled ? 'not-allowed' : 'pointer',
           display: 'flex',
@@ -158,7 +175,7 @@ export function EmployeeSearchSelect({
           justifyContent: 'space-between',
           gap: '10px',
           transition: 'all 0.15s ease',
-          boxShadow: isOpen ? '0 0 0 2px var(--brand-primary-light, rgba(59, 130, 246, 0.2))' : 'none',
+          boxShadow: isOpen ? '0 0 0 2px var(--status-info-bg)' : 'none',
         }}
       >
         {selectedEmployee ? (
@@ -168,7 +185,7 @@ export function EmployeeSearchSelect({
                 width: '28px',
                 height: '28px',
                 borderRadius: '50%',
-                background: 'var(--surface-subtle, rgba(59, 130, 246, 0.1))',
+                background: 'var(--surface-subtle, var(--status-info-bg))',
                 color: 'var(--brand-primary)',
                 border: '1px solid var(--border-default)',
                 display: 'flex',
@@ -224,7 +241,7 @@ export function EmployeeSearchSelect({
 
         {/* Right side controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          {selectedEmployee && !disabled && (
+          {selectedEmployee && !disabled && clearable && (
             <button
               type="button"
               onClick={handleClear}
@@ -368,7 +385,7 @@ export function EmployeeSearchSelect({
                       display: 'flex',
                       alignItems: 'center',
                       gap: '10px',
-                      background: isSelected ? 'var(--brand-primary-light, rgba(59, 130, 246, 0.12))' : 'transparent',
+                      background: isSelected ? 'var(--status-info-bg)' : 'transparent',
                       transition: 'background-color 0.1s',
                     }}
                     onMouseEnter={(e) => {

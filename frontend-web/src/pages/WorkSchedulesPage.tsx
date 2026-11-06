@@ -351,7 +351,7 @@ export function WorkSchedulesPage({ user }: { user: any }) {
         {canManage && (
           <div className="work-schedule-header-actions">
             {canCreateOvertime && <button type="button" className="btn btn-secondary btn-overtime-register" onClick={() => openOvertimeDrawer(selectedDate)}>
-              {Icons.clockOutline}<span>+ Đăng ký OT</span>
+              {Icons.clockOutline}<span>Đăng ký OT</span>
             </button>}
             <button
               type="button"
@@ -360,7 +360,7 @@ export function WorkSchedulesPage({ user }: { user: any }) {
               title="Thiết lập ca cố định lặp lại hằng tuần"
             >
               <span className="btn-icon-custom">{Icons.refresh}</span>
-              <span>+ Ca cố định</span>
+              <span>Ca cố định</span>
             </button>
             <button
               type="button"
@@ -369,7 +369,7 @@ export function WorkSchedulesPage({ user }: { user: any }) {
               title="Phân ca làm việc theo ngày cụ thể"
             >
               <span className="btn-icon-custom">{Icons.plus}</span>
-              <span>+ Phân ca</span>
+              <span>Phân ca</span>
             </button>
           </div>
         )}

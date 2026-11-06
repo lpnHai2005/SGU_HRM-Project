@@ -63,7 +63,7 @@
   font-weight: 700;
   letter-spacing: 0.05em;
   color: var(--primary-color, #2563eb);
-  background: rgba(37, 99, 235, 0.08);
+  background: var(--status-info-bg);
   padding: 4px 8px;
   border-radius: 4px;
   margin-bottom: 6px;
@@ -152,9 +152,9 @@
 }
 
 .adv-logic-tag.start {
-  background: rgba(37, 99, 235, 0.1);
+  background: var(--status-info-bg);
   color: var(--primary-color, #2563eb);
-  border: 1px dashed rgba(37, 99, 235, 0.3);
+  border: 1px dashed var(--status-info-border);
 }
 
 .adv-select.logic-select {
@@ -221,7 +221,7 @@
 .adv-select:focus, .adv-input:focus {
   outline: none;
   border-color: var(--primary-color, #2563eb);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
 /* Nút xóa điều kiện */
@@ -267,7 +267,7 @@
 
 .adv-add-btn:hover {
   border-color: var(--primary-color, #2563eb);
-  background: rgba(37, 99, 235, 0.05);
+  background: var(--status-info-bg);
 }
 
 /* Xem trước câu truy vấn logic (Expression Preview) */

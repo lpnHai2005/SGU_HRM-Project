@@ -371,7 +371,7 @@ export const EmployeeAdvancedSearchModal: React.FC<EmployeeAdvancedSearchModalPr
                                 <optgroup key={group} label={group}>
                                   {groupFields.map(f => (
                                     <option key={f.key} value={f.key}>
-                                      {f.label} {f.sensitive ? '🔒' : ''}
+                                      {f.label}{f.sensitive ? ' (nhạy cảm)' : ''}
                                     </option>
                                   ))}
                                 </optgroup>

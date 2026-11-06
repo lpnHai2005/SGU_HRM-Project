@@ -43,7 +43,7 @@ Nguồn sự thật: `frontend-web/src/index.css` (tokens + component gốc) và
 
 ### Semantic status tokens
 
-`--status-{success|warning|error|info|neutral}` plus `-bg` and `-border` variants. Light text: `#059669 / #d97706 / #dc2626 / #0284c7 / #52525b`; dark text: `#34d399 / #fbbf24 / #f87171 / #38bdf8 / #a1a1aa`. Backgrounds are the same hue at 10–12% alpha.
+`--status-{success|warning|error|info|neutral}` plus `-bg` and `-border` variants. Light text: `#059669 / #d97706 / #dc2626 / #0284c7 / #52525b`; dark text: `#34d399 / #fbbf24 / #f87171 / #38bdf8 / #a1a1aa`. Backgrounds are the same hue at 10–12% alpha. `--status-{success|warning|error}-solid` are theme-independent fills for use under white text.
 
 ### Role badge tokens
 
@@ -106,7 +106,7 @@ Nguồn sự thật: `frontend-web/src/index.css` (tokens + component gốc) và
 
 ## Known Debt (code chưa tuân thủ rule)
 
-- ~900 hardcoded hex colors outside `index.css` (App.css, page CSS, inline styles), including `badge-status` colors — migrate to `--status-*` tokens when touching those files.
-- `--primary-color` (blue `#2563eb` / `#3b82f6`) is a legacy compatibility alias still used in ~30 places; contradicts the no-blue rule — replace with `--action-primary` or a status token.
+- Hardcoded hex colors remain outside `index.css` in print CSS/print modals (intentional: A4 paper stays white), solid fills paired with white text, and some `badge-*` dark-theme overrides.
+- `--primary-color` is a legacy alias of `--action-primary`; prefer `--action-primary` in new code.
 - `.nav-item-badge` CSS exists but the sidebar renders no count badges.
 - `DashboardPage.tsx` only supplies `AttendanceHero` and its props type; its other dashboard sections (e.g. `Phân bổ chi phí & Quỹ lương`) are not rendered anywhere.

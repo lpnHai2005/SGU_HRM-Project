@@ -1,3 +1,5 @@
+import { Icons } from '../components/common/Icons'
+import { confirmAction } from '../components/common/ConfirmDialog'
 import { useEffect, useState, useMemo } from 'react'
 import {
   ChevronRight,
@@ -138,7 +140,7 @@ export function PayrollFundPage({ branch }: { branch: boolean }) {
 
   // 1. Chốt quỹ lương (Confirm All)
   const handleConfirmFund = async () => {
-    if (!window.confirm(`Xác nhận chốt toàn bộ bảng lương kỳ ${period}? Hành động này sẽ chuyển trạng thái các phiếu lương từ DRAFT sang CONFIRMED.`)) {
+    if (!(await confirmAction(`Xác nhận chốt toàn bộ bảng lương kỳ ${period}? Hành động này sẽ chuyển trạng thái các phiếu lương từ DRAFT sang CONFIRMED.`))) {
       return
     }
     setActionLoading(true)
@@ -209,7 +211,7 @@ export function PayrollFundPage({ branch }: { branch: boolean }) {
       <div className="fund-header-row">
         <div className="fund-header-title">
           <h1>
-            {branch ? 'Quản Trị Quỹ Lương Chi Nhánh' : 'Quản Trị Quỹ Lương & TCOW'}
+            {branch ? 'Quản Trị Quỹ Lương Chi Nhánh' : 'Quản trị quỹ lương & TCOW'}
           </h1>
           <p>
             {branch
@@ -264,8 +266,8 @@ export function PayrollFundPage({ branch }: { branch: boolean }) {
             justifyContent: 'space-between',
             alignItems: 'center',
             backgroundColor: actionMessage.type === 'success' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-            border: `1px solid ${actionMessage.type === 'success' ? '#10b981' : '#ef4444'}`,
-            color: actionMessage.type === 'success' ? '#065f46' : '#991b1b',
+            border: `1px solid ${actionMessage.type === 'success' ? 'var(--status-success)' : 'var(--status-error)'}`,
+            color: actionMessage.type === 'success' ? 'var(--status-success)' : 'var(--status-error)',
             borderRadius: 'var(--radius-md)'
           }}
         >
@@ -275,7 +277,7 @@ export function PayrollFundPage({ branch }: { branch: boolean }) {
             style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700 }}
             onClick={() => setActionMessage(null)}
           >
-            ✕
+            {Icons.x}
           </button>
         </div>
       )}
@@ -320,7 +322,7 @@ export function PayrollFundPage({ branch }: { branch: boolean }) {
           <section className="budget-progress-card">
             <div className="budget-progress-header">
               <div className="budget-progress-title">
-                <TrendingUp size={18} style={{ color: isWarning ? '#ef4444' : 'var(--primary-color)' }} />
+                <TrendingUp size={18} style={{ color: isWarning ? 'var(--status-error)' : 'var(--primary-color)' }} />
                 <span>Tiến Độ Ngân Sách Quỹ Lương: Dự Toán (Budget Cap) vs Thực Tế Phát Sinh (Accrued TCOW)</span>
               </div>
               <div>
@@ -346,13 +348,13 @@ export function PayrollFundPage({ branch }: { branch: boolean }) {
               </div>
               <div>
                 Thực tế phát sinh (Accrued TCOW):{' '}
-                <strong style={{ color: isWarning ? '#dc2626' : '#2563eb' }}>
+                <strong style={{ color: isWarning ? 'var(--status-error)' : 'var(--status-info)' }}>
                   {formatCurrency(totals.total_tcow)}
                 </strong>
               </div>
               <div>
                 Dư địa ngân sách khả dụng:{' '}
-                <strong style={{ color: totals.budget_cap - totals.total_tcow < 0 ? '#dc2626' : '#059669' }}>
+                <strong style={{ color: totals.budget_cap - totals.total_tcow < 0 ? 'var(--status-error)' : 'var(--status-success)' }}>
                   {formatCurrency(Math.max(0, totals.budget_cap - totals.total_tcow))}
                 </strong>
               </div>
@@ -426,7 +428,7 @@ export function PayrollFundPage({ branch }: { branch: boolean }) {
                     </div>
                   </div>
                 </div>
-                <div className="flow-card-value" style={{ color: '#7c3aed' }}>
+                <div className="flow-card-value" style={{ color: 'var(--role-director-text)' }}>
                   {formatCurrency(totals.total_employer_burden)}
                 </div>
               </div>
@@ -449,7 +451,7 @@ export function PayrollFundPage({ branch }: { branch: boolean }) {
                     </div>
                   </div>
                 </div>
-                <div className="flow-card-value" style={{ color: '#dc2626' }}>
+                <div className="flow-card-value" style={{ color: 'var(--status-error)' }}>
                   {formatCurrency(totals.total_deductions_fund)}
                 </div>
               </div>
@@ -563,7 +565,7 @@ export function PayrollFundPage({ branch }: { branch: boolean }) {
                           <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
                             {formatCurrency(unit.total_gross)}
                           </td>
-                          <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: '#dc2626' }}>
+                          <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--status-error)' }}>
                             <div className="info-hover-wrap" style={{ justifyContent: 'flex-end', width: '100%' }}>
                               <span>-{formatCurrency(unit.total_deductions)}</span>
                               <div className="info-tooltip-box">
@@ -571,10 +573,10 @@ export function PayrollFundPage({ branch }: { branch: boolean }) {
                               </div>
                             </div>
                           </td>
-                          <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, color: '#059669' }}>
+                          <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--status-success)' }}>
                             {formatCurrency(unit.total_net)}
                           </td>
-                          <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: '#7c3aed', fontWeight: 600 }}>
+                          <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--role-director-text)', fontWeight: 600 }}>
                             +{formatCurrency(unit.employer_burden)}
                           </td>
                           <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--primary-color)' }}>
@@ -622,9 +624,9 @@ export function PayrollFundPage({ branch }: { branch: boolean }) {
                                         <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{formatCurrency(emp.fixed_income)}</td>
                                         <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{formatCurrency(emp.variable_income)}</td>
                                         <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{formatCurrency(emp.gross_income)}</td>
-                                        <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: '#dc2626' }}>-{formatCurrency(emp.deductions)}</td>
-                                        <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600, color: '#059669' }}>{formatCurrency(emp.net_salary)}</td>
-                                        <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: '#7c3aed' }}>+{formatCurrency(emp.employer_burden)}</td>
+                                        <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--status-error)' }}>-{formatCurrency(emp.deductions)}</td>
+                                        <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--status-success)' }}>{formatCurrency(emp.net_salary)}</td>
+                                        <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--role-director-text)' }}>+{formatCurrency(emp.employer_burden)}</td>
                                         <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--primary-color)' }}>{formatCurrency(emp.tcow)}</td>
                                       </tr>
                                     ))}
@@ -661,9 +663,9 @@ export function PayrollFundPage({ branch }: { branch: boolean }) {
                       <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{formatCurrency(totals.total_fixed_income)}</td>
                       <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{formatCurrency(totals.total_variable_income)}</td>
                       <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{formatCurrency(totals.total_gross_fund)}</td>
-                      <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: '#dc2626' }}>-{formatCurrency(totals.total_deductions_fund)}</td>
-                      <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: '#059669' }}>{formatCurrency(totals.total_net_fund)}</td>
-                      <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: '#7c3aed' }}>+{formatCurrency(totals.total_employer_burden)}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--status-error)' }}>-{formatCurrency(totals.total_deductions_fund)}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--status-success)' }}>{formatCurrency(totals.total_net_fund)}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--role-director-text)' }}>+{formatCurrency(totals.total_employer_burden)}</td>
                       <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--primary-color)' }}>{formatCurrency(totals.total_tcow)}</td>
                       <td style={{ textAlign: 'center' }}>
                         <span className="badge badge-info" style={{ fontSize: '11px' }}>TỔNG HỢP</span>

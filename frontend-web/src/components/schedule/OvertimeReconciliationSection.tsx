@@ -338,12 +338,12 @@ export function OvertimeReconciliationSection({ request, user, highlightCaseId }
                       ? 'rgba(124, 58, 237, 0.15)'
                       : (result.decision_reason || '').includes('2.0') || (result.decision_reason || '').includes('2x') || isSunday
                       ? 'rgba(217, 119, 6, 0.15)'
-                      : 'rgba(37, 99, 235, 0.15)',
+                      : 'var(--status-info-bg)',
                     color: (result.decision_reason || '').includes('3.0') || (result.decision_reason || '').includes('3x')
-                      ? '#7c3aed'
+                      ? 'var(--role-director-text)'
                       : (result.decision_reason || '').includes('2.0') || (result.decision_reason || '').includes('2x') || isSunday
-                      ? '#b45309'
-                      : '#1d4ed8',
+                      ? 'var(--status-warning)'
+                      : 'var(--status-info)',
                   }}
                 >
                   Hệ số: {(result.decision_reason || '').includes('3.0') || (result.decision_reason || '').includes('3x')
@@ -435,7 +435,7 @@ export function OvertimeReconciliationSection({ request, user, highlightCaseId }
                       padding: '9px 12px',
                       borderRadius: '8px',
                       border: `1.5px solid ${multiplier === opt.value ? 'var(--primary-color, #2563eb)' : 'var(--border-default)'}`,
-                      background: multiplier === opt.value ? 'rgba(37, 99, 235, 0.05)' : 'var(--surface-card)',
+                      background: multiplier === opt.value ? 'var(--status-info-bg)' : 'var(--surface-card)',
                       cursor: 'pointer',
                     }}
                   >
@@ -456,8 +456,8 @@ export function OvertimeReconciliationSection({ request, user, highlightCaseId }
                             fontWeight: 700,
                             padding: '1px 6px',
                             borderRadius: '4px',
-                            backgroundColor: opt.value === '3.0' ? 'rgba(124, 58, 237, 0.12)' : opt.value === '2.0' ? 'rgba(217, 119, 6, 0.12)' : 'rgba(37, 99, 235, 0.12)',
-                            color: opt.value === '3.0' ? '#7c3aed' : opt.value === '2.0' ? '#d97706' : '#2563eb',
+                            backgroundColor: opt.value === '3.0' ? 'rgba(124, 58, 237, 0.12)' : opt.value === '2.0' ? 'rgba(217, 119, 6, 0.12)' : 'var(--status-info-bg)',
+                            color: opt.value === '3.0' ? 'var(--role-director-text)' : opt.value === '2.0' ? 'var(--status-warning)' : 'var(--status-info)',
                           }}
                         >
                           {opt.rate}
@@ -565,7 +565,7 @@ export function OvertimeReconciliationSection({ request, user, highlightCaseId }
                   <button
                     type="button"
                     className="btn btn-warning btn-sm"
-                    style={{ backgroundColor: '#d97706', color: '#fff', borderColor: '#d97706' }}
+                    style={{ backgroundColor: 'var(--status-warning-solid)', color: '#fff', borderColor: 'var(--status-warning-solid)' }}
                     disabled={working || reopenReason.trim().length < 3}
                     onClick={() => {
                       void act(

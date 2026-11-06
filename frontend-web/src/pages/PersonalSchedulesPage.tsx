@@ -406,7 +406,7 @@ export function PersonalSchedulesPage({ user: providedUser }: { user?: any } = {
           {canCreateOwnRequest && (
             <button type="button" className="btn btn-primary" onClick={() => setOvertimeOpen(true)}>
               {Icons.plus}
-              <span>+ Đăng ký OT</span>
+              <span>Đăng ký OT</span>
             </button>
           )}
         </div>
@@ -417,28 +417,28 @@ export function PersonalSchedulesPage({ user: providedUser }: { user?: any } = {
         <StatCard
           icon={Icons.calendar}
           iconColor="blue"
-          label={view === 'calendar' ? 'CA TRONG TUẦN' : 'TỔNG CA PHÂN CÔNG'}
+          label={view === 'calendar' ? 'Ca trong tuần' : 'Tổng ca phân công'}
           value={`${view === 'calendar' ? weekStats.shiftsCount : monthStats.shiftsCount} ca`}
           footerNote={view === 'calendar' ? periodLabel : `Kỳ ${selectedDate.slice(5, 7)}/${selectedDate.slice(0, 4)}`}
         />
         <StatCard
           icon={Icons.clockOutline}
           iconColor="blue"
-          label={view === 'calendar' ? 'TỔNG GIỜ TRONG TUẦN' : 'TỔNG GIỜ DỰ KIẾN'}
+          label={view === 'calendar' ? 'Tổng giờ trong tuần' : 'Tổng giờ dự kiến'}
           value={`${view === 'calendar' ? weekStats.totalHours : monthStats.regularHours} giờ`}
           footerNote={view === 'calendar' ? `${weekStats.regularHours}h ca chính + ${weekStats.otHours}h OT` : 'Theo lịch chuẩn phân công'}
         />
         <StatCard
           icon={Icons.user}
           iconColor={todayShift ? 'green' : 'amber'}
-          label="CA HÔM NAY"
+          label="Ca hôm nay"
           value={todayShift ? todayShift.shift_name : 'Nghỉ'}
           footerNote={todayShift ? `${todayShift.start_time?.slice(0, 5)} – ${todayShift.end_time?.slice(0, 5)}` : 'Hôm nay không có ca'}
         />
         <StatCard
           icon={Icons.chart}
           iconColor={overtimeRequests.length > 0 ? 'amber' : 'blue'}
-          label="ĐĂNG KÝ OT"
+          label="Đăng ký OT"
           value={`${overtimeRequests.length} đơn`}
           footerNote={overtimeRequests.length > 0 ? `${overtimeRequests.filter(r => ['APPROVED', 'CONFIRMED'].includes(r.status)).length} đơn đã duyệt` : 'Chưa có đăng ký'}
         />
@@ -736,7 +736,7 @@ export function PersonalSchedulesPage({ user: providedUser }: { user?: any } = {
           {canCreateOwnRequest && (
             <button type="button" className="btn btn-secondary btn-sm" onClick={() => setOvertimeOpen(true)}>
               {Icons.plus}
-              <span>+ Đăng ký OT</span>
+              <span>Đăng ký OT</span>
             </button>
           )}
         </header>

@@ -1,3 +1,4 @@
+import { toast } from 'sonner'
 import { useEffect, useState } from 'react'
 import {
   Printer,
@@ -179,7 +180,7 @@ export function AttendanceResolutionModal({
       >
         <div className="att-resolve-modal-header">
           <h3 className="att-resolve-modal-title">
-            <ShieldCheck size={18} color="#2563eb" />
+            <ShieldCheck size={18} color="var(--status-info)" />
             <span>Xử lý &amp; Xác minh Phiên Chấm công #{session.attendance_id}</span>
           </h3>
           <button
@@ -224,7 +225,7 @@ export function AttendanceResolutionModal({
             </div>
             <div>
               <div className="att-info-item-label">Cờ chất lượng kỹ thuật</div>
-              <div className="att-info-item-value" style={{ color: '#b45309' }}>
+              <div className="att-info-item-value" style={{ color: 'var(--status-warning)' }}>
                 {formatQualityStatus(session.session_quality_status)}
                 {session.quality_flags &&
                   session.quality_flags.length > 0 &&
@@ -237,12 +238,12 @@ export function AttendanceResolutionModal({
           {session.is_overdue_open_session && (
             <div
               style={{
-                background: '#fef2f2',
-                border: '1px solid #fecaca',
+                background: 'var(--status-error-bg)',
+                border: '1px solid var(--status-error-border)',
                 borderRadius: '8px',
                 padding: '10px 14px',
                 fontSize: '12px',
-                color: '#991b1b',
+                color: 'var(--status-error)',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
@@ -411,12 +412,12 @@ export function AttendanceResolutionModal({
           {error && (
             <div
               style={{
-                color: '#b91c1c',
+                color: 'var(--status-error)',
                 fontSize: '12px',
-                background: '#fef2f2',
+                background: 'var(--status-error-bg)',
                 padding: '8px 12px',
                 borderRadius: '6px',
-                border: '1px solid #fecaca',
+                border: '1px solid var(--status-error-border)',
               }}
             >
               {error}
@@ -559,7 +560,7 @@ function AttendanceAuditHistoryModal({
       >
         <div className="att-resolve-modal-header">
           <h3 className="att-resolve-modal-title">
-            <History size={17} color="#2563eb" />
+            <History size={17} color="var(--status-info)" />
             <span>Lịch sử xử lý phiên #{session.attendance_id}</span>
           </h3>
           <button
@@ -591,7 +592,7 @@ function AttendanceAuditHistoryModal({
                     <strong>Lý do:</strong> {entry.reason || 'Không ghi nhận lý do'}
                   </div>
                   {entry.old_shift_id !== entry.new_shift_id && (
-                    <div style={{ marginTop: '4px', fontSize: '11px', color: '#0369a1' }}>
+                    <div style={{ marginTop: '4px', fontSize: '11px', color: 'var(--status-info)' }}>
                       Ca làm việc: Shift #{entry.old_shift_id} → Shift #{entry.new_shift_id}
                     </div>
                   )}
@@ -783,7 +784,7 @@ function AttendanceSessionTableRow({
           <div
             style={{
               fontSize: '11px',
-              color: '#059669',
+              color: 'var(--status-success)',
               fontWeight: 600,
               marginTop: '3px',
               display: 'inline-flex',
@@ -799,23 +800,23 @@ function AttendanceSessionTableRow({
       </td>
       <td style={{ textAlign: 'right' }}>
         {session.is_valid_late ? (
-          <span style={{ color: '#dc2626', fontWeight: 700 }}>
+          <span style={{ color: 'var(--status-error)', fontWeight: 700 }}>
             Trễ {session.late_minutes}p
           </span>
         ) : (session.late_minutes ?? 0) > 0 && (session.late_minutes ?? 0) <= 15 ? (
-          <span style={{ color: '#059669', fontWeight: 600 }}>
+          <span style={{ color: 'var(--status-success)', fontWeight: 600 }}>
             Trễ {session.late_minutes}p (Ân hạn)
           </span>
         ) : (session.late_minutes ?? 0) > 15 ? (
-          <span style={{ color: '#b45309' }} title="Phút trễ thô từ phiên bất thường">
+          <span style={{ color: 'var(--status-warning)' }} title="Phút trễ thô từ phiên bất thường">
             Trễ {session.late_minutes}p (Thô)
           </span>
         ) : session.is_valid_early ? (
-          <span style={{ color: '#ea580c', fontWeight: 700 }}>
+          <span style={{ color: 'var(--status-warning)', fontWeight: 700 }}>
             Sớm {session.early_minutes}p
           </span>
         ) : (session.early_minutes ?? 0) > 0 ? (
-          <span style={{ color: '#b45309' }}>Sớm {session.early_minutes}p (Thô)</span>
+          <span style={{ color: 'var(--status-warning)' }}>Sớm {session.early_minutes}p (Thô)</span>
         ) : (
           <span style={{ color: 'var(--text-tertiary)' }}>Đúng giờ</span>
         )}
@@ -886,7 +887,7 @@ function AttendanceSessionTableRow({
             }`}
             onClick={() => {
               if (isStoreManager) {
-                alert('Bạn không có quyền thao tác chức năng này')
+                toast.error('Bạn không có quyền thao tác chức năng này')
                 return
               }
               onOpenResolve(session)
@@ -1032,7 +1033,7 @@ export function EmployeeAttendanceDetailModal({
 
   const handleOpenResolve = (s: AttendanceSession) => {
     if (cannotResolve) {
-      alert('Bạn không có quyền thao tác chức năng này')
+      toast.error('Bạn không có quyền thao tác chức năng này')
       return
     }
     setResolvingSession(s)
@@ -1051,7 +1052,7 @@ export function EmployeeAttendanceDetailModal({
 
   const handleExecuteResolution = async () => {
     if (cannotResolve) {
-      alert('Bạn không có quyền thao tác chức năng này')
+      toast.error('Bạn không có quyền thao tác chức năng này')
       return
     }
     if (!resolvingSession) return
@@ -1236,9 +1237,9 @@ export function EmployeeAttendanceDetailModal({
                 style={{
                   marginTop: '6px',
                   paddingTop: '6px',
-                  borderTop: '1px dashed #fca5a5',
+                  borderTop: '1px dashed var(--status-error-border)',
                   fontSize: '11px',
-                  color: '#b91c1c',
+                  color: 'var(--status-error)',
                   fontWeight: 600,
                 }}
               >
@@ -1295,14 +1296,14 @@ export function EmployeeAttendanceDetailModal({
               {(employee.needs_review_session_count ?? 0) > 0 ? (
                 <div
                   className="att-emp-kpi-note"
-                  style={{ color: '#b45309', fontWeight: 600 }}
+                  style={{ color: 'var(--status-warning)', fontWeight: 600 }}
                 >
                   ⚠️ Có {employee.needs_review_session_count} phiên cần HR xử lý
                 </div>
               ) : (
                 <div
                   className="att-emp-kpi-note"
-                  style={{ color: '#059669', fontStyle: 'normal' }}
+                  style={{ color: 'var(--status-success)', fontStyle: 'normal' }}
                 >
                   ✓ 100% phiên đã chuẩn hóa
                 </div>

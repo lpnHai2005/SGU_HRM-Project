@@ -1,3 +1,4 @@
+import { confirmAction } from '../components/common/ConfirmDialog'
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { payrollApi, employeeApi } from '../services/api'
 import { formatCurrency, formatDate } from '../utils/formatters'
@@ -297,7 +298,7 @@ export function ProjectsPage({ personal = false }: { personal?: boolean }) {
 
   // Xóa thành viên khỏi dự án
   const handleRemoveMember = async (memberId: number, memberName: string) => {
-    if (!window.confirm(`Xác nhận xóa thành viên "${memberName}" khỏi dự án này?`)) {
+    if (!(await confirmAction(`Xác nhận xóa thành viên "${memberName}" khỏi dự án này?`))) {
       return
     }
     try {
@@ -342,25 +343,25 @@ export function ProjectsPage({ personal = false }: { personal?: boolean }) {
     switch (roleCode) {
       case 'PROJECT_LEAD':
         return (
-          <span className="badge" style={{ background: 'rgba(147, 51, 234, 0.1)', color: '#9333ea', border: '1px solid rgba(147, 51, 234, 0.25)', fontWeight: 600 }}>
+          <span className="badge" style={{ background: 'rgba(147, 51, 234, 0.1)', color: 'var(--role-director-text)', border: '1px solid rgba(147, 51, 234, 0.25)', fontWeight: 600 }}>
             Trưởng dự án (Lead)
           </span>
         )
       case 'TECH_LEAD':
         return (
-          <span className="badge" style={{ background: 'rgba(37, 99, 235, 0.1)', color: '#2563eb', border: '1px solid rgba(37, 99, 235, 0.25)', fontWeight: 600 }}>
+          <span className="badge" style={{ background: 'var(--status-info-bg)', color: 'var(--status-info)', border: '1px solid var(--status-info-bg)', fontWeight: 600 }}>
             Tech Lead
           </span>
         )
       case 'CORE_MEMBER':
         return (
-          <span className="badge" style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#059669', border: '1px solid rgba(16, 185, 129, 0.25)', fontWeight: 600 }}>
+          <span className="badge" style={{ background: 'rgba(16, 185, 129, 0.1)', color: 'var(--status-success)', border: '1px solid rgba(16, 185, 129, 0.25)', fontWeight: 600 }}>
             Thành viên nòng cốt
           </span>
         )
       case 'KEY_MEMBER':
         return (
-          <span className="badge" style={{ background: 'rgba(245, 158, 11, 0.1)', color: '#d97706', border: '1px solid rgba(245, 158, 11, 0.25)', fontWeight: 600 }}>
+          <span className="badge" style={{ background: 'rgba(245, 158, 11, 0.1)', color: 'var(--status-warning)', border: '1px solid rgba(245, 158, 11, 0.25)', fontWeight: 600 }}>
             Key Member
           </span>
         )
@@ -402,7 +403,7 @@ export function ProjectsPage({ personal = false }: { personal?: boolean }) {
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '20px' }}>
         <div>
           <h1 className="page-title">
-            {personal ? 'Dự Án Của Tôi' : 'Quản Lý Dự Án'}
+            {personal ? 'Dự án của tôi' : 'Quản lý dự án'}
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginTop: '4px' }}>
             {personal
@@ -445,28 +446,28 @@ export function ProjectsPage({ personal = false }: { personal?: boolean }) {
             <StatCard
               icon={Icons.briefcase}
               iconColor="blue"
-              label="DỰ ÁN ĐANG THAM GIA"
+              label="Dự án đang tham gia"
               value={myProjects.length}
               footerNote="Nhiệm vụ chuyên môn được phân công"
             />
             <StatCard
               icon={Icons.wallet}
               iconColor="green"
-              label="PHỤ CẤP DỰ ÁN / THÁNG"
+              label="Phụ cấp dự án / tháng"
               value={formatCurrency(myTotalAllowance)}
               footerNote="Cộng tự động vào bảng lương cá nhân"
             />
             <StatCard
               icon={Icons.users}
               iconColor="amber"
-              label="VAI TRÒ TRONG DỰ ÁN"
+              label="Vai trò trong dự án"
               value={myProjects.length > 0 ? (myProjects[0].members?.find(m => m.employee_id === currentEmployeeId)?.project_role || 'Thành viên') : '—'}
               footerNote="Căn cứ theo quyết định điều động"
             />
             <StatCard
               icon={Icons.clock}
               iconColor="blue"
-              label="TRẠNG THÁI GHI NHẬN"
+              label="Trạng thái ghi nhận"
               value={myTotalAllowance > 0 ? 'Đang hạch toán' : 'Chưa có phụ cấp'}
               footerNote="Đồng bộ với kỳ tính lương hiện tại"
             />
@@ -629,28 +630,28 @@ export function ProjectsPage({ personal = false }: { personal?: boolean }) {
             <StatCard
               icon={Icons.briefcase}
               iconColor="blue"
-              label="DỰ ÁN HOẠT ĐỘNG"
+              label="Dự án hoạt động"
               value={metrics.activeProjects}
               footerNote={metrics.totalProjects > 0 ? `Tổng số: ${metrics.totalProjects} dự án` : undefined}
             />
             <StatCard
               icon={Icons.users}
               iconColor="blue"
-              label="NHÂN SỰ DỰ ÁN"
+              label="Nhân sự dự án"
               value={metrics.totalMembers}
               footerNote="Tổng lượt nhân sự tham gia"
             />
             <StatCard
               icon={Icons.wallet}
               iconColor="green"
-              label="QUỸ PHỤ CẤP THÁNG"
+              label="Quỹ phụ cấp tháng"
               value={formatCurrency(metrics.totalMonthlyAllowance)}
               footerNote="Tự động tính theo vai trò dự án"
             />
             <StatCard
               icon={Icons.chart}
               iconColor="amber"
-              label="TỔNG NGÂN SÁCH"
+              label="Tổng ngân sách"
               value={canView && metrics.totalBudget > 0 ? formatCurrency(metrics.totalBudget) : (canView ? '0 ₫' : 'Bảo mật')}
               footerNote={canView ? 'Hạn mức ngân sách các dự án' : 'Quyền hạn bảo mật'}
             />
@@ -673,7 +674,7 @@ export function ProjectsPage({ personal = false }: { personal?: boolean }) {
                 />
               </div>
 
-              <div style={{ display: 'flex', gap: '6px' }}>
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                 {(['ALL', 'IN_PROGRESS', 'PLANNING', 'COMPLETED'] as const).map(st => (
                   <button
                     key={st}
@@ -702,7 +703,7 @@ export function ProjectsPage({ personal = false }: { personal?: boolean }) {
               Không tìm thấy dự án trong phạm vi tài khoản của bạn.
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: '20px', alignItems: 'start' }}>
+            <div className="projects-master-detail">
               {/* Cột trái: Danh sách các dự án để chọn */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {filteredProjects.map(p => {
@@ -764,7 +765,7 @@ export function ProjectsPage({ personal = false }: { personal?: boolean }) {
                       </div>
 
                       {canManage && (
-                        <div style={{ display: 'flex', gap: '8px' }}>
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                           <button
                             type="button"
                             className="btn btn-secondary btn-sm"
@@ -807,9 +808,9 @@ export function ProjectsPage({ personal = false }: { personal?: boolean }) {
 
                   {/* Card 2: Danh sách thành viên tham gia */}
                   <div className="card" style={{ padding: '20px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '14px' }}>
                       <h3 style={{ fontSize: '15px', fontWeight: 700, margin: 0 }}>
-                        Danh Sách Thành Viên & Phụ Cấp ({currentProject.members?.length || 0})
+                        Danh sách thành viên & phụ cấp ({currentProject.members?.length || 0})
                       </h3>
                       {canManage && (
                         <button
@@ -943,7 +944,7 @@ export function ProjectsPage({ personal = false }: { personal?: boolean }) {
 
                   {/* Card 3: Bảng định mức phụ cấp vai trò nội bộ của dự án này */}
                   <div className="card" style={{ padding: '20px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '14px' }}>
                       <h3 style={{ fontSize: '15px', fontWeight: 700, margin: 0 }}>
                         Định Mức Phụ Cấp Theo Vai Trò Nội Bộ
                       </h3>

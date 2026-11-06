@@ -32,7 +32,7 @@
   left: 0;
   right: 0;
   height: 90px;
-  background: linear-gradient(135deg, rgba(37, 99, 235, 0.12) 0%, rgba(16, 185, 129, 0.08) 100%);
+  background: var(--surface-subtle);
   border-bottom: 1px solid var(--border-subtle);
   pointer-events: none;
 }
@@ -84,8 +84,8 @@
   justify-content: center;
   font-size: 36px;
   font-weight: 700;
-  color: #ffffff;
-  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  color: var(--text-primary);
+  background: var(--surface-subtle);
   text-transform: uppercase;
   font-family: var(--font-mono, monospace);
 }
@@ -146,7 +146,7 @@
   font-size: 12px;
   font-weight: 600;
   background: rgba(16, 185, 129, 0.1);
-  color: #10b981;
+  color: var(--status-success);
   border: 1px solid rgba(16, 185, 129, 0.25);
 }
 
@@ -279,7 +279,7 @@
 .avatar-dropzone:hover,
 .avatar-dropzone.drag-active {
   border-color: var(--primary-color);
-  background: rgba(37, 99, 235, 0.04);
+  background: var(--status-info-bg);
 }
 
 .avatar-dropzone-icon {
@@ -365,7 +365,7 @@
 .password-input-container input:focus {
   outline: none;
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+  box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
 .password-toggle-btn {

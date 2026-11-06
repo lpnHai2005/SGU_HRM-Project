@@ -18,6 +18,8 @@
   --surface-card: #ffffff;
   --surface-subtle: #f0f0f3;
   --surface-elevated: #ffffff;
+  --surface-input: #ffffff;
+  --surface-input-border: #e4e4e7;
   --surface-overlay: rgba(9, 9, 11, 0.45);
 
   /* Compatibility aliases */
@@ -26,7 +28,8 @@
   --bg-card: var(--surface-card);
   --bg-subtle: var(--surface-subtle);
   --border-color: var(--border-default);
-  --primary-color: #2563eb;
+  --primary-color: var(--action-primary);
+  --brand-primary: var(--action-primary);
 
   /* Headers & Sidebar */
   --topbar-bg: #ffffff;
@@ -158,6 +161,10 @@
   --selection-bg: #e4e4e7;
   --selection-text: #09090b;
   --focus-ring: rgba(9, 9, 11, 0.2);
+  /* Nền đặc đi với chữ trắng: giữ nguyên ở cả hai theme. */
+  --status-success-solid: #059669;
+  --status-warning-solid: #b45309;
+  --status-error-solid: #dc2626;
 }
 
 /* ==========================================================================
@@ -171,6 +178,8 @@
   --surface-card: #151517;
   --surface-subtle: #1a1a1d;
   --surface-elevated: #1e1e22;
+  --surface-input: #1a1a1e;
+  --surface-input-border: #38383f;
   --surface-overlay: rgba(0, 0, 0, 0.8);
 
   /* Compatibility aliases */
@@ -179,7 +188,8 @@
   --bg-card: var(--surface-card);
   --bg-subtle: var(--surface-subtle);
   --border-color: var(--border-default);
-  --primary-color: #3b82f6;
+  --primary-color: var(--action-primary);
+  --brand-primary: var(--action-primary);
 
   /* Headers & Sidebar */
   --topbar-bg: #0d0d0e;
@@ -285,7 +295,8 @@
     --bg-card: var(--surface-card);
     --bg-subtle: var(--surface-subtle);
     --border-color: var(--border-default);
-    --primary-color: #3b82f6;
+    --primary-color: var(--action-primary);
+    --brand-primary: var(--action-primary);
 
     /* Headers & Sidebar */
     --topbar-bg: #0d0d0e;
@@ -565,7 +576,7 @@ svg:not([width]) {
 
 .stat-card.is-active {
   border-color: var(--primary-color, #2563eb);
-  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25);
+  box-shadow: 0 0 0 2px var(--focus-ring);
   background-color: var(--surface-subtle);
 }
 
@@ -631,10 +642,10 @@ svg:not([width]) {
   height: 15px !important;
 }
 
-.stat-card-icon.blue { color: #38bdf8; }
-.stat-card-icon.green { color: #34d399; }
-.stat-card-icon.amber { color: #fbbf24; }
-.stat-card-icon.red { color: #f87171; }
+.stat-card-icon.blue { color: var(--status-info); }
+.stat-card-icon.green { color: var(--status-success); }
+.stat-card-icon.amber { color: var(--status-warning); }
+.stat-card-icon.red { color: var(--status-error); }
 
 .stat-card-value {
   font-size: 1.75rem;
@@ -654,7 +665,8 @@ svg:not([width]) {
   font-size: 11px;
 }
 
-.stat-card-trend {
+.stat-card-trend,
+.stat-card-trend-row {
   display: inline-flex;
   align-items: center;
   gap: 3px;
@@ -663,11 +675,13 @@ svg:not([width]) {
   color: var(--status-success);
 }
 
-.stat-card-trend.down {
+.stat-card-trend.down,
+.stat-card-trend-row.down {
   color: var(--status-error);
 }
 
-.stat-card-trend.warning {
+.stat-card-trend.warning,
+.stat-card-trend-row.warning {
   color: var(--status-warning);
 }
 
@@ -676,11 +690,40 @@ svg:not([width]) {
   height: 12px !important;
 }
 
-.stat-card-footer {
+.stat-card-footer,
+.stat-card-footer-note {
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   margin-top: 6px;
   letter-spacing: -0.01em;
+}
+
+[data-theme="dark"] .stat-card {
+  background-color: #151518;
+  border-color: #27272d;
+}
+
+[data-theme="dark"] .stat-card:hover {
+  border-color: #3f3f46;
+}
+
+[data-theme="dark"] .stat-card-label {
+  color: #a1a1aa;
+  font-weight: 600;
+}
+
+[data-theme="dark"] .stat-card-value {
+  color: #ffffff;
+}
+
+[data-theme="dark"] .stat-card-footer-note {
+  color: #9ca3af;
+  font-size: 11.5px;
+}
+
+[data-theme="dark"] .stat-card-icon {
+  background-color: #1e1e23;
+  border-color: #2e2e34;
 }
 
 /* ==========================================================================
@@ -743,6 +786,30 @@ svg:not([width]) {
 .btn-secondary:hover:not(:disabled) {
   background-color: var(--surface-subtle);
   border-color: var(--border-strong);
+}
+
+[data-theme="dark"] .btn-secondary {
+  background-color: #202024;
+  border-color: #38383f;
+  color: #f4f4f5;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+[data-theme="dark"] .btn-secondary:hover:not(:disabled) {
+  background-color: #2b2b32;
+  border-color: #52525c;
+  color: #ffffff;
+}
+
+[data-theme="dark"] .btn-secondary:disabled {
+  background-color: #161619;
+  border-color: #26262b;
+  color: #63636e;
+  opacity: 0.65;
+}
+
+[data-theme="dark"] .btn-secondary svg {
+  color: inherit;
 }
 
 .btn-outline {
@@ -899,6 +966,25 @@ svg:not([width]) {
 
 .form-input::placeholder {
   color: var(--text-muted);
+}
+
+[data-theme="dark"] .form-input,
+[data-theme="dark"] .form-select,
+[data-theme="dark"] .form-textarea {
+  background-color: #1a1a1e;
+  border-color: #38383f;
+  color: #f4f4f5;
+}
+
+[data-theme="dark"] .form-input:focus,
+[data-theme="dark"] .form-select:focus,
+[data-theme="dark"] .form-textarea:focus {
+  border-color: #52525c;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.12);
+}
+
+[data-theme="dark"] .form-input::placeholder {
+  color: #9ca3af;
 }
 
 .form-select {
@@ -1184,6 +1270,74 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   background-color: var(--role-employee-bg);
   color: var(--role-employee-text);
   border-color: var(--role-employee-border);
+}
+
+/* ==========================================================================
+   STATUS BADGES (Dual-Theme High Contrast)
+   ========================================================================== */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: var(--radius-sm, 6px);
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+  border: 1px solid transparent;
+  transition: all var(--duration-fast);
+}
+
+/* Badge Draft (Bản nháp) - Slate neutral with strong readable text */
+.badge-draft {
+  background-color: rgba(100, 116, 139, 0.12);
+  color: #475569;
+  border-color: rgba(100, 116, 139, 0.28);
+}
+[data-theme="dark"] .badge-draft {
+  background-color: rgba(148, 163, 184, 0.2);
+  color: #e2e8f0;
+  border-color: rgba(148, 163, 184, 0.4);
+}
+
+/* Badge Needs Recalculation (Cần tính lại) - Warning amber */
+.badge-needs-recalculation {
+  background-color: rgba(245, 158, 11, 0.12);
+  color: #b45309;
+  border-color: rgba(245, 158, 11, 0.28);
+}
+[data-theme="dark"] .badge-needs-recalculation {
+  background-color: rgba(245, 158, 11, 0.2);
+  color: #fde047;
+  border-color: rgba(245, 158, 11, 0.4);
+}
+
+/* Badge Confirmed (Đã duyệt) - Sky blue */
+.badge-confirmed {
+  background-color: rgba(14, 165, 233, 0.12);
+  color: #0284c7;
+  border-color: rgba(14, 165, 233, 0.28);
+}
+[data-theme="dark"] .badge-confirmed {
+  background-color: rgba(14, 165, 233, 0.2);
+  color: #38bdf8;
+  border-color: rgba(14, 165, 233, 0.4);
+}
+
+/* Badge Paid (Đã chi trả) - Emerald green */
+.badge-paid {
+  background-color: rgba(16, 185, 129, 0.12);
+  color: #059669;
+  border-color: rgba(16, 185, 129, 0.28);
+}
+[data-theme="dark"] .badge-paid {
+  background-color: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  border-color: rgba(16, 185, 129, 0.4);
 }
 
 /* ==========================================================================

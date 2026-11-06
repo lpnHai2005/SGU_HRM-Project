@@ -423,7 +423,7 @@ export function UserAccessPage({ currentUserId }: UserAccessPageProps) {
       {/* Page Header matching standard pages */}
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <div>
-          <h1 className="page-title">Quản lý Tài khoản & Phân quyền</h1>
+          <h1 className="page-title">Quản lý tài khoản & phân quyền</h1>
           <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)', fontSize: 13 }}>
             Quản trị danh sách người dùng, vai trò truy cập và liên kết hồ sơ nhân sự.
           </p>
@@ -815,7 +815,7 @@ export function UserAccessPage({ currentUserId }: UserAccessPageProps) {
               <div className="modal-header">
                 <h3 className="modal-title">Tạo tài khoản người dùng mới</h3>
                 <button type="button" className="modal-close" onClick={() => setActiveModal(null)}>
-                  ✕
+                  {Icons.x}
                 </button>
               </div>
 
@@ -896,7 +896,7 @@ export function UserAccessPage({ currentUserId }: UserAccessPageProps) {
                       if (linked) {
                         return {
                           text: `Đã có: ${linked}`,
-                          color: '#b45309',
+                          color: 'var(--status-warning)',
                           backgroundColor: 'rgba(245, 158, 11, 0.1)',
                           border: '1px solid rgba(245, 158, 11, 0.25)',
                         }
@@ -972,7 +972,7 @@ export function UserAccessPage({ currentUserId }: UserAccessPageProps) {
               <div className="modal-header">
                 <h3 className="modal-title">Sửa tài khoản: {targetUser.username}</h3>
                 <button type="button" className="modal-close" onClick={() => setActiveModal(null)}>
-                  ✕
+                  {Icons.x}
                 </button>
               </div>
 
@@ -1036,7 +1036,7 @@ export function UserAccessPage({ currentUserId }: UserAccessPageProps) {
                       if (linked === targetUser.username) {
                         return {
                           text: '✓ Đang liên kết',
-                          color: '#059669',
+                          color: 'var(--status-success)',
                           backgroundColor: 'rgba(16, 185, 129, 0.1)',
                           border: '1px solid rgba(16, 185, 129, 0.25)',
                         }
@@ -1044,7 +1044,7 @@ export function UserAccessPage({ currentUserId }: UserAccessPageProps) {
                       if (linked) {
                         return {
                           text: `Đã có: ${linked}`,
-                          color: '#b45309',
+                          color: 'var(--status-warning)',
                           backgroundColor: 'rgba(245, 158, 11, 0.1)',
                           border: '1px solid rgba(245, 158, 11, 0.25)',
                         }
@@ -1122,7 +1122,7 @@ export function UserAccessPage({ currentUserId }: UserAccessPageProps) {
               <div className="modal-header">
                 <h3 className="modal-title">Đặt lại mật khẩu</h3>
                 <button type="button" className="modal-close" onClick={() => setActiveModal(null)}>
-                  ✕
+                  {Icons.x}
                 </button>
               </div>
 
@@ -1184,7 +1184,7 @@ export function UserAccessPage({ currentUserId }: UserAccessPageProps) {
             <div className="modal-header">
               <h3 className="modal-title">Xác nhận xóa tài khoản</h3>
               <button type="button" className="modal-close" onClick={() => setActiveModal(null)}>
-                ✕
+                {Icons.x}
               </button>
             </div>
 

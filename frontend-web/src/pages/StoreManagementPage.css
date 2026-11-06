@@ -65,7 +65,7 @@
 @keyframes store-skeleton { to { background-position:-200% 0; } }
 .store-directory { padding:0; overflow:visible; }
 .store-directory-header { display:flex; justify-content:space-between; padding:18px 20px 14px; border-bottom:1px solid var(--border-subtle); }
-.store-directory-header h2 { margin:0; font-size:17px; }
+.store-directory-header h2 { margin:0; font-size:var(--text-lg); font-weight:600; }
 .store-directory-header p { margin:5px 0 0; color:var(--text-secondary); font-size:12px; }
 .store-filter-toolbar { display:grid; gap:13px; padding:16px 20px; border-bottom:1px solid var(--border-subtle); }
 .store-search { position:relative; display:block; max-width:520px; }

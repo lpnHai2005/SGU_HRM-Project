@@ -86,21 +86,21 @@ export function getIntervalDurationDisplay(startsAt: string, endsAt: string, fal
 export function getOvertimeMultiplier(row: VerifiedOvertimeItem): { rate: string; label: string; color: string; bg: string } {
   const reason = (row.decision_reason || '').toLowerCase()
   if (reason.includes('3.0') || reason.includes('3x') || reason.includes('lễ') || reason.includes('tết')) {
-    return { rate: '3,0×', label: 'Ngày lễ, Tết, ngày nghỉ hưởng lương (3,0×)', color: '#7c3aed', bg: 'rgba(124, 58, 237, 0.12)' }
+    return { rate: '3,0×', label: 'Ngày lễ, Tết, ngày nghỉ hưởng lương (3,0×)', color: 'var(--role-director-text)', bg: 'rgba(124, 58, 237, 0.12)' }
   }
   if (reason.includes('2.0') || reason.includes('2x') || reason.includes('chủ nhật') || reason.includes('nghỉ hằng tuần')) {
-    return { rate: '2,0×', label: 'Ngày nghỉ hằng tuần - Chủ nhật (2,0×)', color: '#b45309', bg: 'rgba(217, 119, 6, 0.12)' }
+    return { rate: '2,0×', label: 'Ngày nghỉ hằng tuần - Chủ nhật (2,0×)', color: 'var(--status-warning)', bg: 'rgba(217, 119, 6, 0.12)' }
   }
   if (reason.includes('1.5') || reason.includes('1.5x') || reason.includes('ngày thường') || reason.includes('bình thường')) {
-    return { rate: '1,5×', label: 'Ngày làm việc bình thường (1,5×)', color: '#1d4ed8', bg: 'rgba(37, 99, 235, 0.12)' }
+    return { rate: '1,5×', label: 'Ngày làm việc bình thường (1,5×)', color: 'var(--status-info)', bg: 'var(--status-info-bg)' }
   }
   try {
     const d = new Date(row.work_date)
     if (d.getDay() === 0) {
-      return { rate: '2,0×', label: 'Ngày nghỉ hằng tuần - Chủ nhật (2,0×)', color: '#b45309', bg: 'rgba(217, 119, 6, 0.12)' }
+      return { rate: '2,0×', label: 'Ngày nghỉ hằng tuần - Chủ nhật (2,0×)', color: 'var(--status-warning)', bg: 'rgba(217, 119, 6, 0.12)' }
     }
   } catch {}
-  return { rate: '1,5×', label: 'Ngày làm việc bình thường (1,5×)', color: '#1d4ed8', bg: 'rgba(37, 99, 235, 0.12)' }
+  return { rate: '1,5×', label: 'Ngày làm việc bình thường (1,5×)', color: 'var(--status-info)', bg: 'var(--status-info-bg)' }
 }
 
 // Helper: Chuyển đổi giờ OT hợp lệ (VERIFIED) sang định dạng phút trực quan kèm giờ thập phân (vd: 0.39h -> 23 phút)
@@ -334,7 +334,7 @@ export function MonthlyVerifiedOvertimePanel({ period, storeId, employeeId, atte
               className="badge"
               style={{
                 backgroundColor: 'rgba(22, 163, 74, 0.12)',
-                color: '#15803d',
+                color: 'var(--status-success)',
                 fontWeight: 600,
                 fontSize: '11px',
                 padding: '2px 7px',
@@ -365,7 +365,7 @@ export function MonthlyVerifiedOvertimePanel({ period, storeId, employeeId, atte
             className="btn btn-secondary btn-sm"
             style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 5 }}
           >
-            Quản lý Đăng ký & Đối soát OT →
+            Quản lý đăng ký & đối soát OT →
           </Link>
         </div>
       </header>
@@ -457,7 +457,7 @@ export function MonthlyVerifiedOvertimePanel({ period, storeId, employeeId, atte
                       <Link
                         to={`/overtime?request_id=${row.request_id}`}
                         style={{ fontWeight: 600, color: 'var(--primary-color, #2563eb)', textDecoration: 'none' }}
-                        title="Xem đơn OT trong Quản lý Đăng ký & Đối soát OT"
+                        title="Xem đơn OT trong Quản lý đăng ký & đối soát OT"
                       >
                         #{row.request_id}
                       </Link>
@@ -549,7 +549,7 @@ export function MonthlyVerifiedOvertimePanel({ period, storeId, employeeId, atte
                         title={row.decision_reason ? `Hợp lệ đối soát: ${row.decision_reason}` : 'Đã đối chiếu thành công với phiên chấm công thực tế.'}
                         style={{
                           backgroundColor: 'rgba(22, 163, 74, 0.12)',
-                          color: '#15803d',
+                          color: 'var(--status-success)',
                           fontWeight: 600,
                           fontSize: '11px',
                           padding: '3px 8px',
@@ -661,7 +661,7 @@ export function MonthlyVerifiedOvertimePanel({ period, storeId, employeeId, atte
                         className="badge"
                         style={{
                           backgroundColor: detailItem.effective_status === 'VERIFIED' ? 'rgba(22, 163, 74, 0.12)' : 'rgba(239, 68, 68, 0.12)',
-                          color: detailItem.effective_status === 'VERIFIED' ? '#15803d' : '#b91c1c',
+                          color: detailItem.effective_status === 'VERIFIED' ? 'var(--status-success)' : 'var(--status-error)',
                           padding: '2px 6px',
                           fontSize: '11px',
                           borderRadius: '4px',
@@ -735,8 +735,8 @@ export function MonthlyVerifiedOvertimePanel({ period, storeId, employeeId, atte
                             <span
                               className="badge"
                               style={{
-                                backgroundColor: 'rgba(37, 99, 235, 0.1)',
-                                color: '#1d4ed8',
+                                backgroundColor: 'var(--status-info-bg)',
+                                color: 'var(--status-info)',
                                 fontSize: '10.5px',
                                 padding: '1px 6px',
                                 borderRadius: '4px',
@@ -776,8 +776,8 @@ export function MonthlyVerifiedOvertimePanel({ period, storeId, employeeId, atte
               <div
                 style={{
                   padding: '10px 14px',
-                  background: 'rgba(37, 99, 235, 0.05)',
-                  border: '1px solid rgba(37, 99, 235, 0.15)',
+                  background: 'var(--status-info-bg)',
+                  border: '1px solid var(--status-info-border)',
                   borderRadius: '6px',
                   fontSize: '11.5px',
                   lineHeight: '1.5',
@@ -795,7 +795,7 @@ export function MonthlyVerifiedOvertimePanel({ period, storeId, employeeId, atte
                 style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 5 }}
               >
                 <ExternalLink size={13} />
-                Mở trong Quản lý Đăng ký & Đối soát OT →
+                Mở trong Quản lý đăng ký & đối soát OT →
               </Link>
               <button
                 type="button"

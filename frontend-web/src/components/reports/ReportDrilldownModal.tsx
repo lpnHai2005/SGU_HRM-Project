@@ -1,3 +1,4 @@
+import { Icons } from '../common/Icons'
 import React, { useState, useMemo } from 'react';
 
 export interface DrilldownColumn {
@@ -117,7 +118,7 @@ export const ReportDrilldownModal: React.FC<ReportDrilldownModalProps> = ({
             }}
             title="Đóng (Esc)"
           >
-            ✕
+            {Icons.x}
           </button>
         </div>
 
@@ -135,7 +136,7 @@ export const ReportDrilldownModal: React.FC<ReportDrilldownModalProps> = ({
           <div style={{ position: 'relative', flex: 1, maxWidth: '320px' }}>
             <input
               type="text"
-              className="form-control"
+              className="form-input"
               placeholder="Tìm theo tên, mã NV, chi nhánh..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}

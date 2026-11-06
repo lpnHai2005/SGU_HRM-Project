@@ -184,7 +184,7 @@ export function PayrollImportDialog({ period, onClose, onSuccess }: PayrollImpor
                 onChange={handleFileInputChange}
               />
               <div className="payroll-import-dropzone-content">
-                <span style={{ color: '#2563eb' }}>{Icons.upload}</span>
+                <span style={{ color: 'var(--status-info)' }}>{Icons.upload}</span>
                 <span>
                   <strong>Kéo thả file .xlsx vào đây</strong> hoặc bấm để chọn file từ máy
                 </span>
@@ -199,7 +199,7 @@ export function PayrollImportDialog({ period, onClose, onSuccess }: PayrollImpor
                 <div>
                   <strong>File đã chọn:</strong> {file.name} ({(file.size / 1024).toFixed(1)} KB)
                 </div>
-                {loadingPreview && <span style={{ color: '#2563eb' }}>Đang phân tích và đối soát...</span>}
+                {loadingPreview && <span style={{ color: 'var(--status-info)' }}>Đang phân tích và đối soát...</span>}
               </div>
             )}
           </div>
@@ -279,10 +279,10 @@ export function PayrollImportDialog({ period, onClose, onSuccess }: PayrollImpor
               {/* Errors Table */}
               {previewData.errors.length > 0 && (
                 <div>
-                  <h4 style={{ margin: '0 0 8px', color: '#dc2626', fontSize: '13px' }}>
+                  <h4 style={{ margin: '0 0 8px', color: 'var(--status-error)', fontSize: '13px' }}>
                     Danh sách lỗi cần sửa ({previewData.errors.length}):
                   </h4>
-                  <div className="payroll-import-table-wrapper" style={{ borderColor: '#fca5a5' }}>
+                  <div className="payroll-import-table-wrapper" style={{ borderColor: 'var(--status-error-border)' }}>
                     <table className="payroll-import-table">
                       <thead>
                         <tr>
@@ -294,11 +294,11 @@ export function PayrollImportDialog({ period, onClose, onSuccess }: PayrollImpor
                       </thead>
                       <tbody>
                         {previewData.errors.map((err, idx) => (
-                          <tr key={idx} style={{ background: '#fef2f2' }}>
+                          <tr key={idx} style={{ background: 'var(--status-error-bg)' }}>
                             <td style={{ fontWeight: 600 }}>{err.row}</td>
                             <td>{err.employee_code || '—'}</td>
                             <td><code>{err.field}</code></td>
-                            <td style={{ color: '#991b1b' }}>{err.reason}</td>
+                            <td style={{ color: 'var(--status-error)' }}>{err.reason}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -364,7 +364,7 @@ export function PayrollImportDialog({ period, onClose, onSuccess }: PayrollImpor
                                 {mpParts.length > 0 ? mpParts.join(', ') : '0'}
                               </td>
                               <td>{formatCurrency(befNet)} → <strong>{formatCurrency(aftNet)}</strong></td>
-                              <td style={{ fontWeight: 600, color: diff > 0 ? '#16a34a' : diff < 0 ? '#dc2626' : 'var(--text-secondary)' }}>
+                              <td style={{ fontWeight: 600, color: diff > 0 ? 'var(--status-success)' : diff < 0 ? 'var(--status-error)' : 'var(--text-secondary)' }}>
                                 {diff > 0 ? `+${formatCurrency(diff)}` : formatCurrency(diff)}
                               </td>
                             </tr>
@@ -388,7 +388,7 @@ export function PayrollImportDialog({ period, onClose, onSuccess }: PayrollImpor
                   <div className="payroll-import-total-row">
                     <span>Tổng chênh lệch thực lĩnh:</span>
                     <strong style={{
-                      color: (previewData.totals_after.net - previewData.totals_before.net) >= 0 ? '#16a34a' : '#dc2626'
+                      color: (previewData.totals_after.net - previewData.totals_before.net) >= 0 ? 'var(--status-success)' : 'var(--status-error)'
                     }}>
                       {(previewData.totals_after.net - previewData.totals_before.net) >= 0 ? '+' : ''}
                       {formatCurrency(previewData.totals_after.net - previewData.totals_before.net)}
@@ -408,7 +408,7 @@ export function PayrollImportDialog({ period, onClose, onSuccess }: PayrollImpor
                   </div>
                   <div className="payroll-import-total-row">
                     <span>Tổng thực lĩnh (Net):</span>
-                    <strong style={{ color: '#2563eb' }}>{formatCurrency(previewData.totals_after.net)}</strong>
+                    <strong style={{ color: 'var(--status-info)' }}>{formatCurrency(previewData.totals_after.net)}</strong>
                   </div>
                   <div className="payroll-import-total-row">
                     <span>Tổng bảo hiểm:</span>

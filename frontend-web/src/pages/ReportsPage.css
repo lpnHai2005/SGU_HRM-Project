@@ -67,9 +67,9 @@
 }
 
 .reports-tab-btn.active {
-  color: var(--brand-primary, #2563eb);
+  color: var(--action-primary);
   font-weight: 600;
-  border-bottom: 2px solid var(--brand-primary, #2563eb);
+  border-bottom: 2px solid var(--action-primary);
 }
 
 /* Biểu đồ Grid */
@@ -178,18 +178,18 @@
 }
 
 .sales-rank-badge.rank-1 {
-  background-color: #fef3c7;
-  color: #b45309;
+  background-color: var(--status-warning-bg);
+  color: var(--status-warning);
 }
 
 .sales-rank-badge.rank-2 {
-  background-color: #e2e8f0;
-  color: #475569;
+  background-color: var(--border-default);
+  color: var(--text-secondary);
 }
 
 .sales-rank-badge.rank-3 {
-  background-color: #ffedd5;
-  color: #c2410c;
+  background-color: var(--status-warning-bg);
+  color: var(--status-warning);
 }
 
 .sales-rank-badge.rank-other {
@@ -337,15 +337,15 @@
 .reports-quick-pill:hover {
   background: var(--bg-subtle, #f1f5f9);
   color: var(--text-primary, #0f172a);
-  border-color: var(--brand-primary, #2563eb);
+  border-color: var(--action-primary);
 }
 
 .reports-quick-pill.active {
-  background: var(--brand-primary, #2563eb);
+  background: var(--action-primary);
   color: #ffffff;
-  border-color: var(--brand-primary, #2563eb);
+  border-color: var(--action-primary);
   font-weight: 600;
-  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.25);
+  box-shadow: 0 1px 3px var(--focus-ring);
 }
 
 /* Thanh bộ lọc dropdown danh mục trực tiếp (Cơ sở / Chi nhánh, Chức vụ, Học vấn, ...) */
@@ -393,23 +393,23 @@
 }
 
 .reports-quick-select:hover {
-  border-color: var(--brand-primary, #2563eb);
+  border-color: var(--action-primary);
 }
 
 .reports-quick-select:focus {
-  border-color: var(--brand-primary, #2563eb);
-  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+  border-color: var(--action-primary);
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .reports-quick-select.active {
-  background-color: rgba(37, 99, 235, 0.1);
-  border-color: var(--brand-primary, #2563eb);
-  color: var(--brand-primary, #2563eb);
+  background-color: var(--status-info-bg);
+  border-color: var(--action-primary);
+  color: var(--action-primary);
   font-weight: 600;
 }
 
 [data-theme="dark"] .reports-quick-select.active {
-  color: #93c5fd;
+  color: var(--status-info);
 }
 
 .reports-quick-select option {
@@ -516,7 +516,7 @@
 }
 
 .matrix-view-btn.active {
-  background-color: var(--brand-primary, #2563eb);
+  background-color: var(--action-primary);
   color: #ffffff;
   font-weight: 600;
 }
@@ -559,11 +559,11 @@
 }
 
 .matrix-row-highlight td {
-  background-color: rgba(37, 99, 235, 0.05);
+  background-color: var(--status-info-bg);
   font-weight: 800;
-  color: var(--brand-primary, #2563eb);
-  border-top: 1px solid rgba(37, 99, 235, 0.2);
-  border-bottom: 2px solid rgba(37, 99, 235, 0.3);
+  color: var(--action-primary);
+  border-top: 1px solid var(--status-info-border);
+  border-bottom: 2px solid var(--status-info-border);
 }
 
 /* Ô tương tác mở Subform */
@@ -574,8 +574,8 @@
 }
 
 .matrix-cell-interactive:hover {
-  background-color: rgba(37, 99, 235, 0.1) !important;
-  color: var(--brand-primary, #2563eb) !important;
+  background-color: var(--status-info-bg) !important;
+  color: var(--action-primary) !important;
 }
 
 .matrix-cell-interactive::after {

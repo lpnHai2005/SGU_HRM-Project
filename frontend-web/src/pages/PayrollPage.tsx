@@ -4,13 +4,15 @@ import { Icons } from '../components/common/Icons'
 import { useCompanyProfile } from '../hooks/useCompanyProfile'
 import { StatCard } from '../components/common/StatCard'
 import { EmptyState } from '../components/common/EmptyState'
+import { TablePagination, useClientPagination } from '../components/common/TablePagination'
 import { formatCurrency, formatDate } from '../utils/formatters'
-import type { Payroll, PayrollPeriodWorkingDays, PayrollImportStatusResponse, Attendance } from '../types'
+import type { Payroll, PayrollPeriodWorkingDays, PayrollImportStatusResponse, Attendance, Employee } from '../types'
 import { PayrollImportDialog } from './PayrollImportDialog'
-import { payrollApi, attendanceApi } from '../services/api'
+import { payrollApi, attendanceApi, employeeApi } from '../services/api'
 import './PayslipPrint.css'
 import './MyPayslipPage.css'
 import { PayslipHoverItem, ActualBaseSalaryHoverItem } from '../components/common/PayslipHoverItem'
+import { EmployeeSearchSelect } from '../components/common/EmployeeSearchSelect'
 import { PayrollAdjustmentDialog } from './PayrollAdjustmentDialog'
 import { PayrollRegulationDialog } from './PayrollRegulationDialog'
 import { AttendanceRegulationDialog } from './AttendanceRegulationDialog'
@@ -119,6 +121,8 @@ export function PayrollPage({ user }: PayrollPageProps) {
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [unconfirmPayroll, setUnconfirmPayroll] = useState<Payroll | null>(null)
   const [selectedAnnualEmployeeId, setSelectedAnnualEmployeeId] = useState<number>(() => user?.employee_id || 0)
+  const [annualEmployees, setAnnualEmployees] = useState<Employee[]>([])
+  const [loadingAnnualEmployees, setLoadingAnnualEmployees] = useState(false)
   const [annualData, setAnnualData] = useState<any>(null)
   const [annualLoading, setAnnualLoading] = useState(false)
   const [lateAttendances, setLateAttendances] = useState<Attendance[]>([])
@@ -482,6 +486,46 @@ export function PayrollPage({ user }: PayrollPageProps) {
     }
   }, [activeTab, selectedAnnualEmployeeId, selectedPayroll?.employee_id, user?.employee_id, selectedYear, fetchAnnualSummary])
 
+  // Tải danh sách nhân sự cho Bảng lương năm độc lập hoàn toàn với dữ liệu các kỳ lương tháng
+  useEffect(() => {
+    if (!canManage) return
+    let active = true
+    setLoadingAnnualEmployees(true)
+    const storeId = isStoreManager && !isAdmin && !isDirector && !isHrManager && user?.store_id
+      ? Number(user.store_id)
+      : undefined
+
+    employeeApi.getAll({ store_id: storeId })
+      .then((res) => {
+        if (!active) return
+        const list = res || []
+        setAnnualEmployees(list)
+        // Nếu selectedAnnualEmployeeId hiện tại chưa hợp lệ hoặc là 0, ưu tiên user hiện tại hoặc nhân viên đầu tiên
+        setSelectedAnnualEmployeeId((prev) => {
+          if (prev && list.some((e) => e.employee_id === prev)) {
+            return prev
+          }
+          if (user?.employee_id && list.some((e) => e.employee_id === user.employee_id)) {
+            return user.employee_id
+          }
+          if (list.length > 0) {
+            return list[0].employee_id
+          }
+          return prev
+        })
+      })
+      .catch((err) => {
+        console.error('Error loading employees for annual payroll:', err)
+      })
+      .finally(() => {
+        if (active) setLoadingAnnualEmployees(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [canManage, isStoreManager, isAdmin, isDirector, isHrManager, user?.store_id, user?.employee_id])
+
   // Handle auto-clear feedback message
   useEffect(() => {
     if (feedbackMessage) {
@@ -775,6 +819,10 @@ export function PayrollPage({ user }: PayrollPageProps) {
       return matchSearch && matchStatus
     })
   }, [payrolls, searchTerm, statusFilter])
+  const { pageItems: pagedPayrolls, paginationProps } = useClientPagination(
+    filteredPayrolls,
+    `${selectedPeriod}|${searchTerm}|${statusFilter}`,
+  )
 
   // Quick Metrics
   const metrics = useMemo(() => {
@@ -831,7 +879,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
       {/* Page Header Synchronized with System Standards */}
       <div className="page-header no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
         <div>
-          <h1 className="page-title">Quản Lý Bảng Lương</h1>
+          <h1 className="page-title">Quản lý bảng lương</h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginTop: '4px' }}>
             Tính lương tự động, trích nộp bảo hiểm 10.5% và khấu trừ nghỉ phép toàn chuỗi cửa hàng
           </p>
@@ -846,15 +894,20 @@ export function PayrollPage({ user }: PayrollPageProps) {
               onClick={() => setActiveTab('monthly')}
             >
               {Icons.calendar}
-              <span>Bảng Lương Tháng</span>
+              <span>Bảng lương tháng</span>
             </button>
             <button
               type="button"
               className={`payroll-tab-button ${activeTab === 'annual' ? 'active' : ''}`}
-              onClick={() => setActiveTab('annual')}
+              onClick={() => {
+                setActiveTab('annual')
+                if (selectedPayroll?.employee_id) {
+                  setSelectedAnnualEmployeeId(selectedPayroll.employee_id)
+                }
+              }}
             >
               {Icons.chart}
-              <span>Bảng Lương Năm</span>
+              <span>Bảng lương năm</span>
             </button>
           </div>
         </div>
@@ -917,9 +970,9 @@ export function PayrollPage({ user }: PayrollPageProps) {
                     gap: '6px',
                     padding: '4px 10px',
                     borderRadius: '8px',
-                    backgroundColor: '#eff6ff',
-                    border: '1px solid #bfdbfe',
-                    color: '#1d4ed8',
+                    backgroundColor: 'var(--status-info-bg)',
+                    border: '1px solid var(--status-info-border)',
+                    color: 'var(--status-info)',
                     fontSize: '12px',
                     fontWeight: 500,
                   }}
@@ -938,12 +991,11 @@ export function PayrollPage({ user }: PayrollPageProps) {
             {/* Right Zone: Core Actions & Utilities */}
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
               {canRunPayroll && (
-                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
                   <button
                     className="btn btn-primary"
                     onClick={() => setConfirmation({ message: `Tính bảng lương kỳ ${selectedPeriod} theo OT đã duyệt?`, action: handleRunPayroll })}
                     disabled={actionLoading}
-                    style={{ backgroundColor: '#2563eb', borderColor: '#2563eb' }}
                     title="Chốt và tính toán bảng lương kỳ này theo dữ liệu chấm công và OT"
                   >
                     {Icons.clock}
@@ -997,7 +1049,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                         <button
                           type="button"
                           className="btn btn-secondary"
-                          style={{ color: '#ea580c', borderColor: '#fdba74' }}
+                          style={{ color: 'var(--status-warning)', borderColor: 'var(--status-warning-border)' }}
                           onClick={() => setConfirmation({
                             message: `Khôi phục chấm công gốc kỳ ${selectedPeriod}? Toàn bộ ${importStatus.override_count} nhân viên đang áp dụng dữ liệu import sẽ được chuyển về chấm công máy và tính lại bảng lương.`,
                             action: handleRevertImport,
@@ -1091,28 +1143,28 @@ export function PayrollPage({ user }: PayrollPageProps) {
             <StatCard
               icon={Icons.wallet}
               iconColor="blue"
-              label="TỔNG QUỸ LƯƠNG GROSS"
+              label="Tổng quỹ lương GROSS"
               value={formatCurrency(metrics.totalGross)}
               footerNote={`Kỳ ${selectedPeriod} (${metrics.totalEmployees} nhân sự)`}
             />
             <StatCard
               icon={Icons.dollar}
               iconColor="green"
-              label="TỔNG THỰC CHI NET"
+              label="Tổng thực chi NET"
               value={formatCurrency(metrics.totalNet)}
               footerNote={`Tỷ lệ chi trả: ${metrics.completionRate}% hoàn tất`}
             />
             <StatCard
               icon={Icons.shield}
               iconColor="amber"
-              label="TRÍCH NỘP BẢO HIỂM (10.5%)"
+              label="Trích nộp bảo hiểm (10.5%)"
               value={formatCurrency(metrics.totalInsurance)}
               footerNote="BHXH 8%, BHYT 1.5%, BHTN 1%"
             />
             <StatCard
               icon={Icons.users}
               iconColor="blue"
-              label="TIẾN ĐỘ DUYỆT & CHI TRẢ"
+              label="Tiến độ duyệt & chi trả"
               value={`${metrics.paidCount + metrics.confirmedCount} / ${metrics.totalEmployees}`}
               footerNote={`Nháp: ${metrics.draftCount} | Cần tính lại: ${metrics.needsRecalculationCount} | Duyệt: ${metrics.confirmedCount} | Trả: ${metrics.paidCount}`}
             />
@@ -1197,7 +1249,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                               <th style={{ padding: '12px 12px', textAlign: 'right' }}>Lương HĐ</th>
                             )}
                             {!isDetailOpen && (
-                              <th style={{ padding: '12px 12px', textAlign: 'right', color: 'var(--status-error, #dc2626)' }}>Tổng giảm trừ</th>
+                              <th style={{ padding: '12px 12px', textAlign: 'right', color: 'var(--status-error)', fontWeight: 700 }}>Tổng giảm trừ</th>
                             )}
                             <th style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 800, color: 'var(--status-success)' }}>THỰC LĨNH (NET)</th>
                             <th style={{ padding: '12px 10px', textAlign: 'center' }}>Trạng thái</th>
@@ -1205,7 +1257,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                           </tr>
                         </thead>
                         <tbody>
-                          {filteredPayrolls.map((pr, idx) => {
+                          {pagedPayrolls.map((pr, idx) => {
                             const isSelected = selectedPayroll?.payroll_id === pr.payroll_id
                             return (
                               <tr
@@ -1253,7 +1305,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
 
                                 {/* Tổng giảm trừ (ẩn khi mở subform) */}
                                 {!isDetailOpen && (
-                                  <td style={{ padding: '12px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--status-error, #dc2626)' }}>
+                                  <td style={{ padding: '12px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--status-error)', fontWeight: 600 }}>
                                     -{formatCurrency(pr.total_deduction)}
                                   </td>
                                 )}
@@ -1295,7 +1347,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                                     <button
                                       type="button"
                                       className="btn btn-secondary btn-icon btn-sm"
-                                      onClick={(e) => handleToggleMenu(e, pr.payroll_id, idx, filteredPayrolls.length)}
+                                      onClick={(e) => handleToggleMenu(e, pr.payroll_id, idx, pagedPayrolls.length)}
                                       title="Tùy chọn thao tác"
                                       aria-label="Tùy chọn thao tác"
                                     >
@@ -1310,6 +1362,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                       </table>
                     )}
                   </div>
+                  {!isLoading && filteredPayrolls.length > 0 && <TablePagination {...paginationProps} />}
                 </div>
               </div>
 
@@ -1419,7 +1472,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                                         tooltipTitle="Phụ cấp trách nhiệm chức vụ"
                                         tooltipLines={[
                                           { label: 'Căn cứ:', value: 'Định mức chức danh công việc theo HĐLĐ' },
-                                          { label: 'Mức phụ cấp:', value: '+' + formatCurrency(selectedPayroll.position_allowance), isHighlight: true, color: '#10b981' }
+                                          { label: 'Mức phụ cấp:', value: '+' + formatCurrency(selectedPayroll.position_allowance), isHighlight: true, color: 'var(--status-success)' }
                                         ]}
                                       />
                                     </td>
@@ -1436,7 +1489,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                                         tooltipTitle="Phụ cấp thâm niên công tác"
                                         tooltipLines={[
                                           { label: 'Căn cứ:', value: 'Thời gian cống hiến thực tế tại công ty' },
-                                          { label: 'Mức phụ cấp:', value: '+' + formatCurrency(selectedPayroll.seniority_allowance), isHighlight: true, color: '#10b981' }
+                                          { label: 'Mức phụ cấp:', value: '+' + formatCurrency(selectedPayroll.seniority_allowance), isHighlight: true, color: 'var(--status-success)' }
                                         ]}
                                       />
                                     </td>
@@ -1453,7 +1506,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                                         tooltipTitle="Phụ cấp tham gia dự án & chiến dịch"
                                         tooltipLines={[
                                           { label: 'Căn cứ:', value: 'Vai trò thành viên dự án đang hoạt động' },
-                                          { label: 'Mức phụ cấp:', value: '+' + formatCurrency(selectedPayroll.project_allowance), isHighlight: true, color: '#10b981' }
+                                          { label: 'Mức phụ cấp:', value: '+' + formatCurrency(selectedPayroll.project_allowance), isHighlight: true, color: 'var(--status-success)' }
                                         ]}
                                       />
                                     </td>
@@ -1470,7 +1523,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                                         tooltipTitle="Chế độ phúc lợi cố định"
                                         tooltipLines={[
                                           { label: 'Căn cứ:', value: 'Chế độ phụ cấp cơm trưa & xăng xe toàn chuỗi' },
-                                          { label: 'Mức phụ cấp:', value: '+' + formatCurrency(selectedPayroll.meal_transport_allowance), isHighlight: true, color: '#10b981' }
+                                          { label: 'Mức phụ cấp:', value: '+' + formatCurrency(selectedPayroll.meal_transport_allowance), isHighlight: true, color: 'var(--status-success)' }
                                         ]}
                                       />
                                     </td>
@@ -1487,7 +1540,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                                         tooltipTitle="Thưởng nóng chỉ tiêu KPI"
                                         tooltipLines={[
                                           { label: 'Căn cứ:', value: 'Đạt hoặc vượt chỉ tiêu định mức doanh số KPI' },
-                                          { label: 'Mức thưởng:', value: '+' + formatCurrency(selectedPayroll.productivity_bonus), isHighlight: true, color: '#10b981' }
+                                          { label: 'Mức thưởng:', value: '+' + formatCurrency(selectedPayroll.productivity_bonus), isHighlight: true, color: 'var(--status-success)' }
                                         ]}
                                       />
                                     </td>
@@ -1504,7 +1557,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                                         tooltipTitle="Hoa hồng doanh số bán lẻ POS"
                                         tooltipLines={[
                                           { label: 'Công thức:', value: '1% Doanh số Phone & Laptop + 3% Phụ kiện' },
-                                          { label: 'Tiền hoa hồng:', value: '+' + formatCurrency(selectedPayroll.commission_amount), isHighlight: true, color: '#10b981' }
+                                          { label: 'Tiền hoa hồng:', value: '+' + formatCurrency(selectedPayroll.commission_amount), isHighlight: true, color: 'var(--status-success)' }
                                         ]}
                                       />
                                     </td>
@@ -1521,7 +1574,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                                         tooltipTitle="Tiền lương làm thêm giờ (Overtime)"
                                         tooltipLines={[
                                           { label: 'Công thức:', value: 'Giờ OT duyệt × Đơn giá giờ × Hệ số làm thêm' },
-                                          { label: 'Tiền lương OT:', value: '+' + formatCurrency(selectedPayroll.overtime_salary), isHighlight: true, color: '#10b981' }
+                                          { label: 'Tiền lương OT:', value: '+' + formatCurrency(selectedPayroll.overtime_salary), isHighlight: true, color: 'var(--status-success)' }
                                         ]}
                                       />
                                     </td>
@@ -1538,7 +1591,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                                         tooltipTitle="Thưởng Lễ / Tết chính thức"
                                         tooltipLines={[
                                           { label: 'Căn cứ:', value: 'Chính sách tiền thưởng Lễ/Tết của công ty' },
-                                          { label: 'Mức tiền thưởng:', value: '+' + formatCurrency(selectedPayroll.holiday_bonus), isHighlight: true, color: '#10b981' }
+                                          { label: 'Mức tiền thưởng:', value: '+' + formatCurrency(selectedPayroll.holiday_bonus), isHighlight: true, color: 'var(--status-success)' }
                                         ]}
                                       />
                                     </td>
@@ -1566,7 +1619,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                                     tooltipTitle="Bảo hiểm Xã hội bắt buộc (8%)"
                                     tooltipLines={[
                                       { label: 'Tỷ lệ người lao động:', value: '8.00% trích nộp' },
-                                      { label: 'Mức trích nộp:', value: '-' + formatCurrency(selectedPayroll?.details?.find(d => d.item_code === 'BHXH')?.amount ?? selectedPayroll.bhxh_amount), isHighlight: true, color: '#ef4444' }
+                                      { label: 'Mức trích nộp:', value: '-' + formatCurrency(selectedPayroll?.details?.find(d => d.item_code === 'BHXH')?.amount ?? selectedPayroll.bhxh_amount), isHighlight: true, color: 'var(--status-error)' }
                                     ]}
                                   />
                                 </td>
@@ -1581,7 +1634,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                                     tooltipTitle="Bảo hiểm Y tế bắt buộc (1.5%)"
                                     tooltipLines={[
                                       { label: 'Tỷ lệ người lao động:', value: '1.50% trích nộp' },
-                                      { label: 'Mức trích nộp:', value: '-' + formatCurrency(selectedPayroll?.details?.find(d => d.item_code === 'BHYT')?.amount ?? selectedPayroll.bhyt_amount), isHighlight: true, color: '#ef4444' }
+                                      { label: 'Mức trích nộp:', value: '-' + formatCurrency(selectedPayroll?.details?.find(d => d.item_code === 'BHYT')?.amount ?? selectedPayroll.bhyt_amount), isHighlight: true, color: 'var(--status-error)' }
                                     ]}
                                   />
                                 </td>
@@ -1596,7 +1649,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                                     tooltipTitle="Bảo hiểm Thất nghiệp (1%)"
                                     tooltipLines={[
                                       { label: 'Tỷ lệ người lao động:', value: '1.00% trích nộp' },
-                                      { label: 'Mức trích nộp:', value: '-' + formatCurrency(selectedPayroll?.details?.find(d => d.item_code === 'BHTN')?.amount ?? selectedPayroll.bhtn_amount), isHighlight: true, color: '#ef4444' }
+                                      { label: 'Mức trích nộp:', value: '-' + formatCurrency(selectedPayroll?.details?.find(d => d.item_code === 'BHTN')?.amount ?? selectedPayroll.bhtn_amount), isHighlight: true, color: 'var(--status-error)' }
                                     ]}
                                   />
                                 </td>
@@ -1612,7 +1665,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                                       tooltipTitle="Thuế TNCN tạm khấu trừ"
                                       tooltipLines={[
                                         { label: 'Căn cứ:', value: 'Biểu thuế lũy tiến từng phần Luật Thuế TNCN' },
-                                        { label: 'Mức khấu trừ:', value: '-' + formatCurrency(selectedPayroll.personal_income_tax), isHighlight: true, color: '#ef4444' }
+                                        { label: 'Mức khấu trừ:', value: '-' + formatCurrency(selectedPayroll.personal_income_tax), isHighlight: true, color: 'var(--status-error)' }
                                       ]}
                                     />
                                   </td>
@@ -1630,7 +1683,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                                       tooltipLines={[
                                         { label: 'Quy định phạt:', value: '50.000 VNĐ / lần đi muộn quá hạn (> 15 phút)' },
                                         { label: 'Công thức phạt:', value: `${lateAttendances.filter(a => (a.late_minutes || 0) > 15).length || Math.round((selectedPayroll.penalty_deduction || 0) / 50000)} lần × 50.000 VNĐ` },
-                                        { label: 'Tổng tiền phạt:', value: '-' + formatCurrency(selectedPayroll.penalty_deduction), isHighlight: true, color: '#ef4444' }
+                                        { label: 'Tổng tiền phạt:', value: '-' + formatCurrency(selectedPayroll.penalty_deduction), isHighlight: true, color: 'var(--status-error)' }
                                       ]}
                                     />
                                   </td>
@@ -1687,7 +1740,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                             <button
                               type="button"
                               className="btn"
-                              style={{ backgroundColor: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe' }}
+                              style={{ backgroundColor: 'var(--status-info-bg)', color: 'var(--status-info)', border: '1px solid var(--status-info-border)' }}
                               onClick={() => handleUpdateSingleStatus(selectedPayroll.payroll_id, 'CONFIRMED')}
                               title="Duyệt phiếu lương"
                             >
@@ -1702,7 +1755,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                             <button
                               type="button"
                               className="btn"
-                              style={{ backgroundColor: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0' }}
+                              style={{ backgroundColor: 'var(--status-success-bg)', color: 'var(--status-success)', border: '1px solid var(--status-success-border)' }}
                               onClick={() => handleUpdateSingleStatus(selectedPayroll.payroll_id, 'PAID')}
                               title="Xác nhận chi trả"
                             >
@@ -1742,7 +1795,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
             <div className="card" style={{ maxWidth: '780px', margin: '0 auto', width: '100%', overflow: 'hidden' }}>
               {myPayroll ? (
                 <div>
-                  <div style={{ background: 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)', color: '#ffffff', padding: '24px 28px' }}>
+                  <div style={{ background: 'var(--role-admin-bg)', color: '#ffffff', padding: '24px 28px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1860,22 +1913,24 @@ export function PayrollPage({ user }: PayrollPageProps) {
                 </select>
               </div>
 
-              {/* If Manager, allow choosing employee */}
-              {canManage && payrolls.length > 0 && (
+              {/* If Manager, allow choosing employee via searchable combobox */}
+              {canManage && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span className="text-secondary" style={{ fontSize: '13px', fontWeight: 600 }}>Nhân sự:</span>
-                  <select
-                    className="form-select"
-                    value={selectedAnnualEmployeeId}
-                    onChange={(e) => setSelectedAnnualEmployeeId(Number(e.target.value))}
-                    style={{ width: 'auto', minWidth: '220px' }}
-                  >
-                    {payrolls.map(p => (
-                      <option key={p.employee_id} value={p.employee_id}>
-                        {p.employee_name} ({p.employee_code}) - {p.position_name}
-                      </option>
-                    ))}
-                  </select>
+                  <span className="text-secondary" style={{ fontSize: '13px', fontWeight: 600, whiteSpace: 'nowrap' }}>Nhân sự:</span>
+                  <div style={{ width: '340px', minWidth: '240px' }}>
+                    <EmployeeSearchSelect
+                      employees={annualEmployees}
+                      value={selectedAnnualEmployeeId}
+                      onChange={(id) => {
+                        if (id) {
+                          setSelectedAnnualEmployeeId(Number(id))
+                        }
+                      }}
+                      fallbackEmployee={annualData?.employee}
+                      placeholder={loadingAnnualEmployees ? 'Đang tải nhân sự...' : 'Tìm theo tên, mã NV, chức vụ...'}
+                      clearable={false}
+                    />
+                  </div>
                 </div>
               )}
             </div>
@@ -1914,21 +1969,21 @@ export function PayrollPage({ user }: PayrollPageProps) {
                 <StatCard
                   icon={Icons.wallet}
                   iconColor="blue"
-                  label="TỔNG GROSS CẢ NĂM"
+                  label="Tổng GROSS cả năm"
                   value={formatCurrency(annualData.total_gross_income_year)}
                   footerNote={`Đã chốt ${annualData.total_paid_months || annualData.monthly_records?.length || 0} tháng`}
                 />
                 <StatCard
                   icon={Icons.dollar}
                   iconColor="green"
-                  label="TỔNG THỰC LĨNH CẢ NĂM (NET)"
+                  label="Tổng thực lĩnh cả năm (NET)"
                   value={formatCurrency(annualData.total_net_salary_year)}
                   footerNote="Thu nhập thực tế chuyển khoản"
                 />
                 <StatCard
                   icon={Icons.trendingUp}
                   iconColor="blue"
-                  label="THU NHẬP TRUNG BÌNH / THÁNG"
+                  label="Thu nhập trung bình / tháng"
                   value={formatCurrency(
                     annualData.total_paid_months > 0
                       ? Math.round(annualData.total_net_salary_year / annualData.total_paid_months)
@@ -1939,7 +1994,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                 <StatCard
                   icon={Icons.shield}
                   iconColor="amber"
-                  label="BẢO HIỂM TRÍCH NỘP CẢ NĂM"
+                  label="Bảo hiểm trích nộp cả năm"
                   value={formatCurrency(annualData.total_insurance_deducted_year)}
                   footerNote="10.5% (BHXH 8%, BHYT 1.5%, BHTN 1%)"
                 />
@@ -1949,7 +2004,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
               <div className="card" style={{ overflow: 'hidden' }}>
                 <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <h3 className="card-title" style={{ margin: 0, fontSize: '15px' }}>
-                    Chi Tiết Thu Nhập 12 Tháng Năm {selectedYear}
+                    Chi tiết thu nhập 12 tháng năm {selectedYear}
                     {annualData.employee && (
                       <span style={{ fontWeight: 400, color: 'var(--text-secondary)', marginLeft: '8px' }}>
                         — {annualData.employee.full_name} ({annualData.employee.employee_code})
@@ -1994,7 +2049,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                               <td style={{ padding: '12px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{formatCurrency(rec.commission_amount)}</td>
                               <td style={{ padding: '12px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{formatCurrency(rec.bonus_amount)}</td>
                               <td style={{ padding: '12px 12px', textAlign: 'right', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{formatCurrency(gross)}</td>
-                              <td style={{ padding: '12px 12px', textAlign: 'right', color: 'var(--status-error)', fontFamily: 'var(--font-mono)' }}>-{formatCurrency(ins)}</td>
+                              <td style={{ padding: '12px 12px', textAlign: 'right', color: 'var(--status-error)', fontWeight: 600, fontFamily: 'var(--font-mono)' }}>-{formatCurrency(ins)}</td>
                               <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 800, color: 'var(--status-success)', fontFamily: 'var(--font-mono)' }}>{formatCurrency(net)}</td>
                               <td style={{ padding: '12px 10px', textAlign: 'center' }}>
                                 <span className={`badge ${getStatusBadgeClass(rec.payment_status)}`}>
@@ -2023,8 +2078,8 @@ export function PayrollPage({ user }: PayrollPageProps) {
                           <td style={{ padding: '14px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{formatCurrency(annualData.total_commission_year)}</td>
                           <td style={{ padding: '14px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{formatCurrency(annualData.total_bonus_year)}</td>
                           <td style={{ padding: '14px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{formatCurrency(annualData.total_gross_income_year)}</td>
-                          <td style={{ padding: '14px', textAlign: 'right', color: 'var(--status-error)', fontFamily: 'var(--font-mono)' }}>-{formatCurrency(annualData.total_insurance_deducted_year)}</td>
-                          <td style={{ padding: '14px', textAlign: 'right', color: 'var(--status-success)', fontSize: '15px', fontFamily: 'var(--font-mono)' }}>{formatCurrency(annualData.total_net_salary_year)}</td>
+                          <td style={{ padding: '14px', textAlign: 'right', color: 'var(--status-error)', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>-{formatCurrency(annualData.total_insurance_deducted_year)}</td>
+                          <td style={{ padding: '14px', textAlign: 'right', color: 'var(--status-success)', fontSize: '15px', fontWeight: 800, fontFamily: 'var(--font-mono)' }}>{formatCurrency(annualData.total_net_salary_year)}</td>
                           <td style={{ padding: '14px', textAlign: 'center' }}>✓</td>
                         </tr>
                       </tfoot>
@@ -2038,7 +2093,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
               <EmptyState
                 icon={Icons.chart}
                 title="Chưa có dữ liệu năm"
-                description={`Không tìm thấy bản ghi thu nhập năm ${selectedYear}. Vui lòng chọn năm khác.`}
+                description={`Không tìm thấy bản ghi thu nhập năm ${selectedYear}. Vui lòng chọn năm khác hoặc chọn nhân sự khác.`}
               />
             </div>
           )}

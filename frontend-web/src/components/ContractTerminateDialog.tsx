@@ -498,7 +498,7 @@ export function ContractTerminateDialog({
                     {docFile ? (
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
                         <span style={{ fontWeight: 600, color: 'var(--brand-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          📄 {docFile.name} ({(docFile.size / 1024).toFixed(0)} KB)
+                          {Icons.fileText} {docFile.name} ({(docFile.size / 1024).toFixed(0)} KB)
                         </span>
                         <button
                           type="button"

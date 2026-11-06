@@ -4,8 +4,8 @@
 // ==============================================================================
 
 export const CHART_COLORS = {
-  primary: '#2563eb',     // Blue 600
-  primaryLight: '#60a5fa',// Blue 400
+  primary: '#0284c7',     // Sky 600 (--status-info)
+  primaryLight: '#38bdf8',// Sky 400
   navy: '#1e3a8a',        // TechZone Navy
   success: '#10b981',    // Emerald 500
   successLight: '#34d399',

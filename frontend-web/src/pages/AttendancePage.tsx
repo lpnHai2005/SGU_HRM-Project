@@ -213,7 +213,7 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
                   {Boolean(holidaysCount) && (
                     <>
                       <span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>-</span>
-                      <span style={{ color: '#f87171', fontWeight: 600 }}>{holidaysCount} ngày lễ</span>
+                      <span style={{ color: 'var(--status-error)', fontWeight: 600 }}>{holidaysCount} ngày lễ</span>
                     </>
                   )}
                 </>
@@ -222,7 +222,7 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
                 <span style={{
                   fontSize: '10.5px',
                   background: 'rgba(234, 88, 12, 0.25)',
-                  color: '#fdba74',
+                  color: 'var(--status-warning)',
                   padding: '1px 6px',
                   borderRadius: '4px',
                   fontWeight: 600,
@@ -235,7 +235,7 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
                 <span style={{
                   fontSize: '10.5px',
                   background: 'rgba(16, 185, 129, 0.25)',
-                  color: '#6ee7b7',
+                  color: 'var(--status-success)',
                   padding: '1px 6px',
                   borderRadius: '4px',
                   fontWeight: 600,
@@ -269,7 +269,7 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
         <StatCard
           icon={Icons.checkCircle}
           iconColor="green"
-          label="NGÀY CÔNG THỰC TẾ"
+          label="Ngày công thực tế"
           value={`${actualDays} / ${standardDays} công`}
           footerNote={`Công chuẩn tháng: ${standardDays} | Làm: ${totalHours}h | Trễ/sớm tính lương: ${workingDays?.payroll_time_adjustment_hours ?? 0}h`}
         />
@@ -278,7 +278,7 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
         <StatCard
           icon={Icons.calendar}
           iconColor="blue"
-          label="QUỸ PHÉP NĂM CÒN LẠI"
+          label="Quỹ phép năm còn lại"
           value={`${remainingLeave} ngày`}
           footerNote={`Phép năm: ${annualLeave} ngày | Đã nghỉ: ${usedLeave} ngày`}
         />
@@ -287,7 +287,7 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
         <StatCard
           icon={Icons.clock}
           iconColor={lateCount > 0 ? 'red' : 'green'}
-          label="ĐI MUỘN (LATE)"
+          label="Đi muộn (late)"
           value={`${lateCount} lần (${lateMinutes}p)`}
           trend={lateCount > 0 ? 'Có vi phạm' : 'Tốt'}
           trendDirection={lateCount > 0 ? 'warning' : 'up'}
@@ -298,7 +298,7 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
         <StatCard
           icon={Icons.logOut}
           iconColor={earlyCount > 0 ? 'amber' : 'green'}
-          label="VỀ SỚM (EARLY)"
+          label="Về sớm (early)"
           value={`${earlyCount} lần (${earlyMinutes}p)`}
           trend={earlyCount > 0 ? 'Có về sớm' : 'Đúng giờ'}
           trendDirection={earlyCount > 0 ? 'warning' : 'up'}
@@ -309,7 +309,7 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
         <StatCard
           icon={Icons.zap}
           iconColor="blue"
-          label="LÀM THÊM (EXTRA WORK)"
+          label="Làm thêm (extra work)"
           value={`${extraHours} giờ`}
           footerNote="Ngoài ca chuẩn, duyệt bởi CHT"
         />
@@ -318,7 +318,7 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
         <StatCard
           icon={Icons.briefcase}
           iconColor="blue"
-          label="CÔNG TÁC (TRIP)"
+          label="Công tác (trip)"
           value={`${businessTripDays} ngày`}
           footerNote="Hưởng 100% lương & phụ cấp chuyến"
         />
@@ -327,7 +327,7 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
         <StatCard
           icon={Icons.trendingUp}
           iconColor="amber"
-          label="GIỜ NGOÀI CA & TĂNG CA OT"
+          label="Giờ ngoài ca & tăng ca OT"
           value={`${otHours} giờ`}
           footerNote={otApprovedHours > 0
             ? `Đã duyệt: ${otApprovedHours}h (Thường: ${otNormalHours}h · CN: ${otWeekendHours}h · Lễ: ${otHolidayHours}h)`
@@ -339,7 +339,7 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
         <StatCard
           icon={Icons.shield}
           iconColor="amber"
-          label="QUỸ NGHỈ BÙ"
+          label="Quỹ nghỉ bù"
           value={`${compensatoryDays} ngày`}
           footerNote="Tổng số ngày nghỉ bù khả dụng"
         />

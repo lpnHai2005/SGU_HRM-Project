@@ -582,7 +582,7 @@ export const AiChatbotWidget: React.FC<AiChatbotWidgetProps> = ({ isOpen, onClos
                       <div className="ai-pill-list">
                         {msg.sources.map((s, idx) => (
                           <span key={idx} className="ai-pill ai-pill-source" title="Căn cứ tài liệu PDF chính sách TechZone">
-                            📄 {s}
+                            <FileText size={12} /> {s}
                           </span>
                         ))}
                       </div>
@@ -591,7 +591,7 @@ export const AiChatbotWidget: React.FC<AiChatbotWidgetProps> = ({ isOpen, onClos
                       <div className="ai-pill-list">
                         {msg.tools_used.map((t, idx) => (
                           <span key={idx} className="ai-pill ai-pill-tool" title="Đã gọi HRM Agent Tool">
-                            ⚡ {t}
+                            <Sparkles size={12} /> {t}
                           </span>
                         ))}
                       </div>

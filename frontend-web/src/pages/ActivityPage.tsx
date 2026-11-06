@@ -1,3 +1,4 @@
+import { toast } from 'sonner'
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { api } from '../services/api'
@@ -300,7 +301,7 @@ export function ActivityPage({
 
   const handleOpenResolveSession = (session: ActivitySession) => {
     if (isStoreManager) {
-      alert('Bạn không có quyền thao tác chức năng này')
+      toast.error('Bạn không có quyền thao tác chức năng này')
       return
     }
     setResolvingSession(session)
@@ -318,7 +319,7 @@ export function ActivityPage({
 
   const handleExecuteResolution = async () => {
     if (isStoreManager) {
-      alert('Bạn không có quyền thao tác chức năng này')
+      toast.error('Bạn không có quyền thao tác chức năng này')
       return
     }
     if (!resolvingSession) return
@@ -597,7 +598,7 @@ export function ActivityPage({
   // Export CSV handler (Mục 8)
   const handleExportCsv = () => {
     if (!data?.employees?.length) {
-      alert('Không có dữ liệu để xuất CSV.')
+      toast.warning('Không có dữ liệu để xuất CSV.')
       return
     }
 
@@ -1191,7 +1192,7 @@ export function ActivityPage({
                             {/* 3. Giờ ra */}
                             <td style={{ textAlign: 'center', fontWeight: 600 }}>
                               {session.check_out_time ? time(session.check_out_time) : (
-                                <span style={{ color: '#2563eb', fontSize: 11.5 }}>Chưa ra</span>
+                                <span style={{ color: 'var(--status-info)', fontSize: 11.5 }}>Chưa ra</span>
                               )}
                             </td>
 
@@ -1213,15 +1214,15 @@ export function ActivityPage({
                             {/* 5. Trễ */}
                             <td style={{ textAlign: 'right' }}>
                               {session.is_valid_late ? (
-                                <span style={{ color: '#dc2626', fontWeight: 700 }}>
+                                <span style={{ color: 'var(--status-error)', fontWeight: 700 }}>
                                   Trễ {session.late_minutes}p
                                 </span>
                               ) : (session.late_minutes ?? 0) > 0 && (session.late_minutes ?? 0) <= 15 ? (
-                                <span style={{ color: '#059669', fontWeight: 600 }}>
+                                <span style={{ color: 'var(--status-success)', fontWeight: 600 }}>
                                   Trễ {session.late_minutes}p (Ân hạn)
                                 </span>
                               ) : (session.late_minutes ?? 0) > 15 ? (
-                                <span style={{ color: '#dc2626' }}>
+                                <span style={{ color: 'var(--status-error)' }}>
                                   Trễ {session.late_minutes}p
                                 </span>
                               ) : (
@@ -1232,7 +1233,7 @@ export function ActivityPage({
                             {/* 6. Sớm */}
                             <td style={{ textAlign: 'right' }}>
                               {session.is_valid_early || (session.early_minutes ?? 0) > 0 ? (
-                                <span style={{ color: '#d97706', fontWeight: 600 }}>
+                                <span style={{ color: 'var(--status-warning)', fontWeight: 600 }}>
                                   Sớm {session.early_minutes}p
                                 </span>
                               ) : (
@@ -1314,7 +1315,7 @@ export function ActivityPage({
                                       className="hr-resolve-action-btn"
                                       onClick={() => {
                                         if (!canResolveSession) {
-                                          alert('Bạn không có quyền thao tác chức năng này')
+                                          toast.error('Bạn không có quyền thao tác chức năng này')
                                           return
                                         }
                                         handleOpenResolveSession(session)
