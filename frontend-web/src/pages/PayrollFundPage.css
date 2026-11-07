@@ -1,20 +1,27 @@
 /* ==========================================================================
    TechZone HRM - Quản Trị Quỹ Lương & TCOW (PayrollFundPage.css)
    Chuẩn Quản trị Chi phí Lao động Toàn phần (Total Cost of Workforce)
+   Tuân thủ quy phạm kiến trúc giao diện chuẩn: TZ-SKILL-UI-2026
    ========================================================================== */
 
 .payroll-fund-container {
   padding-bottom: 40px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
-/* Header & Controls bar */
+/* ==========================================================================
+   KHỐI 1: HEADER & ACTIONS BAR CHỐT GÓC PHẢI
+   ========================================================================== */
 .fund-header-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-wrap: nowrap;
-  gap: 20px;
-  margin-bottom: 18px;
+  gap: 16px;
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 16px;
 }
 
 .fund-header-title {
@@ -22,7 +29,7 @@
   min-width: 0;
 }
 
-.fund-header-title h1 {
+.fund-header-title .page-title {
   margin: 0 0 4px 0;
   font-size: 21px;
   font-weight: 700;
@@ -30,11 +37,11 @@
   line-height: 1.25;
 }
 
-.fund-header-title p {
+.fund-header-title .page-subtitle {
   margin: 0;
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--text-secondary);
-  line-height: 1.4;
+  line-height: 1.45;
 }
 
 .fund-actions-bar {
@@ -50,11 +57,11 @@
   gap: 6px;
   font-weight: 600;
   padding: 7px 13px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-md, 8px);
   font-size: 12.5px;
   white-space: nowrap;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
 }
 
 @media (max-width: 768px) {
@@ -64,17 +71,21 @@
   }
 }
 
-/* Filter Card */
+/* ==========================================================================
+   KHỐI 2: FILTER CARD CĂN THẲNG HÀNG BIÊN 100%
+   ========================================================================== */
 .fund-filter-card {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 16px;
-  padding: 14px 18px;
-  margin-bottom: 20px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  width: 100%;
+  box-sizing: border-box;
   background: var(--surface-card);
   border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-md, 8px);
   box-shadow: var(--shadow-sm);
 }
 
@@ -86,34 +97,41 @@
 }
 
 .fund-filter-item label {
-  font-size: 11.5px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 700;
   text-transform: uppercase;
   color: var(--text-secondary);
-  letter-spacing: 0.5px;
+  letter-spacing: 0.04em;
 }
 
 .fund-filter-input {
   box-sizing: border-box;
-  height: 38px;
-  padding: 6px 12px;
+  height: 34px;
+  padding: 6px 10px;
   border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-sm, 6px);
   background: var(--surface-ground);
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: 12.5px;
+  transition: border-color 0.15s ease;
+}
+
+.fund-filter-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
 }
 
 /* ==========================================================================
-   2. KHU VỰC TIẾN ĐỘ NGÂN SÁCH (BUDGET VS ACTUAL PROGRESS BAR)
+   KHỐI 3A: TIẾN ĐỘ NGÂN SÁCH (BUDGET VS ACTUAL PROGRESS BAR)
    ========================================================================== */
-
 .budget-progress-card {
   padding: 10px 14px;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
+  width: 100%;
+  box-sizing: border-box;
   background: var(--surface-card);
   border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-md, 8px);
   box-shadow: var(--shadow-sm);
 }
 
@@ -121,7 +139,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
   flex-wrap: wrap;
   gap: 8px;
 }
@@ -146,21 +164,21 @@
 }
 
 .budget-status-safe {
-  background: rgba(16, 185, 129, 0.12);
+  background: var(--status-success-bg, rgba(16, 185, 129, 0.12));
   color: var(--status-success);
-  border: 1px solid rgba(16, 185, 129, 0.3);
+  border: 1px solid var(--status-success-border, rgba(16, 185, 129, 0.3));
 }
 
 .budget-status-warning {
-  background: rgba(245, 158, 11, 0.12);
+  background: var(--status-warning-bg, rgba(245, 158, 11, 0.12));
   color: var(--status-warning);
-  border: 1px solid rgba(245, 158, 11, 0.3);
+  border: 1px solid var(--status-warning-border, rgba(245, 158, 11, 0.3));
 }
 
 .budget-status-danger {
-  background: rgba(239, 68, 68, 0.12);
+  background: var(--status-error-bg, rgba(239, 68, 68, 0.12));
   color: var(--status-error);
-  border: 1px solid rgba(239, 68, 68, 0.3);
+  border: 1px solid var(--status-error-border, rgba(239, 68, 68, 0.3));
 }
 
 .budget-bar-track {
@@ -180,22 +198,22 @@
 }
 
 .budget-bar-fill.safe {
-  background: linear-gradient(90deg, #2563eb, #3b82f6);
+  background: var(--status-info, #0284c7);
 }
 
 .budget-bar-fill.warning {
-  background: linear-gradient(90deg, #f59e0b, #d97706);
+  background: var(--status-warning, #d97706);
 }
 
 .budget-bar-fill.danger {
-  background: linear-gradient(90deg, #ef4444, #dc2626);
+  background: var(--status-error, #dc2626);
 }
 
 .budget-metrics-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 6px;
+  margin-top: 8px;
   font-size: 11.5px;
   color: var(--text-secondary);
   flex-wrap: wrap;
@@ -208,14 +226,15 @@
 }
 
 /* ==========================================================================
-   1. KHU VỰC 5 SUMMARY CARDS (LUỒNG CHẢY DÒNG TIỀN TCOW)
+   KHỐI 3B: 5 FLOW CARDS (LUỒNG CHẢY DÒNG TIỀN TCOW TỪ TRÁI SANG PHẢI)
    ========================================================================== */
-
 .flow-summary-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 10px;
-  margin-bottom: 14px;
+  gap: 12px;
+  margin-bottom: 16px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 @media (max-width: 1280px) {
@@ -231,8 +250,10 @@
 }
 
 .flow-card {
-  padding: 10px 12px;
-  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  min-height: 96px;
+  box-sizing: border-box;
+  border-radius: var(--radius-md, 8px);
   background: var(--surface-card);
   border: 1px solid var(--border-default);
   box-shadow: var(--shadow-sm);
@@ -240,46 +261,49 @@
   flex-direction: column;
   justify-content: space-between;
   position: relative;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
 }
 
 .flow-card:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
+  border-color: var(--primary-color);
 }
 
 /* Card 1: Highlight TCOW Primary */
 .flow-card.card-tcow {
-  border-color: var(--role-director-text);
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, var(--surface-card) 100%);
-  border-left: 4px solid var(--role-director-text);
+  border-color: var(--primary-color, #2563eb);
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.06) 0%, var(--surface-card) 100%);
+  border-left: 3.5px solid var(--primary-color, #2563eb);
 }
 
 .flow-card.card-tcow .flow-card-value {
-  color: #4f46e5;
+  color: var(--primary-color, #2563eb);
 }
 
 /* Card 5: Highlight Net Success */
 .flow-card.card-net {
-  border-color: var(--status-success);
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, var(--surface-card) 100%);
-  border-left: 4px solid var(--status-success);
+  border-color: var(--status-success, #059669);
+  background: linear-gradient(135deg, var(--status-success-bg, rgba(16, 185, 129, 0.08)) 0%, var(--surface-card) 100%);
+  border-left: 3.5px solid var(--status-success, #059669);
 }
 
 .flow-card.card-net .flow-card-value {
-  color: var(--status-success);
+  color: var(--status-success, #059669);
 }
 
 .flow-card-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 3px;
+  margin-bottom: 4px;
 }
 
 .flow-card-label {
   font-size: 11px;
-  font-weight: 600;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+  text-transform: uppercase;
   color: var(--text-secondary);
   display: flex;
   align-items: center;
@@ -300,31 +324,33 @@
 }
 
 .flow-card-value {
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 700;
   font-family: var(--font-mono);
   color: var(--text-primary);
-  margin: 2px 0 3px 0;
+  margin: 2px 0 4px 0;
   line-height: 1.2;
 }
 
 .flow-card-sub {
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--text-tertiary);
-  line-height: 1.3;
+  line-height: 1.35;
 }
 
 /* ==========================================================================
-   3. BẢNG DỮ LIỆU TCOW THEO ĐƠN VỊ (DATA TABLE 10 CỘT)
+   KHỐI 4: BẢNG DỮ LIỆU TCOW THEO ĐƠN VỊ (DATA TABLE 10 CỘT - FIXED LAYOUT)
    ========================================================================== */
-
 .fund-table-card {
   padding: 0;
   background: var(--surface-card);
   border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-md, 8px);
   box-shadow: var(--shadow-sm);
   overflow: hidden;
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 24px;
 }
 
 .fund-table-header {
@@ -335,6 +361,7 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
+  background: var(--surface-subtle);
 }
 
 .fund-table-header-left {
@@ -368,6 +395,7 @@
 .fund-table-container {
   overflow-x: hidden;
   width: 100%;
+  box-sizing: border-box;
 }
 
 .tcow-table {
@@ -379,24 +407,24 @@
 }
 
 .tcow-table th {
-  padding: 8px 6px;
+  padding: 9px 8px;
   background: var(--surface-subtle);
   border-bottom: 1px solid var(--border-default);
   color: var(--text-secondary);
-  font-weight: 600;
+  font-weight: 700;
   font-size: 11px;
   text-transform: uppercase;
-  letter-spacing: 0.2px;
-  word-break: normal;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
 }
 
 .tcow-table td {
-  padding: 8px 6px;
+  padding: 10px 8px;
   border-bottom: 1px solid var(--border-subtle);
   vertical-align: middle;
 }
 
-/* Phân bổ tỷ lệ độ rộng 10 cột để fit 100% không cần con scroll */
+/* Phân bổ tỷ lệ % độ rộng 10 cột theo chuẩn skill-ui.md (Tổng = 100%) */
 .tcow-table th:nth-child(1), .tcow-table td:nth-child(1) { width: 16%; }
 .tcow-table th:nth-child(2), .tcow-table td:nth-child(2) { width: 6%; }
 .tcow-table th:nth-child(3), .tcow-table td:nth-child(3) { width: 10%; }
@@ -414,11 +442,11 @@
 }
 
 .tcow-table tbody tr.cost-center-row:hover {
-  background-color: var(--sidebar-hover, rgba(0, 0, 0, 0.02));
+  background-color: var(--surface-subtle);
 }
 
 .tcow-table tbody tr.cost-center-row.is-expanded {
-  background-color: rgba(99, 102, 241, 0.04);
+  background-color: rgba(37, 99, 235, 0.04);
 }
 
 .cost-center-name {
@@ -453,14 +481,15 @@
   bottom: 125%;
   left: 50%;
   transform: translateX(-50%);
-  background: #1f2937;
-  color: #fff;
+  background: var(--surface-card, #1f2937);
+  color: var(--text-primary, #ffffff);
+  border: 1px solid var(--border-default);
   padding: 6px 10px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm, 4px);
   font-size: 11px;
   white-space: nowrap;
   z-index: 50;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-md);
   pointer-events: none;
 }
 
@@ -468,7 +497,7 @@
   display: block;
 }
 
-/* Sub-row danh sách nhân viên */
+/* Sub-row danh sách nhân viên: lùi lề 36px */
 .employee-subtable-row {
   background-color: var(--surface-subtle);
 }
@@ -476,12 +505,14 @@
 .employee-subtable-container {
   padding: 12px 18px 16px 36px;
   border-bottom: 1px solid var(--border-default);
+  box-sizing: border-box;
 }
 
 .employee-subtable-title {
   font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
+  letter-spacing: 0.03em;
   color: var(--text-secondary);
   margin-bottom: 8px;
   display: flex;
@@ -491,24 +522,30 @@
 
 .employee-subtable {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   background: var(--surface-card);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm, 6px);
   font-size: 12px;
 }
 
 .employee-subtable th {
-  background: var(--surface-ground);
+  background: var(--surface-subtle);
   padding: 8px 10px;
   font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
   color: var(--text-secondary);
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-default);
+  white-space: nowrap;
 }
 
 .employee-subtable td {
   padding: 8px 10px;
   border-bottom: 1px solid var(--border-subtle);
+  vertical-align: middle;
 }
 
 .employee-subtable tr:last-child td {
@@ -519,18 +556,16 @@
 .btn-sm {
   padding: 5px 10px !important;
   font-size: 11.5px !important;
-  border-radius: var(--radius-sm) !important;
+  border-radius: var(--radius-sm, 6px) !important;
   display: inline-flex;
   align-items: center;
   gap: 5px;
 }
 
 /* ==========================================================================
-   4. CẤU HÌNH XUẤT / IN BÁO CÁO PDF (A4 LANDSCAPE)
+   KHỐI 6: CẤU HÌNH XUẤT / IN BÁO CÁO PDF (A4 LANDSCAPE)
    ========================================================================== */
-
 @media print {
-  /* Ẩn các thành phần điều hướng, sidebar, nút bấm khi xuất PDF */
   body {
     background: #ffffff !important;
     color: #000000 !important;
@@ -561,12 +596,12 @@
     margin-bottom: 10px !important;
   }
 
-  .fund-header-title h1 {
+  .fund-header-title .page-title {
     font-size: 16pt !important;
     color: #000000 !important;
   }
 
-  .fund-header-title p {
+  .fund-header-title .page-subtitle {
     font-size: 9pt !important;
     color: #444444 !important;
   }
@@ -644,5 +679,6 @@
     margin: 10mm;
   }
 }
+
 
 

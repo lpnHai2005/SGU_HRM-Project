@@ -7,7 +7,7 @@ import { formatDate, formatTime } from '../utils/formatters'
 import type { Attendance, AttendanceSummary } from '../types'
 import { attendanceApi } from '../services/api'
 import './AttendancePage.css'
-const sessionLabels: Record<string,string> = { NORMAL:'Đúng giờ', LATE:'Đi muộn', EARLY:'Về sớm', LATE_AND_EARLY:'Đi muộn & về sớm', OVERTIME:'Giờ ngoài ca ghi nhận', ANNUAL_LEAVE:'Nghỉ phép' }
+const sessionLabels: Record<string,string> = { NORMAL:'Đúng giờ', LATE:'Đi muộn', EARLY:'Về sớm', LATE_AND_EARLY:'Đi muộn & về sớm', OVERTIME:'Tăng ca (OT)', ANNUAL_LEAVE:'Nghỉ phép' }
 
 export interface AttendancePageProps {
   user: any
@@ -88,7 +88,7 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
       if (statusFilter === 'ALL') return true
       if (statusFilter === 'LATE') return (att.late_minutes || 0) > 15
       if (statusFilter === 'EARLY') return (att.early_minutes || 0) > 0
-      if (statusFilter === 'OVERTIME') return (att.overtime_hours || 0) > 0
+      if (statusFilter === 'OVERTIME') return (att.overtime_hours || 0) > 0 || att.status === 'OVERTIME' || (att.notes || '').includes('OT')
       if (statusFilter === 'NORMAL' || statusFilter === 'LATE_AND_EARLY') return att.status === statusFilter
       return true
     })
@@ -109,7 +109,7 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
       if (statusFilter === 'ALL') return true
       if (statusFilter === 'LATE') return (att.late_minutes || 0) > 15
       if (statusFilter === 'EARLY') return (att.early_minutes || 0) > 0
-      if (statusFilter === 'OVERTIME') return (att.overtime_hours || 0) > 0
+      if (statusFilter === 'OVERTIME') return (att.overtime_hours || 0) > 0 || att.status === 'OVERTIME' || (att.notes || '').includes('OT')
       if (statusFilter === 'NORMAL' || statusFilter === 'LATE_AND_EARLY') return att.status === statusFilter
       return true
     })
@@ -138,12 +138,15 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
   const earlyMinutes = summaryData?.early_departures?.minutes || 0
 
   // Làm thêm & Công tác & Tăng ca (Multi-tier OT: 1.5x / 2.0x / 3.0x)
-  const extraHours = summaryData?.extra_work?.hours || 0
   const businessTripDays = summaryData?.business_trips?.days || 0
   const otSummary = summaryData?.overtime
-  const otShifts = otSummary?.shifts_count || 0
-  const otHours = otSummary?.hours || 0
-  const otApprovedHours = otSummary?.approved_hours || 0
+  // OT hợp lệ = chỉ giờ OT HR đã đối soát VERIFIED; giờ ngoài ca thô từ máy chấm công chưa phải OT
+  const otVerifiedHours = Number(otSummary?.verified_hours ?? otSummary?.approved_hours ?? 0)
+  const rawExtraHours = Number(summaryData?.extra_work?.hours ?? otSummary?.unverified_outside_hours ?? 0)
+  // Giờ ngoài ca chưa xác minh: Đảm bảo không bị trùng/lệch thẻ khi đã được HR xác minh toàn bộ
+  const extraHours = rawExtraHours > otVerifiedHours
+    ? Number((rawExtraHours - otVerifiedHours).toFixed(2))
+    : (rawExtraHours === otVerifiedHours && otVerifiedHours > 0 ? 0 : rawExtraHours)
   const otNormalHours = otSummary?.normal_hours || 0
   const otWeekendHours = otSummary?.weekend_hours || 0
   const otHolidayHours = otSummary?.holiday_hours || 0
@@ -289,9 +292,9 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
         <StatCard
           icon={Icons.zap}
           iconColor="blue"
-          label="Làm thêm (extra work)"
+          label="Giờ ngoài ca (chưa xác minh)"
           value={`${extraHours} giờ`}
-          footerNote="Ngoài ca chuẩn, duyệt bởi CHT"
+          footerNote="Máy chấm công ghi nhận · Chỉ thành OT khi HR đối soát"
         />
 
         {/* Card 6: Công tác */}
@@ -307,11 +310,11 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
         <StatCard
           icon={Icons.trendingUp}
           iconColor="amber"
-          label="Giờ ngoài ca & tăng ca OT"
-          value={`${otHours} giờ`}
-          footerNote={otApprovedHours > 0
-            ? `Đã duyệt: ${otApprovedHours}h (Thường: ${otNormalHours}h · CN: ${otWeekendHours}h · Lễ: ${otHolidayHours}h)`
-            : `${otShifts} phiên phát sinh · Hệ số: 1.5x (Thường) / 2.0x (CN) / 3.0x (Lễ)`
+          label="Tăng ca OT (HR đã xác minh)"
+          value={`${otVerifiedHours} giờ`}
+          footerNote={otVerifiedHours > 0
+            ? `Thường: ${otNormalHours}h · CN: ${otWeekendHours}h · Lễ: ${otHolidayHours}h`
+            : 'Chưa có OT được HR đối soát · Hệ số 1.5x (Thường) / 2.0x (CN) / 3.0x (Lễ)'
           }
         />
 
@@ -342,8 +345,14 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
               <option value="LATE">Có đi muộn</option>
               <option value="EARLY">Có về sớm</option>
               <option value="LATE_AND_EARLY">Đi muộn & về sớm</option>
-              <option value="OVERTIME">Giờ ngoài ca ghi nhận</option>
+              <option value="OVERTIME">Ca tăng ca (OT)</option>
             </select>
+
+            {otVerifiedHours > 0 && (
+              <span className="status-pill active" title="Tổng giờ OT đã xác minh trong tháng" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                {Icons.trendingUp} {otVerifiedHours}h OT đã xác minh
+              </span>
+            )}
 
             {activeTab === 'team_timesheet' && (
               <div className="search-box" style={{ minWidth: '220px' }}>
@@ -427,7 +436,11 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
                       </div>
                     </td>
                     <td>
-                      <span>{att.shift_name || 'Chưa có tên ca'}</span>
+                      <span style={{ fontWeight: isOT ? 600 : 400, color: isOT ? 'var(--color-primary, #2563eb)' : 'inherit' }}>
+                        {att.shift_name
+                          ? (att.shift_name.includes('OT') ? att.shift_name : (isOT ? `${att.shift_name} (Ca OT)` : att.shift_name))
+                          : (isOT ? 'Ca tăng ca (OT)' : 'Chưa có tên ca')}
+                      </span>
                     </td>
                     <td>
                       <span className={`table-cell-mono ${isLate ? 'text-red' : ''}`} style={{ fontWeight: 600 }}>
@@ -468,7 +481,7 @@ export function AttendancePage({ user, personal = false }: AttendancePageProps) 
                     <td>
                       <span
                         className={`status-pill ${
-                          att.status === 'ANNUAL_LEAVE' ? 'active' : isLate ? 'rejected' : isEarly ? 'pending' : isOT ? 'pending' : 'active'
+                          att.status === 'ANNUAL_LEAVE' ? 'active' : isLate ? 'rejected' : isEarly ? 'pending' : 'active'
                         }`}
                       >
                         {sessionLabels[att.status] || att.status}

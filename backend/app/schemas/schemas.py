@@ -576,12 +576,16 @@ class AttendanceCountAndMinutes(BaseModel):
 
 
 class AttendanceOvertimeSummary(BaseModel):
-    shifts_count: int = 0
-    hours: float = 0.0
-    approved_hours: float = 0.0
+    """OT đã được HR đối soát VERIFIED. Giờ ngoài ca thô chỉ để tham khảo."""
+    shifts_count: int = 0  # số ngày có OT đã xác minh
+    hours: float = 0.0  # = verified_hours
+    approved_hours: float = 0.0  # giữ tương thích: = verified_hours
+    verified_hours: float = 0.0  # đơn OT HR đã đối soát VERIFIED
+    unverified_outside_hours: float = 0.0  # giờ ngoài ca thô từ máy chấm công — chưa xác minh
     normal_hours: float = 0.0
     weekend_hours: float = 0.0
     holiday_hours: float = 0.0
+    source_available: bool = True
 
 
 class AttendanceSingleValue(BaseModel):

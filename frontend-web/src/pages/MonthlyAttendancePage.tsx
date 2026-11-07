@@ -482,7 +482,7 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
                 -{formatCurrency(summary.total_late_penalty_amount || (summary.total_late_sessions || 0) * policySettings.penalty)}
               </strong>
               {summary.total_grace_late_sessions > 0 && (
-                <span style={{ color: 'var(--status-success)', marginLeft: 4 }}>
+                <span style={{ color: 'var(--status-info, #0284c7)', marginLeft: 4 }}>
                   (Kèm {summary.total_grace_late_sessions} lần ≤15p miễn phạt)
                 </span>
               )}

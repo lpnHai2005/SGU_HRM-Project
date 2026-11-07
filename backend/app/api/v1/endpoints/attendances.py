@@ -206,6 +206,34 @@ async def get_today_attendance_status(
 # 3. TỔNG HỢP BẢNG CHẤM CÔNG THEO THÁNG (THEO MẪU CHUCNANG1.JPG)
 # ===================================================================================
 
+async def verified_ot_summary(db: AsyncSession, employee_id: int, period: str) -> dict:
+    """Giờ OT đã được HR đối soát VERIFIED của 1 nhân viên trong kỳ, chia thường / Chủ nhật / lễ."""
+    empty = dict(verified_hours=0.0, normal_hours=0.0, weekend_hours=0.0, holiday_hours=0.0,
+                 days=0, source_available=False)
+    try:
+        async with db.begin_nested():
+            row = (await db.execute(text("""
+                SELECT COALESCE(SUM(v.verified_microseconds), 0) / 3600000000.0 AS verified_hours,
+                       COALESCE(SUM(v.verified_microseconds) FILTER (WHERE h.holiday_date IS NULL
+                                AND EXTRACT(DOW FROM v.work_date) <> 0), 0) / 3600000000.0 AS normal_hours,
+                       COALESCE(SUM(v.verified_microseconds) FILTER (WHERE h.holiday_date IS NULL
+                                AND EXTRACT(DOW FROM v.work_date) = 0), 0) / 3600000000.0 AS weekend_hours,
+                       COALESCE(SUM(v.verified_microseconds) FILTER (WHERE h.holiday_date IS NOT NULL), 0)
+                                / 3600000000.0 AS holiday_hours,
+                       COUNT(DISTINCT v.work_date) AS days
+                FROM public.v_overtime_verified_current v
+                LEFT JOIN public.public_holidays h ON h.holiday_date = v.work_date
+                WHERE v.employee_id = :emp_id AND TO_CHAR(v.work_date, 'YYYY-MM') = :period
+            """), {"emp_id": employee_id, "period": period})).mappings().one()
+    except Exception as exc:  # DB chưa có view đối soát OT
+        logger.warning("Không đọc được OT đã xác minh (v_overtime_verified_current): %s", exc)
+        return empty
+    r2 = lambda v: round(float(v or 0), 2)  # noqa: E731
+    return dict(verified_hours=r2(row["verified_hours"]), normal_hours=r2(row["normal_hours"]),
+                weekend_hours=r2(row["weekend_hours"]), holiday_hours=r2(row["holiday_hours"]),
+                days=int(row["days"] or 0), source_available=True)
+
+
 @router.get("/my-summary", response_model=AttendanceSummaryOut, summary="Tổng hợp bảng chấm công tháng cá nhân (Khớp giao diện chucnang1.jpg)")
 async def get_my_attendance_summary(
     period: Optional[str] = Query(None, pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$", description="Kỳ tháng tra cứu (YYYY-MM), ví dụ: 2026-09"),
@@ -330,34 +358,10 @@ async def get_my_attendance_summary(
     ot_shifts = int(att_stats["ot_shifts_count"] or 0)
     total_ot_hours = round(float(att_stats["total_ot_hours"] or 0), 1)
 
-    # 3. Phân tách OT đa tầng (Multi-tier OT: 1.5x ngày thường, 2.0x chủ nhật, 3.0x lễ/tết)
-    ot_tier_res = await db.execute(
-        text("""
-            SELECT 
-                COALESCE(SUM(ota.approved_hours), 0) as approved_hours,
-                COALESCE(SUM(CASE 
-                    WHEN h.holiday_date IS NOT NULL THEN 0 
-                    WHEN EXTRACT(DOW FROM a.work_date) = 0 THEN 0 
-                    ELSE COALESCE(ota.approved_hours, 0) 
-                END), 0) AS ot_normal_hours,
-                COALESCE(SUM(CASE 
-                    WHEN h.holiday_date IS NOT NULL THEN 0 
-                    WHEN EXTRACT(DOW FROM a.work_date) = 0 THEN COALESCE(ota.approved_hours, 0) 
-                    ELSE 0 
-                END), 0) AS ot_weekend_hours,
-                COALESCE(SUM(CASE 
-                    WHEN h.holiday_date IS NOT NULL THEN COALESCE(ota.approved_hours, 0) 
-                    ELSE 0 
-                END), 0) AS ot_holiday_hours
-            FROM attendances a
-            LEFT JOIN attendance_overtime_approvals ota ON a.attendance_id = ota.attendance_id AND ota.decision = 'APPROVED'
-            LEFT JOIN public.public_holidays h ON a.work_date = h.holiday_date
-            WHERE a.employee_id = :emp_id
-              AND TO_CHAR(a.work_date, 'YYYY-MM') = :period
-        """),
-        {"emp_id": target_emp_id, "period": period_str}
-    )
-    ot_tier = ot_tier_res.mappings().first() or {}
+    # 3. OT ĐÃ XÁC MINH — chỉ đơn OT HR đã đối soát VERIFIED (v_overtime_verified_current).
+    #    Giờ ngoài ca thô từ máy chấm công (attendances.overtime_hours) KHÔNG được xem là OT hợp lệ.
+    #    Chỉ dùng để hiển thị; không thay đổi cách bảng lương tính OT.
+    ot_tier = await verified_ot_summary(db, target_emp_id, period_str)
 
     # 2. Truy vấn quỹ phép & nghỉ thực tế trong kỳ từ bảng leave_requests & employees
     seniority_bonus = 0.0
@@ -458,18 +462,21 @@ async def get_my_attendance_summary(
             "minutes": total_early_minutes,
         },
         extra_work={
-            "hours": total_ot_hours,
+            "hours": round(max(0.0, total_ot_hours - ot_tier["verified_hours"]), 2),
         },
         business_trips={
             "days": trip_days,
         },
         overtime={
-            "shifts_count": ot_shifts,
-            "hours": total_ot_hours,
-            "approved_hours": round(float(ot_tier.get("approved_hours") or 0), 1),
-            "normal_hours": round(float(ot_tier.get("ot_normal_hours") or 0), 1),
-            "weekend_hours": round(float(ot_tier.get("ot_weekend_hours") or 0), 1),
-            "holiday_hours": round(float(ot_tier.get("ot_holiday_hours") or 0), 1),
+            "shifts_count": ot_tier["days"],
+            "hours": ot_tier["verified_hours"],
+            "approved_hours": ot_tier["verified_hours"],
+            "verified_hours": ot_tier["verified_hours"],
+            "unverified_outside_hours": round(max(0.0, total_ot_hours - ot_tier["verified_hours"]), 2),
+            "normal_hours": ot_tier["normal_hours"],
+            "weekend_hours": ot_tier["weekend_hours"],
+            "holiday_hours": ot_tier["holiday_hours"],
+            "source_available": ot_tier["source_available"],
         },
         compensatory_leave={
             "total": compensatory_leave_days,
@@ -493,7 +500,12 @@ async def list_attendances(
 ):
     query = """
         SELECT a.attendance_id, a.employee_id, e.full_name as employee_name,
-               a.store_id, s.store_name, a.shift_id, ws.shift_name,
+               a.store_id, s.store_name, a.shift_id,
+               CASE 
+                   WHEN a.status = 'OVERTIME' OR a.notes ILIKE '%[Ca tăng ca (OT)]%' 
+                   THEN COALESCE(ws.shift_name || ' (Ca OT)', 'Ca tăng ca (OT)')
+                   ELSE ws.shift_name 
+               END AS shift_name,
                a.work_date, a.check_in_time, a.check_out_time,
                a.late_minutes, a.early_minutes, a.overtime_hours, a.actual_work_hours,
                a.status, a.notes, a.attendance_context,
@@ -553,7 +565,12 @@ async def get_my_attendance_history(
 
     query = """
         SELECT a.attendance_id, a.employee_id, e.full_name as employee_name,
-               a.store_id, s.store_name, a.shift_id, ws.shift_name,
+               a.store_id, s.store_name, a.shift_id,
+               CASE 
+                   WHEN a.status = 'OVERTIME' OR a.notes ILIKE '%[Ca tăng ca (OT)]%' 
+                   THEN COALESCE(ws.shift_name || ' (Ca OT)', 'Ca tăng ca (OT)')
+                   ELSE ws.shift_name 
+               END AS shift_name,
                a.work_date, a.check_in_time, a.check_out_time,
                a.late_minutes, a.early_minutes, a.overtime_hours, a.actual_work_hours,
                a.status, a.notes, a.attendance_context,

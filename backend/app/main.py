@@ -91,6 +91,44 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from sqlalchemy.exc import SQLAlchemyError
+
+@app.exception_handler(SQLAlchemyError)
+async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError):
+    logger.exception(f"Lỗi cơ sở dữ liệu tại {request.method} {request.url.path}: {exc}")
+    origin = request.headers.get("origin")
+    headers = {}
+    if origin:
+        headers["Access-Control-Allow-Origin"] = origin
+        headers["Access-Control-Allow-Credentials"] = "true"
+        headers["Access-Control-Allow-Methods"] = "*"
+        headers["Access-Control-Allow-Headers"] = "*"
+    
+    error_str = str(getattr(exc, 'orig', exc))
+    if "duplicate key" in error_str.lower() or "unique constraint" in error_str.lower():
+        if "work_schedules_pkey" in error_str:
+            msg = "Xung đột mã dữ liệu ca làm việc trên máy chủ. Hệ thống đang tự động hiệu chỉnh, vui lòng thử lại sau giây lát."
+        elif "work_schedules" in error_str:
+            msg = "Nhân viên đã có lịch làm việc trong ngày hoặc khung giờ này. Không thể phân ca trùng lặp."
+        else:
+            msg = "Dữ liệu bị trùng lặp với bản ghi đã tồn tại trong hệ thống."
+        return JSONResponse(status_code=409, content={"detail": msg}, headers=headers)
+    
+    if "OT_MONTHLY_CAP_EXCEEDED" in error_str:
+        # Trigger trg_guard_monthly_ot_cap chặn cứng OT tháng vượt trần 40h.
+        msg = error_str[error_str.index("OT_MONTHLY_CAP_EXCEEDED"):].splitlines()[0]
+        return JSONResponse(status_code=409, content={"detail": {"code": "OT_MONTHLY_CAP_EXCEEDED", "message": msg}}, headers=headers)
+
+    if "foreign key" in error_str.lower():
+        msg = "Dữ liệu liên kết không hợp lệ (nhân viên, cửa hàng hoặc ca làm việc không tồn tại hoặc đã thay đổi)."
+        return JSONResponse(status_code=422, content={"detail": msg}, headers=headers)
+        
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Máy chủ gặp sự cố khi xử lý dữ liệu. Vui lòng tải lại trang hoặc thử lại sau ít phút."},
+        headers=headers
+    )
+
 @app.exception_handler(Exception)
 async def global_unhandled_exception_handler(request: Request, exc: Exception):
     logger.exception(f"Lỗi chưa bắt được tại {request.method} {request.url.path}: {exc}")
@@ -101,9 +139,17 @@ async def global_unhandled_exception_handler(request: Request, exc: Exception):
         headers["Access-Control-Allow-Credentials"] = "true"
         headers["Access-Control-Allow-Methods"] = "*"
         headers["Access-Control-Allow-Headers"] = "*"
+    
+    err_msg = str(exc)
+    # Lọc bỏ các thông báo kỹ thuật SQL/ORM để không làm lộ cấu trúc hệ thống và gây khó hiểu cho người dùng
+    if any(k in err_msg for k in ["SQL", "sqlalchemy", "asyncpg", "INSERT INTO", "SELECT", "UPDATE", "DELETE FROM"]):
+        user_msg = "Lỗi hệ thống máy chủ khi xử lý dữ liệu. Vui lòng tải lại trang hoặc thử lại sau ít phút."
+    else:
+        user_msg = f"Lỗi hệ thống máy chủ: {err_msg}"
+
     return JSONResponse(
         status_code=500,
-        content={"detail": f"Lỗi hệ thống máy chủ: {str(exc)}"},
+        content={"detail": user_msg},
         headers=headers
     )
 

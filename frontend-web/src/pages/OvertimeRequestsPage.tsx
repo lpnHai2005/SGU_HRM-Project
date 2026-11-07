@@ -924,21 +924,21 @@ export function OvertimeRequestsPage({ user, personal = false }: OvertimeRequest
             Đang tải danh sách đơn đăng ký tăng ca...
           </div>
         ) : (
-          <div className="table-container overtime-request-table-wrap" style={{ minHeight: '320px' }}>
+          <div className="table-container overtime-request-table-wrap">
             <table className="data-table overtime-request-table">
               <thead>
                 <tr>
-                  <th>MÃ ĐƠN</th>
-                  <th>NHÂN VIÊN</th>
-                  <th>NGƯỜI ĐĂNG KÝ</th>
-                  <th>NGÀY TĂNG CA</th>
-                  <th>KHUNG GIỜ</th>
-                  <th>TỔNG GIỜ</th>
-                  <th>LÝ DO</th>
-                  <th>TRẠNG THÁI</th>
-                  <th>CẤP 1 (CHT / NV)</th>
-                  <th>CẤP 2 (HR DUYỆT)</th>
-                  <th style={{ width: '95px', textAlign: 'center' }}>THAO TÁC</th>
+                  <th style={{ width: '80px' }}>MÃ ĐƠN</th>
+                  <th style={{ minWidth: '140px' }}>NHÂN VIÊN</th>
+                  <th style={{ minWidth: '110px' }}>NGƯỜI ĐĂNG KÝ</th>
+                  <th style={{ width: '95px' }}>NGÀY TĂNG CA</th>
+                  <th style={{ width: '115px' }}>KHUNG GIỜ</th>
+                  <th style={{ width: '80px', textAlign: 'right' }}>TỔNG GIỜ</th>
+                  <th style={{ maxWidth: '160px' }}>LÝ DO</th>
+                  <th style={{ width: '105px', textAlign: 'center' }}>TRẠNG THÁI</th>
+                  <th style={{ minWidth: '105px' }}>CẤP 1 (CHT / NV)</th>
+                  <th style={{ minWidth: '105px' }}>CẤP 2 (HR DUYỆT)</th>
+                  <th style={{ width: '80px', textAlign: 'center' }}>THAO TÁC</th>
                 </tr>
               </thead>
               <tbody>

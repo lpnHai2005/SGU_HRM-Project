@@ -48,6 +48,9 @@ const friendlyApiMessages: Record<string, string> = {
   LEAVE_CONFLICT: 'Nhân viên đang có đơn nghỉ trong ngày này nên không thể đăng ký OT.',
   EMPLOYEE_STORE_CHANGED: 'Nhân viên đã được chuyển cửa hàng. Hãy tải lại danh sách và tạo lại đăng ký.',
   PROOF_IMAGE_PROVIDER_ERROR: 'Nhà cung cấp ảnh chưa xử lý được minh chứng. Kiểm tra lại ảnh hoặc báo quản trị viên kèm mã HTTP hiển thị.',
+  WEEKLY_DAY_OFF_REQUIRED: 'Nhân viên phải có ít nhất 1 ngày OFF trong tuần (T2–CN). Hãy chọn ngày khác hoặc hủy bớt một ca trong tuần.',
+  WEEKLY_HOURS_OVER_48: 'Vượt 48 giờ công chuẩn/tuần (T2–CN) theo Điều 105 BLLĐ. Phần giờ vượt phải đăng ký qua quy trình Đăng ký & đối soát OT.',
+  DB_CONFLICT: 'Dữ liệu ca làm việc bị trùng lặp hoặc xung đột trên hệ thống. Vui lòng kiểm tra lại.',
 };
 
 export function formatApiError(detail: unknown, status?: number): string {
@@ -74,6 +77,12 @@ export function formatApiError(detail: unknown, status?: number): string {
   }
   if (typeof value === 'string' && value.trim()) {
     const raw = value.trim();
+    if (raw.includes('sqlalchemy') || raw.includes('asyncpg') || raw.includes('unique constraint') || raw.includes('duplicate key') || raw.includes('INSERT INTO') || raw.includes('work_schedules_pkey')) {
+      if (raw.includes('work_schedules_pkey') || raw.includes('work_schedules')) {
+        return 'Xung đột mã dữ liệu ca làm việc trên máy chủ. Vui lòng tải lại trang hoặc thử lại.';
+      }
+      return 'Lỗi xử lý dữ liệu từ máy chủ. Vui lòng thử lại hoặc liên hệ quản trị viên.';
+    }
     const prefix = raw.match(/^([A-Z][A-Z0-9_]+):\s*(.*)$/);
     if (prefix) {
       if (friendlyApiMessages[prefix[1]]) return friendlyApiMessages[prefix[1]];
@@ -548,7 +557,16 @@ import type {
   WorkShift,
   AttendanceSummary,
   TodayAttendanceStatus,
+  WorkShiftCatalogItem,
+  WorkShiftUpdate,
 } from '../types';
+
+/** Danh mục ca: HR / Giám đốc chỉnh khung giờ, nghỉ giữa ca, định mức giờ công (ADMIN, CHT chỉ xem). */
+export const workShiftApi = {
+  list: (): Promise<WorkShiftCatalogItem[]> => api.get<WorkShiftCatalogItem[]>('/work-shifts'),
+  update: (shiftId: number, data: WorkShiftUpdate): Promise<WorkShiftCatalogItem> =>
+    api.put<WorkShiftCatalogItem>(`/work-shifts/${shiftId}`, data),
+};
 
 export const attendanceApi = {
   getShifts: async (): Promise<WorkShift[]> => {

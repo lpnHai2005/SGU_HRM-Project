@@ -333,15 +333,15 @@ export function MonthlyVerifiedOvertimePanel({ period, storeId, employeeId, atte
             <span
               className="badge"
               style={{
-                backgroundColor: 'rgba(22, 163, 74, 0.12)',
-                color: 'var(--status-success)',
+                backgroundColor: items.length > 0 ? 'rgba(22, 163, 74, 0.12)' : 'rgba(107, 114, 128, 0.12)',
+                color: items.length > 0 ? 'var(--status-success)' : 'var(--text-secondary)',
                 fontWeight: 600,
                 fontSize: '11px',
                 padding: '2px 7px',
                 borderRadius: '4px',
               }}
             >
-              CHỈ XEM (VERIFIED)
+              {items.length > 0 ? `${items.length} ca OT (${totalVerifiedHours.toFixed(2)}h)` : 'Chưa có ca OT'}
             </span>
           </h2>
           <p className="card-subtitle">

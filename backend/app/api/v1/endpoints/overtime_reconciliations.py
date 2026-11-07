@@ -581,6 +581,13 @@ async def _decide(db: AsyncSession, request_id: int, user: dict, expected_versio
                 await _case_event(db, dict(closed), user["user_id"], "EXPLANATION_CLOSED",
                                   "RESPONDED", "CLOSED", clean_reason,
                                   {"reconciliation_decision": decision})
+    # Đồng bộ source_signature để luôn khớp với ot_reconciliation_source_signature
+    await db.execute(text("""
+        UPDATE public.overtime_reconciliations
+        SET source_signature = public.ot_reconciliation_source_signature(:request)
+        WHERE request_id = :request
+          AND source_signature <> public.ot_reconciliation_source_signature(:request)
+    """), {"request": request_id})
     await db.commit()
     return await _response(db, request, current, user)
 

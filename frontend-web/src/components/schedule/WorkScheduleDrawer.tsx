@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo } from 'react'
+import { toast } from 'sonner'
 import { Icons } from '../common/Icons'
 import { DatePicker } from '../common/DatePicker'
-import { workScheduleApi } from '../../services/api'
-import type { Employee, Lookups, WorkSchedule, WorkScheduleWrite } from '../../types'
+import { workScheduleApi, employeeApi, leaveApi } from '../../services/api'
+import type { Employee, Lookups, WorkSchedule, WorkScheduleWrite, Contract, LeaveRequest } from '../../types'
 
 export interface WorkScheduleDrawerProps {
   isOpen: boolean
@@ -96,6 +97,16 @@ export function WorkScheduleDrawer({
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<number[]>([])
   const [employeeSearch, setEmployeeSearch] = useState('')
   const [notes, setNotes] = useState('')
+  const [contracts, setContracts] = useState<Contract[]>([])
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([])
+
+  // Tải danh sách hợp đồng và đơn nghỉ phép khi mở drawer
+  useEffect(() => {
+    if (isOpen) {
+      employeeApi.getContracts().then(data => setContracts(data || [])).catch(() => {})
+      leaveApi.getAll().then(data => setLeaveRequests(data || [])).catch(() => {})
+    }
+  }, [isOpen])
   const [reason, setReason] = useState('Phân ca theo kế hoạch tuần')
 
   // Daily mode state
@@ -196,17 +207,43 @@ export function WorkScheduleDrawer({
   // Toggle employee selection
   const toggleEmployee = (empId: number) => {
     if (isStoreManager && empId === user?.employee_id) return
+
+    // Nghiệp vụ: Nhân sự đang nghỉ phép KHÔNG ĐƯỢC PHÂN CA -> Chặn và phát thông báo nổi
+    const isCurrentlySelected = selectedEmployeeIds.includes(empId)
+    if (!isCurrentlySelected) {
+      const leaveCheck = checkEmployeeLeave(empId, targetCheckDates)
+      if (leaveCheck.onLeave) {
+        const emp = employees.find(e => e.employee_id === empId)
+        const name = emp?.full_name || `NV #${empId}`
+        toast.warning(`Không thể phân ca: ${name} đang trong diện nghỉ phép!`, {
+          description: leaveCheck.message,
+          duration: 4000,
+        })
+        return
+      }
+    }
+
     setSelectedEmployeeIds(prev =>
       prev.includes(empId) ? prev.filter(id => id !== empId) : [...prev, empId]
     )
   }
 
   const toggleSelectAll = () => {
+    // Chỉ chọn các nhân sự hợp lệ, tự động loại trừ nhân sự đang nghỉ phép
     const eligibleIds = filteredEmployees
-      .filter(e => !(isStoreManager && e.employee_id === user?.employee_id))
+      .filter(e => {
+        if (isStoreManager && e.employee_id === user?.employee_id) return false
+        const leaveCheck = checkEmployeeLeave(e.employee_id, targetCheckDates)
+        return !leaveCheck.onLeave
+      })
       .map(e => e.employee_id)
 
-    const allSelected = eligibleIds.every(id => selectedEmployeeIds.includes(id))
+    const onLeaveEmployeesCount = filteredEmployees.filter(e => checkEmployeeLeave(e.employee_id, targetCheckDates).onLeave).length
+    if (onLeaveEmployeesCount > 0 && selectedEmployeeIds.length === 0) {
+      toast.info(`Đã tự động bỏ qua ${onLeaveEmployeesCount} nhân sự đang trong diện nghỉ phép.`)
+    }
+
+    const allSelected = eligibleIds.length > 0 && eligibleIds.every(id => selectedEmployeeIds.includes(id))
     if (allSelected) {
       setSelectedEmployeeIds(prev => prev.filter(id => !eligibleIds.includes(id)))
     } else {
@@ -228,6 +265,99 @@ export function WorkScheduleDrawer({
     setStartDate(aligned)
     if (hasEndDate && ((val === 7 && next.includes(7)) || (endDate && endDate < aligned))) setEndDate(aligned)
   }
+
+  // Helper: Xác định Thứ 2 và Chủ nhật của tuần
+  const getWeekBounds = (dateStr: string) => {
+    const d = new Date(`${dateStr}T12:00:00`)
+    const day = d.getDay() === 0 ? 7 : d.getDay()
+    const mon = new Date(d)
+    mon.setDate(d.getDate() - (day - 1))
+    const sun = new Date(mon)
+    sun.setDate(mon.getDate() + 6)
+    const fmt = (dt: Date) =>
+      `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
+    return { monday: fmt(mon), sunday: fmt(sun) }
+  }
+
+  // Danh sách các ngày cụ thể để kiểm tra
+  const targetCheckDates = useMemo(() => {
+    if (mode === 'daily') return [workDate]
+    // Với recurring: kiểm tra 7 ngày từ startDate
+    const dates: string[] = []
+    const start = new Date(`${startDate}T12:00:00`)
+    for (let i = 0; i < 7; i++) {
+      const cur = new Date(start)
+      cur.setDate(start.getDate() + i)
+      const day = cur.getDay() === 0 ? 7 : cur.getDay()
+      if (weekdays.includes(day)) {
+        dates.push(`${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}-${String(cur.getDate()).padStart(2, '0')}`)
+      }
+    }
+    return dates.length > 0 ? dates : [startDate]
+  }, [mode, workDate, startDate, weekdays])
+
+  // Kiểm tra hợp đồng lao động của nhân viên
+  const checkEmployeeContract = (empId: number, targetDate?: string) => {
+    const empContracts = contracts.filter(c => c.employee_id === empId)
+    if (empContracts.length === 0) {
+      // Khi contracts đang tải hoặc chưa nạp, không hiển thị cảnh báo sai
+      return { valid: true }
+    }
+    const today = todayVietnam()
+    const dateStr = (targetDate || today).slice(0, 10)
+
+    // 1. Nếu nhân viên có bất kỳ hợp đồng ACTIVE nào còn hạn trong hệ thống
+    const activeContracts = empContracts.filter(c => c.status === 'ACTIVE')
+    if (activeContracts.length > 0) {
+      const stillValid = activeContracts.some(c => !c.end_date || c.end_date.slice(0, 10) >= today)
+      if (stillValid) {
+        return { valid: true, contract: activeContracts[0] }
+      }
+    }
+
+    // 2. Nếu không có hợp đồng ACTIVE, tìm hợp đồng mới nhất
+    const sorted = [...empContracts].sort((a, b) => (b.contract_id || 0) - (a.contract_id || 0))
+    const latest = sorted[0]
+    if (latest.status === 'EXPIRED' || (latest.end_date && latest.end_date.slice(0, 10) < today)) {
+      return { valid: false, message: `Hợp đồng hết hạn (${latest.end_date ? latest.end_date.slice(0, 10) : 'Đã hết hạn'})` }
+    }
+    if (latest.status === 'TERMINATED') {
+      return { valid: false, message: 'Hợp đồng đã chấm dứt' }
+    }
+    return { valid: false, message: `Hợp đồng trạng thái: ${latest.status}` }
+  }
+
+  // Kiểm tra nghỉ phép của nhân viên
+  const checkEmployeeLeave = (empId: number, dates: string[]) => {
+    const empLeaves = leaveRequests.filter(l =>
+      l.employee_id === empId &&
+      !['REJECTED', 'CANCELLED'].includes(l.status)
+    )
+    const match = empLeaves.find(l => dates.some(d => d >= l.start_date && d <= l.end_date))
+    if (match) {
+      return {
+        onLeave: true,
+        message: `Đang nghỉ phép: ${match.leave_type_name || 'Nghỉ'} (${match.start_date} – ${match.end_date})`,
+        leave: match,
+      }
+    }
+    return { onLeave: false }
+  }
+
+  // Tính tổng giờ làm việc trong tuần hiện tại của nhân viên
+  const getEmployeeWeekHours = (empId: number, targetDate: string) => {
+    const { monday, sunday } = getWeekBounds(targetDate)
+    const currentWeekSchedules = existingSchedules.filter(
+      s => s.employee_id === empId && !s.cancelled_at && s.work_date >= monday && s.work_date <= sunday
+    )
+    return currentWeekSchedules.reduce((sum, s) => {
+      const h = s.work_hours || (standardShifts.find(ws => ws.shift_id === s.shift_id)?.work_hours || 8)
+      return sum + Number(h)
+    }, 0)
+  }
+
+  const shiftHours = Number(selectedShift?.work_hours || 8)
+  const recurringWeeklyHours = Number((weekdays.length * shiftHours).toFixed(1))
 
   // Preview conflict detection
   const previewConflicts = useMemo(() => {
@@ -268,6 +398,63 @@ export function WorkScheduleDrawer({
       return
     }
 
+    // Kiểm tra trước khi quyết định phân ca: Nghỉ phép, Hợp đồng, Vượt 48h/tuần
+    const primaryDate = mode === 'daily' ? workDate : startDate
+    const over48hList: string[] = []
+    const onLeaveList: string[] = []
+    const invalidContractList: string[] = []
+
+    for (const empId of selectedEmployeeIds) {
+      const emp = employees.find(e => e.employee_id === empId)
+      const name = emp?.full_name || `NV #${empId}`
+
+      // 1. Kiểm tra nghỉ phép
+      const leaveCheck = checkEmployeeLeave(empId, targetCheckDates)
+      if (leaveCheck.onLeave) {
+        onLeaveList.push(`${name} (${leaveCheck.message})`)
+      }
+
+      // 2. Kiểm tra hợp đồng lao động
+      const contractCheck = checkEmployeeContract(empId, primaryDate)
+      if (!contractCheck.valid) {
+        invalidContractList.push(`${name} (${contractCheck.message})`)
+      }
+
+      // 3. Kiểm tra vượt quá 48h/tuần
+      const currentWeekHours = getEmployeeWeekHours(empId, primaryDate)
+      const addedHours = mode === 'daily' ? shiftHours : recurringWeeklyHours
+      const totalWeekHours = Number((currentWeekHours + addedHours).toFixed(1))
+      if (totalWeekHours > 48) {
+        over48hList.push(`${name} (Tổng dự kiến: ${totalWeekHours}h/tuần)`)
+      }
+    }
+
+    // Vượt 48h công chuẩn/tuần (Điều 105 BLLĐ): CHẶN CỨNG — phần vượt phải đăng ký OT (backend cũng trả 409).
+    if (over48hList.length > 0) {
+      setError(`Không thể phân ca: vượt 48 giờ công chuẩn/tuần (T2–CN) — ${over48hList.join('; ')}. ` +
+        'Phần giờ vượt phải đăng ký qua quy trình Đăng ký & đối soát OT.')
+      return
+    }
+
+    // Các cảnh báo còn lại: hỏi lại nhưng vẫn cho phép tiếp tục nếu người dùng đồng ý
+    const warningSections: string[] = []
+    if (onLeaveList.length > 0) {
+      warningSections.push('🏖️ NHÂN SỰ ĐANG TRONG DIỆN NGHỈ PHÉP:\n' + onLeaveList.map(s => '  • ' + s).join('\n'))
+    }
+    if (invalidContractList.length > 0) {
+      warningSections.push('📄 HỢP ĐỒNG HẾT HIỆU LỰC HOẶC CHƯA CÓ HỢP ĐỒNG:\n' + invalidContractList.map(s => '  • ' + s).join('\n'))
+    }
+
+    if (warningSections.length > 0) {
+      const confirmPrompt = 'HỆ THỐNG PHÁT HIỆN CẢNH BÁO TRƯỚC KHI PHÂN CA:\n\n' +
+        warningSections.join('\n\n') +
+        '\n\nBạn có chắc chắn vẫn muốn phân công ca làm việc này không?'
+      const userConfirmed = window.confirm(confirmPrompt)
+      if (!userConfirmed) {
+        return
+      }
+    }
+
     setSaving(true)
     setError('')
 
@@ -282,12 +469,16 @@ export function WorkScheduleDrawer({
           reason: reason.trim(),
         }))
 
+        let saved: WorkSchedule[] = []
         if (assignments.length === 1) {
-          await workScheduleApi.create(assignments[0])
+          saved = [await workScheduleApi.create(assignments[0])]
         } else {
-          await workScheduleApi.createBatch(assignments)
+          saved = await workScheduleApi.createBatch(assignments)
         }
-        onSuccess(`Đã phân ca thành công cho ${assignments.length} nhân viên vào ngày ${workDate}.`)
+        const warnings = Array.from(new Set(saved.flatMap(row => row.warnings || [])))
+          .map(w => w.replace(/^[A-Z0-9_]+:\s*/, ''))
+        onSuccess(`Đã phân ca thành công cho ${assignments.length} nhân viên vào ngày ${workDate}.`
+          + (warnings.length ? ` Lưu ý: ${warnings.join(' ')}` : ''))
         onClose()
       } else {
         if (weekdays.length === 0) {
@@ -486,6 +677,31 @@ export function WorkScheduleDrawer({
                   })}
                 </div>
                 <small className="form-hint">{isWeekendFullShift ? 'Ca Full cuối tuần chỉ được lặp vào Chủ Nhật.' : weekdays.length > 1 ? `Ngày bắt đầu sớm nhất là ${WEEKDAY_OPTIONS.find(day => day.value === weekdayOf(startDate))?.name}; lịch sẽ tiếp tục lặp vào ${WEEKDAY_OPTIONS.filter(day => weekdays.includes(day.value) && day.value !== weekdayOf(startDate)).map(day => day.name).join(', ')}.` : 'Ngày bắt đầu được căn đến thứ đã chọn gần nhất từ ngày tham chiếu.'}</small>
+
+                {/* Ô nhỏ tính tổng giờ tuần và cảnh báo định mức 48h */}
+                <div className={`weekday-summary-widget ${recurringWeeklyHours > 48 ? 'overtime-warning' : ''}`}>
+                  <div className="summary-widget-content">
+                    <span className="summary-widget-item">Đã chọn: <strong>{weekdays.length} ca/tuần</strong></span>
+                    <span className="summary-widget-divider">•</span>
+                    <span className="summary-widget-item">Định mức: <strong>{shiftHours}h/ca</strong></span>
+                    <span className="summary-widget-divider">•</span>
+                    <span className="summary-widget-item">
+                      Tổng giờ dự kiến: <strong className={recurringWeeklyHours > 48 ? 'text-red' : 'text-green'}>{recurringWeeklyHours}h/tuần</strong>
+                    </span>
+                  </div>
+                  {recurringWeeklyHours > 48 && (
+                    <div className="summary-widget-alert">
+                      <span className="alert-icon-span">{Icons.alertTriangle}</span>
+                      <span><strong>Cảnh báo:</strong> Vượt quá 48 giờ/tuần theo quy định (Hiện tại: {recurringWeeklyHours}h). Hệ thống sẽ hỏi xác nhận khi lưu.</span>
+                    </div>
+                  )}
+                  {weekdays.length === 7 && (
+                    <div className="summary-widget-alert summary-widget-alert-offday">
+                      <span className="alert-icon-span">{Icons.alertTriangle}</span>
+                      <span><strong>Cảnh báo: 7/7 ngày không có ngày nghỉ OFF trong tuần.</strong></span>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="form-group">
@@ -558,9 +774,8 @@ export function WorkScheduleDrawer({
               </button>
             </div>
 
-            {/* Quick search input */}
+            {/* Quick search input (Đã xóa class="search-icon" theo yêu cầu) */}
             <div className="employee-search-bar">
-              <span className="search-icon">{Icons.search}</span>
               <input
                 type="text"
                 className="form-input employee-search-input"
@@ -601,18 +816,21 @@ export function WorkScheduleDrawer({
                 filteredEmployees.map(emp => {
                   const isSelected = selectedEmployeeIds.includes(emp.employee_id)
                   const isSelf = isStoreManager && emp.employee_id === user?.employee_id
+                  const leaveCheck = checkEmployeeLeave(emp.employee_id, targetCheckDates)
+                  const isOnLeave = Boolean(leaveCheck.onLeave)
+                  const contractCheck = checkEmployeeContract(emp.employee_id, mode === 'daily' ? workDate : startDate)
                   const employeeSchedules = existingSchedules.filter(schedule => schedule.employee_id === emp.employee_id && !schedule.cancelled_at
                     && (mode === 'daily' ? schedule.work_date === workDate : schedule.work_date >= startDate
                       && (!hasEndDate || !endDate || schedule.work_date <= endDate) && weekdays.includes(weekdayOf(schedule.work_date))))
                   return (
                     <label
                       key={emp.employee_id}
-                      className={`employee-select-item ${isSelected ? 'selected' : ''} ${isSelf ? 'disabled' : ''}`}
+                      className={`employee-select-item ${isSelected ? 'selected' : ''} ${isSelf || isOnLeave ? 'disabled' : ''}`}
                     >
                       <input
                         type="checkbox"
                         checked={isSelected}
-                        disabled={isSelf || saving}
+                        disabled={isSelf || isOnLeave || saving}
                         onChange={() => toggleEmployee(emp.employee_id)}
                       />
                       <div className="employee-info-col">
@@ -624,6 +842,29 @@ export function WorkScheduleDrawer({
                           <span>{emp.position_name || 'Nhân viên'}</span>
                           {isSelf && <span className="self-notice">• Không được tự phân ca</span>}
                         </div>
+
+                        {/* Cảnh báo nghỉ phép */}
+                        {(() => {
+                          const leaveCheck = checkEmployeeLeave(emp.employee_id, targetCheckDates)
+                          if (!leaveCheck.onLeave) return null
+                          return (
+                            <div className="employee-badge-alert warning" title={leaveCheck.message}>
+                              🏖️ {leaveCheck.message}
+                            </div>
+                          )
+                        })()}
+
+                        {/* Cảnh báo hợp đồng */}
+                        {(() => {
+                          const contractCheck = checkEmployeeContract(emp.employee_id, mode === 'daily' ? workDate : startDate)
+                          if (contractCheck.valid) return null
+                          return (
+                            <div className="employee-badge-alert error" title={contractCheck.message}>
+                              📄 {contractCheck.message}
+                            </div>
+                          )
+                        })()}
+
                         {employeeSchedules.length > 0 && (
                           <div className="employee-schedule-notice" title="Nhân viên đã có lịch trong khoảng đang chọn">
                             Đã có lịch: {employeeSchedules.slice(0, 2).map(schedule => `${schedule.shift_name} ${schedule.start_time.slice(0, 5)}–${schedule.end_time.slice(0, 5)} (${schedule.work_date})`).join(' · ')}

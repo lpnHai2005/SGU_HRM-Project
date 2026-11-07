@@ -74,3 +74,71 @@
 .attendance-personal-total-row th:first-child {
   color: var(--brand-primary, var(--blue-600));
 }
+
+
+/* ==========================================================================
+   Lưới 8 KPI: Bảng công cá nhân (.stat-grid-4 / .personal-timesheet-kpis)
+   ========================================================================== */
+
+/* Ép chiều cao tối thiểu min-height: 96px cho tất cả các thẻ để không bị so le */
+.stat-grid-4 .stat-card,
+.stat-grid-4 .kpi-card,
+.personal-timesheet-kpis .stat-card,
+.personal-timesheet-kpis .kpi-card {
+  min-height: 96px !important;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Thêm class .kpi-card::before màu đen (#000000) để tạo vạch kẻ trái */
+.kpi-card,
+.personal-timesheet-kpis .stat-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.kpi-card::before,
+.personal-timesheet-kpis .stat-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: #000000 !important;
+  z-index: 2;
+  border-top-left-radius: var(--radius-md, 8px);
+  border-bottom-left-radius: var(--radius-md, 8px);
+}
+
+/* Xóa bỏ hoàn toàn background màu của các icon ở góc phải (chỉ giữ icon đơn sắc xám mờ) */
+.personal-timesheet-kpis .stat-card-icon,
+.attendance-page .stat-grid-4 .stat-card-icon {
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.personal-timesheet-kpis .stat-card-icon svg,
+.attendance-page .stat-grid-4 .stat-card-icon svg {
+  color: var(--text-tertiary, #9ca3af) !important;
+  stroke: var(--text-tertiary, #9ca3af) !important;
+  opacity: 0.65;
+}
+
+/* Style cho status-pill trong thẻ KPI cá nhân */
+.personal-timesheet-kpis .stat-card-trend-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.personal-timesheet-kpis .stat-card-trend-row .status-pill,
+.personal-timesheet-kpis .stat-card-footer-note .status-pill {
+  font-size: 11px;
+  padding: 1px 7px;
+  font-weight: 600;
+  line-height: 1.3;
+}

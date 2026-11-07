@@ -249,6 +249,28 @@ export interface Attendance {
   is_holiday?: boolean;
 }
 
+/** Một dòng trong Danh mục ca (API /work-shifts). */
+export interface WorkShiftCatalogItem {
+  shift_id: number;
+  shift_code: string;
+  shift_name: string;
+  start_time: string;
+  end_time: string;
+  work_hours: number;
+  /** Nghỉ giữa ca không tính giờ (phút). Ca bán lẻ nghỉ luân phiên = 0. */
+  break_minutes?: number | null;
+  is_active?: boolean | null;
+}
+
+export interface WorkShiftUpdate {
+  shift_name: string;
+  start_time: string;
+  end_time: string;
+  work_hours: number;
+  break_minutes: number;
+  is_active: boolean;
+}
+
 export interface WorkShift {
   shift_id: number;
   shift_code?: string;
@@ -363,9 +385,12 @@ export interface AttendanceSummary {
     shifts_count: number;
     hours: number;
     approved_hours?: number;
+    verified_hours?: number;
+    unverified_outside_hours?: number;
     normal_hours?: number;
     weekend_hours?: number;
     holiday_hours?: number;
+    source_available?: boolean;
   };
   compensatory_leave: {
     total: number;
@@ -415,6 +440,8 @@ export interface WorkSchedule {
   notes?: string | null;
   cancelled_at?: string | null;
   fixed_rule_id?: number | null;
+  /** Cảnh báo không chặn từ API phân ca (nếu có). */
+  warnings?: string[];
 }
 
 export interface WorkScheduleQuery {

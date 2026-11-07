@@ -210,10 +210,10 @@ export function PayrollFundPage({ branch }: { branch: boolean }) {
       {/* HEADER & ACTION BUTTONS */}
       <div className="fund-header-row">
         <div className="fund-header-title">
-          <h1>
+          <h1 className="page-title">
             {branch ? 'Quản Trị Quỹ Lương Chi Nhánh' : 'Quản trị quỹ lương & TCOW'}
           </h1>
-          <p>
+          <p className="page-subtitle">
             {branch
               ? 'Chi phí lao động toàn phần theo nhân sự thuộc cửa hàng phụ trách.'
               : 'Chuẩn Quản trị Chi phí Lao động Toàn phần (Total Cost of Workforce - TCOW). Tường minh hóa dòng tiền lương: Thu nhập gộp, Trích nộp NSDLĐ (23.5%), Giảm trừ NLĐ đến Quỹ thực nhận.'}
@@ -260,21 +260,21 @@ export function PayrollFundPage({ branch }: { branch: boolean }) {
         <div
           className={`card ${actionMessage.type === 'success' ? 'badge-safe' : 'badge-danger'}`}
           style={{
-            padding: '12px 18px',
-            marginBottom: 20,
+            padding: '10px 14px',
+            marginBottom: 16,
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            backgroundColor: actionMessage.type === 'success' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-            border: `1px solid ${actionMessage.type === 'success' ? 'var(--status-success)' : 'var(--status-error)'}`,
+            backgroundColor: actionMessage.type === 'success' ? 'var(--status-success-bg, rgba(16, 185, 129, 0.1))' : 'var(--status-error-bg, rgba(239, 68, 68, 0.1))',
+            border: `1px solid ${actionMessage.type === 'success' ? 'var(--status-success-border, rgba(16, 185, 129, 0.25))' : 'var(--status-error-border, rgba(239, 68, 68, 0.25))'}`,
             color: actionMessage.type === 'success' ? 'var(--status-success)' : 'var(--status-error)',
-            borderRadius: 'var(--radius-md)'
+            borderRadius: 'var(--radius-md, 8px)'
           }}
         >
           <span>{actionMessage.text}</span>
           <button
             type="button"
-            style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700 }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700, color: 'inherit' }}
             onClick={() => setActionMessage(null)}
           >
             {Icons.x}
