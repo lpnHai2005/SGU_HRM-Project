@@ -6,6 +6,10 @@ from fastapi import HTTPException
 
 VIETNAM_TZ = timezone(timedelta(hours=7))
 COOLDOWN_SECONDS = 60
+# Một lượt chấm công ghi tối đa 24h. Cột actual_work_hours/overtime_hours là NUMERIC(4,2)
+# (tối đa 99,99): lượt quên check-out nhiều ngày sẽ làm check-out lỗi và kẹt nhân viên.
+MAX_SESSION_HOURS = 24.0
+SESSION_CAPPED_NOTE = f'[Lượt mở quá {MAX_SESSION_HOURS:g}h: giờ làm bị giới hạn {MAX_SESSION_HOURS:g}h, cần HR đối soát]'
 
 def late_minutes(now, shift_start):
     # Count started minutes so 15m01s is outside the 15-minute grace period.
@@ -66,12 +70,15 @@ def session_metrics(att, now):
     # Attendance records the elapsed check-in/check-out duration. Shift changes
     # do not rewrite that actual-time measurement; overtime is compared with the
     # snapshotted scheduled work_hours below.
-    hours = round(max(0, (now - start).total_seconds()) / 3600, 2)
+    elapsed = max(0, (now - start).total_seconds()) / 3600
+    capped = elapsed > MAX_SESSION_HOURS
+    hours = round(min(elapsed, MAX_SESSION_HOURS), 2)
     end = datetime.combine(att['work_date'], att['end_time'], VIETNAM_TZ)
     if att['end_time'] <= att['start_time']:
         end += timedelta(days=1)
     early = max(0, int((end - now).total_seconds() / 60))
-    overtime = round(max(0, hours - float(att['work_hours'])), 2)
+    # Lượt quên check-out (bị giới hạn 24h) không phải tăng ca: không ghi giờ OT ảo.
+    overtime = 0 if capped else round(max(0, hours - float(att['work_hours'])), 2)
     late = (att['late_minutes'] or 0) > 15
     status = ('LATE_AND_EARLY' if late and early else 'LATE' if late else
               'EARLY' if early else 'OVERTIME' if overtime else 'NORMAL')

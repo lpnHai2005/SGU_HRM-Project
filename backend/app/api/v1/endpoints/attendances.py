@@ -14,7 +14,8 @@ from app.schemas.schemas import (
     AttendanceSummaryOut, TodayAttendanceStatusOut
 )
 
-from app.core.attendance import local_now, VIETNAM_TZ, availability, require_available, session_metrics, late_minutes, attendance_context, require_checkout_ready
+from app.core.attendance import (local_now, local_time, VIETNAM_TZ, availability, require_available, session_metrics,
+                                 late_minutes, attendance_context, require_checkout_ready, MAX_SESSION_HOURS, SESSION_CAPPED_NOTE)
 
 logger = logging.getLogger(__name__)
 
@@ -686,7 +687,9 @@ async def check_out(req: CheckOutRequest, current_user: dict = Depends(get_curre
     now = local_now()
     require_checkout_ready(att['check_in_time'], now)
     metrics = session_metrics(att, now)
-    notes = " | ".join(filter(None, [req.notes, f"Vị trí: {req.location}" if req.location else None]))
+    capped = (now - local_time(att['check_in_time'])).total_seconds() / 3600 > MAX_SESSION_HOURS
+    notes = " | ".join(filter(None, [req.notes, f"Vị trí: {req.location}" if req.location else None,
+                                     SESSION_CAPPED_NOTE if capped else None]))
     await db.execute(text("""
         UPDATE attendances SET check_out_time = :now, actual_work_hours = :actual_work_hours,
             overtime_hours = :overtime_hours, early_minutes = :early_minutes, status = :status,

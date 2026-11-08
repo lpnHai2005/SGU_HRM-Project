@@ -146,7 +146,11 @@ async def stop_rule(rule_id:int,req:FixedStop,user=Depends(get_current_user),db:
     validate_effective(effective)
     if rule['end_date'] and effective > rule['end_date']:
         raise HTTPException(422, 'Ca cố định đã có ngày kết thúc trước ngày dừng được chọn.')
-    await materialize(db,rule,user)
+    employee_store=(await db.execute(text('SELECT store_id FROM employees WHERE employee_id=:id'),{'id':rule['employee_id']})).scalar_one()
+    # Nhân viên đã chuyển cửa hàng: không sinh thêm ngày ở cửa hàng cũ (materialize sẽ từ chối),
+    # chỉ hủy lịch còn lại và dừng rule — đúng việc thông báo lỗi yêu cầu HR làm.
+    if employee_store == rule['store_id']:
+        await materialize(db,rule,user)
     rows=(await db.execute(text('''SELECT w.* FROM work_schedules w WHERE fixed_rule_id=:id AND cancelled_at IS NULL AND work_date>=:today
         AND NOT EXISTS(SELECT 1 FROM attendances a WHERE a.attendance_context->'planned'->>'schedule_id'=w.schedule_id::text)
         ORDER BY schedule_id FOR UPDATE'''),{'id':rule_id,'today':effective})).mappings().all()
