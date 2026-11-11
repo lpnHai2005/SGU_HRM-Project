@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Eye, Clock, RefreshCw, Check, ExternalLink, Calendar } from 'lucide-react'
 import { Icons } from '../components/common/Icons'
+import { TablePagination, useClientPagination } from '../components/common/TablePagination'
 import { overtimeReconciliationApi, overtimeRequestApi } from '../services/api'
 import type { OvertimeReconciliation, OvertimeRequest } from '../types'
 import { formatDate, formatDateTime, formatTime } from '../utils/formatters'
@@ -317,6 +318,12 @@ export function MonthlyVerifiedOvertimePanel({ period, storeId, employeeId, atte
   const totalVerifiedMinutes = Math.round(totalVerifiedHours * 60)
   const uniqueEmployees = new Set(items.map(item => item.employee_id).filter(id => id > 0)).size
 
+  const { pageItems: paginatedItems, paginationProps } = useClientPagination(
+    items,
+    `${period}|${storeId ?? ''}|${employeeId ?? ''}`,
+    10,
+  )
+
   // Helper tìm thông tin phiên chấm công đối chiếu
   const findSessionInfo = (attId: number) => {
     return attendanceSessions.find(s => s.attendance_id === attId)
@@ -428,6 +435,7 @@ export function MonthlyVerifiedOvertimePanel({ period, storeId, employeeId, atte
           </div>
         </div>
       ) : (
+        <>
         <div className="table-container" style={{ overflowX: 'auto' }}>
           <table className="data-table">
             <thead>
@@ -446,7 +454,7 @@ export function MonthlyVerifiedOvertimePanel({ period, storeId, employeeId, atte
               </tr>
             </thead>
             <tbody>
-              {items.map(row => {
+              {paginatedItems.map(row => {
                 const verifiedDisplay = formatVerifiedHoursDisplay(row.verified_hours)
                 const registeredDuration = getIntervalDurationDisplay(row.starts_at, row.ends_at, row.approved_hours)
                 const mult = getOvertimeMultiplier(row)
@@ -582,6 +590,8 @@ export function MonthlyVerifiedOvertimePanel({ period, storeId, employeeId, atte
             </tbody>
           </table>
         </div>
+        <TablePagination {...paginationProps} />
+        </>
       )}
 
       {/* MODAL XEM CHI TIẾT ĐỐI SOÁT GIỜ OT */}

@@ -641,110 +641,102 @@ function AttendanceSessionTableRow({
     ? `${session.attendance_context.actual.start_time.slice(0, 5)} - ${session.attendance_context.actual.end_time?.slice(0, 5) || ''}`
     : 'Chưa có ca'
 
-  // Phân loại badge
-  let lateRecordBadge = (
-    <span className="att-day-status-pill is-none">
-      <Check size={11} />
-      <span>Đúng giờ (0₫)</span>
-    </span>
-  )
-
-  if (session.review_decision === 'CONFIRMED_LATE') {
-    lateRecordBadge = (
-      <span
-        className="att-day-status-pill is-late-day"
-        title="HR đã xác nhận vi phạm trễ ca theo lịch cũ. Tính 1 lần phạt."
-      >
-        <AlertCircle size={11} />
-        <span>HR xác nhận trễ · {session.late_minutes}p (Phạt 50.000₫)</span>
-      </span>
-    )
-  } else if (session.review_decision === 'EXCLUDED_INVALID') {
-    lateRecordBadge = (
-      <span
-        className="att-day-status-pill is-excluded"
-        title="HR đã xác nhận loại trừ phiên không hợp lệ. Miễn trừ toàn bộ công và phạt."
-      >
-        <Check size={11} />
-        <span>Đã loại trừ phiên (0₫)</span>
-      </span>
-    )
-  } else if (session.review_decision === 'SHIFT_REASSIGNED') {
-    lateRecordBadge = (
-      <span
-        className="att-day-status-pill is-none"
-        title="HR đã điều chỉnh sang ca làm việc mới có căn cứ."
-      >
-        <Check size={11} />
-        <span>
-          Đã đổi ca {(session.late_minutes ?? 0) > 0 ? `· Trễ ${session.late_minutes}p` : '(Đúng giờ)'}
-        </span>
-      </span>
-    )
-  } else if (session.review_decision === 'NEEDS_MORE_INFO') {
-    lateRecordBadge = (
-      <span
-        className="att-day-status-pill is-excluded"
-        title="Chờ nhân viên bổ sung hồ sơ giải trình."
-      >
-        <HelpCircle size={11} />
-        <span>Chờ thêm giải trình (0₫)</span>
-      </span>
-    )
-  } else if (session.is_valid_late) {
-    if (isFirstLateInDay) {
-      lateRecordBadge = (
-        <span
-          className="att-day-status-pill is-late-day"
-          title="Trễ quá hạn >15p, tính 1 ngày trễ và 1 lần phạt 50.000₫"
-        >
-          <AlertCircle size={11} />
-          <span>+1 ngày trễ · Trễ {session.late_minutes}p · Phạt 50.000₫</span>
-        </span>
-      )
-    } else {
-      lateRecordBadge = (
-        <span
-          className="att-day-status-pill is-late-second"
-          title="Trễ ca 2 cùng ngày: không tăng ngày trễ nhưng vẫn tính 1 lần phạt vi phạm"
-        >
-          <AlertCircle size={11} />
-          <span>Trễ ca 2 (0 ngày) · Trễ {session.late_minutes}p · Phạt 50.000₫</span>
-        </span>
-      )
+  // Phân loại trạng thái đi trễ & phạt
+  const getLateStatusMeta = () => {
+    if (session.review_decision === 'CONFIRMED_LATE') {
+      return {
+        variantClass: 'is-late-day',
+        iconKind: 'alertCircle' as const,
+        label: `HR xác nhận trễ · ${session.late_minutes}p (Phạt 50.000₫)`,
+        hint: 'HR đã xác nhận vi phạm trễ ca theo lịch cũ. Tính 1 lần phạt.',
+      }
     }
-  } else if (
-    session.is_grace_late ||
-    (!session.needs_hr_review &&
-      (session.late_minutes || 0) > 0 &&
-      (session.late_minutes || 0) <= 15)
-  ) {
-    lateRecordBadge = (
-      <span
-        className="att-day-status-pill is-grace"
-        title="Trễ trong hạn 15 phút cho phép của công ty, được miễn trừ phạt"
-      >
-        <Clock size={11} />
-        <span>Trễ {session.late_minutes}p (Trong hạn ≤15p · Miễn phạt 0₫)</span>
-      </span>
-    )
-  } else if (
-    session.needs_hr_review ||
-    session.session_quality_status === 'SHORT_SESSION' ||
-    session.session_quality_status === 'OPEN_SESSION' ||
-    session.session_quality_status === 'NEEDS_REVIEW' ||
-    (session.late_minutes ?? 0) > 0
-  ) {
-    lateRecordBadge = (
-      <span
-        className="att-day-status-pill is-excluded"
-        title="Phiên bất thường / kiểm thử. Đã loại trừ khỏi ngày trễ hợp lệ."
-      >
-        <AlertTriangle size={11} />
-        <span>Loại trừ chờ HR (Thô: {session.late_minutes ?? 0}p · 0₫)</span>
-      </span>
-    )
+    if (session.review_decision === 'EXCLUDED_INVALID') {
+      return {
+        variantClass: 'is-excluded',
+        iconKind: 'check' as const,
+        label: 'Đã loại trừ phiên (0₫)',
+        hint: 'HR đã xác nhận loại trừ phiên không hợp lệ. Miễn trừ toàn bộ công và phạt.',
+      }
+    }
+    if (session.review_decision === 'SHIFT_REASSIGNED') {
+      return {
+        variantClass: 'is-none',
+        iconKind: 'check' as const,
+        label: `Đã đổi ca ${(session.late_minutes ?? 0) > 0 ? `· Trễ ${session.late_minutes}p` : '(Đúng giờ)'}`,
+        hint: 'HR đã điều chỉnh sang ca làm việc mới có căn cứ.',
+      }
+    }
+    if (session.review_decision === 'NEEDS_MORE_INFO') {
+      return {
+        variantClass: 'is-excluded',
+        iconKind: 'help' as const,
+        label: 'Chờ thêm giải trình (0₫)',
+        hint: 'Chờ nhân viên bổ sung hồ sơ giải trình.',
+      }
+    }
+    if (session.is_valid_late) {
+      if (isFirstLateInDay) {
+        return {
+          variantClass: 'is-late-day',
+          iconKind: 'alertCircle' as const,
+          label: `+1 ngày trễ · Trễ ${session.late_minutes}p · Phạt 50.000₫`,
+          hint: 'Trễ quá hạn >15p, tính 1 ngày trễ và 1 lần phạt 50.000₫',
+        }
+      }
+      return {
+        variantClass: 'is-late-second',
+        iconKind: 'alertCircle' as const,
+        label: `Trễ ca 2 (0 ngày) · Trễ ${session.late_minutes}p · Phạt 50.000₫`,
+        hint: 'Trễ ca 2 cùng ngày: không tăng ngày trễ nhưng vẫn tính 1 lần phạt vi phạm',
+      }
+    }
+    if (
+      session.is_grace_late ||
+      (!session.needs_hr_review &&
+        (session.late_minutes || 0) > 0 &&
+        (session.late_minutes || 0) <= 15)
+    ) {
+      return {
+        variantClass: 'is-grace',
+        iconKind: 'clock' as const,
+        label: `Trễ ${session.late_minutes}p (Trong hạn ≤15p · Miễn phạt 0₫)`,
+        hint: 'Trễ trong hạn 15 phút cho phép của công ty, được miễn trừ phạt',
+      }
+    }
+    if (
+      session.needs_hr_review ||
+      session.session_quality_status === 'SHORT_SESSION' ||
+      session.session_quality_status === 'OPEN_SESSION' ||
+      session.session_quality_status === 'NEEDS_REVIEW' ||
+      (session.late_minutes ?? 0) > 0
+    ) {
+      return {
+        variantClass: 'is-excluded',
+        iconKind: 'alertTriangle' as const,
+        label: `Loại trừ chờ HR (Thô: ${session.late_minutes ?? 0}p · 0₫)`,
+        hint: 'Phiên bất thường / kiểm thử. Đã loại trừ khỏi ngày trễ hợp lệ.',
+      }
+    }
+    return {
+      variantClass: 'is-none',
+      iconKind: 'check' as const,
+      label: 'Đúng giờ (0₫)',
+      hint: undefined,
+    }
   }
+
+  const lateStatus = getLateStatusMeta()
+  const renderLateIcon = (size: number) => {
+    if (lateStatus.iconKind === 'alertCircle') return <AlertCircle size={size} aria-hidden="true" />
+    if (lateStatus.iconKind === 'help') return <HelpCircle size={size} aria-hidden="true" />
+    if (lateStatus.iconKind === 'clock') return <Clock size={size} aria-hidden="true" />
+    if (lateStatus.iconKind === 'alertTriangle') return <AlertTriangle size={size} aria-hidden="true" />
+    return <Check size={size} aria-hidden="true" />
+  }
+  const techStatusLabel = isValid
+    ? 'Kỹ thuật: Hợp lệ'
+    : `Kỹ thuật: ${formatQualityStatus(session.session_quality_status)}`
 
   const auditHistoryList =
     session.audit_history || session.attendance_context?.audit_history || []
@@ -821,8 +813,28 @@ function AttendanceSessionTableRow({
           <span style={{ color: 'var(--text-tertiary)' }}>Đúng giờ</span>
         )}
       </td>
-      <td style={{ textAlign: 'center' }}>{lateRecordBadge}</td>
-      <td>
+      <td style={{ textAlign: 'center' }} className="td-att-late-class">
+        <div className="att-day-status-wrap">
+          <button
+            type="button"
+            className={`att-day-status-trigger ${lateStatus.variantClass}`}
+            onClick={e => e.currentTarget.focus()}
+            aria-label={`${lateStatus.label} (Di chuột hoặc bấm để xem chi tiết)`}
+          >
+            {renderLateIcon(14)}
+          </button>
+          <div className="att-day-status-popover" role="tooltip">
+            <span
+              className={`att-day-status-pill ${lateStatus.variantClass}`}
+              title={lateStatus.hint}
+            >
+              {renderLateIcon(11)}
+              <span>{lateStatus.label}</span>
+            </span>
+          </div>
+        </div>
+      </td>
+      <td style={{ textAlign: 'center' }} className="td-att-hr-status">
         {session.review_decision === 'CONFIRMED_LATE' && (
           <div style={{ marginBottom: '3px' }}>
             <span className="att-review-badge is-confirmed-late">✓ HR: Xác nhận trễ</span>
@@ -844,10 +856,18 @@ function AttendanceSessionTableRow({
           </div>
         )}
 
-        <div>
-          <span className={`badge ${isValid ? 'badge-success' : 'badge-warning'}`}>
-            {isValid ? 'Kỹ thuật: Hợp lệ' : `Kỹ thuật: ${formatQualityStatus(session.session_quality_status)}`}
+        <div className="att-hr-tech-wrap">
+          <span
+            className={`att-hr-tech-trigger ${isValid ? 'is-success' : 'is-warning'}`}
+            aria-label={techStatusLabel}
+          >
+            {isValid ? <ShieldCheck size={14} aria-hidden="true" /> : <AlertTriangle size={14} aria-hidden="true" />}
           </span>
+          <div className="att-hr-tech-popover" role="tooltip">
+            <span className={`badge ${isValid ? 'badge-success' : 'badge-warning'}`}>
+              {techStatusLabel}
+            </span>
+          </div>
         </div>
 
         {session.is_overdue_open_session && (
@@ -1361,8 +1381,8 @@ export function EmployeeAttendanceDetailModal({
                   <th style={{ width: '145px' }}>Check-in → Check-out</th>
                   <th style={{ width: '130px', textAlign: 'center' }}>THỜI LƯỢNG</th>
                   <th style={{ width: '110px', textAlign: 'right' }}>Phút trễ / sớm</th>
-                  <th style={{ width: '220px', textAlign: 'center' }}>Phân loại Đi trễ &amp; Phạt</th>
-                  <th style={{ width: '160px' }}>Trạng thái &amp; Đánh giá HR</th>
+                  <th style={{ width: '115px', textAlign: 'center' }}>Phân loại Đi trễ &amp; Phạt</th>
+                  <th style={{ width: '125px', textAlign: 'center' }}>Trạng thái &amp; Đánh giá HR</th>
                   <th style={{ width: '135px', textAlign: 'center' }}>Thao tác</th>
                 </tr>
               </thead>

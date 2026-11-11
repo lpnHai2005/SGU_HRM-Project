@@ -106,9 +106,9 @@ export function TablePagination({ page, pageSize, total, onPageChange, onPageSiz
 }
 
 /** Phân trang danh sách đã có sẵn ở trình duyệt. Đổi resetKey (bộ lọc) thì về trang 1. */
-export function useClientPagination<T>(items: T[], resetKey: string) {
+export function useClientPagination<T>(items: T[], resetKey: string, defaultPageSize = 20) {
   const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(20)
+  const [pageSize, setPageSize] = useState(defaultPageSize)
 
   useEffect(() => {
     setPage(1)

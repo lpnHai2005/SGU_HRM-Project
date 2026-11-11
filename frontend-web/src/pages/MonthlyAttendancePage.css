@@ -1325,11 +1325,86 @@
   color: var(--text-tertiary);
 }
 
-/* Cột 7: Summary Tags */
+/* Cột 7: Summary Tags (Icon-only compact + Hover detail popover) */
+.hr-master-attendance-table td.td-status-summary {
+  position: relative;
+}
+
+.hr-master-attendance-table td.td-status-summary:hover,
+.hr-master-attendance-table td.td-status-summary:focus-within {
+  z-index: 25;
+}
+
 .summary-status-tags {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.hr-master-attendance-table .summary-status-tags {
+  position: relative;
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: nowrap;
+  gap: 6px;
+  outline: none;
+}
+
+.hr-master-attendance-table .summary-tag-icon {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  justify-content: center;
+  border-radius: var(--radius-sm, 6px);
+  cursor: default;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.hr-master-attendance-table .summary-status-tags:hover .summary-tag-icon,
+.hr-master-attendance-table .summary-status-tags:focus-within .summary-tag-icon {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-xs, 0 1px 3px rgba(0, 0, 0, 0.12));
+}
+
+.summary-status-tooltip {
+  position: absolute;
+  right: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%) translateX(4px);
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: max-content;
+  max-width: 290px;
+  padding: 8px;
+  border-radius: var(--radius-md, 8px);
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  box-shadow: 0 12px 28px -6px rgba(0, 0, 0, 0.25);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.14s ease, transform 0.14s ease, visibility 0.14s ease;
+}
+
+[data-theme="dark"] .summary-status-tooltip {
+  box-shadow: 0 14px 32px -6px rgba(0, 0, 0, 0.6);
+}
+
+.summary-status-tooltip .summary-tag {
+  width: 100%;
+  justify-content: flex-start;
+  white-space: nowrap;
+}
+
+.hr-master-attendance-table .summary-status-tags:hover .summary-status-tooltip,
+.hr-master-attendance-table .summary-status-tags:focus-within .summary-status-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(-50%) translateX(0);
 }
 
 .summary-tag {
@@ -1441,6 +1516,27 @@
   color: var(--text-primary);
 }
 
+.hr-btn-detail.btn-icon,
+.hr-btn-pdf.btn-icon {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  justify-content: center;
+  gap: 0;
+}
+
+.hr-action-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.hr-action-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
 .hr-btn-pdf {
   font-size: 12px;
   padding: 5px 10px;
@@ -1449,18 +1545,18 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  background-color: var(--surface-card, #ffffff);
-  color: var(--text-primary, #0f172a);
-  border: 1px solid var(--border-default, #cbd5e1);
+  background-color: var(--surface-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border-default);
   cursor: pointer;
   opacity: 1 !important;
   transition: all 0.15s ease;
 }
 
 .hr-btn-pdf:hover:not(:disabled) {
-  background-color: var(--surface-subtle, #f8fafc);
-  border-color: var(--border-strong, #94a3b8);
-  color: var(--text-primary, #0f172a);
+  background-color: var(--surface-subtle);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
   opacity: 1 !important;
   box-shadow: var(--shadow-sm);
 }
@@ -1787,7 +1883,191 @@
   background: var(--status-warning-bg);
 }
 
-/* Badge cột "Ghi nhận Ngày trễ" */
+/* Badge cột "Ghi nhận Ngày trễ" (SVG compact + hover/focus pill) */
+.att-detail-table td.td-att-late-class,
+.att-detail-table td.td-att-hr-status {
+  position: relative;
+}
+
+.att-detail-table td.td-att-late-class:hover,
+.att-detail-table td.td-att-late-class:focus-within,
+.att-detail-table td.td-att-hr-status:hover {
+  z-index: 40;
+}
+
+.att-day-status-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.att-day-status-trigger {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: var(--radius-sm, 6px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+}
+
+.att-day-status-trigger:hover {
+  transform: translateY(-1px);
+}
+
+.att-day-status-trigger:focus,
+.att-day-status-wrap:focus-within .att-day-status-trigger {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--action-primary);
+}
+
+.att-day-status-trigger.is-late-day {
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+  border: 1px solid var(--border-default);
+}
+
+.att-day-status-trigger.is-late-second,
+.att-day-status-trigger.is-excluded {
+  background: var(--status-warning-bg);
+  color: var(--status-warning);
+  border: 1px solid var(--status-warning-border);
+}
+
+.att-day-status-trigger.is-grace {
+  background: var(--status-info-bg);
+  color: var(--status-info);
+  border: 1px solid var(--status-info-border);
+}
+
+.att-day-status-trigger.is-none {
+  background: var(--surface-subtle);
+  color: var(--text-muted);
+  border: 1px solid var(--border-subtle);
+}
+
+.att-day-status-popover {
+  position: absolute;
+  right: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%) translateX(4px);
+  z-index: 50;
+  padding: 4px;
+  border-radius: var(--radius-md, 8px);
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  box-shadow: 0 10px 24px -6px rgba(0, 0, 0, 0.25);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.14s ease, transform 0.14s ease, visibility 0.14s ease;
+}
+
+[data-theme="dark"] .att-day-status-popover,
+[data-theme="dark"] .att-hr-tech-popover {
+  box-shadow: 0 12px 28px -6px rgba(0, 0, 0, 0.65);
+}
+
+.att-day-status-wrap:hover .att-day-status-popover,
+.att-day-status-wrap:focus-within .att-day-status-popover {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(-50%) translateX(0);
+}
+
+.att-day-status-wrap:focus-within .att-day-status-popover {
+  pointer-events: auto;
+}
+
+/* Badge cột "Trạng thái & Đánh giá HR" (SVG compact + hover only) */
+.att-hr-tech-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.att-hr-tech-trigger {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm, 6px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.att-hr-tech-trigger.is-success {
+  background: var(--status-success-bg);
+  color: var(--status-success);
+  border: 1px solid var(--status-success-border);
+}
+
+.att-hr-tech-trigger.is-warning {
+  background: var(--status-warning-bg);
+  color: var(--status-warning);
+  border: 1px solid var(--status-warning-border);
+}
+
+.att-hr-tech-wrap:hover .att-hr-tech-trigger {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-xs, 0 1px 3px rgba(0, 0, 0, 0.12));
+}
+
+.att-hr-tech-popover {
+  position: absolute;
+  right: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%) translateX(4px);
+  z-index: 50;
+  padding: 4px;
+  border-radius: var(--radius-md, 8px);
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  box-shadow: 0 10px 24px -6px rgba(0, 0, 0, 0.25);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  white-space: nowrap;
+  transition: opacity 0.14s ease, transform 0.14s ease, visibility 0.14s ease;
+}
+
+.att-hr-tech-wrap:hover .att-hr-tech-popover {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(-50%) translateX(0);
+}
+
+.att-detail-table .badge.badge-success {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: var(--radius-sm, 6px);
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--status-success-bg);
+  color: var(--status-success);
+  border: 1px solid var(--status-success-border);
+  white-space: nowrap;
+}
+
+.att-detail-table .badge.badge-warning {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: var(--radius-sm, 6px);
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--status-warning-bg);
+  color: var(--status-warning);
+  border: 1px solid var(--status-warning-border);
+  white-space: nowrap;
+}
+
 .att-day-status-pill {
   display: inline-flex;
   align-items: center;

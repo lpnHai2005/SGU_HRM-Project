@@ -1,8 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import {
   Download,
-  Printer,
-  FileText,
   AlertTriangle,
   Check,
   X,
@@ -15,8 +13,10 @@ import {
   Search,
 } from 'lucide-react'
 import { api } from '../services/api'
+import { Icons } from '../components/common/Icons'
 import { MonthPicker } from '../components/common/MonthPicker'
 import { EmptyState } from '../components/common/EmptyState'
+import { TablePagination, useClientPagination } from '../components/common/TablePagination'
 import {
   formatDate,
   formatTime,
@@ -167,6 +167,9 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
       return true
     })
   }, [rows, searchTerm, quickStatus])
+
+  const paginationResetKey = `${period}|${filters.employee_id}|${filters.department_id}|${filters.store_id}|${searchTerm}|${quickStatus}`
+  const { pageItems: paginatedRows, paginationProps } = useClientPagination(filteredRows, paginationResetKey, 10)
 
   // Xuất CSV chuẩn HR
   const exportCsv = () => {
@@ -590,12 +593,12 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
                   <th style={{ textAlign: 'center', minWidth: '130px' }}>VỀ SỚM HỢP LỆ</th>
                   <th style={{ textAlign: 'center', minWidth: '140px' }}>NGOÀI CA &amp; OT ĐỐI SOÁT</th>
                   <th style={{ textAlign: 'center', minWidth: '110px' }}>NGHỈ PHÉP</th>
-                  <th style={{ textAlign: 'left', minWidth: '160px' }}>TRẠNG THÁI ĐÁNH GIÁ</th>
-                  <th style={{ textAlign: 'center', minWidth: '155px' }} className="th-sticky-actions">THAO TÁC</th>
+                  <th style={{ textAlign: 'center', minWidth: '105px' }}>TRẠNG THÁI ĐÁNH GIÁ</th>
+                  <th style={{ textAlign: 'center', minWidth: '96px' }} className="th-sticky-actions">THAO TÁC</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredRows.map(p => {
+                {paginatedRows.map(p => {
                   const outsideHours = (
                     p.outside_schedule_hours ??
                     p.overtime_hours ??
@@ -790,34 +793,78 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
                       </td>
 
                       {/* Cột 7: TRẠNG THÁI ĐÁNH GIÁ */}
-                      <td style={{ textAlign: 'left' }}>
-                        <div className="summary-status-tags">
+                      <td style={{ textAlign: 'center' }} className="td-status-summary">
+                        <div className="summary-status-tags" tabIndex={0}>
                           {p.late_day_count > 0 && (
-                            <span className="summary-tag tag-late">
-                              <AlertCircle size={12} />
-                              <span>Đi trễ: <strong style={{ fontFamily: 'var(--font-mono)' }}>{p.late_day_count}</strong> ngày (-<span style={{ fontFamily: 'var(--font-mono)' }}>{formatCurrency(latePenalty)}</span>)</span>
+                            <span
+                              className="summary-tag summary-tag-icon tag-late"
+                              aria-label={`Đi trễ: ${p.late_day_count} ngày (-${formatCurrency(latePenalty)})`}
+                            >
+                              <AlertCircle size={14} aria-hidden="true" />
                             </span>
                           )}
                           {p.early_day_count > 0 && (
-                            <span className="summary-tag tag-early">
-                              <Clock size={12} />
-                              <span>Về sớm: <strong style={{ fontFamily: 'var(--font-mono)' }}>{p.early_day_count}</strong> ngày</span>
+                            <span
+                              className="summary-tag summary-tag-icon tag-early"
+                              aria-label={`Về sớm: ${p.early_day_count} ngày`}
+                            >
+                              <Clock size={14} aria-hidden="true" />
                             </span>
                           )}
                           {reviewCount > 0 && (
-                            <span className="summary-tag tag-review">
-                              <AlertTriangle size={12} />
-                              <span>Cần HR rà soát: <strong style={{ fontFamily: 'var(--font-mono)' }}>{reviewCount}</strong> phiên</span>
+                            <span
+                              className="summary-tag summary-tag-icon tag-review"
+                              aria-label={`Cần HR rà soát: ${reviewCount} phiên`}
+                            >
+                              <AlertTriangle size={14} aria-hidden="true" />
                             </span>
                           )}
                           {p.late_day_count === 0 &&
                             p.early_day_count === 0 &&
                             reviewCount === 0 && (
-                              <span className="summary-tag tag-standard">
-                                <Check size={12} />
-                                <span>Đúng giờ / Đạt chuẩn</span>
+                              <span
+                                className="summary-tag summary-tag-icon tag-standard"
+                                aria-label="Đúng giờ / Đạt chuẩn"
+                              >
+                                <Check size={14} aria-hidden="true" />
                               </span>
                             )}
+
+                          <div className="summary-status-tooltip" role="tooltip">
+                            {p.late_day_count > 0 && (
+                              <div className="summary-tag tag-late">
+                                <AlertCircle size={12} aria-hidden="true" />
+                                <span>
+                                  Đi trễ: <strong style={{ fontFamily: 'var(--font-mono)' }}>{p.late_day_count}</strong> ngày (-
+                                  <span style={{ fontFamily: 'var(--font-mono)' }}>{formatCurrency(latePenalty)}</span>)
+                                </span>
+                              </div>
+                            )}
+                            {p.early_day_count > 0 && (
+                              <div className="summary-tag tag-early">
+                                <Clock size={12} aria-hidden="true" />
+                                <span>
+                                  Về sớm: <strong style={{ fontFamily: 'var(--font-mono)' }}>{p.early_day_count}</strong> ngày
+                                </span>
+                              </div>
+                            )}
+                            {reviewCount > 0 && (
+                              <div className="summary-tag tag-review">
+                                <AlertTriangle size={12} aria-hidden="true" />
+                                <span>
+                                  Cần HR rà soát: <strong style={{ fontFamily: 'var(--font-mono)' }}>{reviewCount}</strong> phiên
+                                </span>
+                              </div>
+                            )}
+                            {p.late_day_count === 0 &&
+                              p.early_day_count === 0 &&
+                              reviewCount === 0 && (
+                                <div className="summary-tag tag-standard">
+                                  <Check size={12} aria-hidden="true" />
+                                  <span>Đúng giờ / Đạt chuẩn</span>
+                                </div>
+                              )}
+                          </div>
                         </div>
                       </td>
 
@@ -826,21 +873,25 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
                         <div className="hr-actions-cell">
                           <button
                             type="button"
-                            className="btn btn-secondary btn-sm hr-btn-detail"
+                            className="btn btn-secondary btn-sm btn-icon hr-btn-detail"
                             onClick={() => setSelectedEmployeeForDetail(p)}
                             title="Mở pop-up xem danh sách chi tiết các phiên chấm công"
+                            aria-label={`Chi tiết bảng công ${p.employee_name}`}
                           >
-                            <FileText size={13} />
-                            <span>Chi tiết</span>
+                            <span className="hr-action-icon" aria-hidden="true">
+                              {Icons.fileText}
+                            </span>
                           </button>
                           <button
                             type="button"
-                            className="btn btn-outline btn-sm hr-btn-pdf"
+                            className="btn btn-outline btn-sm btn-icon hr-btn-pdf"
                             onClick={() => setSelectedEmployeeForPrint(p)}
                             title="Mở bảng xem trước & in bảng công cá nhân chuẩn A4"
+                            aria-label={`Xuất PDF bảng công ${p.employee_name}`}
                           >
-                            <Printer size={13} />
-                            <span>Xuất PDF</span>
+                            <span className="hr-action-icon" aria-hidden="true">
+                              {Icons.printer}
+                            </span>
                           </button>
                         </div>
                       </td>
@@ -873,6 +924,8 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
               )}
             </div>
           )}
+
+          {filteredRows.length > 0 && <TablePagination {...paginationProps} />}
         </section>
       )}
 

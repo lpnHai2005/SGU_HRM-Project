@@ -348,6 +348,17 @@
   transition: background 0.15s ease;
 }
 
+.work-schedule-card .calendar-week-table tbody tr:hover {
+  position: relative;
+  z-index: 120;
+}
+
+.work-schedule-card .week-grid-cell:hover,
+.work-schedule-card .week-grid-cell:focus-within,
+.work-schedule-card .week-grid-cell:has(.week-emp-tag:hover) {
+  z-index: 150 !important;
+}
+
 .week-grid-cell.is-today-cell {
   background: color-mix(in srgb, var(--action-primary) 3%, var(--surface-card));
 }
@@ -510,15 +521,21 @@
   position: absolute;
   top: 100%;
   left: 0;
-  z-index: 50;
+  z-index: 999;
   width: 260px;
   background: var(--surface-card);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 12px 28px -6px rgba(0, 0, 0, 0.35);
   padding: 12px;
   pointer-events: none;
   animation: fadeIn 0.15s ease;
+}
+
+@media (min-width: 1180px) {
+  .work-schedule-card .calendar-week-container {
+    overflow: visible;
+  }
 }
 
 .tooltip-header {
@@ -1736,8 +1753,29 @@
 .work-schedules-page [role="button"],
 .work-schedules-page .week-col-header,
 .work-schedules-page .month-day-cell,
-.work-schedules-page .employee-select-item {
+.work-schedules-page .employee-select-item,
+.personal-schedules-container button,
+.personal-schedules-container .btn,
+.personal-schedules-container [role="button"],
+.personal-schedules-container .week-col-header,
+.personal-schedules-container .week-grid-cell,
+.personal-schedules-container .personal-shift-card,
+.personal-schedules-container .personal-week-card {
   transition-property: color, border-color, box-shadow, transform;
+}
+
+.calendar-week-table th.week-col-shift-header,
+.calendar-week-table th.week-col-shift-header:hover,
+.personal-schedules-container .calendar-week-table th.week-col-shift-header,
+.personal-schedules-container .calendar-week-table th.week-col-shift-header:hover {
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+  font-weight: 700;
+  transition: none;
+}
+
+.personal-schedules-container .calendar-week-table th.week-col-header:not(.is-today):not(:hover) {
+  background: var(--surface-card, transparent);
 }
 
 
