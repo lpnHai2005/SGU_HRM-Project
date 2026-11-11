@@ -342,7 +342,7 @@
 
 .reports-quick-pill.active {
   background: var(--action-primary);
-  color: #ffffff;
+  color: var(--action-primary-text);
   border-color: var(--action-primary);
   font-weight: 600;
   box-shadow: 0 1px 3px var(--focus-ring);
@@ -517,7 +517,7 @@
 
 .matrix-view-btn.active {
   background-color: var(--action-primary);
-  color: #ffffff;
+  color: var(--action-primary-text);
   font-weight: 600;
 }
 

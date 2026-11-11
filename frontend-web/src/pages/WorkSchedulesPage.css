@@ -401,7 +401,7 @@
 
 .cell-add-mini-btn:hover {
   background: var(--action-primary);
-  color: #fff;
+  color: var(--action-primary-text);
   border-color: var(--action-primary);
 }
 
@@ -652,7 +652,7 @@
 
 .month-day-num.today-badge {
   background: var(--action-primary);
-  color: #fff;
+  color: var(--action-primary-text);
 }
 
 .month-day-nv-count {
@@ -1252,7 +1252,7 @@
 
 .weekday-pill.active {
   background: var(--action-primary);
-  color: #fff;
+  color: var(--action-primary-text);
   border-color: var(--action-primary);
 }
 

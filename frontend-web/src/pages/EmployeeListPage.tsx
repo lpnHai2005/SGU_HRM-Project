@@ -763,7 +763,7 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
           <div style={{ textAlign: 'center', padding: '20px', background: 'var(--surface-ground)', borderRadius: '8px' }}>
             <div style={{
               width: '80px', height: '80px', borderRadius: '50%',
-              background: 'var(--primary-color)', color: 'white',
+              background: 'var(--primary-color)', color: 'var(--action-primary-text)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: '24px', fontWeight: 'bold', margin: '0 auto 12px', overflow: 'hidden'
             }}>

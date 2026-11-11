@@ -295,7 +295,7 @@
   min-width: 310px;
   max-width: 440px;
   background: #1e293b;
-  color: var(--surface-subtle);
+  color: #f1f5f9;
   padding: 10px 14px;
   border-radius: 6px;
   font-size: 11px;
@@ -477,7 +477,7 @@
 [data-theme="dark"] .payslip-item-tooltip-box {
   background: #18181b;
   border-color: #27272a;
-  color: var(--surface-subtle);
+  color: var(--text-primary);
   box-shadow: 0 12px 28px -4px rgba(0, 0, 0, 0.7);
 }
 
@@ -502,7 +502,7 @@
 }
 
 [data-theme="dark"] .payslip-item-tooltip-box::after {
-  border-color: transparent transparent var(--text-primary) transparent;
+  border-color: transparent transparent #18181b transparent;
 }
 
 .payslip-item-hover-wrap:hover .payslip-item-tooltip-box,
@@ -555,7 +555,7 @@
 }
 
 [data-theme="dark"] .payslip-tooltip-section-title {
-  color: var(--surface-subtle);
+  color: var(--text-primary);
 }
 
 .payslip-tooltip-subrow {
@@ -638,7 +638,7 @@
 }
 
 [data-theme="dark"] .mypayslip-late-alert-date {
-  color: var(--surface-subtle);
+  color: var(--text-primary);
 }
 
 .mypayslip-late-alert-badge {
@@ -675,7 +675,7 @@
 }
 
 [data-theme="dark"] .payslip-tooltip-late-header {
-  color: var(--surface-subtle);
+  color: var(--text-primary);
 }
 
 .payslip-tooltip-late-badge {
@@ -720,7 +720,7 @@
 }
 
 [data-theme="dark"] .payslip-tooltip-late-date {
-  color: var(--border-default);
+  color: var(--text-secondary);
 }
 
 .payslip-tooltip-late-date strong {
