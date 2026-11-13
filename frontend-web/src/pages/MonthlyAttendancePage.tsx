@@ -945,7 +945,20 @@ export function MonthlyAttendancePage({ user }: { user: any }) {
             setShowAdminRawJson(false)
             setSelectedSession(session)
           }}
-          onSessionResolved={() => {
+          onSessionResolved={updatedSession => {
+            if (updatedSession) {
+              setSelectedEmployeeForDetail((current: any) => {
+                if (!current) return current
+                return {
+                  ...current,
+                  sessions: (current.sessions || []).map((session: any) =>
+                    session.attendance_id === updatedSession.attendance_id
+                      ? updatedSession
+                      : session
+                  ),
+                }
+              })
+            }
             setRefreshCount(c => c + 1)
           }}
         />

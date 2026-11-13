@@ -230,7 +230,7 @@ export function App() {
             <Route path="/overtime" element={<ProtectedRoute path="/overtime"><OvertimeRequestsPage user={user} /></ProtectedRoute>} />
             <Route path="/my-overtime" element={<ProtectedRoute path="/my-overtime"><OvertimeRequestsPage user={user} personal /></ProtectedRoute>} />
             <Route path="/payroll" element={<ProtectedRoute path="/payroll"><PayrollPage user={user} /></ProtectedRoute>} />
-            <Route path="/payroll-fund" element={<ProtectedRoute path="/payroll-fund"><PayrollFundPage branch={userRole === 'STORE_MANAGER'} /></ProtectedRoute>} />
+            <Route path="/payroll-fund" element={<ProtectedRoute path="/payroll-fund"><PayrollFundPage key={userRole === 'STORE_MANAGER' ? `store:${user?.store_id ?? 'unknown'}` : 'company:common'} budgetScopeKey={userRole === 'STORE_MANAGER' ? `store:${user?.store_id ?? 'unknown'}` : 'company:common'} branch={userRole === 'STORE_MANAGER'} canConfirm={userRole === 'HR_MANAGER' || userRole === 'DIRECTOR'} canManageBudget={userRole === 'HR_MANAGER' || userRole === 'DIRECTOR'} /></ProtectedRoute>} />
             <Route path="/settlements" element={<ProtectedRoute path="/settlements"><PayrollSettlementsPage /></ProtectedRoute>} />
             <Route path="/my-payroll" element={<ProtectedRoute path="/my-payroll"><MyPayslipPage user={user} employeeId={user?.employee_id || undefined} /></ProtectedRoute>} />
             <Route path="/my-contracts" element={<Navigate to="/my-payroll?tab=contracts" replace />} />

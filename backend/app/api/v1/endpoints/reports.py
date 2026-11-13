@@ -392,7 +392,7 @@ async def get_demographics_report(
 async def get_payroll_fund_summary(
     period: Optional[str] = Query("2026-09", description="Kỳ lương (YYYY-MM)"),
     store_id: Optional[int] = Query(None, description="Lọc theo cửa hàng"),
-    budget_cap: Optional[float] = Query(180000000.0, description="Hạn mức ngân sách dự toán (Budget Cap)"),
+    budget_cap: Optional[float] = Query(1250000000.0, description="Hạn mức ngân sách dự toán (Budget Cap)"),
     current_user: dict = Depends(require_roles(["DIRECTOR", "HR_MANAGER", "STORE_MANAGER", "ADMIN"])),
     db: AsyncSession = Depends(get_db)
 ):
@@ -412,8 +412,9 @@ async def get_payroll_fund_summary(
     # Store manager scoping
     if "STORE_MANAGER" in user_roles and not any(r in ("DIRECTOR", "HR_MANAGER", "ADMIN") for r in user_roles):
         user_store_id = current_user.get("store_id")
-        if user_store_id:
-            store_id = user_store_id
+        if not user_store_id:
+            raise HTTPException(status_code=403, detail="Tài khoản cửa hàng trưởng chưa được gán cửa hàng.")
+        store_id = user_store_id
 
     scope_params = {"period": period_str}
     scope_sql = ""
@@ -594,7 +595,7 @@ async def get_payroll_fund_summary(
     total_burden = round(sum(u["employer_burden"] for u in by_unit_list), 2)
     total_tcow = round(sum(u["tcow"] for u in by_unit_list), 2)
 
-    budget_cap_val = float(budget_cap or 180000000.0)
+    budget_cap_val = float(budget_cap or 1250000000.0)
     budget_used_percent = round((total_tcow / budget_cap_val) * 100.0, 2) if budget_cap_val > 0 else 0.0
     is_budget_warning = budget_used_percent >= 95.0
 
@@ -860,7 +861,7 @@ async def export_payroll_fund_excel(
         {"key": "fixed_income", "title": "Lương CB & Phụ cấp (Cố định)", "width": 22, "format": "currency"},
         {"key": "variable_income", "title": "Thu nhập biến đổi (OT+HH+Thưởng)", "width": 24, "format": "currency"},
         {"key": "total_gross", "title": "Tổng Lương Gộp (Gross)", "width": 22, "format": "currency"},
-        {"key": "total_deductions", "title": "Khấu trừ NLĐ (10.5%+Thuế)", "width": 22, "format": "currency"},
+        {"key": "total_deductions", "title": "Khấu trừ theo báo cáo hiện tại", "width": 28, "format": "currency"},
         {"key": "total_net", "title": "Thực nhận (Net)", "width": 22, "format": "currency"},
         {"key": "employer_burden", "title": "Chi phí DN đóng (23.5%)", "width": 22, "format": "currency"},
         {"key": "tcow", "title": "Tổng Chi Phí (TCOW)", "width": 24, "format": "currency"},
@@ -873,14 +874,62 @@ async def export_payroll_fund_excel(
         "employer_burden", "tcow"
     ]
 
-    file_stream = create_styled_excel(
-        company_name=(await get_company_profile(db)).get("name"),
-        title=f"BÁO CÁO QUẢN TRỊ CHI PHÍ NHÂN SỰ TOÀN PHẦN (TCOW) - KỲ {period}",
-        subtitle=f"Ngày xuất: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')} - Chuỗi bán lẻ TechZone",
-        columns=columns,
-        data=[dict(u) for u in by_unit],
-        include_totals=True,
-        total_keys=total_keys
+    detail_columns = [
+        {"key": "employee_code", "title": "Mã nhân viên", "width": 16},
+        {"key": "employee_name", "title": "Họ và tên", "width": 26},
+        {"key": "cost_center", "title": "Đơn vị (Cost Center)", "width": 24},
+        {"key": "position_name", "title": "Chức vụ", "width": 20},
+        {"key": "actual_working_days", "title": "Ngày công thực tế", "width": 18, "format": "number"},
+        {"key": "standard_working_days", "title": "Ngày công chuẩn", "width": 18, "format": "number"},
+        {"key": "contract_salary", "title": "Lương hợp đồng hiển thị", "width": 24, "format": "currency"},
+        {"key": "base_salary", "title": "Lương cơ bản theo báo cáo", "width": 26, "format": "currency"},
+        {"key": "allowances", "title": "Phụ cấp", "width": 18, "format": "currency"},
+        {"key": "overtime", "title": "OT trong phiếu lương", "width": 22, "format": "currency"},
+        {"key": "commissions", "title": "Hoa hồng", "width": 18, "format": "currency"},
+        {"key": "bonuses", "title": "Thưởng", "width": 18, "format": "currency"},
+        {"key": "gross_income", "title": "Tổng thu nhập (Gross)", "width": 24, "format": "currency"},
+        {"key": "employee_insurance", "title": "Bảo hiểm NLĐ", "width": 20, "format": "currency"},
+        {"key": "tax", "title": "Thuế theo báo cáo", "width": 20, "format": "currency"},
+        {"key": "penalties", "title": "Phạt được endpoint tổng hợp", "width": 28, "format": "currency"},
+        {"key": "deductions", "title": "Khấu trừ theo báo cáo hiện tại", "width": 30, "format": "currency"},
+        {"key": "net_salary", "title": "Net trên phiếu lương", "width": 24, "format": "currency"},
+        {"key": "insurance_base", "title": "Cơ sở bảo hiểm báo cáo", "width": 26, "format": "currency"},
+        {"key": "employer_burden", "title": "Chi phí DN theo báo cáo", "width": 26, "format": "currency"},
+        {"key": "tcow", "title": "TCOW cá nhân theo báo cáo", "width": 28, "format": "currency"},
+        {"key": "payment_status", "title": "Trạng thái phiếu lương", "width": 24},
+    ]
+    detail_rows = []
+    for unit in by_unit:
+        for employee in unit.get("employees", []):
+            detail = dict(employee)
+            detail["cost_center"] = unit.get("unit_name")
+            detail_rows.append(detail)
+
+    exported_at = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+    company_name = (await get_company_profile(db)).get("name")
+    report_title = f"BÁO CÁO QUẢN TRỊ CHI PHÍ NHÂN SỰ TOÀN PHẦN (TCOW) - KỲ {period}"
+    file_stream = create_multisheet_excel(
+        company_name=company_name,
+        sheets=[
+            {
+                "sheet_name": "Tổng hợp TCOW",
+                "title": report_title,
+                "subtitle": f"Ngày xuất: {exported_at} - Chuỗi bán lẻ TechZone",
+                "columns": columns,
+                "data": [dict(unit) for unit in by_unit],
+                "include_totals": True,
+                "total_keys": total_keys,
+            },
+            {
+                "sheet_name": "Chi tiết nhân sự",
+                "title": f"CHI TIẾT QUỸ LƯƠNG THEO NHÂN SỰ - KỲ {period}",
+                "subtitle": f"Giá trị lấy nguyên trạng từ response Quỹ lương; ngày xuất: {exported_at}",
+                "columns": detail_columns,
+                "data": detail_rows,
+                "include_totals": False,
+                "freeze_cell": "E6",
+            },
+        ],
     )
 
     filename = f"Bao_Cao_TCOW_TechZone_{period}.xlsx"

@@ -1778,18 +1778,35 @@
 
 .att-emp-kpi-note {
   font-size: 11px;
-  color: var(--status-warning);
+  color: var(--status-info, #0284c7);
   margin-top: 4px;
   font-style: italic;
+}
+
+.att-emp-kpi-note strong {
+  font-weight: 700;
+  color: var(--status-info, #0284c7);
+}
+
+.att-emp-kpi-note.is-raw-warning,
+.att-emp-kpi-note.is-raw-warning strong {
+  color: var(--status-warning);
+}
+
+.att-emp-kpi-note-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 
 /* Tabs lọc trong Pop-up */
 .att-detail-tabs-bar {
   display: flex;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 4px 8px;
   border-bottom: 2px solid var(--border-default);
   margin-bottom: 16px;
-  overflow-x: auto;
+  overflow: visible;
 }
 
 .att-tab-btn {
@@ -1851,7 +1868,7 @@
 
 .att-detail-table thead th {
   background: var(--surface-subtle);
-  padding: 10px 12px;
+  padding: 10px 8px;
   font-size: 11px;
   font-weight: 700;
   color: var(--text-secondary);
@@ -1861,10 +1878,68 @@
 }
 
 .att-detail-table tbody td {
-  padding: 10px 12px;
+  padding: 10px 8px;
   border-bottom: 1px solid var(--border-subtle);
   vertical-align: middle;
   color: var(--text-primary);
+}
+
+.att-row-actions-group {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+/* Các nút hành vi trong bảng công chi tiết */
+.btn.att-btn-valid {
+  background-color: var(--surface-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border-default);
+}
+
+.btn.att-btn-valid:hover:not(:disabled) {
+  background-color: var(--surface-subtle);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .btn.att-btn-valid {
+  background-color: #202024;
+  border-color: #38383f;
+  color: #f4f4f5;
+}
+
+[data-theme="dark"] .btn.att-btn-valid:hover:not(:disabled) {
+  background-color: #2b2b32;
+  border-color: #52525c;
+  color: #ffffff;
+}
+
+.btn.att-btn-reviewed {
+  background-color: var(--surface-card);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-default);
+}
+
+.btn.att-btn-reviewed:hover:not(:disabled) {
+  background-color: var(--surface-subtle);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .btn.att-btn-reviewed {
+  background-color: #202024;
+  border-color: #38383f;
+  color: #c4c4cc;
+}
+
+[data-theme="dark"] .btn.att-btn-reviewed:hover:not(:disabled) {
+  background-color: #2b2b32;
+  border-color: #52525c;
+  color: #ffffff;
 }
 
 .att-detail-table tbody tr:last-child td {
@@ -1891,7 +1966,8 @@
 
 .att-detail-table td.td-att-late-class:hover,
 .att-detail-table td.td-att-late-class:focus-within,
-.att-detail-table td.td-att-hr-status:hover {
+.att-detail-table td.td-att-hr-status:hover,
+.att-detail-table td.td-att-hr-status:focus-within {
   z-index: 40;
 }
 
@@ -1928,6 +2004,12 @@
   background: var(--surface-subtle);
   color: var(--text-primary);
   border: 1px solid var(--border-default);
+}
+
+.att-day-status-trigger.is-raw-work {
+  background: var(--status-info-bg);
+  color: var(--status-info);
+  border: 1px solid var(--status-info-border);
 }
 
 .att-day-status-trigger.is-late-second,
@@ -1983,6 +2065,14 @@
 }
 
 /* Badge cột "Trạng thái & Đánh giá HR" (SVG compact + hover only) */
+.att-status-triggers-group {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  vertical-align: middle;
+}
+
 .att-hr-tech-wrap {
   position: relative;
   display: inline-flex;
@@ -2037,6 +2127,88 @@
 }
 
 .att-hr-tech-wrap:hover .att-hr-tech-popover {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(-50%) translateX(0);
+}
+
+/* Biểu tượng con người đối soát HR */
+.att-hr-review-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.att-hr-review-trigger {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm, 6px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.att-hr-review-trigger.is-confirmed-late {
+  background: var(--surface-subtle);
+  color: var(--text-primary, #000000);
+  border: 1px solid var(--border-default);
+}
+
+.att-hr-review-trigger.is-raw-work {
+  background: var(--status-info-bg);
+  color: var(--status-info);
+  border: 1px solid var(--status-info-border);
+}
+
+.att-hr-review-trigger.is-shift-reassigned {
+  background: var(--status-info-bg);
+  color: var(--status-info);
+  border: 1px solid var(--status-info-border);
+}
+
+.att-hr-review-trigger.is-excluded {
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-default);
+}
+
+.att-hr-review-trigger.is-needs-info {
+  background: var(--status-warning-bg);
+  color: var(--status-warning);
+  border: 1px solid var(--status-warning-border);
+}
+
+.att-hr-review-wrap:hover .att-hr-review-trigger {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-xs, 0 1px 3px rgba(0, 0, 0, 0.12));
+}
+
+.att-hr-review-popover {
+  position: absolute;
+  right: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%) translateX(4px);
+  z-index: 55;
+  padding: 4px;
+  border-radius: var(--radius-md, 8px);
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  box-shadow: 0 10px 24px -6px rgba(0, 0, 0, 0.25);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  white-space: nowrap;
+  transition: opacity 0.14s ease, transform 0.14s ease, visibility 0.14s ease;
+}
+
+[data-theme="dark"] .att-hr-review-popover {
+  box-shadow: 0 12px 28px -6px rgba(0, 0, 0, 0.65);
+}
+
+.att-hr-review-wrap:hover .att-hr-review-popover {
   opacity: 1;
   visibility: visible;
   transform: translateY(-50%) translateX(0);
@@ -2234,6 +2406,14 @@
   color: var(--text-primary, #0f172a);
 }
 
+.att-info-item-value.is-valid {
+  color: var(--status-info, #0284c7);
+}
+
+.att-info-item-value.is-warning {
+  color: var(--status-warning, #f59e0b);
+}
+
 .att-decision-cards-grid {
   display: flex;
   flex-direction: column;
@@ -2328,6 +2508,12 @@
   color: var(--text-primary, #0f172a);
 }
 
+.att-required-mark {
+  color: var(--status-error, #ef4444);
+  font-weight: 700;
+  margin-left: 2px;
+}
+
 .att-reason-textarea {
   width: 100%;
   min-height: 72px;
@@ -2371,6 +2557,12 @@
   color: var(--text-primary, #000000);
   border: 1px solid var(--border-default);
   font-weight: 700;
+}
+
+.att-review-badge.is-raw-work {
+  background: var(--status-info-bg);
+  color: var(--status-info);
+  border: 1px solid var(--status-info-border);
 }
 
 .att-review-badge.is-shift-reassigned {

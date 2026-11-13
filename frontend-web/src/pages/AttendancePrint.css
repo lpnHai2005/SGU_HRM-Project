@@ -450,9 +450,18 @@
     padding: 0 !important;
   }
 
-  /* Ẩn triệt để tất cả phần tử bên ngoài modal */
-  body > *:not(.attendance-print-overlay) {
+  /* Cô lập bản in theo cùng cơ chế preview của phiếu lương tháng */
+  body:has(.print-active-overlay) #root {
     display: none !important;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  .print-active-overlay,
+  .print-active-overlay * {
+    visibility: visible !important;
   }
 
   .no-print,

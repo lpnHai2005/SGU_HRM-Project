@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useCompanyProfile } from '../hooks/useCompanyProfile'
 import { Printer, X, CheckCircle2, AlertTriangle } from 'lucide-react'
 import {
@@ -43,28 +44,77 @@ export function EmployeeAttendancePrintModal({
     (employee.attendance_quality_status === 'RECONCILED' || employee.statuses?.includes('RECONCILED'))
   const watermarkText = isReconciled ? 'BẢNG CÔNG CHÍNH THỨC' : 'DỰ THẢO - CHỜ HR RÀ SOÁT'
 
-  // Phân loại phiên: Phiên hợp lệ (Bảng I) vs Phiên bất thường / loại trừ (Bảng II)
+  // Phân loại phiên: Phiên hợp lệ (Bảng II) vs Phiên bất thường (Bảng III) vs Phiên loại trừ (Bảng IV) vs Nghỉ phép (Bảng V)
   const sessions = employee.sessions || []
 
-  const regularSessions = sessions.filter((s: any) => {
-    const isAnomaly =
-      s.session_quality_status === 'SHORT_SESSION' ||
-      s.session_quality_status === 'OPEN_SESSION' ||
-      s.session_quality_status === 'NEEDS_REVIEW' ||
-      (s.quality_flags && s.quality_flags.some((f: string) => ['SHORT_SESSION', 'EXCESSIVE_LATE', 'EXCESSIVE_EARLY', 'OPEN_SESSION'].includes(f))) ||
-      (s.raw_duration_minutes !== null && s.raw_duration_minutes !== undefined && s.raw_duration_minutes <= 15)
-    return !isAnomaly
-  })
+  const getReviewDecision = (session: any) =>
+    String(
+      session.review_decision ||
+        session.hr_review?.review_decision ||
+        session.hr_review?.decision ||
+        session.attendance_context?.hr_review?.review_decision ||
+        session.attendance_context?.hr_review?.decision ||
+        ''
+    )
+      .trim()
+      .toUpperCase()
+  const isExcludedSession = (session: any) =>
+    session.is_excluded === true || getReviewDecision(session) === 'EXCLUDED_INVALID'
+  const isHeldSession = (session: any) =>
+    session.payroll_hold === true || getReviewDecision(session) === 'NEEDS_MORE_INFO'
+  const isLeaveSession = (session: any) =>
+    !session.check_in_time && (
+      ['ANNUAL_LEAVE', 'UNPAID_LEAVE', 'PAID_LEAVE', 'SICK_LEAVE', 'MATERNITY_LEAVE'].includes(session.status) ||
+      Boolean(session.notes?.includes('Đơn nghỉ phép'))
+    )
+  const isOpenSession = (session: any) =>
+    Boolean(session.check_in_time) &&
+    !session.check_out_time &&
+    (session.session_quality_status === 'OPEN_SESSION' ||
+      session.session_quality_status === 'OVERDUE_OPEN_SESSION' ||
+      session.is_overdue_open_session)
 
-  const anomalySessions = sessions.filter((s: any) => {
-    const isAnomaly =
-      s.session_quality_status === 'SHORT_SESSION' ||
-      s.session_quality_status === 'OPEN_SESSION' ||
-      s.session_quality_status === 'NEEDS_REVIEW' ||
-      (s.quality_flags && s.quality_flags.some((f: string) => ['SHORT_SESSION', 'EXCESSIVE_LATE', 'EXCESSIVE_EARLY', 'OPEN_SESSION'].includes(f))) ||
-      (s.raw_duration_minutes !== null && s.raw_duration_minutes !== undefined && s.raw_duration_minutes <= 15)
-    return isAnomaly
-  })
+  const isConfirmedWorkDecision = (session: any) =>
+    ['CONFIRMED_RAW_WORK', 'CONFIRMED_LATE', 'SHIFT_REASSIGNED'].includes(getReviewDecision(session))
+  const isConfirmedAsRawWork = (session: any) =>
+    getReviewDecision(session) === 'CONFIRMED_RAW_WORK'
+
+  const excludedSessions = sessions.filter(isExcludedSession)
+  const leaveSessions = sessions.filter(isLeaveSession)
+
+  // Phiên bất thường: phiên bị tạm giữ (hold/chờ giải trình) hoặc phiên mở chưa checkout
+  const anomalySessions = sessions.filter(
+    (s: any) =>
+      !isExcludedSession(s) &&
+      !isLeaveSession(s) &&
+      (isHeldSession(s) || isOpenSession(s))
+  )
+
+  // Phiên làm việc thực tế hợp lệ: có check-in, không bị loại trừ, không bị hold, không phải phiên mở chưa checkout
+  const regularSessions = sessions.filter(
+    (s: any) =>
+      Boolean(s.check_in_time) &&
+      !isExcludedSession(s) &&
+      !isHeldSession(s) &&
+      !isOpenSession(s) &&
+      !isLeaveSession(s)
+  )
+
+  const actualWorkDates = new Set(
+    regularSessions
+      .map((session: any) => String(session.work_date || '').slice(0, 10))
+      .filter(Boolean)
+  )
+  const actualWorkingDays = Array.isArray(employee.sessions)
+    ? actualWorkDates.size
+    : (employee.working_days ?? 0)
+  const validLogDates = new Set(
+    regularSessions
+      .filter((session: any) => session.check_in_time)
+      .map((session: any) => String(session.work_date || '').slice(0, 10))
+      .filter(Boolean)
+  )
+  const workDatesOutsideValidLog = [...actualWorkDates].filter(date => !validLogDates.has(date))
 
   // Theo dõi ngày công cho cột "Tính ngày trễ" (1 ngày nhiều phiên chỉ +1 ngày)
   const seenLateDates = new Set<string>()
@@ -85,6 +135,8 @@ export function EmployeeAttendancePrintModal({
       employee.early_day_count ?? 0,
       (employee.verified_ot_hours ?? 0).toFixed(2),
       employee.needs_review_session_count ?? 0,
+      actualWorkingDays,
+      excludedSessions.map((session: any) => session.attendance_id).sort().join(','),
     ].join('|')
 
     if (window.crypto && window.crypto.subtle) {
@@ -113,14 +165,22 @@ export function EmployeeAttendancePrintModal({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [onClose])
 
+  useEffect(() => {
+    const printPageRule = document.createElement('style')
+    printPageRule.dataset.printPage = 'attendance-a4-portrait'
+    printPageRule.textContent = '@media print { @page { size: A4 portrait; margin: 12mm 14mm; } }'
+    document.head.appendChild(printPageRule)
+    return () => printPageRule.remove()
+  }, [])
+
   const handlePrint = () => {
     window.print()
   }
 
   const [yearStr, monthStr] = period.split('-')
 
-  return (
-    <div className="attendance-print-overlay" onClick={onClose}>
+  return createPortal((
+    <div className="attendance-print-overlay print-active-overlay" onClick={onClose}>
       <div className="attendance-print-actions-bar no-print" onClick={e => e.stopPropagation()}>
         <div className="attendance-print-actions-left">
           <strong style={{ fontSize: '13px', color: 'var(--text-primary)' }}>
@@ -156,7 +216,7 @@ export function EmployeeAttendancePrintModal({
         <div className="attendance-print-actions-right">
           <button
             type="button"
-            className="btn btn-primary"
+            className="btn btn-primary btn-sm"
             onClick={handlePrint}
             style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
           >
@@ -175,7 +235,7 @@ export function EmployeeAttendancePrintModal({
         </div>
       </div>
 
-      <div className="attendance-a4-sheet" onClick={e => e.stopPropagation()}>
+      <div className="attendance-a4-sheet print-modal" onClick={e => e.stopPropagation()}>
         {/* Watermark kiểm soát trạng thái */}
         <div className={`print-watermark ${isReconciled ? 'is-official' : 'is-draft'}`}>
           {watermarkText}
@@ -235,7 +295,7 @@ export function EmployeeAttendancePrintModal({
             <div className="print-kpi-cell">
               <div className="print-kpi-lbl">Ngày công thực tế</div>
               <div className="print-kpi-val">
-                {employee.working_days ?? 0} / {standardWorkingDays ?? employee.standard_working_days ?? 26} ngày
+                {actualWorkingDays} / {standardWorkingDays ?? employee.standard_working_days ?? 26} ngày
               </div>
             </div>
             <div className="print-kpi-cell">
@@ -280,9 +340,17 @@ export function EmployeeAttendancePrintModal({
           </div>
         </section>
 
-        {/* 5. Bảng I: Nhật ký các phiên làm việc hợp lệ */}
+        {/* 5. Bảng II: Nhật ký các phiên làm việc trong kỳ */}
         <div className="print-section-title">
-          <span>II. NHẬT KÝ CÁC PHIÊN LÀM VIỆC HỢP LỆ TRONG KỲ ({regularSessions.length} phiên)</span>
+          <span>
+            II. NHẬT KÝ CÁC PHIÊN LÀM VIỆC TRONG KỲ ({regularSessions.length} phiên · {actualWorkingDays} ngày công thực tế)
+          </span>
+        </div>
+        <div style={{ margin: '-3px 0 6px', color: '#475569', fontSize: '9px', lineHeight: 1.4 }}>
+          Số phiên đếm từng bản ghi quẹt thẻ làm việc thực tế; ngày công thực tế đếm ngày duy nhất có check-in và chưa bị loại trừ/giữ xử lý.
+          {workDatesOutsideValidLog.length > 0 && (
+            <> Có {workDatesOutsideValidLog.length} ngày công có check-in chưa nằm trong nhật ký phiên hợp lệ; xem phiên bất thường tại Mục III.</>
+          )}
         </div>
         <table className="print-table">
           <thead>
@@ -305,13 +373,20 @@ export function EmployeeAttendancePrintModal({
               regularSessions.map((s: any) => {
                 const workDateStr = s.work_date ? String(s.work_date).slice(0, 10) : ''
                 const scheduledTime = s.scheduled_start
-                  ? `${s.scheduled_start.slice(0, 5)} - ${s.scheduled_end.slice(0, 5)}`
+                  ? `${s.scheduled_start.slice(0, 5)} - ${s.scheduled_end?.slice(0, 5) || '—'}`
                   : s.attendance_context?.actual?.start_time
-                  ? `${s.attendance_context.actual.start_time.slice(0, 5)} - ${s.attendance_context.actual.end_time.slice(0, 5)}`
+                  ? `${s.attendance_context.actual.start_time.slice(0, 5)} - ${s.attendance_context.actual.end_time?.slice(0, 5) || '—'}`
                   : '—'
 
                 let lateDayText = <span style={{ color: '#94a3b8' }}>—</span>
-                if (s.is_valid_late) {
+                const rawWorkConfirmed = isConfirmedAsRawWork(s)
+                if (rawWorkConfirmed) {
+                  lateDayText = (
+                    <span title="HR xác nhận công thực tế, chưa kết luận vi phạm trễ hoặc tiền phạt">
+                      Chưa kết luận từ phiên thô
+                    </span>
+                  )
+                } else if (s.is_valid_late) {
                   if (!seenLateDates.has(workDateStr)) {
                     seenLateDates.add(workDateStr)
                     lateDayText = <span className="tag-print-late-day">+1 ngày trễ (50k)</span>
@@ -322,7 +397,11 @@ export function EmployeeAttendancePrintModal({
                   lateDayText = <span style={{ color: '#059669', fontSize: '9px' }}>≤15p (Miễn phạt)</span>
                 }
 
-                const outsideH = (s.outside_schedule_hours ?? s.overtime_hours ?? 0).toFixed(2)
+                const outsideValue = Number(s.outside_schedule_hours ?? s.overtime_hours ?? 0)
+                const outsideH = Number.isFinite(outsideValue) ? outsideValue.toFixed(2) : '—'
+                const lateMinutes = Number(s.late_minutes ?? 0)
+                const earlyMinutes = Number(s.early_minutes ?? 0)
+                const actualHours = s.actual_work_hours == null ? null : Number(s.actual_work_hours)
 
                 return (
                   <tr key={s.attendance_id}>
@@ -332,23 +411,33 @@ export function EmployeeAttendancePrintModal({
                     <td className="text-center">{scheduledTime}</td>
                     <td className="text-center">{formatTime(s.check_in_time)}</td>
                     <td className="text-center">{s.check_out_time ? formatTime(s.check_out_time) : '—'}</td>
-                    <td className="text-center"><strong>{s.actual_work_hours}h</strong></td>
                     <td className="text-center">
-                      {s.is_valid_late ? (
-                        <strong style={{ color: '#b91c1c' }}>{s.late_minutes}</strong>
-                      ) : (s.late_minutes ?? 0) > 0 && (s.late_minutes ?? 0) <= 15 ? (
-                        <span style={{ color: '#059669' }}>{s.late_minutes}</span>
+                      <strong>{actualHours !== null && Number.isFinite(actualHours) ? `${actualHours}h` : '—'}</strong>
+                    </td>
+                    <td className="text-center">
+                      {rawWorkConfirmed && lateMinutes > 0 ? (
+                        <span title="Số phút trễ đo thô; chưa được HR xác nhận là vi phạm" style={{ color: '#64748b' }}>
+                          {lateMinutes}*
+                        </span>
+                      ) : s.is_valid_late ? (
+                        <strong style={{ color: '#b91c1c' }}>{lateMinutes}</strong>
+                      ) : lateMinutes > 0 && lateMinutes <= 15 ? (
+                        <span style={{ color: '#059669' }}>{lateMinutes}</span>
                       ) : (
-                        '0'
+                        rawWorkConfirmed ? '—' : '0'
                       )}
                     </td>
                     <td className="text-center">
-                      {s.is_valid_early ? (
-                        <strong style={{ color: '#c2410c' }}>{s.early_minutes}</strong>
-                      ) : (s.early_minutes ?? 0) > 0 ? (
-                        <span style={{ color: '#d97706' }}>{s.early_minutes}</span>
+                      {rawWorkConfirmed && earlyMinutes > 0 ? (
+                        <span title="Số phút về sớm đo thô; chưa được HR xác nhận là vi phạm" style={{ color: '#64748b' }}>
+                          {earlyMinutes}*
+                        </span>
+                      ) : s.is_valid_early ? (
+                        <strong style={{ color: '#c2410c' }}>{earlyMinutes}</strong>
+                      ) : earlyMinutes > 0 ? (
+                        <span style={{ color: '#d97706' }}>{earlyMinutes}</span>
                       ) : (
-                        '0'
+                        rawWorkConfirmed ? '—' : '0'
                       )}
                     </td>
                     <td className="text-center">
@@ -383,10 +472,10 @@ export function EmployeeAttendancePrintModal({
           </tbody>
         </table>
 
-        {/* 6. Bảng II: Phụ lục các phiên bất thường / kiểm thử cần HR xác minh */}
+        {/* 6. Bảng III: Các phiên bất thường vẫn cần HR xác minh */}
         <div className="print-section-title">
           <span>
-            III. PHỤ LỤC CÁC PHIÊN BẤT THƯỜNG / THỬ NGHIỆM ĐÃ LOẠI TRỪ KHỎI TRỄ HỢP LỆ ({anomalySessions.length} phiên)
+            III. PHIÊN BẤT THƯỜNG / CHƯA ĐƯỢC CÔNG NHẬN LÀ CÔNG HỢP LỆ ({anomalySessions.length} phiên)
           </span>
         </div>
         <table className="print-table print-table-anomaly">
@@ -421,10 +510,12 @@ export function EmployeeAttendancePrintModal({
                     </span>
                   </td>
                   <td className="text-left" style={{ fontSize: '10px', color: '#475569' }}>
-                    {s.session_quality_status === 'SHORT_SESSION'
-                      ? 'Phiên kiểm thử ngắn ≤15p, lệch giờ ca. Đã loại trừ khỏi ngày trễ hợp lệ & tiền phạt.'
-                      : s.session_quality_status === 'OPEN_SESSION'
+                    {isHeldSession(s)
+                      ? (s.hr_review?.reason ? `Chờ giải trình: ${s.hr_review.reason}` : 'Phiên đang tạm giữ (HOLD) chờ HR và nhân viên giải trình.')
+                      : s.session_quality_status === 'OPEN_SESSION' || !s.check_out_time
                       ? 'Phiên chưa check-out, chờ nhân sự giải trình thời gian ra thực tế.'
+                      : s.session_quality_status === 'SHORT_SESSION'
+                      ? 'Phiên kiểm thử ngắn ≤15p, lệch giờ ca. Chờ HR đối soát.'
                       : 'Thời lượng hoặc độ lệch vượt ngưỡng (>240p), chờ HR đối soát.'}
                   </td>
                 </tr>
@@ -439,13 +530,105 @@ export function EmployeeAttendancePrintModal({
           </tbody>
         </table>
 
-        {/* 7. Chú thích đối soát & Cam kết */}
+        {/* 7. Phụ lục riêng các phiên HR đã loại khỏi ngày công */}
+        <div className="print-section-title">
+          <span>IV. PHỤ LỤC CÁC PHIÊN ĐÃ XỬ LÝ — LOẠI TRỪ KHỎI NGÀY CÔNG ({excludedSessions.length} phiên)</span>
+        </div>
+        <table className="print-table print-table-anomaly">
+          <thead>
+            <tr>
+              <th style={{ width: '70px' }}>Ngày</th>
+              <th>Ca / phiên</th>
+              <th style={{ width: '65px' }}>Check-in</th>
+              <th style={{ width: '65px' }}>Check-out</th>
+              <th style={{ width: '80px' }}>Thời lượng thô</th>
+              <th style={{ width: '105px' }}>Quyết định</th>
+              <th style={{ width: '110px' }}>HR xử lý</th>
+              <th>Căn cứ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {excludedSessions.length > 0 ? (
+              excludedSessions.map((session: any) => (
+                <tr key={session.attendance_id}>
+                  <td className="text-center">{formatDate(session.work_date)}</td>
+                  <td className="text-left">{session.shift_name || session.attendance_context?.actual?.shift_name || 'Phiên chấm công'}</td>
+                  <td className="text-center">{formatTime(session.check_in_time)}</td>
+                  <td className="text-center">{session.check_out_time ? formatTime(session.check_out_time) : 'Chưa ra'}</td>
+                  <td className="text-center">{formatDurationMinutes(session.raw_duration_minutes)}</td>
+                  <td className="text-center"><strong>Loại trừ phiên</strong></td>
+                  <td className="text-left">{session.hr_review?.reviewed_by_name || session.hr_review?.user_name || 'HR'}</td>
+                  <td className="text-left">{session.hr_review?.reason || 'Không ghi nhận căn cứ'}</td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={8} className="text-center" style={{ padding: '8px', color: '#64748b' }}>
+                  Không có phiên nào được HR loại trừ khỏi ngày công trong kỳ.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+
+        {/* 8. Danh mục nghỉ phép đã duyệt trong kỳ */}
+        {leaveSessions.length > 0 && (
+          <>
+            <div className="print-section-title">
+              <span>V. DANH MỤC NGHỈ PHÉP ĐÃ DUYỆT TRONG KỲ ({leaveSessions.length} ngày)</span>
+            </div>
+            <table className="print-table print-table-anomaly">
+              <thead>
+                <tr>
+                  <th style={{ width: '80px' }}>Ngày nghỉ</th>
+                  <th style={{ width: '50px' }}>Thứ</th>
+                  <th style={{ width: '180px' }}>Loại phép</th>
+                  <th style={{ width: '140px' }}>Chế độ hưởng lương</th>
+                  <th>Căn cứ / Ghi chú đơn</th>
+                </tr>
+              </thead>
+              <tbody>
+                {leaveSessions.map((ls: any) => {
+                  const isPaid = ls.status === 'ANNUAL_LEAVE' || ls.status === 'PAID_LEAVE'
+                  const leaveTypeLabel =
+                    ls.status === 'ANNUAL_LEAVE'
+                      ? 'Nghỉ phép năm (AL)'
+                      : ls.status === 'UNPAID_LEAVE'
+                      ? 'Nghỉ việc riêng không lương (UL)'
+                      : ls.status || 'Nghỉ phép'
+                  return (
+                    <tr key={ls.attendance_id}>
+                      <td className="text-center"><strong>{formatDate(ls.work_date)}</strong></td>
+                      <td className="text-center">{getDayOfWeek(ls.work_date)}</td>
+                      <td className="text-left">{leaveTypeLabel}</td>
+                      <td className="text-center">
+                        <strong style={{ color: isPaid ? '#059669' : '#dc2626' }}>
+                          {isPaid ? 'Hưởng nguyên lương' : 'Không hưởng lương'}
+                        </strong>
+                      </td>
+                      <td className="text-left" style={{ fontSize: '10px', color: '#475569' }}>
+                        {ls.notes || 'Đơn nghỉ phép đã được phê duyệt hợp lệ'}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </>
+        )}
+
+        {/* 8. Chú thích đối soát & Cam kết */}
         <div className="print-footnote">
           <strong>Ghi chú bắt buộc:</strong>
           <br />
           - (*) <strong>OT / Ngoài ca:</strong> Ký hiệu (✓) thể hiện giờ OT đã có đơn duyệt và mã đối soát hợp lệ liên kết schema (VERIFIED). Giờ ngoài ca không có ký hiệu (✓) là giờ làm thực tế ngoài ca chưa duyệt đơn OT. Chỉ số{' '}
           <strong>OT đối soát (VERIFIED)</strong> trên Khung tổng hợp là căn cứ tính phụ cấp/lương làm thêm giờ sau khi
           được HR phê duyệt theo quy trình đối soát OT.
+          <br />
+          - <strong>Xác nhận công loại trừ thô:</strong> HR xác nhận giờ công thực tế, không đồng nghĩa xác nhận trễ/sớm hợp lệ hoặc đơn OT được duyệt.
+          Số phút có dấu (*) ở phiên này là số đo thô, không phải kết luận vi phạm.
+          <br />
+          - <strong>Phiên đã loại trừ:</strong> Không được tính vào nhật ký phiên hợp lệ và ngày công thực tế; được lưu dấu vết tại Phụ lục IV.
           <br />
           - <strong>Chính sách ân hạn &amp; Xử lý vi phạm:</strong> Thời gian trễ cho phép tối đa 15 phút đầu ca (không trừ tiền).
           Mỗi lần trễ vượt quá 15 phút bị phạt 50.000 ₫/lần theo quy chế công ty TechZone.
@@ -454,7 +637,7 @@ export function EmployeeAttendancePrintModal({
           trong vòng 48 giờ kể từ ngày ban hành. Sau thời hạn này, bảng công được coi là chính thức chốt để lập phiếu lương.
         </div>
 
-        {/* 8. Chữ ký 3 bên theo chuẩn Nghị định 30/2020/NĐ-CP */}
+        {/* 9. Chữ ký 3 bên theo chuẩn Nghị định 30/2020/NĐ-CP */}
         <footer className="print-signatures-grid">
           <div className="print-sig-col">
             <div className="print-sig-title">NGƯỜI LAO ĐỘNG</div>
@@ -476,7 +659,7 @@ export function EmployeeAttendancePrintModal({
           </div>
         </footer>
 
-        {/* 9. Checksum bảo mật tính toàn vẹn */}
+        {/* 10. Checksum bảo mật tính toàn vẹn */}
         <div className="print-checksum-bar">
           <div>
             Mã kiểm tra tính toàn vẹn (SHA-256 Checksum):{' '}
@@ -486,5 +669,5 @@ export function EmployeeAttendancePrintModal({
         </div>
       </div>
     </div>
-  )
+  ), document.body)
 }

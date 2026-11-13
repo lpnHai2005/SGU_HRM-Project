@@ -1,5 +1,6 @@
 import { toast } from 'sonner'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import {
   Printer,
   X,
@@ -14,6 +15,8 @@ import {
   CheckCircle2,
   HelpCircle,
   AlertOctagon,
+  UserCheck,
+  MoreVertical,
 } from 'lucide-react'
 import {
   formatDate,
@@ -27,6 +30,7 @@ import { api } from '../services/api'
 
 export type TabType = 'ALL' | 'LATE' | 'GRACE' | 'EARLY' | 'REVIEW'
 export type DecisionType =
+  | 'CONFIRMED_RAW_WORK'
   | 'CONFIRMED_LATE'
   | 'SHIFT_REASSIGNED'
   | 'EXCLUDED_INVALID'
@@ -70,6 +74,7 @@ export interface AttendanceSession {
   session_quality_status?: string
   quality_flags?: string[]
   needs_hr_review?: boolean
+  is_excluded?: boolean
   review_decision?: string
   review_status?: string
   is_overdue_open_session?: boolean
@@ -79,10 +84,13 @@ export interface AttendanceSession {
   ot_request_id?: number | null
   hr_review?: {
     decision?: string
+    review_decision?: string
     reason?: string
     resolved_at?: string
     user_id?: number
     user_name?: string
+    reviewed_by_name?: string
+    reviewed_at?: string
     new_shift_id?: number
     version?: number
   } | null
@@ -137,7 +145,7 @@ interface EmployeeAttendanceDetailModalProps {
   onClose: () => void
   onOpenPrint: () => void
   onViewRawSession: (session: AttendanceSession) => void
-  onSessionResolved?: () => void
+  onSessionResolved?: (updatedSession?: AttendanceSession) => void
 }
 
 /**
@@ -171,7 +179,13 @@ export function AttendanceResolutionModal({
   onSubmit: () => void
 }) {
   return (
-    <div className="att-resolve-modal-overlay" onClick={onCancel}>
+    <div
+      className="att-resolve-modal-overlay"
+      onClick={e => {
+        e.stopPropagation()
+        if (e.target === e.currentTarget) onCancel()
+      }}
+    >
       <div
         className="att-resolve-modal"
         role="dialog"
@@ -225,7 +239,21 @@ export function AttendanceResolutionModal({
             </div>
             <div>
               <div className="att-info-item-label">Cờ chất lượng kỹ thuật</div>
-              <div className="att-info-item-value" style={{ color: 'var(--status-warning)' }}>
+              <div
+                className={`att-info-item-value ${
+                  (session.session_quality_status === 'NORMAL' || !session.session_quality_status) &&
+                  (!session.quality_flags || session.quality_flags.length === 0)
+                    ? 'is-valid'
+                    : 'is-warning'
+                }`}
+                style={{
+                  color:
+                    (session.session_quality_status === 'NORMAL' || !session.session_quality_status) &&
+                    (!session.quality_flags || session.quality_flags.length === 0)
+                      ? 'var(--status-info)'
+                      : 'var(--status-warning)',
+                }}
+              >
                 {formatQualityStatus(session.session_quality_status)}
                 {session.quality_flags &&
                   session.quality_flags.length > 0 &&
@@ -257,7 +285,7 @@ export function AttendanceResolutionModal({
             </div>
           )}
 
-          {/* Lựa chọn 4 quyết định của HR */}
+          {/* Lựa chọn quyết định xác minh của HR */}
           <div>
             <label
               style={{
@@ -268,10 +296,38 @@ export function AttendanceResolutionModal({
                 color: 'var(--text-primary)',
               }}
             >
-              Chọn quyết định xử lý của HR *
+              Chọn quyết định xử lý của HR{' '}
+              <span className="att-required-mark" style={{ color: 'var(--status-error)' }}>
+                *
+              </span>
             </label>
             <div className="att-decision-cards-grid">
-              {/* Quyết định A: CONFIRMED_LATE */}
+              {/* Quyết định mặc định: xác nhận công thực tế từ dữ liệu thô */}
+              <div
+                className={`att-decision-card ${decision === 'CONFIRMED_RAW_WORK' ? 'is-selected is-raw-work' : ''}`}
+                onClick={() => onDecisionChange('CONFIRMED_RAW_WORK')}
+              >
+                <div className="att-decision-card-top">
+                  <label className="att-decision-radio-label">
+                    <input
+                      type="radio"
+                      name="decision"
+                      checked={decision === 'CONFIRMED_RAW_WORK'}
+                      onChange={() => onDecisionChange('CONFIRMED_RAW_WORK')}
+                    />
+                    <span>A. Xác nhận công loại trừ thô</span>
+                  </label>
+                  <span className="att-review-badge is-raw-work">Ghi nhận công thực tế</span>
+                </div>
+                <div className="att-decision-desc">
+                  HR xác nhận phiên có thời gian làm việc thực tế dù dữ liệu kỹ thuật đang bị gắn cờ.
+                </div>
+                <div className="att-decision-impact">
+                  • Giữ giờ công thực tế để tính ngày công; không tự xác nhận đi trễ, về sớm hợp lệ hoặc OT được duyệt.
+                </div>
+              </div>
+
+              {/* CONFIRMED_LATE */}
               <div
                 className={`att-decision-card ${decision === 'CONFIRMED_LATE' ? 'is-selected' : ''}`}
                 onClick={() => onDecisionChange('CONFIRMED_LATE')}
@@ -284,7 +340,7 @@ export function AttendanceResolutionModal({
                       checked={decision === 'CONFIRMED_LATE'}
                       onChange={() => onDecisionChange('CONFIRMED_LATE')}
                     />
-                    <span>A. HR xác nhận đi trễ</span>
+                    <span>B. HR xác nhận đi trễ</span>
                   </label>
                   <span className="att-review-badge is-confirmed-late">Xác nhận vi phạm</span>
                 </div>
@@ -296,7 +352,7 @@ export function AttendanceResolutionModal({
                 </div>
               </div>
 
-              {/* Quyết định B: SHIFT_REASSIGNED */}
+              {/* SHIFT_REASSIGNED */}
               <div
                 className={`att-decision-card ${decision === 'SHIFT_REASSIGNED' ? 'is-selected' : ''}`}
                 onClick={() => onDecisionChange('SHIFT_REASSIGNED')}
@@ -309,7 +365,7 @@ export function AttendanceResolutionModal({
                       checked={decision === 'SHIFT_REASSIGNED'}
                       onChange={() => onDecisionChange('SHIFT_REASSIGNED')}
                     />
-                    <span>B. HR xác nhận điều chỉnh ca</span>
+                    <span>C. HR xác nhận điều chỉnh ca</span>
                   </label>
                   <span className="att-review-badge is-shift-reassigned">Điều chỉnh phân ca</span>
                 </div>
@@ -346,7 +402,7 @@ export function AttendanceResolutionModal({
                 )}
               </div>
 
-              {/* Quyết định C: EXCLUDED_INVALID */}
+              {/* EXCLUDED_INVALID */}
               <div
                 className={`att-decision-card ${decision === 'EXCLUDED_INVALID' ? 'is-selected' : ''}`}
                 onClick={() => onDecisionChange('EXCLUDED_INVALID')}
@@ -359,7 +415,7 @@ export function AttendanceResolutionModal({
                       checked={decision === 'EXCLUDED_INVALID'}
                       onChange={() => onDecisionChange('EXCLUDED_INVALID')}
                     />
-                    <span>C. HR xác nhận phiên không hợp lệ</span>
+                    <span>D. Loại trừ phiên khỏi ngày công</span>
                   </label>
                   <span className="att-review-badge is-excluded">Loại trừ phiên</span>
                 </div>
@@ -371,7 +427,7 @@ export function AttendanceResolutionModal({
                 </div>
               </div>
 
-              {/* Quyết định D: NEEDS_MORE_INFO */}
+              {/* NEEDS_MORE_INFO */}
               <div
                 className={`att-decision-card ${decision === 'NEEDS_MORE_INFO' ? 'is-selected' : ''}`}
                 onClick={() => onDecisionChange('NEEDS_MORE_INFO')}
@@ -384,7 +440,7 @@ export function AttendanceResolutionModal({
                       checked={decision === 'NEEDS_MORE_INFO'}
                       onChange={() => onDecisionChange('NEEDS_MORE_INFO')}
                     />
-                    <span>D. Chưa đủ căn cứ (Cần thêm giải trình)</span>
+                    <span>E. Chưa đủ căn cứ (Cần thêm giải trình)</span>
                   </label>
                   <span className="att-review-badge is-needs-info">Chờ giải trình</span>
                 </div>
@@ -400,7 +456,12 @@ export function AttendanceResolutionModal({
 
           {/* Phần nhập Lý do & Biên bản */}
           <div className="att-reason-section">
-            <label>Biên bản giải trình / Căn cứ xác minh của HR (Bắt buộc) *</label>
+            <label>
+              Biên bản giải trình / Căn cứ xác minh của HR (Bắt buộc){' '}
+              <span className="att-required-mark" style={{ color: 'var(--status-error)' }}>
+                *
+              </span>
+            </label>
             <textarea
               className="att-reason-textarea"
               value={reason}
@@ -468,11 +529,22 @@ function AttendanceConfirmModal({
   onCancel: () => void
   onConfirm: () => void
 }) {
+  const decisionLabels: Record<DecisionType, string> = {
+    CONFIRMED_RAW_WORK: 'Xác nhận công loại trừ thô',
+    CONFIRMED_LATE: 'HR xác nhận đi trễ',
+    SHIFT_REASSIGNED: 'HR xác nhận điều chỉnh ca',
+    EXCLUDED_INVALID: 'Loại trừ phiên khỏi ngày công',
+    NEEDS_MORE_INFO: 'Chưa đủ căn cứ, cần thêm giải trình',
+  }
+
   return (
     <div
       className="att-resolve-modal-overlay"
       style={{ zIndex: 1200 }}
-      onClick={onCancel}
+      onClick={e => {
+        e.stopPropagation()
+        if (!isSubmitting && e.target === e.currentTarget) onCancel()
+      }}
     >
       <div
         className="att-resolve-modal"
@@ -495,7 +567,7 @@ function AttendanceConfirmModal({
         </div>
         <div className="att-resolve-modal-body" style={{ fontSize: '13px' }}>
           <p style={{ margin: 0, lineHeight: 1.5 }}>
-            Bạn đang chuẩn bị áp dụng quyết định <strong>[{decision}]</strong> cho phiên chấm công
+            Bạn đang chuẩn bị áp dụng quyết định <strong>[{decisionLabels[decision]}]</strong> cho phiên chấm công
             #{session.attendance_id} của nhân viên <strong>{employeeName}</strong>.
           </p>
           <div
@@ -550,7 +622,13 @@ function AttendanceAuditHistoryModal({
     session.audit_history || session.attendance_context?.audit_history || []
 
   return (
-    <div className="att-resolve-modal-overlay" onClick={onClose}>
+    <div
+      className="att-resolve-modal-overlay"
+      onClick={e => {
+        e.stopPropagation()
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
       <div
         className="att-resolve-modal"
         style={{ maxWidth: '600px' }}
@@ -573,8 +651,14 @@ function AttendanceAuditHistoryModal({
         </div>
         <div className="att-resolve-modal-body">
           {!historyList.length ? (
-            <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)' }}>
-              Chưa có lịch sử xử lý nào cho phiên này.
+            <div style={{ textAlign: 'center', padding: '36px 16px', color: 'var(--text-tertiary)' }}>
+              <History size={32} style={{ margin: '0 auto 10px', opacity: 0.35, display: 'block' }} />
+              <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-secondary)' }}>
+                Chưa có lịch sử phiên
+              </div>
+              <div style={{ fontSize: '11.5px', marginTop: '4px', color: 'var(--text-muted)' }}>
+                Phiên làm việc này chưa có ghi nhận điều chỉnh hoặc xử lý nào từ HR.
+              </div>
             </div>
           ) : (
             <div className="att-audit-list">
@@ -634,6 +718,50 @@ function AttendanceSessionTableRow({
   onViewRawSession: (s: AttendanceSession) => void
   onOpenAuditHistory: (s: AttendanceSession) => void
 }) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [menuPos, setMenuPos] = useState<{ top?: number; bottom?: number; right: number } | null>(null)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const handleDocClick = (e: MouseEvent | PointerEvent) => {
+      const target = e.target as HTMLElement
+      if (target.closest('.action-dropdown') || buttonRef.current?.contains(target)) {
+        return
+      }
+      setMenuOpen(false)
+    }
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuOpen(false)
+    }
+    document.addEventListener('pointerdown', handleDocClick, true)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', handleDocClick, true)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [menuOpen])
+
+  const handleToggleMenu = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation()
+    if (menuOpen) {
+      setMenuOpen(false)
+      setMenuPos(null)
+      return
+    }
+    const rect = e.currentTarget.getBoundingClientRect()
+    const spaceBelow = window.innerHeight - rect.bottom
+    const menuEstimatedHeight = 110
+    const openUp = spaceBelow < menuEstimatedHeight && rect.top > menuEstimatedHeight
+
+    setMenuPos({
+      top: openUp ? undefined : rect.bottom + 4,
+      bottom: openUp ? window.innerHeight - rect.top + 4 : undefined,
+      right: Math.max(8, window.innerWidth - rect.right),
+    })
+    setMenuOpen(true)
+  }
+
   const isValid = !session.needs_hr_review && session.session_quality_status === 'NORMAL'
   const scheduledTime = session.scheduled_start
     ? `${session.scheduled_start.slice(0, 5)} - ${session.scheduled_end?.slice(0, 5) || ''}`
@@ -643,6 +771,14 @@ function AttendanceSessionTableRow({
 
   // Phân loại trạng thái đi trễ & phạt
   const getLateStatusMeta = () => {
+    if (session.review_decision === 'CONFIRMED_RAW_WORK') {
+      return {
+        variantClass: 'is-raw-work',
+        iconKind: 'check' as const,
+        label: 'HR xác nhận công thực tế từ dữ liệu thô',
+        hint: 'Giữ giờ công thực tế; trạng thái này không tự xác nhận trễ, sớm hoặc OT được duyệt.',
+      }
+    }
     if (session.review_decision === 'CONFIRMED_LATE') {
       return {
         variantClass: 'is-late-day',
@@ -740,8 +876,80 @@ function AttendanceSessionTableRow({
 
   const auditHistoryList =
     session.audit_history || session.attendance_context?.audit_history || []
-  const isReviewed =
-    session.hr_review || (session.review_status && session.review_status !== 'PENDING')
+  const isReviewed = Boolean(
+    (session.review_decision && session.review_decision !== 'PENDING') ||
+    (session.hr_review && session.hr_review.decision && session.hr_review.decision !== 'PENDING')
+  )
+
+  const getReviewDecisionMeta = () => {
+    switch (session.review_decision) {
+      case 'CONFIRMED_RAW_WORK':
+        return {
+          label: 'HR: Xác nhận công thực tế',
+          variantClass: 'is-raw-work',
+          badgeClass: 'is-raw-work',
+          description: 'HR đã xác nhận giờ công thực tế từ dữ liệu gốc; không tự xác nhận trễ, sớm hoặc OT.',
+        }
+      case 'CONFIRMED_LATE':
+        return {
+          label: 'HR: Xác nhận trễ',
+          variantClass: 'is-confirmed-late',
+          badgeClass: 'is-needs-info',
+          description: 'HR đã xác nhận trễ và chấp nhận giải trình.',
+        }
+      case 'SHIFT_REASSIGNED':
+        return {
+          label: 'HR: Đã đổi ca',
+          variantClass: 'is-shift-reassigned',
+          badgeClass: 'is-shift-reassigned',
+          description: 'HR đã điều chỉnh và gán lại ca làm việc phù hợp.',
+        }
+      case 'EXCLUDED_INVALID':
+        return {
+          label: 'HR: Đã loại trừ',
+          variantClass: 'is-excluded',
+          badgeClass: 'is-excluded',
+          description: 'HR đã xác định phiên không hợp lệ và loại trừ khỏi bảng công.',
+        }
+      case 'NEEDS_MORE_INFO':
+        return {
+          label: 'HR: Cần thêm TT',
+          variantClass: 'is-needs-info',
+          badgeClass: 'is-needs-info',
+          description: 'HR yêu cầu nhân viên bổ sung hồ sơ hoặc giải trình thêm.',
+        }
+      default:
+        return null
+    }
+  }
+
+  const reviewMeta = getReviewDecisionMeta()
+  const latestAudit = auditHistoryList[auditHistoryList.length - 1]
+
+  let actionBtnText = 'Hợp lệ'
+  let actionBtnClass = 'btn-secondary att-btn-valid'
+  let actionBtnTitle = 'Hợp lệ'
+  let actionBtnIcon = <Check size={12} />
+
+  if (session.needs_hr_review) {
+    // Hành vi 2: Chờ HR thao tác (Cần can thiệp) -> Nút xanh nổi bật kêu gọi hành động
+    actionBtnText = 'HR Xử lý'
+    actionBtnClass = 'btn-primary att-btn-needs-review'
+    actionBtnTitle = 'HR Xử lý'
+    actionBtnIcon = <ShieldCheck size={12} />
+  } else if (isReviewed) {
+    // Hành vi 3: HR đã thao tác xử lý xong -> Giúp HR nhận biết ca đã đối soát
+    actionBtnText = 'Đã xử lý'
+    actionBtnClass = 'btn-secondary att-btn-reviewed'
+    actionBtnTitle = 'Đã xử lý'
+    actionBtnIcon = <ShieldCheck size={12} />
+  } else {
+    // Hành vi 1: Tự động duyệt (An toàn, hợp lệ) -> Hệ thống tự động phê chuẩn
+    actionBtnText = 'Hợp lệ'
+    actionBtnClass = 'btn-secondary att-btn-valid'
+    actionBtnTitle = 'Hợp lệ'
+    actionBtnIcon = <Check size={12} />
+  }
 
   return (
     <tr className={!isValid ? 'session-row-flagged' : ''}>
@@ -790,13 +998,19 @@ function AttendanceSessionTableRow({
           </div>
         )}
       </td>
-      <td style={{ textAlign: 'right' }}>
+      <td
+        style={{
+          textAlign: 'center',
+          whiteSpace: 'nowrap',
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
         {session.is_valid_late ? (
           <span style={{ color: 'var(--status-error)', fontWeight: 700 }}>
             Trễ {session.late_minutes}p
           </span>
         ) : (session.late_minutes ?? 0) > 0 && (session.late_minutes ?? 0) <= 15 ? (
-          <span style={{ color: 'var(--status-success)', fontWeight: 600 }}>
+          <span style={{ color: 'var(--status-info, #0284c7)', fontWeight: 600 }}>
             Trễ {session.late_minutes}p (Ân hạn)
           </span>
         ) : (session.late_minutes ?? 0) > 15 ? (
@@ -835,76 +1049,43 @@ function AttendanceSessionTableRow({
         </div>
       </td>
       <td style={{ textAlign: 'center' }} className="td-att-hr-status">
-        {session.review_decision === 'CONFIRMED_LATE' && (
-          <div style={{ marginBottom: '3px' }}>
-            <span className="att-review-badge is-confirmed-late">✓ HR: Xác nhận trễ</span>
-          </div>
-        )}
-        {session.review_decision === 'SHIFT_REASSIGNED' && (
-          <div style={{ marginBottom: '3px' }}>
-            <span className="att-review-badge is-shift-reassigned">✓ HR: Đã đổi ca</span>
-          </div>
-        )}
-        {session.review_decision === 'EXCLUDED_INVALID' && (
-          <div style={{ marginBottom: '3px' }}>
-            <span className="att-review-badge is-excluded">✕ HR: Đã loại trừ</span>
-          </div>
-        )}
-        {session.review_decision === 'NEEDS_MORE_INFO' && (
-          <div style={{ marginBottom: '3px' }}>
-            <span className="att-review-badge is-needs-info">? HR: Cần thêm TT</span>
-          </div>
-        )}
-
-        <div className="att-hr-tech-wrap">
-          <span
-            className={`att-hr-tech-trigger ${isValid ? 'is-success' : 'is-warning'}`}
-            aria-label={techStatusLabel}
-          >
-            {isValid ? <ShieldCheck size={14} aria-hidden="true" /> : <AlertTriangle size={14} aria-hidden="true" />}
-          </span>
-          <div className="att-hr-tech-popover" role="tooltip">
-            <span className={`badge ${isValid ? 'badge-success' : 'badge-warning'}`}>
-              {techStatusLabel}
-            </span>
-          </div>
-        </div>
-
-        {session.is_overdue_open_session && (
-          <div style={{ marginTop: '3px' }}>
+        <div className="att-status-triggers-group">
+          <div className="att-hr-tech-wrap">
             <span
-              className="att-review-badge is-overdue-hold"
-              title="Phiên mở quá hạn 7 ngày. Khóa khỏi tính lương."
+              className={`att-hr-tech-trigger ${isValid ? 'is-success' : 'is-warning'}`}
+              aria-label={techStatusLabel}
             >
-              ⚠️ Quá hạn 7d (HOLD)
+              {isValid ? <ShieldCheck size={14} aria-hidden="true" /> : <AlertTriangle size={14} aria-hidden="true" />}
             </span>
+            <div className="att-hr-tech-popover" role="tooltip">
+              <span className={`badge ${isValid ? 'badge-success' : 'badge-warning'}`}>
+                {techStatusLabel}
+              </span>
+            </div>
           </div>
-        )}
 
-        {session.quality_flags && session.quality_flags.length > 0 && (
-          <div className="att-session-flag-box">
-            {session.quality_flags.map(f => formatQualityFlag(f)).join(' · ')}
-          </div>
-        )}
+          {reviewMeta && (
+            <div className="att-hr-review-wrap">
+              <span
+                className={`att-hr-review-trigger ${reviewMeta.variantClass}`}
+                aria-label={reviewMeta.label}
+              >
+                <UserCheck size={14} aria-hidden="true" />
+              </span>
+              <div className="att-hr-review-popover" role="tooltip">
+                <span className={`att-review-badge ${reviewMeta.badgeClass}`}>
+                  {reviewMeta.label}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
       </td>
       <td style={{ textAlign: 'center' }}>
-        <div
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '4px',
-          }}
-        >
+        <div className="att-row-actions-group">
           <button
             type="button"
-            className={`btn btn-sm ${
-              isReviewed
-                ? 'btn-secondary'
-                : session.needs_hr_review
-                ? 'btn-primary'
-                : 'btn-secondary'
-            }`}
+            className={`btn btn-sm ${actionBtnClass}`}
             onClick={() => {
               if (isStoreManager) {
                 toast.error('Bạn không có quyền thao tác chức năng này')
@@ -915,61 +1096,76 @@ function AttendanceSessionTableRow({
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '3px',
-              padding: '3px 7px',
+              gap: '4px',
+              padding: '3px 8px',
               fontSize: '11px',
               whiteSpace: 'nowrap',
               cursor: isStoreManager ? 'not-allowed' : 'pointer',
               opacity: isStoreManager ? 0.65 : 1,
             }}
-            title={
-              isStoreManager
-                ? 'Bạn không có quyền thao tác chức năng này'
-                : isReviewed
-                ? 'Xem lại hoặc điều chỉnh quyết định HR'
-                : 'Xác minh và xử lý phiên bất thường'
-            }
+            title={actionBtnTitle}
           >
-            <ShieldCheck size={12} />
-            <span>{isReviewed ? 'Đã xử lý' : 'HR Xử lý'}</span>
+            {actionBtnIcon}
+            <span>{actionBtnText}</span>
           </button>
 
           <button
+            ref={buttonRef}
             type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={() => onViewRawSession(session)}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              padding: '3px 6px',
-              fontSize: '11px',
-            }}
-            title={
-              isAdmin
-                ? 'Xem thông tin ca làm việc (Chế độ Quản trị xem dữ liệu gốc)'
-                : 'Xem thông tin ca làm việc'
-            }
+            className={`btn btn-secondary btn-sm btn-icon ${menuOpen ? 'active' : ''}`}
+            onClick={handleToggleMenu}
+            title="Tùy chọn"
+            aria-label="Tùy chọn thao tác"
           >
-            <Eye size={12} />
+            <MoreVertical size={14} />
           </button>
+        </div>
 
-          {auditHistoryList.length > 0 && (
+        {menuOpen && menuPos && createPortal(
+          <div
+            className={`action-dropdown action-dropdown-fixed ${menuPos.bottom !== undefined ? 'dropup' : 'dropdown'}`}
+            onClick={e => e.stopPropagation()}
+            style={{
+              position: 'fixed',
+              top: menuPos.top !== undefined ? `${menuPos.top}px` : 'auto',
+              bottom: menuPos.bottom !== undefined ? `${menuPos.bottom}px` : 'auto',
+              right: `${menuPos.right}px`,
+              zIndex: 99999,
+              minWidth: '220px',
+            }}
+          >
             <button
               type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={() => onOpenAuditHistory(session)}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                padding: '3px 6px',
-                fontSize: '11px',
+              className="action-dropdown-item"
+              onClick={() => {
+                setMenuOpen(false)
+                onViewRawSession(session)
               }}
-              title="Xem nhật ký lịch sử xử lý của HR"
+              title={
+                isAdmin
+                  ? 'Xem thông tin ca làm việc (Chế độ Quản trị xem dữ liệu gốc)'
+                  : 'Xem thông tin ca làm việc'
+              }
             >
-              <History size={12} />
+              <Eye size={14} className="action-icon" />
+              <span>Chi tiết ca làm việc phiên #{session.attendance_id}</span>
             </button>
-          )}
-        </div>
+
+            <button
+              type="button"
+              className="action-dropdown-item"
+              onClick={() => {
+                setMenuOpen(false)
+                onOpenAuditHistory(session)
+              }}
+              title="Xem nhật ký lịch sử xử lý của phiên"
+            >
+              <History size={14} className="action-icon" />
+              <span>Lịch sử xử lý phiên #{session.attendance_id}</span>
+            </button>
+          </div>,
+          document.body
+        )}
       </td>
     </tr>
   )
@@ -1000,7 +1196,7 @@ export function EmployeeAttendanceDetailModal({
 
   // HR Resolution Dialog state
   const [resolvingSession, setResolvingSession] = useState<AttendanceSession | null>(null)
-  const [resolutionDecision, setResolutionDecision] = useState<DecisionType>('CONFIRMED_LATE')
+  const [resolutionDecision, setResolutionDecision] = useState<DecisionType>('CONFIRMED_RAW_WORK')
   const [resolutionReason, setResolutionReason] = useState('')
   const [resolutionNewShiftId, setResolutionNewShiftId] = useState<number | ''>('')
   const [availableShifts, setAvailableShifts] = useState<ShiftOption[]>([])
@@ -1060,7 +1256,7 @@ export function EmployeeAttendanceDetailModal({
     const existingDecision =
       s.review_decision && s.review_decision !== 'PENDING'
         ? (s.review_decision as DecisionType)
-        : 'CONFIRMED_LATE'
+        : 'CONFIRMED_RAW_WORK'
     setResolutionDecision(existingDecision)
     setResolutionReason(s.hr_review?.reason || '')
     setResolutionNewShiftId(
@@ -1117,7 +1313,7 @@ export function EmployeeAttendanceDetailModal({
         )
         setResolvingSession(null)
         setShowConfirmDialog(false)
-        onSessionResolved?.()
+        onSessionResolved?.(res.updated_session)
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Lỗi khi lưu quyết định xử lý phiên chấm công.'
@@ -1184,7 +1380,13 @@ export function EmployeeAttendanceDetailModal({
     employee.late_penalty_amount ?? (employee.late_session_count ?? 0) * 50000
 
   return (
-    <div className="att-detail-modal-overlay" onClick={onClose}>
+    <>
+      <div
+        className="att-detail-modal-overlay"
+        onClick={e => {
+          if (e.target === e.currentTarget) onClose()
+        }}
+      >
       <div
         className="att-detail-modal"
         role="dialog"
@@ -1292,7 +1494,7 @@ export function EmployeeAttendanceDetailModal({
                 <strong>{employee.verified_early_minutes ?? 0}</strong> phút sớm
               </div>
               {(employee.unreviewed_early_minutes ?? 0) > 0 && (
-                <div className="att-emp-kpi-note">
+                <div className="att-emp-kpi-note is-raw-warning">
                   +{employee.unreviewed_early_minutes}p thô chờ rà soát
                 </div>
               )}
@@ -1315,17 +1517,19 @@ export function EmployeeAttendanceDetailModal({
               </div>
               {(employee.needs_review_session_count ?? 0) > 0 ? (
                 <div
-                  className="att-emp-kpi-note"
+                  className="att-emp-kpi-note att-emp-kpi-note-icon"
                   style={{ color: 'var(--status-warning)', fontWeight: 600 }}
                 >
-                  ⚠️ Có {employee.needs_review_session_count} phiên cần HR xử lý
+                  <AlertTriangle size={13} aria-hidden="true" style={{ flexShrink: 0 }} />
+                  <span>Có {employee.needs_review_session_count} phiên cần HR xử lý</span>
                 </div>
               ) : (
                 <div
-                  className="att-emp-kpi-note"
+                  className="att-emp-kpi-note att-emp-kpi-note-icon"
                   style={{ color: 'var(--status-success)', fontStyle: 'normal' }}
                 >
-                  ✓ 100% phiên đã chuẩn hóa
+                  <CheckCircle2 size={13} aria-hidden="true" style={{ flexShrink: 0 }} />
+                  <span>100% phiên đã chuẩn hóa</span>
                 </div>
               )}
             </div>
@@ -1375,15 +1579,15 @@ export function EmployeeAttendanceDetailModal({
             <table className="att-detail-table">
               <thead>
                 <tr>
-                  <th style={{ width: '85px' }}>Ngày công</th>
+                  <th style={{ width: '82px' }}>Ngày công</th>
                   <th>Ca làm việc</th>
-                  <th style={{ width: '105px' }}>Khung giờ ca</th>
-                  <th style={{ width: '145px' }}>Check-in → Check-out</th>
-                  <th style={{ width: '130px', textAlign: 'center' }}>THỜI LƯỢNG</th>
-                  <th style={{ width: '110px', textAlign: 'right' }}>Phút trễ / sớm</th>
-                  <th style={{ width: '115px', textAlign: 'center' }}>Phân loại Đi trễ &amp; Phạt</th>
-                  <th style={{ width: '125px', textAlign: 'center' }}>Trạng thái &amp; Đánh giá HR</th>
-                  <th style={{ width: '135px', textAlign: 'center' }}>Thao tác</th>
+                  <th style={{ width: '95px' }}>Khung giờ ca</th>
+                  <th style={{ width: '135px' }}>Check-in → Check-out</th>
+                  <th style={{ width: '105px', textAlign: 'center' }}>THỜI LƯỢNG</th>
+                  <th style={{ width: '115px', textAlign: 'center' }}>Phút trễ / sớm</th>
+                  <th style={{ width: '110px', textAlign: 'center' }}>Phân loại Đi trễ &amp; Phạt</th>
+                  <th style={{ width: '100px', textAlign: 'center' }}>Trạng thái &amp; Đánh giá HR</th>
+                  <th style={{ width: '126px', minWidth: '126px', textAlign: 'center' }}>Thao tác</th>
                 </tr>
               </thead>
               <tbody>
@@ -1443,6 +1647,7 @@ export function EmployeeAttendanceDetailModal({
           </button>
         </div>
       </div>
+      </div>
 
       {/* HR Resolution Modal */}
       {resolvingSession && (
@@ -1487,6 +1692,6 @@ export function EmployeeAttendanceDetailModal({
           onClose={() => setAuditViewingSession(null)}
         />
       )}
-    </div>
+    </>
   )
 }

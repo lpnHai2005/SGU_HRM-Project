@@ -214,7 +214,7 @@ def is_valid_late_session(row: dict, tolerance_minutes: int = 15) -> bool:
         decision = hr_rev.get("review_decision")
         if decision == "CONFIRMED_LATE":
             return True
-        if decision in ("EXCLUDED_INVALID", "NEEDS_MORE_INFO"):
+        if decision in ("CONFIRMED_RAW_WORK", "EXCLUDED_INVALID", "NEEDS_MORE_INFO"):
             return False
 
     late_m = int(row.get("late_minutes") or 0)
@@ -253,7 +253,7 @@ def is_grace_late_session(row: dict, tolerance_minutes: int = 15) -> bool:
     hr_rev = ctx.get("hr_review") or row.get("hr_review")
     if hr_rev:
         decision = hr_rev.get("review_decision")
-        if decision in ("CONFIRMED_LATE", "EXCLUDED_INVALID", "NEEDS_MORE_INFO"):
+        if decision in ("CONFIRMED_RAW_WORK", "CONFIRMED_LATE", "EXCLUDED_INVALID", "NEEDS_MORE_INFO"):
             return False
 
     late_m = int(row.get("late_minutes") or 0)
@@ -295,7 +295,7 @@ def is_valid_early_session(row: dict) -> bool:
     hr_rev = ctx.get("hr_review") or row.get("hr_review")
     if hr_rev:
         decision = hr_rev.get("review_decision")
-        if decision in ("EXCLUDED_INVALID", "NEEDS_MORE_INFO"):
+        if decision in ("CONFIRMED_RAW_WORK", "EXCLUDED_INVALID", "NEEDS_MORE_INFO"):
             return False
 
     early_m = int(row.get("early_minutes") or 0)
@@ -472,6 +472,13 @@ def enrich_session_record(row: dict, tolerance_minutes: int = 15) -> dict:
         is_excluded = True
         needs_hr_review = False
         actual_hours = 0.0
+    elif review_decision == "CONFIRMED_RAW_WORK":
+        # HR xác nhận phiên có công thực tế: giữ giờ gốc, không kết luận trễ/sớm hợp lệ.
+        is_excluded = False
+        needs_hr_review = False
+        is_valid_late = False
+        is_grace_late = False
+        is_valid_early = False
     elif review_decision == "SHIFT_REASSIGNED":
         is_excluded = False
         needs_hr_review = False
@@ -576,7 +583,7 @@ async def monthly_attendance(period:str=Query(...,pattern=r'^\d{4}-(0[1-9]|1[0-2
     'standard_working_days': standard_working_days, 'standard_working_days_info': standard_working_days_info}
     params['ids']=ids
     sessions=[dict(r) for r in (await db.execute(text('''SELECT a.attendance_id,a.employee_id,a.store_id,a.work_date,a.check_in_time,a.check_out_time,
-        a.actual_work_hours,a.late_minutes,a.early_minutes,a.overtime_hours,a.status,a.attendance_context,
+        a.actual_work_hours,a.late_minutes,a.early_minutes,a.overtime_hours,a.status,a.notes,a.attendance_context,
         COALESCE(a.attendance_context->>'schedule_status','LEGACY_UNKNOWN') AS schedule_status,
         sh.shift_name,sh.start_time AS scheduled_start,sh.end_time AS scheduled_end,sh.work_hours AS scheduled_hours,
         sh.break_minutes AS break_minutes,
@@ -1247,7 +1254,7 @@ async def options(user=Depends(get_current_user),db:AsyncSession=Depends(get_db)
 
 
 class ResolveSessionRequest(BaseModel):
-    decision: str  # CONFIRMED_LATE, SHIFT_REASSIGNED, EXCLUDED_INVALID, NEEDS_MORE_INFO
+    decision: str  # CONFIRMED_RAW_WORK, CONFIRMED_LATE, SHIFT_REASSIGNED, EXCLUDED_INVALID, NEEDS_MORE_INFO
     reason: str
     new_shift_id: int | None = None
     version: int | None = None
@@ -1284,11 +1291,11 @@ async def resolve_attendance_session(
 ):
     """
     ATT-UI-04: HR Review & Resolution for Abnormal Attendance Session.
-    Supports 4 explicit HR decisions with optimistic locking,
+    Supports explicit HR decisions with optimistic locking,
     DB audit_logs and session audit trail preservation.
     """
     decision = body.decision.strip().upper()
-    valid_decisions = ('CONFIRMED_LATE', 'SHIFT_REASSIGNED', 'EXCLUDED_INVALID', 'NEEDS_MORE_INFO')
+    valid_decisions = ('CONFIRMED_RAW_WORK', 'CONFIRMED_LATE', 'SHIFT_REASSIGNED', 'EXCLUDED_INVALID', 'NEEDS_MORE_INFO')
     if decision not in valid_decisions:
         raise HTTPException(400, f"Quyết định không hợp lệ. Phải là một trong: {', '.join(valid_decisions)}")
 
@@ -1324,6 +1331,13 @@ async def resolve_attendance_session(
         raise HTTPException(404, "Không tìm thấy phiên chấm công.")
 
     session_dict = dict(row)
+
+    if decision == 'CONFIRMED_RAW_WORK' and (
+        not session_dict.get('check_in_time')
+        or not session_dict.get('check_out_time')
+        or float(session_dict.get('actual_work_hours') or 0) <= 0
+    ):
+        raise HTTPException(400, "Chỉ xác nhận công thực tế cho phiên đã có check-in, check-out và giờ công lớn hơn 0.")
 
     # Optimistic Concurrency Check
     ctx = session_dict.get("attendance_context") or {}

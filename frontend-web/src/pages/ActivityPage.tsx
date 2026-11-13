@@ -270,7 +270,7 @@ export function ActivityPage({
   // HR Resolution State (ATT-UI-05B Mục 5)
   const [resolvingSession, setResolvingSession] = useState<any | null>(null)
   const [availableShifts, setAvailableShifts] = useState<ShiftOption[]>([])
-  const [resolutionDecision, setResolutionDecision] = useState<DecisionType>('CONFIRMED_LATE')
+  const [resolutionDecision, setResolutionDecision] = useState<DecisionType>('CONFIRMED_RAW_WORK')
   const [resolutionReason, setResolutionReason] = useState('')
   const [resolutionNewShiftId, setResolutionNewShiftId] = useState<number | ''>('')
   const [submittingResolution, setSubmittingResolution] = useState(false)
@@ -308,7 +308,7 @@ export function ActivityPage({
     const existingDecision =
       session.review_decision && session.review_decision !== 'PENDING'
         ? (session.review_decision as DecisionType)
-        : 'CONFIRMED_LATE'
+        : 'CONFIRMED_RAW_WORK'
     setResolutionDecision(existingDecision)
     setResolutionReason(session.hr_review?.reason || '')
     setResolutionNewShiftId(

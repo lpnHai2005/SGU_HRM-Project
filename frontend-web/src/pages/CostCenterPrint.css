@@ -1,0 +1,411 @@
+/* ===============================================================================
+ * TECHZONE HRM - COST CENTER BREAKDOWN A4 PRINT & PREVIEW STYLES
+ * Bảng Phân Bổ Chi Phí Lao Động Theo Đơn Vị (Cost Center Breakdown & TCOW)
+ * Khổ chuẩn A4 Landscape (In ngang) - Thể thức báo cáo tài chính / quản trị chi phí
+ * =============================================================================== */
+
+.cost-center-print-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--surface-overlay, rgba(15, 23, 42, 0.75));
+  backdrop-filter: blur(5px);
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow-y: auto;
+  padding: 24px 16px;
+  box-sizing: border-box;
+  font-family: var(--font-sans);
+}
+
+.cost-center-print-actions-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 1100px;
+  width: 100%;
+  background: var(--surface-card, #ffffff);
+  border: 1px solid var(--border-default, #e2e8f0);
+  padding: 12px 20px;
+  border-radius: var(--radius-md, 8px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.18);
+  margin-bottom: 18px;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  box-sizing: border-box;
+}
+
+.cost-center-print-actions-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.cost-center-print-actions-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary, #0f172a);
+}
+
+.cost-center-print-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cost-center-print-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary, #475569);
+  cursor: pointer;
+  user-select: none;
+}
+
+.cost-center-print-toggle input {
+  accent-color: var(--primary-color, #2563eb);
+  cursor: pointer;
+}
+
+/* Trang in A4 Landscape */
+.cost-center-print-paper {
+  position: relative;
+  font-family: 'Times New Roman', Times, 'Liberation Serif', Georgia, serif;
+  color: #0f172a;
+  background: #ffffff;
+  padding: 32px 36px;
+  line-height: 1.35;
+  font-size: 11.5px;
+  max-width: 1100px;
+  width: 100%;
+  border-radius: 4px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+  box-sizing: border-box;
+}
+
+/* Header Quốc hiệu / Pháp nhân */
+.cc-print-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  border-bottom: 2px solid #0f172a;
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+}
+
+.cc-print-company-name {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #1e3a8a;
+  letter-spacing: 0.5px;
+}
+
+.cc-print-company-sub {
+  font-size: 11px;
+  color: #475569;
+  margin-top: 2px;
+}
+
+.cc-print-meta {
+  text-align: right;
+  font-size: 11.5px;
+  color: #334155;
+  line-height: 1.45;
+}
+
+.cc-print-meta-code {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+/* Tiêu đề báo cáo */
+.cc-print-title-block {
+  text-align: center;
+  margin: 14px 0 16px 0;
+}
+
+.cc-print-main-title {
+  font-size: 18px;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: #0f172a;
+  margin-bottom: 4px;
+  letter-spacing: 0.5px;
+}
+
+.cc-print-subtitle {
+  font-size: 12px;
+  font-style: italic;
+  color: #475569;
+}
+
+/* 4 Hộp số liệu tổng quan tiến độ quỹ */
+.cc-print-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.cc-print-kpi-box {
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  padding: 8px 12px;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.cc-print-kpi-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #475569;
+  letter-spacing: 0.03em;
+  margin-bottom: 2px;
+}
+
+.cc-print-kpi-val {
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+  font-family: var(--font-mono, monospace);
+}
+
+.cc-print-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #0f172a;
+  letter-spacing: 0.04em;
+  margin: 14px 0 8px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Bảng phân bổ chi phí A4 Landscape */
+.cc-print-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10.5px;
+  table-layout: fixed;
+  margin-bottom: 16px;
+}
+
+.cc-print-table th,
+.cc-print-table td {
+  border: 1px solid #94a3b8;
+  padding: 6px 5px;
+  vertical-align: middle;
+}
+
+.cc-print-table th {
+  background: #f1f5f9;
+  color: #0f172a;
+  font-weight: 700;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  text-align: center;
+  line-height: 1.25;
+}
+
+.cc-print-table td.text-center {
+  text-align: center;
+}
+
+.cc-print-table td.text-right {
+  text-align: right;
+  font-family: var(--font-mono, monospace);
+}
+
+.cc-print-table tr.total-row td {
+  background: #e2e8f0;
+  font-weight: 700;
+  border-top: 2px solid #0f172a;
+  color: #0f172a;
+}
+
+/* Bảng chi tiết nhân sự */
+.cc-print-sub-unit {
+  margin-top: 14px;
+  margin-bottom: 14px;
+}
+
+.cc-print-sub-unit-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #1e3a8a;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+.cc-print-emp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9.5px;
+  table-layout: fixed;
+  margin-bottom: 8px;
+}
+
+.cc-print-emp-table th,
+.cc-print-emp-table td {
+  border: 1px solid #cbd5e1;
+  padding: 4px 4px;
+  vertical-align: middle;
+}
+
+.cc-print-emp-table th {
+  background: #f8fafc;
+  color: #1e293b;
+  font-weight: 700;
+  font-size: 9px;
+  text-transform: uppercase;
+  text-align: center;
+}
+
+.cc-print-emp-table td.text-center {
+  text-align: center;
+}
+
+.cc-print-emp-table td.text-right {
+  text-align: right;
+  font-family: var(--font-mono, monospace);
+}
+
+/* Khối chữ ký phê duyệt 3 bên */
+.cc-print-signatures {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  margin-top: 28px;
+  text-align: center;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+.cc-print-sig-col-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #0f172a;
+}
+
+.cc-print-sig-col-hint {
+  font-size: 10px;
+  font-style: italic;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+.cc-print-sig-space {
+  height: 65px;
+}
+
+.cc-print-sig-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+/* Ghi chú footer */
+.cc-print-footer-note {
+  margin-top: 18px;
+  padding-top: 8px;
+  border-top: 1px dashed #cbd5e1;
+  display: flex;
+  justify-content: space-between;
+  font-size: 9.5px;
+  color: #64748b;
+  font-style: italic;
+}
+
+/* ===============================================================================
+ * @media print: Khổ A4 Landscape (In ngang chuẩn)
+ * =============================================================================== */
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 8mm 10mm;
+  }
+
+  html, body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    overflow: visible !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Cô lập bản in theo cùng cơ chế preview của phiếu lương tháng */
+  body:has(.print-active-overlay) #root {
+    display: none !important;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  .print-active-overlay,
+  .print-active-overlay * {
+    visibility: visible !important;
+  }
+
+  .no-print,
+  .cost-center-print-actions-bar {
+    display: none !important;
+  }
+
+  .cost-center-print-overlay {
+    position: static !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    inset: auto !important;
+  }
+
+  .cost-center-print-paper {
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    overflow: visible !important;
+  }
+
+  .cc-print-table,
+  .cc-print-emp-table {
+    width: 100% !important;
+    page-break-inside: auto;
+  }
+
+  .cc-print-table thead,
+  .cc-print-emp-table thead {
+    display: table-header-group !important;
+  }
+
+  .cc-print-table tr,
+  .cc-print-emp-table tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .cc-print-signatures {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+}
+

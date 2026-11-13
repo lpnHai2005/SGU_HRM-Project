@@ -1,6 +1,6 @@
 import { Icons } from '../components/common/Icons'
 import { confirmAction } from '../components/common/ConfirmDialog'
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState } from 'react'
 import {
   ChevronRight,
   Info,
@@ -13,11 +13,13 @@ import {
   Users,
   TrendingUp,
   FileSpreadsheet,
-  Printer
+  Printer,
+  SlidersHorizontal
 } from 'lucide-react'
 import { api, payrollApi, reportApi } from '../services/api'
 import { formatCurrency } from '../utils/formatters'
 import { MonthPicker } from '../components/common/MonthPicker'
+import { CostCenterPrintModal } from './CostCenterPrintModal'
 import './PayrollFundPage.css'
 
 export type FundEmployee = {
@@ -99,11 +101,96 @@ export type FundData = {
   by_unit: CostCenterUnit[]
 }
 
-export function PayrollFundPage({ branch }: { branch: boolean }) {
-  const [period, setPeriod] = useState(() =>
-    new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }).slice(0, 7)
-  )
-  const [budgetCap, setBudgetCap] = useState<number>(180000000)
+const DEFAULT_BUDGET_CAP = 1250000000
+const BUDGET_CAP_STORAGE_PREFIX = 'techzone:payroll-fund:budget-cap:v2'
+
+type BudgetCapLocalConfig = {
+  byPeriod: Record<string, number>
+  futureDefault?: { effectiveFrom: string; amount: number }
+}
+
+function getBudgetCapConfigKey(scope: string) {
+  return `${BUDGET_CAP_STORAGE_PREFIX}:${encodeURIComponent(scope)}:config`
+}
+
+function getLegacyBudgetCapStorageKey(scope: string, period: string) {
+  return `${BUDGET_CAP_STORAGE_PREFIX}:${encodeURIComponent(scope)}:${period}`
+}
+
+function validBudgetCap(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0
+}
+
+function readBudgetCapConfig(scope: string): BudgetCapLocalConfig {
+  try {
+    const raw = window.localStorage.getItem(getBudgetCapConfigKey(scope))
+    if (!raw) return { byPeriod: {} }
+    const parsed = JSON.parse(raw) as Partial<BudgetCapLocalConfig>
+    const byPeriod = Object.fromEntries(
+      Object.entries(parsed.byPeriod ?? {}).filter((entry): entry is [string, number] => validBudgetCap(entry[1]))
+    )
+    const futureDefault = parsed.futureDefault
+      && /^\d{4}-\d{2}$/.test(parsed.futureDefault.effectiveFrom)
+      && validBudgetCap(parsed.futureDefault.amount)
+      ? parsed.futureDefault
+      : undefined
+    return { byPeriod, futureDefault }
+  } catch {
+    return { byPeriod: {} }
+  }
+}
+
+function readLegacyBudgetCap(scope: string, period: string) {
+  try {
+    const raw = window.localStorage.getItem(getLegacyBudgetCapStorageKey(scope, period))
+    const amount = raw === null ? NaN : Number(raw)
+    return Number.isSafeInteger(amount) && amount > 0 ? amount : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function readStoredBudgetCap(scope: string, period: string) {
+  const config = readBudgetCapConfig(scope)
+  const periodAmount = config.byPeriod[period] ?? readLegacyBudgetCap(scope, period)
+  if (validBudgetCap(periodAmount)) return periodAmount
+
+  const futureDefault = config.futureDefault
+  if (futureDefault && period >= futureDefault.effectiveFrom) return futureDefault.amount
+  return DEFAULT_BUDGET_CAP
+}
+
+function saveBudgetCapConfig(scope: string, period: string, amount: number, useAsFutureDefault = false) {
+  const current = readBudgetCapConfig(scope)
+  const next: BudgetCapLocalConfig = {
+    ...current,
+    byPeriod: { ...current.byPeriod, [period]: amount },
+    ...(useAsFutureDefault ? { futureDefault: { effectiveFrom: period, amount } } : {}),
+  }
+  window.localStorage.setItem(getBudgetCapConfigKey(scope), JSON.stringify(next))
+}
+
+export function PayrollFundPage({
+  branch,
+  canConfirm,
+  canManageBudget,
+  budgetScopeKey,
+}: {
+  branch: boolean
+  canConfirm: boolean
+  canManageBudget: boolean
+  budgetScopeKey: string
+}) {
+  const currentPeriod = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }).slice(0, 7)
+  const [period, setPeriod] = useState(() => currentPeriod)
+  const [budgetCap, setBudgetCap] = useState<number>(() => readStoredBudgetCap(budgetScopeKey, period))
+  const [budgetCapDraft, setBudgetCapDraft] = useState(() => String(readStoredBudgetCap(budgetScopeKey, period)))
+  const [budgetCapInputFocused, setBudgetCapInputFocused] = useState(false)
+  const [budgetManagerOpen, setBudgetManagerOpen] = useState(false)
+  const [budgetManagerPeriod, setBudgetManagerPeriod] = useState(period)
+  const [budgetManagerDraft, setBudgetManagerDraft] = useState(() => String(readStoredBudgetCap(budgetScopeKey, period)))
+  const [budgetManagerFocused, setBudgetManagerFocused] = useState(false)
+  const [budgetManagerMakeDefault, setBudgetManagerMakeDefault] = useState(false)
   const [data, setData] = useState<FundData | null>(null)
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string>('')
@@ -155,14 +242,6 @@ export function PayrollFundPage({ branch }: { branch: boolean }) {
     }
   }
 
-  // 2. Trình duyệt quỹ lương (Submit for Approval)
-  const handleSubmitApproval = () => {
-    setActionMessage({
-      type: 'success',
-      text: `Đã gửi tờ trình duyệt Quỹ Lương & TCOW kỳ ${period} (Tổng TCOW: ${formatCurrency(totals?.total_tcow)}) tới Ban Giám đốc & CFO qua hệ thống.`
-    })
-  }
-
   // 3. Xuất báo cáo TCOW (.xlsx)
   const handleExportTcowExcel = async () => {
     try {
@@ -185,13 +264,110 @@ export function PayrollFundPage({ branch }: { branch: boolean }) {
   }
 
   // 4. In / Xuất báo cáo PDF bảng chi phí
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false)
   const handleExportPdf = () => {
-    window.print()
+    setIsPrintModalOpen(true)
   }
 
   const totals = data?.company_totals
+  const periodPayrolls = data?.by_unit.flatMap(unit => unit.employees) ?? []
+  const draftCount = periodPayrolls.filter(row => row.payment_status?.toUpperCase() === 'DRAFT').length
+  const needsRecalculationCount = periodPayrolls.filter(row => row.payment_status?.toUpperCase() === 'NEEDS_RECALCULATION').length
+  const paidCount = periodPayrolls.filter(row => row.payment_status?.toUpperCase() === 'PAID').length
+  const confirmedCount = periodPayrolls.filter(row => row.payment_status?.toUpperCase() === 'CONFIRMED').length
+  const canConfirmPeriod = Boolean(data) && draftCount > 0 && needsRecalculationCount === 0
+
+  const isAllPaid = periodPayrolls.length > 0 && paidCount === periodPayrolls.length
+  const isPartiallyPaid = periodPayrolls.length > 0 && paidCount > 0 && draftCount === 0
+  const isPeriodClosed = periodPayrolls.length > 0 && draftCount === 0 && (confirmedCount > 0 || paidCount > 0)
+
+  let confirmNoticeType: 'warning' | 'info' = 'warning'
+  let confirmNoticeMessage = ''
+
+  if (!data) {
+    confirmNoticeMessage = 'Chưa thể kiểm tra trạng thái phiếu lương của kỳ này.'
+    confirmNoticeType = 'warning'
+  } else if (needsRecalculationCount > 0) {
+    confirmNoticeMessage = `Chưa thể chốt: ${needsRecalculationCount} phiếu cần tính lại.`
+    confirmNoticeType = 'warning'
+  } else if (isAllPaid) {
+    confirmNoticeMessage = `Kỳ lương đã hoàn tất chi trả (PAID) cho toàn bộ ${paidCount} nhân sự.`
+    confirmNoticeType = 'info'
+  } else if (isPartiallyPaid) {
+    confirmNoticeMessage = `Đã chi trả ${paidCount}/${periodPayrolls.length} nhân sự (${confirmedCount} phiếu đã duyệt chờ chi trả).`
+    confirmNoticeType = 'info'
+  } else if (confirmedCount > 0 && draftCount === 0) {
+    confirmNoticeMessage = `Toàn bộ ${confirmedCount} phiếu lương đã được chốt duyệt (CONFIRMED).`
+    confirmNoticeType = 'info'
+  } else if (draftCount === 0) {
+    confirmNoticeMessage = 'Chưa có phiếu nháp để chốt trong kỳ này.'
+    confirmNoticeType = 'warning'
+  }
   const usedPercent = totals?.budget_used_percent ?? 0
   const isWarning = (totals?.is_budget_warning || usedPercent >= 95.0)
+  const parsedBudgetCap = Number(budgetCapDraft)
+  const isBudgetCapValid = Number.isSafeInteger(parsedBudgetCap) && parsedBudgetCap > 0
+  const isBudgetCapDirty = isBudgetCapValid && parsedBudgetCap !== budgetCap
+  const displayedBudgetCap = budgetCapDraft && !budgetCapInputFocused && isBudgetCapValid
+    ? new Intl.NumberFormat('vi-VN').format(parsedBudgetCap)
+    : budgetCapDraft
+
+  const applyBudgetCap = () => {
+    if (!isBudgetCapValid || isPeriodClosed) return
+
+    setBudgetCap(parsedBudgetCap)
+    try {
+      saveBudgetCapConfig(budgetScopeKey, period, parsedBudgetCap)
+      setActionMessage({ type: 'success', text: 'Đã áp dụng và lưu hạn mức cho kỳ này trên trình duyệt hiện tại.' })
+    } catch {
+      setActionMessage({ type: 'error', text: 'Đã áp dụng hạn mức cho phiên này nhưng trình duyệt không thể lưu để dùng sau khi tải lại.' })
+    }
+  }
+
+  const openBudgetManager = () => {
+    setBudgetManagerPeriod(period)
+    setBudgetManagerDraft(String(budgetCap))
+    setBudgetManagerMakeDefault(false)
+    setBudgetManagerOpen(true)
+  }
+
+  const parsedBudgetManagerCap = Number(budgetManagerDraft)
+  const isBudgetManagerPeriodValid = /^\d{4}-(0[1-9]|1[0-2])$/.test(budgetManagerPeriod)
+  const isBudgetManagerCapValid = Number.isSafeInteger(parsedBudgetManagerCap) && parsedBudgetManagerCap > 0
+  const isSelectedPeriodClosed = budgetManagerPeriod === period && isPeriodClosed
+  const displayedBudgetManagerCap = budgetManagerDraft && !budgetManagerFocused && isBudgetManagerCapValid
+    ? new Intl.NumberFormat('vi-VN').format(parsedBudgetManagerCap)
+    : budgetManagerDraft
+
+  const saveManagedBudgetCap = () => {
+    if (!isBudgetManagerCapValid || !isBudgetManagerPeriodValid || isSelectedPeriodClosed) return
+    if (budgetManagerMakeDefault && budgetManagerPeriod < currentPeriod) {
+      setActionMessage({ type: 'error', text: 'Mức mặc định chỉ áp dụng từ tháng hiện tại trở đi.' })
+      return
+    }
+    try {
+      saveBudgetCapConfig(budgetScopeKey, budgetManagerPeriod, parsedBudgetManagerCap, budgetManagerMakeDefault)
+      if (budgetManagerPeriod === period) {
+        setBudgetCap(parsedBudgetManagerCap)
+        setBudgetCapDraft(String(parsedBudgetManagerCap))
+      }
+      setActionMessage({
+        type: 'success',
+        text: budgetManagerMakeDefault
+          ? `Đã lưu hạn mức ${budgetManagerPeriod} và mức mặc định cho các tháng tương lai chưa có hạn mức riêng trên trình duyệt này.`
+          : `Đã lưu hạn mức kỳ ${budgetManagerPeriod} trên trình duyệt này.`,
+      })
+      setBudgetManagerOpen(false)
+    } catch {
+      setActionMessage({ type: 'error', text: 'Không lưu được cấu hình hạn mức trên trình duyệt này.' })
+    }
+  }
+
+  const adjustBudgetCapDraft = (amount: number) => {
+    const currentValue = Number(budgetCapDraft)
+    const baseValue = Number.isFinite(currentValue) && currentValue > 0 ? currentValue : budgetCap
+    setBudgetCapDraft(String(Math.max(1, baseValue + amount)))
+  }
 
   // Status tag helper
   const renderStatusTag = (status: string) => {
@@ -202,7 +378,23 @@ export function PayrollFundPage({ branch }: { branch: boolean }) {
     if (s === 'CONFIRMED') {
       return <span className="badge badge-primary" style={{ fontSize: '11px' }}>Đã duyệt</span>
     }
-    return <span className="badge badge-warning" style={{ fontSize: '11px' }}>Nháp</span>
+    if (s === 'DRAFT') {
+      return <span className="badge badge-warning" style={{ fontSize: '11px' }}>Nháp</span>
+    }
+    if (s === 'NEEDS_RECALCULATION') {
+      return <span className="badge badge-warning" style={{ fontSize: '11px' }}>Cần tính lại</span>
+    }
+    if (s === 'MIXED') {
+      return <span className="badge badge-warning" style={{ fontSize: '11px' }}>Nhiều trạng thái</span>
+    }
+    return <span className="badge badge-warning" style={{ fontSize: '11px' }}>Trạng thái: {s}</span>
+  }
+
+  const getUnitStatus = (unit: CostCenterUnit) => {
+    const statuses = new Set(unit.employees.map(employee => (employee.payment_status || 'DRAFT').toUpperCase()))
+    if (statuses.has('NEEDS_RECALCULATION')) return 'NEEDS_RECALCULATION'
+    if (statuses.size > 1) return 'MIXED'
+    return statuses.values().next().value || unit.payment_status || 'UNKNOWN'
   }
 
   return (
@@ -221,27 +413,44 @@ export function PayrollFundPage({ branch }: { branch: boolean }) {
         </div>
 
         <div className="fund-actions-bar">
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={handleConfirmFund}
-            disabled={actionLoading || loading}
-            title="Chốt chính thức toàn bộ bảng lương trong kỳ"
-          >
-            <CheckCircle size={16} />
-            <span>Chốt quỹ lương</span>
-          </button>
+          {canManageBudget && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={openBudgetManager}
+              aria-haspopup="dialog"
+              aria-expanded={budgetManagerOpen}
+            >
+              <SlidersHorizontal size={16} />
+              <span>Hạn mức</span>
+            </button>
+          )}
 
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={handleSubmitApproval}
-            disabled={actionLoading || loading}
-            title="Trình duyệt dự toán và phát sinh quỹ lương lên CFO / Giám đốc"
-          >
-            <Send size={16} />
-            <span>Trình duyệt</span>
-          </button>
+          {canConfirm && (
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={handleConfirmFund}
+              disabled={actionLoading || loading || !canConfirmPeriod}
+              title={confirmNoticeMessage || 'Chốt chính thức toàn bộ bảng lương nháp trong kỳ'}
+            >
+              <CheckCircle size={16} />
+              <span>Chốt quỹ lương</span>
+            </button>
+          )}
+
+          {canConfirm && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled
+              title="Chưa khả dụng: chưa có API lưu trạng thái và xử lý quy trình trình duyệt."
+              aria-label="Trình duyệt quỹ lương chưa khả dụng"
+            >
+              <Send size={16} />
+              <span>Trình duyệt (chưa khả dụng)</span>
+            </button>
+          )}
 
           <button
             type="button"
@@ -255,6 +464,134 @@ export function PayrollFundPage({ branch }: { branch: boolean }) {
           </button>
         </div>
       </div>
+
+      {budgetManagerOpen && canManageBudget && (
+        <div
+          className="fund-budget-dialog-backdrop"
+          role="presentation"
+          tabIndex={-1}
+          onMouseDown={event => {
+            if (event.target === event.currentTarget) setBudgetManagerOpen(false)
+          }}
+          onKeyDown={event => {
+            if (event.key === 'Escape') setBudgetManagerOpen(false)
+          }}
+        >
+          <section
+            className="fund-budget-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="fund-budget-dialog-title"
+            aria-describedby="fund-budget-dialog-description"
+          >
+            <div className="fund-budget-dialog-heading">
+              <div>
+                <h2 id="fund-budget-dialog-title">Quản lý hạn mức tháng</h2>
+                <p id="fund-budget-dialog-description">Đặt hạn mức riêng cho một kỳ hoặc một mức mặc định cho các kỳ tương lai.</p>
+              </div>
+              <button
+                type="button"
+                className="fund-budget-dialog-close"
+                onClick={() => setBudgetManagerOpen(false)}
+                aria-label="Đóng quản lý hạn mức"
+              >
+                {Icons.x}
+              </button>
+            </div>
+
+            <div className="fund-budget-dialog-fields">
+              <div className="fund-filter-item fund-budget-dialog-month">
+                <MonthPicker
+                  label="Tháng áp dụng"
+                  value={budgetManagerPeriod}
+                  onChange={nextPeriod => {
+                    setBudgetManagerPeriod(nextPeriod)
+                    setBudgetManagerDraft(String(readStoredBudgetCap(budgetScopeKey, nextPeriod)))
+                  }}
+                />
+              </div>
+
+              <div className="fund-filter-item">
+                <label className="form-label" htmlFor="fund-budget-manager-cap">Hạn mức tháng</label>
+                <div className="fund-budget-control">
+                  <button
+                    type="button"
+                    className="fund-budget-step-btn"
+                    onClick={() => {
+                      const amount = Number(budgetManagerDraft)
+                      const base = Number.isFinite(amount) && amount > 0 ? amount : DEFAULT_BUDGET_CAP
+                      setBudgetManagerDraft(String(Math.max(1, base - 5000000)))
+                    }}
+                    aria-label="Giảm hạn mức tháng 5 triệu đồng"
+                  >−</button>
+                  <input
+                    id="fund-budget-manager-cap"
+                    type="text"
+                    className="fund-filter-input"
+                    value={displayedBudgetManagerCap}
+                    inputMode="numeric"
+                    placeholder="1.250.000.000"
+                    aria-invalid={!isBudgetManagerCapValid}
+                    onFocus={() => setBudgetManagerFocused(true)}
+                    onBlur={() => setBudgetManagerFocused(false)}
+                    onChange={event => setBudgetManagerDraft(event.target.value.replace(/\D/g, ''))}
+                    onKeyDown={event => {
+                      if (event.key === 'Enter') saveManagedBudgetCap()
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="fund-budget-step-btn"
+                    onClick={() => {
+                      const amount = Number(budgetManagerDraft)
+                      const base = Number.isFinite(amount) && amount > 0 ? amount : DEFAULT_BUDGET_CAP
+                      setBudgetManagerDraft(String(base + 5000000))
+                    }}
+                    aria-label="Tăng hạn mức tháng 5 triệu đồng"
+                  >+</button>
+                  <span className="fund-budget-currency">VNĐ</span>
+                </div>
+                {!isBudgetManagerCapValid && <small className="text-danger">Nhập số nguyên lớn hơn 0.</small>}
+                {!isBudgetManagerPeriodValid && <small className="text-danger">Chọn tháng áp dụng hợp lệ.</small>}
+                {isSelectedPeriodClosed && <small className="text-danger">Kỳ {budgetManagerPeriod} đã chốt/chi trả lương, không thể thay đổi hạn mức.</small>}
+              </div>
+
+              <label className="fund-budget-default-option">
+                <input
+                  type="checkbox"
+                  checked={budgetManagerMakeDefault}
+                  disabled={budgetManagerPeriod < currentPeriod}
+                  onChange={event => setBudgetManagerMakeDefault(event.target.checked)}
+                />
+                <span>
+                  Dùng làm mặc định từ tháng này trở đi cho các tháng chưa có hạn mức riêng
+                  {budgetManagerPeriod < currentPeriod && <small>Chỉ có thể đặt mặc định từ tháng hiện tại trở đi.</small>}
+                </span>
+              </label>
+            </div>
+
+            <div className="fund-budget-local-notice">
+              Lưu trên trình duyệt hiện tại theo tài khoản
+            </div>
+
+            <div className="fund-budget-dialog-actions">
+              <button type="button" className="btn btn-secondary" onClick={() => setBudgetManagerOpen(false)}>Hủy</button>
+              <button type="button" className="btn btn-primary" onClick={saveManagedBudgetCap} disabled={!isBudgetManagerCapValid || !isBudgetManagerPeriodValid || isSelectedPeriodClosed}>Lưu hạn mức</button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {canConfirm && !loading && confirmNoticeMessage && (
+        <div className={`fund-confirm-notice ${confirmNoticeType === 'info' ? 'is-info' : ''}`} role="status">
+          {confirmNoticeType === 'info' ? (
+            <Info size={15} aria-hidden="true" />
+          ) : (
+            <AlertTriangle size={15} aria-hidden="true" />
+          )}
+          <span>{confirmNoticeMessage}</span>
+        </div>
+      )}
 
       {actionMessage && (
         <div
@@ -282,32 +619,73 @@ export function PayrollFundPage({ branch }: { branch: boolean }) {
         </div>
       )}
 
-      {/* FILTER BAR: KỲ LƯƠNG & NGÂN SÁCH DỰ TOÁN */}
+      {/* FILTER BAR: NGÂN SÁCH DỰ TOÁN (TRÁI) & KỲ LƯƠNG (PHẢI) */}
       <section className="fund-filter-card">
+        <div className="fund-filter-item">
+          <label className="form-label" htmlFor="budget-cap-input">Hạn mức ngân sách (Budget Cap)</label>
+          <div className="fund-budget-control">
+            <button
+              type="button"
+              className="fund-budget-step-btn"
+              onClick={() => adjustBudgetCapDraft(-5000000)}
+              disabled={isPeriodClosed || loading}
+              aria-label="Giảm hạn mức 5 triệu đồng"
+              title={isPeriodClosed ? 'Kỳ lương đã chốt/chi trả, không thể điều chỉnh hạn mức' : 'Giảm 5.000.000 VNĐ'}
+            >−</button>
+            <input
+              id="budget-cap-input"
+              type="text"
+              className="fund-filter-input"
+              value={displayedBudgetCap}
+              inputMode="numeric"
+              placeholder="1.250.000.000"
+              disabled={isPeriodClosed || loading}
+              aria-invalid={!isBudgetCapValid}
+              aria-describedby="budget-cap-help"
+              onFocus={() => setBudgetCapInputFocused(true)}
+              onBlur={() => setBudgetCapInputFocused(false)}
+              onChange={e => setBudgetCapDraft(e.target.value.replace(/\D/g, ''))}
+              onKeyDown={e => {
+                if (e.key === 'Enter') applyBudgetCap()
+              }}
+            />
+            <button
+              type="button"
+              className="fund-budget-step-btn"
+              onClick={() => adjustBudgetCapDraft(5000000)}
+              disabled={isPeriodClosed || loading}
+              aria-label="Tăng hạn mức 5 triệu đồng"
+              title={isPeriodClosed ? 'Kỳ lương đã chốt/chi trả, không thể điều chỉnh hạn mức' : 'Tăng 5.000.000 VNĐ'}
+            >+</button>
+            <span className="fund-budget-currency">VNĐ</span>
+            <button
+              type="button"
+              className="btn btn-primary fund-budget-apply"
+              onClick={applyBudgetCap}
+              disabled={!isBudgetCapDirty || loading || isPeriodClosed}
+              title={isPeriodClosed ? 'Kỳ lương đã chốt/chi trả, không thể thay đổi hạn mức' : undefined}
+            >Áp dụng</button>
+          </div>
+          <small id="budget-cap-help" className={!isBudgetCapValid ? 'text-danger' : isPeriodClosed ? 'text-warning' : 'text-tertiary'}>
+            {!isBudgetCapValid
+              ? 'Nhập hạn mức lớn hơn 0 VNĐ.'
+              : isPeriodClosed
+                ? 'Kỳ lương này đã chốt/chi trả, không được thay đổi hạn mức ngân sách.'
+                : 'Lưu theo kỳ trên trình duyệt này; không đồng bộ lên máy khác.'}
+          </small>
+        </div>
+
         <MonthPicker
           value={period}
           onChange={val => {
             setData(null)
+            const nextBudgetCap = readStoredBudgetCap(budgetScopeKey, val)
+            setBudgetCap(nextBudgetCap)
+            setBudgetCapDraft(String(nextBudgetCap))
             setPeriod(val)
           }}
           label="Kỳ lương báo cáo"
         />
-
-        <div className="fund-filter-item">
-          <label htmlFor="budget-cap-input">Hạn mức ngân sách (Budget Cap)</label>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <input
-              id="budget-cap-input"
-              type="number"
-              className="fund-filter-input"
-              value={budgetCap}
-              step={5000000}
-              onChange={e => setBudgetCap(Number(e.target.value) || 0)}
-              style={{ width: 160, fontFamily: 'var(--font-mono)' }}
-            />
-            <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>VNĐ</span>
-          </div>
-        </div>
       </section>
 
       {error && <p role="alert" className="text-danger" style={{ marginBottom: 16 }}>{error}</p>}
@@ -442,7 +820,7 @@ export function PayrollFundPage({ branch }: { branch: boolean }) {
               <div>
                 <div className="flow-card-header">
                   <span className="flow-card-label">
-                    Khấu Trừ NLĐ (10.5% + Thuế)
+                    Khấu trừ theo báo cáo hiện tại
                   </span>
                   <div className="info-hover-wrap">
                     <Info size={14} className="flow-card-tooltip-icon" />
@@ -456,7 +834,7 @@ export function PayrollFundPage({ branch }: { branch: boolean }) {
                 </div>
               </div>
               <div className="flow-card-sub">
-                BH 10.5%: {formatCurrency(totals.total_insurance_fund)} | Thuế: {formatCurrency(totals.total_tax_fund)}
+                BH: {formatCurrency(totals.total_insurance_fund)} | Thuế: {formatCurrency(totals.total_tax_fund)} | Phạt: {formatCurrency(totals.total_penalties_fund)}
               </div>
             </div>
 
@@ -465,12 +843,12 @@ export function PayrollFundPage({ branch }: { branch: boolean }) {
               <div>
                 <div className="flow-card-header">
                   <span className="flow-card-label">
-                    Quỹ Thực Nhận (Net Cash)
+                    Net theo phiếu lương
                   </span>
                   <div className="info-hover-wrap">
                     <Info size={14} className="flow-card-tooltip-icon" />
                     <div className="info-tooltip-box">
-                      Số tiền thực tế kế toán sẽ chuyển khoản ngân hàng (H2H) cho người lao động.
+                      Giá trị Net đã lưu trên các phiếu Payroll của kỳ; chưa đồng nghĩa các phiếu đều đã PAID.
                     </div>
                   </div>
                 </div>
@@ -479,7 +857,7 @@ export function PayrollFundPage({ branch }: { branch: boolean }) {
                 </div>
               </div>
               <div className="flow-card-sub">
-                Dòng tiền thực chi chuyển khoản cho {totals.total_headcount} nhân sự
+                Tổng Net của {totals.total_headcount} phiếu lương trong kỳ
               </div>
             </div>
           </div>
@@ -515,15 +893,15 @@ export function PayrollFundPage({ branch }: { branch: boolean }) {
               <table className="tcow-table">
                 <thead>
                   <tr>
-                    <th>Đơn vị (Cost Center)</th>
-                    <th style={{ textAlign: 'center' }}>Số lượng NS</th>
-                    <th style={{ textAlign: 'right' }}>Lương CB &amp; PC</th>
-                    <th style={{ textAlign: 'right' }}>Thu nhập biến đổi</th>
+                    <th>Đơn vị</th>
+                    <th style={{ textAlign: 'center' }}>Nhân sự</th>
+                    <th style={{ textAlign: 'right' }}>Lương &amp; PC</th>
+                    <th style={{ textAlign: 'right' }}>Biến đổi</th>
                     <th style={{ textAlign: 'right' }}>Tổng Gross</th>
-                    <th style={{ textAlign: 'right' }}>Khấu trừ NLĐ</th>
-                    <th style={{ textAlign: 'right' }}>Thực nhận (Net)</th>
-                    <th style={{ textAlign: 'right' }}>Chi phí DN (23.5%)</th>
-                    <th style={{ textAlign: 'right' }}>Tổng Chi Phí (TCOW)</th>
+                    <th style={{ textAlign: 'right' }}>Khấu trừ</th>
+                    <th style={{ textAlign: 'right' }}>Thực nhận</th>
+                    <th style={{ textAlign: 'right' }}>DN (23.5%)</th>
+                    <th style={{ textAlign: 'right' }}>Tổng TCOW</th>
                     <th style={{ textAlign: 'center' }}>Trạng thái</th>
                   </tr>
                 </thead>
@@ -583,7 +961,7 @@ export function PayrollFundPage({ branch }: { branch: boolean }) {
                             {formatCurrency(unit.tcow)}
                           </td>
                           <td style={{ textAlign: 'center' }}>
-                            {renderStatusTag(unit.payment_status)}
+                            {renderStatusTag(getUnitStatus(unit))}
                           </td>
                         </tr>
 
@@ -603,13 +981,13 @@ export function PayrollFundPage({ branch }: { branch: boolean }) {
                                       <th>Họ và Tên</th>
                                       <th>Chức vụ</th>
                                       <th style={{ textAlign: 'center' }}>Ngày công</th>
-                                      <th style={{ textAlign: 'right' }}>Lương CB &amp; PC</th>
-                                      <th style={{ textAlign: 'right' }}>Biến đổi (OT+HH+Thưởng)</th>
-                                      <th style={{ textAlign: 'right' }}>Lương Gộp (Gross)</th>
-                                      <th style={{ textAlign: 'right' }}>Khấu trừ NLĐ</th>
-                                      <th style={{ textAlign: 'right' }}>Thực nhận (Net)</th>
-                                      <th style={{ textAlign: 'right' }}>Chi phí DN (23.5%)</th>
-                                      <th style={{ textAlign: 'right' }}>TCOW Cá nhân</th>
+                                      <th style={{ textAlign: 'right' }}>Lương &amp; PC</th>
+                                      <th style={{ textAlign: 'right' }} title="Tăng ca + Hoa hồng + Thưởng">Biến đổi</th>
+                                      <th style={{ textAlign: 'right' }}>Tổng Gross</th>
+                                      <th style={{ textAlign: 'right' }}>Khấu trừ</th>
+                                      <th style={{ textAlign: 'right' }}>Thực nhận</th>
+                                      <th style={{ textAlign: 'right' }}>DN (23.5%)</th>
+                                      <th style={{ textAlign: 'right' }}>TCOW</th>
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -678,6 +1056,15 @@ export function PayrollFundPage({ branch }: { branch: boolean }) {
           </section>
         </>
       )}
+
+      {/* MODAL XEM TRƯỚC VÀ XUẤT BẢN IN PDF A4 LANDSCAPE CHO COST CENTER BREAKDOWN */}
+      <CostCenterPrintModal
+        isOpen={isPrintModalOpen}
+        onClose={() => setIsPrintModalOpen(false)}
+        period={period}
+        data={data}
+        totals={totals}
+      />
     </div>
   )
 }
