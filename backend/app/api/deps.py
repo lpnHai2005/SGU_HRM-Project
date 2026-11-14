@@ -96,6 +96,8 @@ async def get_current_user(
     perm_rows = perm_res.mappings().all()
 
     roles = list({row["role_code"] for row in perm_rows if row["role_code"]})
+    if getattr(request.state, "staff_scope", False):
+        roles = staff_roles(roles)
     permissions = list({row["permission_code"] for row in perm_rows if row["permission_code"]})
 
     user_dict = dict(user_row)
@@ -121,7 +123,7 @@ def require_roles(allowed_roles: List[str]):
     """
     Dependency kiểm tra vai trò (Role-Based Access Control - RBAC).
     - Người dùng phải sở hữu ít nhất một trong các vai trò được cấp phép.
-    - ADMIN KHÔNG được bỏ qua kiểm tra: ADMIN chỉ quản trị hệ thống (/admin), không truy cập nghiệp vụ,
+    - ADMIN KHÔNG được bỏ qua kiểm tra: ở router nghiệp vụ ADMIN được coi là EMPLOYEE (staff_scope),
       nên chỉ endpoint quản trị mới ghi "ADMIN".
     """
     def role_checker(current_user: dict = Depends(get_current_user)):
@@ -135,22 +137,23 @@ def require_roles(allowed_roles: List[str]):
     return role_checker
 
 
-def deny_admin(token: Optional[str] = Depends(oauth2_scheme)):
+def staff_roles(roles: List[str]) -> List[str]:
+    """Trong module nghiệp vụ, ADMIN chỉ là một nhân viên: thay ADMIN bằng EMPLOYEE."""
+    if "ADMIN" not in roles:
+        return roles
+    mapped = [r for r in roles if r != "ADMIN"]
+    return mapped if "EMPLOYEE" in mapped else mapped + ["EMPLOYEE"]
+
+
+def staff_scope(request: Request):
     """
-    Chốt chặn cho mọi router NGHIỆP VỤ: tài khoản ADMIN chỉ dùng module /admin nên bị 403.
-    Đọc role từ JWT (không truy vấn DB) và bỏ qua request không có token để các endpoint
-    công khai (lookups, leave types) vẫn tự xử lý xác thực như cũ.
-    shortcut: role lấy từ token nên người vừa được cấp ADMIN chỉ bị chặn sau khi đăng nhập lại;
-    require_roles ở từng endpoint vẫn chặn theo role thật trong DB.
+    Gắn ở mọi router NGHIỆP VỤ (api/v1/router.py). Đánh dấu request để get_current_user đổi
+    ADMIN thành EMPLOYEE, nên tài khoản quản trị chỉ dùng được phần cá nhân (dữ liệu của chính mình)
+    theo đúng phạm vi của nhân viên. Router quản trị (users, roles, audit-logs, stores, admin)
+    không gắn dependency này nên vẫn thấy role ADMIN.
+    Phải chạy trước get_current_user: FastAPI giải dependency của router trước dependency của endpoint.
     """
-    if not token:
-        return
-    payload = decode_token(token)
-    if payload and "ADMIN" in (payload.get("roles") or []):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Tài khoản quản trị chỉ được dùng module Quản trị hệ thống (/admin)."
-        )
+    request.state.staff_scope = True
 
 
 def require_strict_roles(allowed_roles: List[str]):

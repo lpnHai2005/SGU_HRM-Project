@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { Toaster, toast } from 'sonner'
 import { Icons } from '../components/common/Icons'
@@ -7,14 +7,36 @@ import { ConfirmHost, confirmAction } from '../components/common/ConfirmDialog'
 import { UserAccessPage } from '../pages/UserAccessPage'
 import { StoresPage } from '../pages/StoreManagementPage'
 import { AuditLogPage } from '../pages/AuditLogPage'
+import { AccountPage } from '../pages/AccountPage'
+import { OverviewPage } from '../pages/OverviewPage'
+import { PersonalSchedulesPage } from '../pages/PersonalSchedulesPage'
+import { AttendancePage } from '../pages/AttendancePage'
+import { LeaveRequestsPage } from '../pages/LeaveRequestsPage'
+import { OvertimeRequestsPage } from '../pages/OvertimeRequestsPage'
+import { MyResignationPage } from '../pages/MyResignationPage'
+import { MyPayslipPage } from '../pages/MyPayslipPage'
+import { ProjectsPage } from '../pages/ProjectsPage'
+import { ActivityPage } from '../pages/ActivityPage'
+import { StaffScope, toStaffRoles } from '../contexts/AuthContext'
 import { adminApi } from '../services/api'
 import { getInitials } from '../utils/formatters'
 
 const NAV = [
-  { path: '/admin/users', label: 'Tài khoản & Phân quyền', icon: 'shield' },
-  { path: '/admin/stores', label: 'Cửa hàng & GPS', icon: 'store' },
-  { path: '/admin/audit', label: 'Nhật ký kiểm toán', icon: 'fileText' },
-  { path: '/admin/maintenance', label: 'Bảo trì dữ liệu', icon: 'settings' },
+  { path: '/admin/users', label: 'Tài khoản & Phân quyền', icon: 'shield', section: 'Quản trị hệ thống' },
+  { path: '/admin/stores', label: 'Cửa hàng & GPS', icon: 'store', section: 'Quản trị hệ thống' },
+  { path: '/admin/audit', label: 'Nhật ký kiểm toán', icon: 'fileText', section: 'Quản trị hệ thống' },
+  { path: '/admin/maintenance', label: 'Bảo trì dữ liệu', icon: 'settings', section: 'Quản trị hệ thống' },
+  // Phần cá nhân: dùng đúng đường dẫn của app chính để liên kết nội bộ giữa các trang vẫn chạy.
+  { path: '/admin/home', label: 'Trang chủ cá nhân', icon: 'dashboard', section: 'Cá nhân', personal: true },
+  { path: '/my-attendance', label: 'Bảng công cá nhân', icon: 'clock', section: 'Cá nhân', personal: true },
+  { path: '/my-schedules', label: 'Lịch ca & Phân công', icon: 'calendar', section: 'Cá nhân', personal: true },
+  { path: '/my-activity', label: 'Nhật ký làm việc', icon: 'chart', section: 'Cá nhân', personal: true },
+  { path: '/my-projects', label: 'Dự án của tôi', icon: 'briefcase', section: 'Cá nhân', personal: true },
+  { path: '/my-payroll', label: 'Lương & Hợp đồng', icon: 'wallet', section: 'Cá nhân', personal: true },
+  { path: '/my-leave', label: 'Đơn nghỉ phép', icon: 'leave', section: 'Đơn từ của tôi', personal: true },
+  { path: '/my-overtime', label: 'Đơn OT', icon: 'clock', section: 'Đơn từ của tôi', personal: true },
+  { path: '/my-resignation', label: 'Đơn thôi việc', icon: 'clipboardList', section: 'Đơn từ của tôi', personal: true },
+  { path: '/admin/account', label: 'Tài khoản cá nhân', icon: 'user', section: 'Tài khoản' },
 ]
 
 function MaintenancePage() {
@@ -64,14 +86,25 @@ export interface AdminAppProps {
   onLogout: () => void
   theme: 'light' | 'dark'
   onToggleTheme: () => void
+  onCheckIn: () => void
+  onCheckOut: () => void
+  attendanceLoading: boolean
 }
 
-/** Module quản trị hệ thống: chỉ chứa tác vụ ghi của ADMIN, không dùng chung menu/route với app nghiệp vụ. */
-export function AdminApp({ user, onLogout, theme, onToggleTheme }: AdminAppProps) {
+/**
+ * Module quản trị hệ thống. Phần "Cá nhân" cho phép ADMIN dùng các trang tự phục vụ như một nhân viên:
+ * backend đổi ADMIN thành EMPLOYEE ở router nghiệp vụ (staff_scope), frontend làm tương tự bằng StaffScope.
+ */
+export function AdminApp({ user, onLogout, theme, onToggleTheme, onCheckIn, onCheckOut, attendanceLoading }: AdminAppProps) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const [mobileOpen, setMobileOpen] = useState(false)
-  const title = NAV.find(n => n.path === pathname)?.label || 'Quản trị hệ thống'
+  const staffUser = useMemo(() => ({ ...user, roles: toStaffRoles(user?.roles || []) }), [user])
+  // Trang cá nhân cần tài khoản gắn hồ sơ nhân viên; admin thuần chỉ có Tài khoản cá nhân.
+  const nav = NAV.filter(item => !item.personal || Boolean(user?.employee_id))
+  const sections = [...new Set(nav.map(n => n.section))]
+  const title = nav.find(n => n.path === pathname)?.label || 'Quản trị hệ thống'
+  const staff = (page: React.ReactNode) => user?.employee_id ? <StaffScope>{page}</StaffScope> : <Navigate to="/admin/account" replace />
 
   const go = (path: string) => { navigate(path); setMobileOpen(false) }
 
@@ -85,9 +118,10 @@ export function AdminApp({ user, onLogout, theme, onToggleTheme }: AdminAppProps
           <div className="sidebar-brand"><span>techzone</span><span className="sidebar-brand-dot"></span></div>
         </div>
         <nav className="sidebar-nav">
-          <div className="nav-section">
-            <div className="nav-section-title">Quản trị hệ thống</div>
-            {NAV.map(item => (
+          {sections.map(section => (
+          <div key={section} className="nav-section">
+            <div className="nav-section-title">{section}</div>
+            {nav.filter(item => item.section === section).map(item => (
               <div
                 key={item.path}
                 className={`nav-item ${pathname === item.path ? 'active' : ''}`}
@@ -102,6 +136,7 @@ export function AdminApp({ user, onLogout, theme, onToggleTheme }: AdminAppProps
               </div>
             ))}
           </div>
+          ))}
         </nav>
       </aside>
 
@@ -124,8 +159,10 @@ export function AdminApp({ user, onLogout, theme, onToggleTheme }: AdminAppProps
             {theme === 'dark' ? Icons.sun : Icons.moon}
           </button>
           <div className="topbar-divider"></div>
-          <div className="topbar-user">
-            <div className="user-avatar">{getInitials(user?.full_name || user?.username)}</div>
+          <div className="topbar-user" role="button" tabIndex={0} onClick={() => go('/admin/account')} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') go('/admin/account') }} title="Tài khoản cá nhân">
+            {user?.avatar_url
+              ? <img src={user.avatar_url} alt="" className="user-avatar-img" />
+              : <div className="user-avatar">{getInitials(user?.full_name || user?.username)}</div>}
             <div className="user-info">
               <span className="user-name">{user?.full_name || user?.username}</span>
               <span className="user-role"><span className="role-badge">Quản trị viên</span></span>
@@ -143,6 +180,18 @@ export function AdminApp({ user, onLogout, theme, onToggleTheme }: AdminAppProps
             <Route path="/admin/stores" element={<StoresPage />} />
             <Route path="/admin/audit" element={<AuditLogPage user={user} />} />
             <Route path="/admin/maintenance" element={<MaintenancePage />} />
+            <Route path="/admin/account" element={<StaffScope><AccountPage user={staffUser} /></StaffScope>} />
+            <Route path="/account" element={<Navigate to="/admin/account" replace />} />
+            <Route path="/admin/home" element={staff(<OverviewPage user={staffUser} onCheckIn={onCheckIn} onCheckOut={onCheckOut} attendanceLoading={attendanceLoading} />)} />
+            <Route path="/my-attendance" element={staff(<AttendancePage key="personal" user={staffUser} personal />)} />
+            <Route path="/my-schedules" element={staff(<PersonalSchedulesPage />)} />
+            <Route path="/my-activity" element={staff(<ActivityPage user={staffUser} personal />)} />
+            <Route path="/my-projects" element={staff(<ProjectsPage personal />)} />
+            <Route path="/my-payroll" element={staff(<MyPayslipPage user={staffUser} employeeId={user?.employee_id || undefined} />)} />
+            <Route path="/my-contracts" element={<Navigate to="/my-payroll?tab=contracts" replace />} />
+            <Route path="/my-leave" element={staff(<LeaveRequestsPage user={staffUser} personal />)} />
+            <Route path="/my-overtime" element={staff(<OvertimeRequestsPage user={staffUser} personal />)} />
+            <Route path="/my-resignation" element={staff(<MyResignationPage />)} />
             <Route path="*" element={<Navigate to="/admin" replace />} />
           </Routes>
         </ErrorBoundary>

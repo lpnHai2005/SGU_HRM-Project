@@ -194,7 +194,7 @@ SGU-HRM-Project/
 ### RBAC Roles
 | Role | Mô tả | Quyền |
 |------|-------|-------|
-| ADMIN | Quản trị hệ thống (kỹ thuật) | Quản lý tài khoản, phân quyền, nhật ký, cửa hàng, bảo trì dữ liệu. KHÔNG truy cập API nghiệp vụ (403) và chỉ đăng nhập qua `/admin/login` |
+| ADMIN | Quản trị hệ thống (kỹ thuật) | Quản lý tài khoản, phân quyền, nhật ký, cửa hàng, bảo trì dữ liệu. Ở nghiệp vụ chỉ dùng phần cá nhân như EMPLOYEE; chỉ đăng nhập qua `/admin/login` |
 | DIRECTOR | Giám đốc | Duyệt đơn của HR/Admin, duyệt tăng ca, xem báo cáo toàn công ty |
 | HR_MANAGER | Quản lý nhân sự | Quản lý nhân sự, duyệt nghỉ cấp 2, tính lương |
 | STORE_MANAGER | Cửa hàng trưởng | Quản lý cửa hàng, duyệt nghỉ cấp 1 |
@@ -252,7 +252,8 @@ npm run dev
 ## Module Admin (tách riêng)
 
 - Frontend: `frontend-web/src/admin/AdminApp.tsx`, đăng nhập tại `/admin/login`; các trang `/admin/users`, `/admin/stores`, `/admin/audit`, `/admin/maintenance`. Tài khoản ADMIN vào app nghiệp vụ bị từ chối ở `/login` (và ngược lại).
-- Backend: `deny_admin` (`api/deps.py`) gắn ở `api/v1/router.py` cho mọi router nghiệp vụ → ADMIN nhận 403. `users`, `roles`, `audit-logs`, `stores` (ghi) và `admin` chỉ ADMIN.
+- Backend: `staff_scope` (`api/deps.py`) gắn ở `api/v1/router.py` cho mọi router nghiệp vụ → `get_current_user` đổi ADMIN thành EMPLOYEE, nên ADMIN chỉ dùng dữ liệu của chính mình. `users`, `roles`, `audit-logs`, `stores` (ghi) và `admin` chỉ ADMIN.
+- Frontend: phần Cá nhân của `AdminApp` dùng lại các trang `/my-*` của app chính, bọc trong `StaffScope` (`contexts/AuthContext.tsx`) để role cũng được đổi ADMIN → EMPLOYEE; chỉ hiện khi tài khoản có `employee_id`.
 - Tài khoản ADMIN nên là tài khoản thuần: không gắn `employee_id`, không kiêm role khác.
 
 ## Ghi chú quan trọng

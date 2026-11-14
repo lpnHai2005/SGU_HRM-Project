@@ -1,20 +1,24 @@
-"""DB-free checks: ADMIN is confined to the /admin module, other roles cannot reach it."""
+"""DB-free checks: ADMIN is a plain employee in business modules; other roles cannot reach /admin APIs."""
 import asyncio
 import unittest
 
 import httpx
-from fastapi import HTTPException
+from fastapi import APIRouter, Depends, FastAPI
 
-from app.api.deps import deny_admin, get_current_user
+from app.api.deps import get_current_user, require_roles, staff_roles, staff_scope
 from app.api.v1.endpoints.stores import admin as store_admin
+from app.api.v1.router import api_router
+from app.core.database import get_db
 from app.core.security import create_access_token
 from app.main import app
 
-BUSINESS_GETS = [
-    "/api/v1/employees", "/api/v1/leaves", "/api/v1/payrolls", "/api/v1/contracts",
-    "/api/v1/attendances", "/api/v1/work-shifts", "/api/v1/resignations",
-    "/api/v1/overtime-requests", "/api/v1/reports/dashboard-kpis",
-]
+BUSINESS_PREFIXES = (
+    "/employees", "/contracts", "/resignations", "/attendances", "/leaves", "/leave-requests",
+    "/payrolls", "/payroll", "/reports", "/ai-chatbot", "/operations", "/fixed-schedules",
+    "/work-schedules", "/work-shifts", "/overtime-requests", "/overtime-reconciliations",
+    "/mobile-attendance",
+)
+ADMIN_PREFIXES = ("/users", "/roles", "/audit-logs", "/stores", "/admin")
 
 
 def call(method, path, token=None, user=None, **kw):
@@ -34,29 +38,97 @@ def call(method, path, token=None, user=None, **kw):
     return asyncio.run(run())
 
 
-class DenyAdminTests(unittest.TestCase):
-    def test_no_token_is_left_to_endpoint(self):
-        self.assertIsNone(deny_admin(None))
+class StaffRolesTests(unittest.TestCase):
+    def test_admin_becomes_employee(self):
+        self.assertEqual(staff_roles(["ADMIN"]), ["EMPLOYEE"])
 
-    def test_staff_token_passes(self):
-        self.assertIsNone(deny_admin(create_access_token("u", roles=["HR_MANAGER"])))
-
-    def test_admin_token_is_forbidden(self):
-        with self.assertRaises(HTTPException) as caught:
-            deny_admin(create_access_token("a", roles=["ADMIN"]))
-        self.assertEqual(caught.exception.status_code, 403)
+    def test_other_roles_are_untouched(self):
+        self.assertEqual(staff_roles(["HR_MANAGER"]), ["HR_MANAGER"])
+        self.assertEqual(sorted(staff_roles(["ADMIN", "EMPLOYEE"])), ["EMPLOYEE"])
 
 
-class AdminCannotReachBusinessApi(unittest.TestCase):
-    def test_business_routers_return_403_for_admin(self):
-        token = create_access_token("a", roles=["ADMIN"])
-        for path in BUSINESS_GETS:
+class FakeResult:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def mappings(self):
+        return self
+
+    def first(self):
+        return self.rows[0] if self.rows else None
+
+    def all(self):
+        return self.rows
+
+
+class FakeDb:
+    """Answers get_current_user's two queries: the user row, then its role rows."""
+    def __init__(self):
+        self.calls = 0
+
+    async def execute(self, *_args, **_kwargs):
+        self.calls += 1
+        if self.calls == 1:
+            return FakeResult([{"user_id": 1, "username": "tz001", "email": None, "phone": None, "avatar_url": None,
+                                "is_active": True, "employee_id": 1, "employee_code": "TZ-001", "full_name": "A",
+                                "store_id": None, "store_name": None, "department_name": None, "position_name": None}])
+        return FakeResult([{"role_code": "ADMIN", "permission_code": None}])
+
+    async def commit(self):
+        pass
+
+
+class StaffScopeOrderingTests(unittest.TestCase):
+    """Runs the real get_current_user + require_roles behind a router with and without staff_scope."""
+
+    def setUp(self):
+        biz = APIRouter()
+        adm = APIRouter()
+
+        @biz.get("/who")
+        async def biz_who(user=Depends(require_roles(["EMPLOYEE"]))):
+            return user["roles"]
+
+        @adm.get("/who")
+        async def adm_who(user=Depends(get_current_user)):
+            return user["roles"]
+
+        self.app = FastAPI()
+        self.app.include_router(biz, prefix="/biz", dependencies=[Depends(staff_scope)])
+        self.app.include_router(adm, prefix="/adm")
+
+        async def fake_db():
+            yield FakeDb()
+        self.app.dependency_overrides[get_db] = fake_db
+        self.token = create_access_token("tz001", roles=["ADMIN"])
+
+    def get(self, path):
+        async def run():
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=self.app), base_url="http://t") as c:
+                return await c.get(path, headers={"Authorization": f"Bearer {self.token}"})
+        return asyncio.run(run())
+
+    def test_admin_is_employee_inside_business_router(self):
+        res = self.get("/biz/who")
+        self.assertEqual(res.status_code, 200, res.text)
+        self.assertEqual(res.json(), ["EMPLOYEE"])
+
+    def test_admin_keeps_admin_role_outside_business_router(self):
+        res = self.get("/adm/who")
+        self.assertEqual(res.status_code, 200, res.text)
+        self.assertEqual(res.json(), ["ADMIN"])
+
+
+class RouterWiringTests(unittest.TestCase):
+    def test_every_business_route_has_staff_scope_and_admin_routes_do_not(self):
+        for route in api_router.routes:
+            path = getattr(route, "path", "")
+            deps = {d.dependency for d in getattr(route, "dependencies", [])}
             with self.subTest(path=path):
-                self.assertEqual(call("GET", path, token=token).status_code, 403)
-
-    def test_payroll_calculate_is_403_for_admin(self):
-        token = create_access_token("a", roles=["ADMIN"])
-        self.assertEqual(call("POST", "/api/v1/payrolls/calculate", token=token, json={}).status_code, 403)
+                if path.startswith(BUSINESS_PREFIXES):
+                    self.assertIn(staff_scope, deps)
+                elif path.startswith(ADMIN_PREFIXES):
+                    self.assertNotIn(staff_scope, deps)
 
 
 class StaffCannotReachAdminApi(unittest.TestCase):

@@ -177,7 +177,8 @@ export function App() {
 
   // ADMIN chỉ dùng module quản trị riêng, không thấy giao diện nghiệp vụ.
   if (user?.roles.includes('ADMIN')) {
-    return <AdminApp user={user} onLogout={handleLogout} theme={theme} onToggleTheme={toggleTheme} />
+    return <AdminApp user={user} onLogout={handleLogout} theme={theme} onToggleTheme={toggleTheme}
+      onCheckIn={handleCheckIn} onCheckOut={handleCheckOut} attendanceLoading={attendanceLoading} />
   }
 
   const userRole = getRoleFromUser(user)

@@ -2,7 +2,7 @@
 // Auth Context - Global Authentication State
 // ============================================
 
-import React, { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import type { UserRole } from '../types';
 import { authApi, userService, tokenService, clearAuth } from '../services/api';
 
@@ -179,6 +179,28 @@ export const useAuth = (): AuthContextType => {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
+};
+
+/** Giống staff_roles ở backend: trong phần cá nhân của module /admin, ADMIN là một nhân viên. */
+export const toStaffRoles = (roles: string[]): string[] => {
+  if (!roles.includes('ADMIN')) return roles;
+  const mapped = roles.filter(r => r !== 'ADMIN');
+  return mapped.includes('EMPLOYEE') ? mapped : [...mapped, 'EMPLOYEE'];
+};
+
+/** Bọc các trang cá nhân để useAuth() bên trong thấy role đã đổi ADMIN -> EMPLOYEE. */
+export const StaffScope: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const ctx = useAuth();
+  const value = useMemo<AuthContextType>(() => {
+    const user = ctx.user ? { ...ctx.user, roles: toStaffRoles(ctx.user.roles) } : null;
+    return {
+      ...ctx,
+      user,
+      hasRole: role => !!user && (Array.isArray(role) ? role : [role]).some(r => user.roles.includes(r)),
+      hasPermission: permission => !!user && user.permissions.includes(permission),
+    };
+  }, [ctx]);
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
 // ============================================
