@@ -16,6 +16,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-liberation \
     fonts-dejavu-core \
     fontconfig \
+    postgresql-common \
+    && rm -rf /var/lib/apt/lists/*
+
+# pg_dump cho nút sao lưu ở /admin/maintenance; Supabase chạy Postgres 17 nên lấy client 17 từ repo PGDG
+RUN /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y \
+    && apt-get install -y --no-install-recommends postgresql-client-17 \
     && rm -rf /var/lib/apt/lists/*
 
 # Cài đặt dependencies

@@ -1209,6 +1209,7 @@ export const adminApi = {
   syncEmployeeStatuses: async (): Promise<{ message: string; synchronized_count: number; details: any[] }> => {
     return api.post('/admin/sync-employee-statuses', {});
   },
+  backupDatabase: (): Promise<Blob> => api.getBlob('/admin/backup'),
 }
 
 export const auditApi = {

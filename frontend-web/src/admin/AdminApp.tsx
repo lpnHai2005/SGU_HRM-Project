@@ -42,6 +42,7 @@ const NAV = [
 function MaintenancePage() {
   const [busy, setBusy] = useState(false)
   const [lastResult, setLastResult] = useState<string | null>(null)
+  const [backingUp, setBackingUp] = useState(false)
 
   const sync = async () => {
     if (!(await confirmAction('Quét toàn bộ nhân viên và đồng bộ trạng thái nhân viên, tài khoản theo hợp đồng hiện hành?'))) return
@@ -54,6 +55,25 @@ function MaintenancePage() {
       toast.error(err instanceof Error ? err.message : 'Đồng bộ thất bại')
     } finally {
       setBusy(false)
+    }
+  }
+
+  const backup = async () => {
+    if (!(await confirmAction('Tải bản sao lưu toàn bộ database? File chứa dữ liệu nhạy cảm (lương, CCCD, tài khoản ngân hàng, mật khẩu đã băm) — chỉ lưu ở nơi an toàn.'))) return
+    setBackingUp(true)
+    try {
+      const blob = await adminApi.backupDatabase()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `techzone_hrm_backup_${new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '')}.sql`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('Đã tải bản sao lưu')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Sao lưu thất bại')
+    } finally {
+      setBackingUp(false)
     }
   }
 
@@ -75,6 +95,17 @@ function MaintenancePage() {
         </div>
         <button type="button" className="btn btn-primary btn-sm" onClick={sync} disabled={busy}>
           {Icons.refresh} {busy ? 'Đang đồng bộ…' : 'Đồng bộ ngay'}
+        </button>
+      </div>
+      <div className="card" style={{ padding: 16, marginTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+        <div>
+          <strong>Sao lưu database</strong>
+          <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)', fontSize: 13 }}>
+            Tải file .sql (schema public: cấu trúc, dữ liệu, procedure, view). Khôi phục thủ công bằng psql.
+          </p>
+        </div>
+        <button type="button" className="btn btn-primary btn-sm" onClick={backup} disabled={backingUp}>
+          {Icons.download} {backingUp ? 'Đang sao lưu…' : 'Tải bản sao lưu'}
         </button>
       </div>
     </div>

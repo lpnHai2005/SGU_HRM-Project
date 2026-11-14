@@ -161,6 +161,7 @@ SGU-HRM-Project/
 | `/users/linkable-employees` | GET | ✅ | ADMIN | Nhân viên để gắn vào tài khoản (chỉ định danh) |
 | `/users/{id}/reset-password` | POST | ✅ | ADMIN | Đặt lại mật khẩu về mặc định `TechZone@2026` (không nhận mật khẩu từ client) |
 | `/admin/sync-employee-statuses` | POST | ✅ | ADMIN | Đồng bộ trạng thái nhân viên theo hợp đồng |
+| `/admin/backup` | GET | ✅ | ADMIN | Tải file `.sql` sao lưu schema public (pg_dump; không có thì chạy qua `docker run postgres:17`), ghi audit `DATABASE_BACKUP` |
 | `/audit-logs` | GET | ✅ | ADMIN | Nhật ký kiểm toán |
 
 ## Quy ước Code
