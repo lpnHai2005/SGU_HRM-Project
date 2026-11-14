@@ -135,8 +135,10 @@ export function ResignationManagementPage({ user }: ResignationManagementPagePro
     if (!item || item.status !== 'PENDING') return false
     const isOwner = Boolean(user?.employee_id && item.employee_id === user.employee_id)
     const isCreator = Boolean(user?.user_id && item.created_by === user.user_id)
+    // Đơn Giám đốc tạo cho HR/Admin: chỉ Giám đốc được hủy (khớp backend)
+    if (item.is_created_by_director && isApplicantHrOrAdmin(item) && !userRoles.includes('DIRECTOR')) return false
     return isOwner || isCreator
-  }, [user?.employee_id, user?.user_id, userRoles])
+  }, [user?.employee_id, user?.user_id, userRoles, isApplicantHrOrAdmin])
 
   // Close floating action menu on outside click or scroll
   useEffect(() => {

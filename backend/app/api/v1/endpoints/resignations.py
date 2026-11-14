@@ -141,7 +141,12 @@ async def list_resignations(
                 JOIN roles r2 ON ur2.role_id = r2.role_id
                 JOIN users u2 ON ur2.user_id = u2.user_id
                 WHERE u2.employee_id = r.employee_id AND r2.role_code IN ('HR_MANAGER', 'ADMIN')
-            ) as is_hr_or_admin_request
+            ) as is_hr_or_admin_request,
+            EXISTS (
+                SELECT 1 FROM user_roles ur3
+                JOIN roles r3 ON ur3.role_id = r3.role_id
+                WHERE ur3.user_id = r.created_by AND r3.role_code = 'DIRECTOR'
+            ) as is_created_by_director
         FROM resignation_requests r
         JOIN employees e ON r.employee_id = e.employee_id
         JOIN contracts c ON r.contract_id = c.contract_id
@@ -636,6 +641,22 @@ async def cancel_resignation(
         )
 
     user_id = current_user.get("user_id")
+
+    # Đơn Giám đốc tạo cho HR/Admin: chỉ Giám đốc được hủy
+    if "DIRECTOR" not in current_user.get("roles", []):
+        locked = (await db.execute(text("""
+            SELECT
+                EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON ur.role_id = r.role_id
+                        WHERE ur.user_id = :creator AND r.role_code = 'DIRECTOR')
+                AND EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON ur.role_id = r.role_id
+                            JOIN users u ON ur.user_id = u.user_id
+                            WHERE u.employee_id = :eid AND r.role_code IN ('HR_MANAGER', 'ADMIN'))
+        """), {"creator": resignation.get("created_by"), "eid": resignation["employee_id"]})).scalar()
+        if locked:
+            raise HTTPException(
+                status_code=403,
+                detail="Đơn thôi việc do Giám đốc tạo cho Trưởng phòng Nhân sự / Quản trị viên chỉ được Giám đốc hủy."
+            )
 
     update_query = text("""
         UPDATE resignation_requests
