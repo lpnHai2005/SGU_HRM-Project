@@ -1005,8 +1005,11 @@ export const reportApi = {
     return api.get('/reports/dashboard-stats', Object.keys(params).length ? params : undefined);
   },
 
-  getMonthlyStatus: async (): Promise<any> => {
-    return api.get('/reports/monthly-status');
+  getMonthlyStatus: async (period?: string, storeId?: number): Promise<any> => {
+    const params: Record<string, any> = {};
+    if (period) params.period = period;
+    if (storeId) params.store_id = storeId;
+    return api.get('/reports/monthly-status', Object.keys(params).length ? params : undefined);
   },
 
   getDemographics: async (storeId?: number, includeResigned: boolean = false): Promise<any> => {

@@ -111,6 +111,21 @@ const EMPLOYEE_FILTER_FIELDS: SearchFieldConfig[] = [
   { key: 'join_date', label: 'Ngày vào làm', type: 'date' },
 ]
 
+// 4b. Bộ lọc cho Tình hình nhân sự tháng (Đang làm, Nghỉ phép, Thôi việc)
+const MONTHLY_STATUS_FILTER_FIELDS: SearchFieldConfig[] = [
+  { key: 'status_label', label: 'Tình trạng nhân sự', type: 'select', placeholder: 'Chọn tình trạng (Đang làm, Thôi việc...)' },
+  { key: 'store_name', label: 'Cơ sở / Chi nhánh', type: 'select', placeholder: 'Chọn chi nhánh...' },
+  { key: 'position_name', label: 'Chức vụ', type: 'select', placeholder: 'Chọn chức vụ...' },
+  { key: 'full_name', label: 'Họ và tên nhân sự', type: 'string', placeholder: 'Họ tên nhân viên...' },
+  { key: 'employee_code', label: 'Mã NV', type: 'string', placeholder: 'TZ-...' },
+  { key: 'education_level', label: 'Trình độ học vấn', type: 'select', placeholder: 'Chọn học vấn...' },
+  { key: 'salary_bracket', label: 'Khung mức lương', type: 'select', placeholder: 'Chọn khung lương...' },
+  { key: 'seniority_years', label: 'Thâm niên (năm)', type: 'number', placeholder: 'vd: 2' },
+  { key: 'basic_salary', label: 'Lương thỏa thuận HĐ', type: 'number', placeholder: 'vd: 10000000' },
+  { key: 'join_date', label: 'Ngày vào làm', type: 'date' },
+  { key: 'resignation_date', label: 'Ngày thôi việc', type: 'date' },
+]
+
 // 5. Bộ lọc Nghỉ phép ("LEAVE_FILTER_FIELDS")
 const LEAVE_FILTER_FIELDS: SearchFieldConfig[] = [
   { key: 'type_name', label: 'Loại nghỉ phép', type: 'select', placeholder: 'Chọn loại nghỉ...' },
@@ -206,6 +221,76 @@ const PAYROLL_DRILLDOWN_COLUMNS: DrilldownColumn[] = [
         style={{ fontSize: '11px' }}
       >
         {r.payment_status === 'PAID' ? 'Đã chi trả' : r.payment_status === 'CONFIRMED' ? 'Đã duyệt' : 'Bản nháp'}
+      </span>
+    ),
+  },
+]
+
+const MONTHLY_STATUS_DRILLDOWN_COLUMNS: DrilldownColumn[] = [
+  {
+    key: 'full_name',
+    title: 'Nhân viên',
+    render: (r: any) => (
+      <div>
+        <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{r.full_name}</div>
+        <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{r.employee_code} • {r.position_name}</div>
+      </div>
+    ),
+  },
+  {
+    key: 'status_label',
+    title: 'Tình trạng trong kỳ',
+    align: 'center',
+    render: (r: any) => {
+      const isResigned = r.status_category === 'RESIGNED_IN_PERIOD' || r.status_category === 'RESIGNED' || r.employment_status === 'RESIGNED' || r.employment_status === 'TERMINATED'
+      const isOnLeave = r.status_category === 'ON_LEAVE' || r.employment_status === 'ON_LEAVE'
+      const isNewHire = r.status_category === 'NEW_HIRE'
+      const isProbation = r.status_category === 'PROBATION' || r.employment_status === 'PROBATION'
+
+      const badgeClass = isResigned
+        ? 'badge-danger'
+        : isOnLeave
+        ? 'badge-warning'
+        : isNewHire
+        ? 'badge-info'
+        : isProbation
+        ? 'badge-secondary'
+        : 'badge-success'
+
+      return (
+        <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
+          <span className={`badge ${badgeClass}`} style={{ fontSize: '11px', padding: '3px 8px', fontWeight: 600 }}>
+            {r.status_label || (isResigned ? 'Thôi việc' : isOnLeave ? 'Nghỉ phép' : 'Đang làm việc')}
+          </span>
+          {r.status_note && (
+            <span style={{ fontSize: '10.5px', color: isResigned ? 'var(--status-danger)' : 'var(--text-tertiary)', fontWeight: isResigned ? 600 : 400 }}>
+              {r.status_note}
+            </span>
+          )}
+        </div>
+      )
+    },
+  },
+  { key: 'store_name', title: 'Cơ sở / Chi nhánh' },
+  {
+    key: 'education_level',
+    title: 'Trình độ',
+    align: 'center',
+    render: (r: any) => <span>{r.education_level || '—'}</span>,
+  },
+  {
+    key: 'seniority_years',
+    title: 'Thâm niên',
+    align: 'center',
+    render: (r: any) => <span style={{ fontWeight: 600 }}>{r.seniority_years ? `${r.seniority_years} năm` : '—'}</span>,
+  },
+  {
+    key: 'basic_salary',
+    title: 'Lương HĐ',
+    align: 'right',
+    render: (r: any) => (
+      <span style={{ fontFamily: 'monospace', fontWeight: 600, color: CHART_COLORS.primary }}>
+        {r.basic_salary ? formatFullCurrency(r.basic_salary) : '—'}
       </span>
     ),
   },
@@ -540,6 +625,7 @@ export function ReportsPage({ user }: ReportsPageProps) {
   // Dữ liệu cho các tabs
   const [dashboardStats, setDashboardStats] = useState<any>(null)
   const [monthlyStatus, setMonthlyStatus] = useState<HRStatusReportData[]>([])
+  const [monthlyStatusFull, setMonthlyStatusFull] = useState<any>(null)
   const [demographics, setDemographics] = useState<DemographicsReportData | null>(null)
   const [headcountTrend, setHeadcountTrend] = useState<HeadcountTrendPoint[]>([])
   const [payrollTrend, setPayrollTrend] = useState<PayrollTrendPoint[]>([])
@@ -575,7 +661,7 @@ export function ReportsPage({ user }: ReportsPageProps) {
           payrollsRes,
         ] = await Promise.allSettled([
           reportApi.getDashboardStats(period, selectedStoreId),
-          reportApi.getMonthlyStatus(),
+          reportApi.getMonthlyStatus(period, selectedStoreId),
           reportApi.getDemographics(selectedStoreId, false),
           reportApi.getHeadcountTrend(6),
           reportApi.getPayrollTrend(6),
@@ -591,6 +677,7 @@ export function ReportsPage({ user }: ReportsPageProps) {
         if (statsRes.status === 'fulfilled') setDashboardStats(statsRes.value)
         if (monthlyStatusRes.status === 'fulfilled') {
           const val = monthlyStatusRes.value
+          setMonthlyStatusFull(val)
           if (Array.isArray(val)) {
             setMonthlyStatus(val)
           } else if (Array.isArray(val?.by_store)) {
@@ -1009,6 +1096,95 @@ export function ReportsPage({ user }: ReportsPageProps) {
     })
   }
 
+  // Xử lý Drilldown khi nhấp vào Thẻ StatCard Tổng quân số kỳ (hoặc các chip trạng thái Đang làm, Nghỉ phép, Thôi việc)
+  const handleHeadcountKpiClick = (filterCategory?: string) => {
+    const detailsList = Array.isArray(monthlyStatusFull?.details) ? monthlyStatusFull.details : (demographics?.details || [])
+    const filtered = filterCategory
+      ? detailsList.filter((d: any) => {
+          if (filterCategory === 'RESIGNED') {
+            return d.status_category === 'RESIGNED_IN_PERIOD' || d.status_category === 'RESIGNED' || d.employment_status === 'RESIGNED' || d.employment_status === 'TERMINATED'
+          }
+          if (filterCategory === 'ON_LEAVE') {
+            return d.status_category === 'ON_LEAVE' || d.employment_status === 'ON_LEAVE'
+          }
+          if (filterCategory === 'ACTIVE') {
+            return d.status_category === 'ACTIVE' || d.status_category === 'PROBATION' || d.status_category === 'NEW_HIRE' || d.employment_status === 'ACTIVE' || d.employment_status === 'PROBATION'
+          }
+          if (filterCategory === 'NEW_HIRE') {
+            return d.status_category === 'NEW_HIRE'
+          }
+          return true
+        })
+      : detailsList
+
+    const titlePrefix = filterCategory === 'RESIGNED'
+      ? 'Danh sách nhân sự thôi việc'
+      : filterCategory === 'ON_LEAVE'
+      ? 'Danh sách nhân sự đang nghỉ phép'
+      : filterCategory === 'ACTIVE'
+      ? 'Danh sách nhân sự đang làm việc'
+      : filterCategory === 'NEW_HIRE'
+      ? 'Danh sách nhân sự tuyển mới'
+      : 'Báo cáo tình hình nhân sự tháng'
+
+    const activeCount = monthlyStatusFull?.total_active_employees ?? activeEmployeesCount
+    const onLeaveCount = monthlyStatusFull?.total_on_leave_employees ?? 0
+    const resignedCount = monthlyStatusFull?.total_resigned_employees ?? dashboardStats?.resigned_employees ?? 0
+
+    openSubform({
+      title: `${titlePrefix}: Kỳ ${period}`,
+      subtitle: `Tổng cộng ${filtered.length} nhân sự | Đang làm: ${activeCount} • Nghỉ phép: ${onLeaveCount} • Thôi việc kỳ này: ${resignedCount}`,
+      tag: 'Tình hình nhân sự theo tháng',
+      filterFields: MONTHLY_STATUS_FILTER_FIELDS,
+      columns: MONTHLY_STATUS_DRILLDOWN_COLUMNS,
+      data: filtered,
+    })
+  }
+
+  const handlePayrollKpiClick = () => {
+    setActiveTab('payroll')
+    if (payrollFund?.details && payrollFund.details.length > 0) {
+      openSubform({
+        title: `Chi tiết bảng lương toàn hệ thống: Kỳ ${period}`,
+        subtitle: `Tổng cộng ${payrollFund.details.length} bảng lương | Quỹ Net: ${formatFullCurrency(payrollFund.total_net_salary || 0)}`,
+        tag: 'Quỹ lương kỳ',
+        filterFields: PAYROLL_FILTER_FIELDS,
+        columns: PAYROLL_DRILLDOWN_COLUMNS,
+        data: payrollFund.details,
+      })
+    }
+  }
+
+  const handleAttendanceKpiClick = () => {
+    setActiveTab('attendance')
+    if (attendanceSummary?.details && attendanceSummary.details.length > 0) {
+      openSubform({
+        title: `Chi tiết chấm công chuyên cần: Kỳ ${period}`,
+        subtitle: `Tổng cộng ${attendanceSummary.details.length} bản ghi | Tỷ lệ đúng giờ: ${attendanceSummary.on_time_rate ? `${attendanceSummary.on_time_rate.toFixed(1)}%` : '100%'}`,
+        tag: 'Chuyên cần kỳ',
+        filterFields: ATTENDANCE_FILTER_FIELDS,
+        columns: [
+          {
+            key: 'employee_name',
+            title: 'Nhân viên',
+            render: (r: any) => (
+              <div>
+                <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{r.employee_name}</div>
+                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{r.employee_code} • {r.store_name}</div>
+              </div>
+            ),
+          },
+          { key: 'work_date', title: 'Ngày công', align: 'center' },
+          { key: 'status_label', title: 'Trạng thái', align: 'center' },
+          { key: 'actual_work_hours', title: 'Giờ làm', align: 'center', render: (r: any) => <span>{r.actual_work_hours || 0}h</span> },
+          { key: 'late_minutes', title: 'Đi muộn', align: 'center', render: (r: any) => <span>{r.late_minutes ? `${r.late_minutes}p` : '—'}</span> },
+          { key: 'overtime_hours', title: 'Tăng ca', align: 'center', render: (r: any) => <span>{r.overtime_hours ? `${r.overtime_hours}h` : '—'}</span> },
+        ],
+        data: attendanceSummary.details,
+      })
+    }
+  }
+
   // Xử lý Drilldown khi nhấp vào Biểu đồ Xu hướng quân số hệ thống
   const handleHeadcountTrendClick = (chartEvent: any) => {
     const clickedMonth = chartEvent?.activePayload?.[0]?.payload?.month || chartEvent?.month
@@ -1198,48 +1374,16 @@ export function ReportsPage({ user }: ReportsPageProps) {
   // Xử lý Drilldown khi nhấp vào hàng Cơ sở ở Tab 1
   const handleStoreRowClick = (store: any) => {
     if (!store) return
-    const detailsList = Array.isArray(demographics?.details) ? demographics.details : []
+    const detailsList = Array.isArray(monthlyStatusFull?.details)
+      ? monthlyStatusFull.details
+      : (Array.isArray(demographics?.details) ? demographics.details : [])
     const filtered = detailsList.filter((d: any) => d.store_id === store.store_id || d.store_name === store.store_name)
     openSubform({
       title: `Nhân sự cơ sở: ${store.store_name}`,
       subtitle: `Ghi nhận ${filtered.length} nhân sự | Quỹ lương cơ bản: ${formatFullCurrency(store.total_contract_salary || 0)}`,
       tag: 'Chi nhánh',
-      filterFields: EMPLOYEE_FILTER_FIELDS,
-      columns: [
-        {
-          key: 'full_name',
-          title: 'Họ và Tên',
-          render: (r: any) => (
-            <div>
-              <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{r.full_name}</div>
-              <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{r.employee_code}</div>
-            </div>
-          ),
-        },
-        { key: 'position_name', title: 'Chức vụ' },
-        {
-          key: 'seniority_years',
-          title: 'Thâm niên',
-          align: 'center',
-          render: (r: any) => <span>{r.seniority_years ? `${r.seniority_years} năm` : '—'}</span>,
-        },
-        {
-          key: 'basic_salary',
-          title: 'Lương HĐ',
-          align: 'right',
-          render: (r: any) => (
-            <span style={{ fontFamily: 'monospace', fontWeight: 600, color: CHART_COLORS.primary }}>
-              {formatFullCurrency(r.basic_salary || 0)}
-            </span>
-          ),
-        },
-        {
-          key: 'education_level',
-          title: 'Học vấn',
-          align: 'center',
-          render: (r: any) => <span>{r.education_level || '—'}</span>,
-        },
-      ],
+      filterFields: MONTHLY_STATUS_FILTER_FIELDS,
+      columns: MONTHLY_STATUS_DRILLDOWN_COLUMNS,
       data: filtered,
     })
   }
@@ -1407,25 +1551,31 @@ export function ReportsPage({ user }: ReportsPageProps) {
           label={selectedStoreId ? "Nhân sự cơ sở đã chọn" : `Tổng quân số kỳ (${period})`}
           value={totalEmployeesCount}
           iconColor="blue"
+          onClick={() => handleHeadcountKpiClick()}
+          className="cursor-pointer"
           footerNote={
             dashboardStats?.resigned_employees
-              ? `Đang làm việc: ${activeEmployeesCount} (Thôi việc kỳ này: ${dashboardStats.resigned_employees})`
+              ? `Đang làm việc: ${activeEmployeesCount} (Thôi việc kỳ này: ${dashboardStats.resigned_employees}) • Bấm xem chi tiết`
               : dashboardStats?.new_hires
-              ? `Đang làm việc: ${activeEmployeesCount} (Tuyển mới kỳ này: ${dashboardStats.new_hires})`
-              : `Đang làm việc: ${activeEmployeesCount} nhân sự`
+              ? `Đang làm việc: ${activeEmployeesCount} (Tuyển mới kỳ này: ${dashboardStats.new_hires}) • Bấm xem chi tiết`
+              : `Đang làm việc: ${activeEmployeesCount} nhân sự • Bấm xem chi tiết`
           }
         />
         <StatCard
           label={`Quỹ thực chi Net (${period})`}
           value={formatFullCurrency(payrollFund?.total_net_salary || 0)}
           iconColor="green"
-          footerNote={`Trước thuế: ${formatFullCurrency(payrollFund?.total_gross_income || 0)}`}
+          onClick={handlePayrollKpiClick}
+          className="cursor-pointer"
+          footerNote={`Trước thuế: ${formatFullCurrency(payrollFund?.total_gross_income || 0)} • Bấm xem bảng lương`}
         />
         <StatCard
           label="Tỷ lệ chuyên cần đúng giờ"
           value={typeof attendanceSummary?.on_time_rate === 'number' ? `${attendanceSummary.on_time_rate.toFixed(1)}%` : '100%'}
           iconColor="amber"
-          footerNote={`Tổng giờ làm: ${attendanceSummary?.total_working_hours || 0}h (OT: ${attendanceSummary?.total_ot_hours || 0}h)`}
+          onClick={handleAttendanceKpiClick}
+          className="cursor-pointer"
+          footerNote={`Tổng giờ làm: ${attendanceSummary?.total_working_hours || 0}h (OT: ${attendanceSummary?.total_ot_hours || 0}h) • Bấm xem`}
         />
         {/* Ghi chú: Chỉ số Doanh số tạm ẩn theo yêu cầu phạm vi dự án HRM
         <StatCard
@@ -1508,6 +1658,136 @@ export function ReportsPage({ user }: ReportsPageProps) {
           {/* ========================================================================= */}
           {activeTab === 'demographics' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {/* PHẦN 1: BÁO CÁO THỐNG KÊ TÌNH HÌNH NHÂN SỰ THEO THÁNG */}
+              <div className="card" style={{ padding: '16px 20px', backgroundColor: 'var(--surface-primary, #ffffff)', border: '1px solid var(--border-default)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '14px' }}>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                      Báo cáo thống kê tình hình nhân sự theo tháng: Kỳ {period}
+                    </h3>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+                      Thống kê nhân sự đang làm việc, nghỉ phép, thôi việc và tuyển mới (Bấm vào từng nhóm để xem danh sách chi tiết)
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => handleHeadcountKpiClick()}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    <Eye size={14} />
+                    Xem toàn bộ nhân sự kỳ này ({totalEmployeesCount})
+                  </button>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '12px' }}>
+                  <div
+                    onClick={() => handleHeadcountKpiClick('ACTIVE')}
+                    style={{
+                      padding: '12px 14px',
+                      borderRadius: '8px',
+                      backgroundColor: 'rgba(16, 185, 129, 0.08)',
+                      border: '1px solid rgba(16, 185, 129, 0.25)',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease-in-out'
+                    }}
+                    title="Bấm để xem danh sách nhân sự đang làm việc"
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '12px', fontWeight: 600, color: '#059669' }}>Đang làm việc</span>
+                      <span className="badge badge-success" style={{ fontSize: '10px' }}>ACTIVE</span>
+                    </div>
+                    <div style={{ fontSize: '20px', fontWeight: 700, color: '#047857', marginTop: '4px' }}>
+                      {monthlyStatusFull?.total_active_employees ?? activeEmployeesCount} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>nhân sự</span>
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                      Chính thức & Thử việc • {monthlyStatusFull?.active_percent || 0}% biên chế
+                    </div>
+                  </div>
+
+                  <div
+                    onClick={() => handleHeadcountKpiClick('ON_LEAVE')}
+                    style={{
+                      padding: '12px 14px',
+                      borderRadius: '8px',
+                      backgroundColor: 'rgba(245, 158, 11, 0.08)',
+                      border: '1px solid rgba(245, 158, 11, 0.25)',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease-in-out'
+                    }}
+                    title="Bấm để xem danh sách nhân sự đang nghỉ phép"
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '12px', fontWeight: 600, color: '#d97706' }}>Đang nghỉ phép</span>
+                      <span className="badge badge-warning" style={{ fontSize: '10px' }}>ON_LEAVE</span>
+                    </div>
+                    <div style={{ fontSize: '20px', fontWeight: 700, color: '#b45309', marginTop: '4px' }}>
+                      {monthlyStatusFull?.total_on_leave_employees ?? 0} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>nhân sự</span>
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                      Nghỉ phép năm, thai sản, ốm đau có duyệt
+                    </div>
+                  </div>
+
+                  <div
+                    onClick={() => handleHeadcountKpiClick('RESIGNED')}
+                    style={{
+                      padding: '12px 14px',
+                      borderRadius: '8px',
+                      backgroundColor: 'rgba(239, 68, 68, 0.08)',
+                      border: '1px solid rgba(239, 68, 68, 0.25)',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease-in-out'
+                    }}
+                    title="Bấm để xem ai đã thôi việc trong kỳ"
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '12px', fontWeight: 600, color: '#dc2626' }}>Thôi việc kỳ này</span>
+                      <span className="badge badge-danger" style={{ fontSize: '10px' }}>RESIGNED</span>
+                    </div>
+                    <div style={{ fontSize: '20px', fontWeight: 700, color: '#b91c1c', marginTop: '4px' }}>
+                      {monthlyStatusFull?.total_resigned_employees ?? dashboardStats?.resigned_employees ?? 0} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>nhân sự</span>
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                      {(monthlyStatusFull?.total_resigned_employees ?? dashboardStats?.resigned_employees)
+                        ? 'Bấm để xem danh sách ai đã thôi việc'
+                        : 'Không có nhân sự thôi việc trong kỳ'}
+                    </div>
+                  </div>
+
+                  <div
+                    onClick={() => handleHeadcountKpiClick('NEW_HIRE')}
+                    style={{
+                      padding: '12px 14px',
+                      borderRadius: '8px',
+                      backgroundColor: 'rgba(59, 130, 246, 0.08)',
+                      border: '1px solid rgba(59, 130, 246, 0.25)',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease-in-out'
+                    }}
+                    title="Bấm để xem danh sách nhân sự mới tuyển"
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '12px', fontWeight: 600, color: '#2563eb' }}>Tuyển mới trong kỳ</span>
+                      <span className="badge badge-info" style={{ fontSize: '10px' }}>NEW HIRE</span>
+                    </div>
+                    <div style={{ fontSize: '20px', fontWeight: 700, color: '#1d4ed8', marginTop: '4px' }}>
+                      {monthlyStatusFull?.total_new_hires ?? dashboardStats?.new_hires ?? 0} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>nhân sự</span>
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                      Tiếp nhận thử việc & gia nhập mới
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* PHẦN 2: BÁO CÁO CƠ CẤU THÔNG TIN NHÂN SỰ: TRÌNH ĐỘ, MỨC LƯƠNG, THÂM NIÊN */}
+              <div style={{ marginTop: '4px' }}>
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                  Báo cáo thống kê thông tin nhân sự: Trình độ, Mức lương & Thâm niên
+                </h3>
+              </div>
+
               <div className="charts-grid-2">
                 {/* Biểu đồ 1: AreaChart Biến động quân số */}
                 <div className="chart-card">
