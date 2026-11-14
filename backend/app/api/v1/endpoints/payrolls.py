@@ -23,7 +23,7 @@ from app.core.config import settings
 from app.core.ot_registration_policy import (
     LEGACY_OT_LOCK_MESSAGE, legacy_decision_locked, period_overlaps_policy,
 )
-from app.api.deps import get_current_user, require_roles
+from app.api.deps import get_current_user, require_roles, client_ip_var
 from app.core.vietnamese_number import currency_to_vietnamese_words
 from app.core.company import get_company_profile
 from app.core.excel_exporter import create_styled_excel
@@ -270,8 +270,8 @@ async def decide_overtime(attendance_id:int,req:OvertimeDecision,
         reason=EXCLUDED.reason,updated_at=clock_timestamp()'''),{'id':attendance_id,'hours':req.approved_hours,
         'decision':req.decision,'reviewer':current_user['user_id'],'reason':req.reason.strip()})
     import json
-    await db.execute(text('''INSERT INTO audit_logs(user_id,action,entity_name,entity_id,old_values,new_values)
-        VALUES(:user,'DECIDE_OVERTIME','attendance_overtime_approvals',:id,CAST(:old AS jsonb),CAST(:new AS jsonb))'''),
+    await db.execute(text('''INSERT INTO audit_logs(user_id,action,entity_name,entity_id,old_values,new_values, ip_address)
+        VALUES(:user,'DECIDE_OVERTIME','attendance_overtime_approvals',:id,CAST(:old AS jsonb),CAST(:new AS jsonb), :client_ip)''').bindparams(client_ip=client_ip_var.get()),
         {'user':current_user['user_id'],'id':str(attendance_id),
          'old':json.dumps({'approved_hours':float(row['old_hours']) if row['old_hours'] is not None else None,'decision':row['old_decision']}),
          'new':req.model_dump_json()})
@@ -534,8 +534,8 @@ async def reopen_payroll_period(
         updated_at=clock_timestamp() WHERE salary_period=:period AND payment_status IN ('CONFIRMED','PAID')"""),
         {"period":period})
     import json
-    await db.execute(text("""INSERT INTO audit_logs(user_id,action,entity_name,entity_id,old_values,new_values)
-        VALUES(:user,'REOPEN_PAYROLL_PERIOD','payroll_periods',:period,CAST(:old AS jsonb),CAST(:new AS jsonb))"""),
+    await db.execute(text("""INSERT INTO audit_logs(user_id,action,entity_name,entity_id,old_values,new_values, ip_address)
+        VALUES(:user,'REOPEN_PAYROLL_PERIOD','payroll_periods',:period,CAST(:old AS jsonb),CAST(:new AS jsonb), :client_ip)""").bindparams(client_ip=client_ip_var.get()),
         {"user":current_user['user_id'],"period":period,
          "old":json.dumps({"payrolls":[dict(row) for row in rows]},default=str),
          "new":json.dumps({"payment_status":"NEEDS_RECALCULATION","reason":reason,"reopened_count":len(rows)})})
@@ -571,8 +571,8 @@ async def unconfirm_payroll(
     await db.execute(text("""UPDATE payrolls SET payment_status='DRAFT',payment_date=NULL,
         updated_at=clock_timestamp() WHERE payroll_id=:pid"""), {"pid": payroll_id})
     import json
-    await db.execute(text("""INSERT INTO audit_logs(user_id,action,entity_name,entity_id,old_values,new_values)
-        VALUES(:user,'UNCONFIRM_PAYROLL','payrolls',:id,CAST(:old AS jsonb),CAST(:new AS jsonb))"""),
+    await db.execute(text("""INSERT INTO audit_logs(user_id,action,entity_name,entity_id,old_values,new_values, ip_address)
+        VALUES(:user,'UNCONFIRM_PAYROLL','payrolls',:id,CAST(:old AS jsonb),CAST(:new AS jsonb), :client_ip)""").bindparams(client_ip=client_ip_var.get()),
         {"user": current_user["user_id"], "id": str(payroll_id),
          "old": json.dumps(dict(row), default=str),
          "new": json.dumps({"payment_status": "DRAFT", "reason": reason})})
@@ -1275,9 +1275,9 @@ async def update_payroll_policy_setting(
 
     import json
     await db.execute(text("""
-        INSERT INTO audit_logs (user_id, action, entity_name, entity_id, old_values, new_values)
-        VALUES (:uid, 'UPDATE_PAYROLL_POLICY', 'payroll_policy_settings', :eid, CAST(:old AS jsonb), CAST(:new AS jsonb))
-    """), {
+        INSERT INTO audit_logs (user_id, action, entity_name, entity_id, old_values, new_values, ip_address)
+        VALUES (:uid, 'UPDATE_PAYROLL_POLICY', 'payroll_policy_settings', :eid, CAST(:old AS jsonb), CAST(:new AS jsonb), :client_ip)
+    """).bindparams(client_ip=client_ip_var.get()), {
         "uid": current_user["user_id"],
         "eid": setting_key,
         "old": json.dumps({"numeric_value": old_val, "description": current_setting["description"]}),
@@ -1342,9 +1342,9 @@ async def update_position_allowance(
 
     import json
     await db.execute(text("""
-        INSERT INTO audit_logs (user_id, action, entity_name, entity_id, old_values, new_values)
-        VALUES (:uid, 'UPDATE_POSITION_ALLOWANCE', 'positions', :eid, CAST(:old AS jsonb), CAST(:new AS jsonb))
-    """), {
+        INSERT INTO audit_logs (user_id, action, entity_name, entity_id, old_values, new_values, ip_address)
+        VALUES (:uid, 'UPDATE_POSITION_ALLOWANCE', 'positions', :eid, CAST(:old AS jsonb), CAST(:new AS jsonb), :client_ip)
+    """).bindparams(client_ip=client_ip_var.get()), {
         "uid": current_user["user_id"],
         "eid": str(position_id),
         "old": json.dumps({"position_allowance": old_allowance, "position_coefficient": old_coef}),
@@ -2265,9 +2265,9 @@ async def confirm_payroll_import(
     """), {"tg": t_gross, "tn": t_net, "ti": t_ins, "bid": batch_id})
 
     await db.execute(text("""
-        INSERT INTO audit_logs (user_id, action, entity_name, entity_id, old_values, new_values)
-        VALUES (:uid, 'IMPORT_PAYROLL_EXCEL', 'payroll_import_batches', :eid, CAST(:old_vals AS jsonb), CAST(:new_vals AS jsonb))
-    """), {
+        INSERT INTO audit_logs (user_id, action, entity_name, entity_id, old_values, new_values, ip_address)
+        VALUES (:uid, 'IMPORT_PAYROLL_EXCEL', 'payroll_import_batches', :eid, CAST(:old_vals AS jsonb), CAST(:new_vals AS jsonb), :client_ip)
+    """).bindparams(client_ip=client_ip_var.get()), {
         "uid": user_id,
         "eid": str(batch_id),
         "old_vals": json.dumps({"period": period, "overrides": old_overrides}, default=str),
@@ -2324,9 +2324,9 @@ async def revert_payroll_import(
     await execute_payroll_calculation(db, period, hr_id)
 
     await db.execute(text("""
-        INSERT INTO audit_logs (user_id, action, entity_name, entity_id, old_values, new_values)
-        VALUES (:uid, 'REVERT_PAYROLL_IMPORT', 'payroll_import_overrides', :eid, CAST(:old_vals AS jsonb), CAST(:new_vals AS jsonb))
-    """), {
+        INSERT INTO audit_logs (user_id, action, entity_name, entity_id, old_values, new_values, ip_address)
+        VALUES (:uid, 'REVERT_PAYROLL_IMPORT', 'payroll_import_overrides', :eid, CAST(:old_vals AS jsonb), CAST(:new_vals AS jsonb), :client_ip)
+    """).bindparams(client_ip=client_ip_var.get()), {
         "uid": user_id,
         "eid": period,
         "old_vals": json.dumps({"overrides": current_overrides}, default=str),
@@ -3012,8 +3012,8 @@ async def update_payroll_adjustments(
         {'id':payroll_id,'addition':req.addition_amount,'deduction':req.deduction_amount,
          'reason':req.reason.strip(),'user':current_user['user_id']})
     import json
-    await db.execute(text('''INSERT INTO audit_logs(user_id,action,entity_name,entity_id,old_values,new_values)
-        VALUES(:user,'ADJUST_DRAFT_PAYROLL','payrolls',:id,CAST(:old AS jsonb),CAST(:new AS jsonb))'''),
+    await db.execute(text('''INSERT INTO audit_logs(user_id,action,entity_name,entity_id,old_values,new_values, ip_address)
+        VALUES(:user,'ADJUST_DRAFT_PAYROLL','payrolls',:id,CAST(:old AS jsonb),CAST(:new AS jsonb), :client_ip)''').bindparams(client_ip=client_ip_var.get()),
         {'user':current_user['user_id'],'id':str(payroll_id),
          'old':json.dumps({'addition_amount':old_add,'deduction_amount':old_ded,'reason':row['reason']}),
          'new':req.model_dump_json()})

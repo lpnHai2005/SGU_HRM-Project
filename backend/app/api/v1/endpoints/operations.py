@@ -14,7 +14,7 @@ import json
 import logging
 import os
 import re
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, client_ip_var
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.work_schedule import scope
@@ -1464,9 +1464,9 @@ async def resolve_attendance_session(
 
     # Write audit log to audit_logs table
     await db.execute(text('''
-        INSERT INTO audit_logs (user_id, action, entity_name, entity_id, old_values, new_values, created_at)
-        VALUES (:user_id, 'ATTENDANCE_SESSION_RESOLVE', 'attendances', :entity_id, CAST(:old_vals AS jsonb), CAST(:new_vals AS jsonb), NOW())
-    '''), {
+        INSERT INTO audit_logs (user_id, action, entity_name, entity_id, old_values, new_values, created_at, ip_address)
+        VALUES (:user_id, 'ATTENDANCE_SESSION_RESOLVE', 'attendances', :entity_id, CAST(:old_vals AS jsonb), CAST(:new_vals AS jsonb), NOW(), :client_ip)
+    ''').bindparams(client_ip=client_ip_var.get()), {
         "user_id": reviewer_id if isinstance(reviewer_id, int) else None,
         "entity_id": str(session_id),
         "old_vals": json.dumps(old_values, default=str),

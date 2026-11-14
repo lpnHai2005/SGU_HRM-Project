@@ -9,6 +9,7 @@ from sqlalchemy import text
 from app.core.config import settings
 from app.core.database import engine, sync_engine
 from app.api.v1.router import api_router
+from app.api.deps import client_ip_var
 
 logging.basicConfig(
     level=logging.INFO,
@@ -90,6 +91,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def remember_client_ip(request: Request, call_next):
+    client_ip_var.set(request.client.host if request.client else None)
+    return await call_next(request)
 
 from sqlalchemy.exc import SQLAlchemyError
 

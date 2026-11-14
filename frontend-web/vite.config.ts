@@ -10,8 +10,9 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://127.0.0.1:8000',
         changeOrigin: true,
+        xfwd: true, // gửi X-Forwarded-For để backend thấy IP máy người dùng
         rewrite: (path) => path,
       },
       '/uploads': {

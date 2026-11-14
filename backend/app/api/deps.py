@@ -1,4 +1,5 @@
 import json
+from contextvars import ContextVar
 from typing import Optional, List, Any, Dict
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
@@ -7,6 +8,9 @@ from sqlalchemy import text
 from app.core.config import settings
 from app.core.database import get_db, release_connection
 from app.core.security import decode_token
+
+# IP của request hiện tại, gán bởi middleware trong main.py để audit log không phải truyền tay.
+client_ip_var: ContextVar[Optional[str]] = ContextVar("client_ip", default=None)
 
 # OAuth2PasswordBearer hỗ trợ hiển thị ô Authorize trong Swagger UI
 oauth2_scheme = OAuth2PasswordBearer(
@@ -218,7 +222,7 @@ async def record_audit_log(
             "entity_id": str(entity_id) if entity_id is not None else None,
             "old_values": old_json,
             "new_values": new_json,
-            "ip_address": ip_address,
+            "ip_address": ip_address or client_ip_var.get(),
             "user_agent": user_agent
         })
         await db.commit()

@@ -11,7 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 import httpx
-from app.api.deps import require_roles
+from app.api.deps import require_roles, client_ip_var
 from app.core.database import get_db
 from app.core.config import settings
 
@@ -260,8 +260,8 @@ async def save_store(req, store_id, user, db):
             if other_assignments and req.is_active:
                 for assigned in other_assignments:
                     await db.execute(text('UPDATE stores SET manager_employee_id=NULL WHERE store_id=:id'), {'id': assigned['store_id']})
-                    await db.execute(text('''INSERT INTO audit_logs(user_id,action,entity_name,entity_id,old_values,new_values)
-                        VALUES(:user,'TRANSFER_STORE_MANAGER','stores',:id,CAST(:old AS jsonb),CAST(:new AS jsonb))'''), {
+                    await db.execute(text('''INSERT INTO audit_logs(user_id,action,entity_name,entity_id,old_values,new_values, ip_address)
+                        VALUES(:user,'TRANSFER_STORE_MANAGER','stores',:id,CAST(:old AS jsonb),CAST(:new AS jsonb), :client_ip)''').bindparams(client_ip=client_ip_var.get()), {
                         'user': user['user_id'], 'id': str(assigned['store_id']),
                         'old': json.dumps({'manager_employee_id': manager_id, 'store_name': assigned['store_name']}, ensure_ascii=False),
                         'new': json.dumps({'manager_employee_id': None, 'transferred_to_store_id': store_id}, ensure_ascii=False),
@@ -281,8 +281,8 @@ async def save_store(req, store_id, user, db):
             await db.execute(text('INSERT INTO store_web_attendance_networks(store_id,network) VALUES(:id,CAST(:network AS cidr))'), {'id': store_id, 'network': network})
         audit_values = req.model_dump()
         audit_values.pop('manager_transfer_confirmed', None)
-        await db.execute(text('''INSERT INTO audit_logs(user_id,action,entity_name,entity_id,old_values,new_values)
-          VALUES(:user,'CONFIGURE_STORE','stores',:id,CAST(:old AS jsonb),CAST(:new AS jsonb))'''), {
+        await db.execute(text('''INSERT INTO audit_logs(user_id,action,entity_name,entity_id,old_values,new_values, ip_address)
+          VALUES(:user,'CONFIGURE_STORE','stores',:id,CAST(:old AS jsonb),CAST(:new AS jsonb), :client_ip)''').bindparams(client_ip=client_ip_var.get()), {
             'user': user['user_id'], 'id': str(store_id),
             'old': json.dumps(dict(old), default=str, ensure_ascii=False) if old else None,
             'new': json.dumps(audit_values, default=str, ensure_ascii=False),
@@ -344,8 +344,8 @@ async def change_store_status(store_id:int, req:StoreStatusChange, user=Depends(
         previous_manager_id = store.get('manager_employee_id')
         await db.execute(text('UPDATE stores SET is_active=:active, manager_employee_id=CASE WHEN :active THEN manager_employee_id ELSE NULL END WHERE store_id=:id'), {'active':req.is_active,'id':store_id})
         await db.execute(text('UPDATE mobile_store_geofences SET is_active=:active WHERE store_id=:id'), {'active':req.is_active,'id':store_id})
-        await db.execute(text('''INSERT INTO audit_logs(user_id,action,entity_name,entity_id,old_values,new_values)
-            VALUES(:user,:action,'stores',:id,CAST(:old AS jsonb),CAST(:new AS jsonb))'''), {
+        await db.execute(text('''INSERT INTO audit_logs(user_id,action,entity_name,entity_id,old_values,new_values, ip_address)
+            VALUES(:user,:action,'stores',:id,CAST(:old AS jsonb),CAST(:new AS jsonb), :client_ip)''').bindparams(client_ip=client_ip_var.get()), {
             'user':user['user_id'],'action':'ACTIVATE_STORE' if req.is_active else 'DEACTIVATE_STORE','id':str(store_id),
             'old':json.dumps({'is_active':bool(store['is_active']), 'manager_employee_id':previous_manager_id},ensure_ascii=False),
             'new':json.dumps({'is_active':req.is_active,'manager_employee_id':previous_manager_id if req.is_active else None,
@@ -389,8 +389,8 @@ async def delete_store(store_id:int, req:StoreDeleteRequest, user=Depends(admin)
         if blockers:
             await db.rollback()
             raise HTTPException(409, detail={'code':'STORE_HAS_LINKED_RECORDS','message':'Không thể xóa vì cửa hàng còn dữ liệu nghiệp vụ liên kết. Hãy giữ cửa hàng ở trạng thái ngừng hoạt động.','references':blockers})
-        await db.execute(text('''INSERT INTO audit_logs(user_id,action,entity_name,entity_id,old_values,new_values)
-            VALUES(:user,'DELETE_STORE','stores',:id,CAST(:old AS jsonb),CAST(:new AS jsonb))'''), {
+        await db.execute(text('''INSERT INTO audit_logs(user_id,action,entity_name,entity_id,old_values,new_values, ip_address)
+            VALUES(:user,'DELETE_STORE','stores',:id,CAST(:old AS jsonb),CAST(:new AS jsonb), :client_ip)''').bindparams(client_ip=client_ip_var.get()), {
             'user':user['user_id'],'id':str(store_id),'old':json.dumps(dict(store),default=str,ensure_ascii=False),
             'new':json.dumps({'deleted':True,'reason':req.reason.strip()},ensure_ascii=False),
         })
