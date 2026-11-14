@@ -36,4 +36,5 @@ COPY . .
 EXPOSE 8000
 
 # Khởi động FastAPI thông qua uvicorn
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Render chỉ cho vào qua proxy của nó: tin X-Forwarded-For để lấy IP người dùng thay vì IP proxy 10.x
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='*'"]
