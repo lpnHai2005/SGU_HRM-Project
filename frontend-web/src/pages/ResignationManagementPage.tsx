@@ -379,7 +379,7 @@ export function ResignationManagementPage({ user }: ResignationManagementPagePro
       {/* Page Header matching ContractManagementPage & EmployeeListPage */}
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <h1 className="page-title">Quản lý thôi việc</h1>
+          <h1 className="page-title">Đơn thôi việc</h1>
           <p className="page-subtitle">
             Tiếp nhận đơn thôi việc từ nhân viên, xử lý phê duyệt và theo dõi lộ trình chấm dứt hợp đồng
           </p>

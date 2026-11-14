@@ -1,7 +1,7 @@
 import { AiChatbotWidget } from './components/ai/AiChatbotWidget'
 import { AccountPage } from './pages/AccountPage'
 import { MonthlyAttendancePage } from './pages/MonthlyAttendancePage'
-import { StoresPage } from './pages/StoreManagementPage'
+import { AdminApp } from './admin/AdminApp'
 import { toast } from 'sonner'
 import { Toaster } from 'sonner'
 import { ConfirmHost } from './components/common/ConfirmDialog'
@@ -20,13 +20,13 @@ import { BottomNav } from './components/layout/BottomNav'
 import { getRoleFromUser } from './utils/formatters'
 import { IDLE_LOGOUT_FLAG, watchIdle } from './utils/idleWatch'
 import { canAccessPath } from './constants/navigation'
-import { UserAccessPage } from './pages/UserAccessPage'
 import { SalesCommissionPage } from './pages/SalesCommissionPage'
 import { MyPayslipPage } from './pages/MyPayslipPage'
 import { ProjectsPage } from './pages/ProjectsPage'
 import { ContractsMovementPage } from './pages/ContractsMovementPage'
 import { ContractManagementPage } from './pages/ContractManagementPage'
 import { ResignationManagementPage } from './pages/ResignationManagementPage'
+import { MyResignationPage } from './pages/MyResignationPage'
 import { PayrollFundPage } from './pages/PayrollFundPage'
 import { PayrollSettlementsPage } from './pages/PayrollSettlementsPage'
 
@@ -39,7 +39,6 @@ import { LeaveRequestsPage } from './pages/LeaveRequestsPage'
 import { OvertimeRequestsPage } from './pages/OvertimeRequestsPage'
 import { PayrollPage } from './pages/PayrollPage'
 import { ReportsPage } from './pages/ReportsPage'
-import { AuditLogPage } from './pages/AuditLogPage'
 import { WorkSchedulesPage } from './pages/WorkSchedulesPage'
 
 // ProtectedRoute: chặn EMPLOYEE truy cập các trang quản lý
@@ -169,9 +168,16 @@ export function App() {
     return (
       <Routes>
         <Route path="/login" element={<LoginPage onLogin={handleLogin} />} />
+        <Route path="/admin/login" element={<LoginPage onLogin={handleLogin} portal="admin" />} />
+        <Route path="/admin/*" element={<Navigate to="/admin/login" replace />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     )
+  }
+
+  // ADMIN chỉ dùng module quản trị riêng, không thấy giao diện nghiệp vụ.
+  if (user?.roles.includes('ADMIN')) {
+    return <AdminApp user={user} onLogout={handleLogout} theme={theme} onToggleTheme={toggleTheme} />
   }
 
   const userRole = getRoleFromUser(user)
@@ -210,8 +216,6 @@ export function App() {
             />
             <Route path="/dashboard" element={<Navigate to="/" replace />} />
             <Route path="/account" element={<AccountPage user={user}/>} />
-            <Route path="/stores" element={<ProtectedRoute path="/stores"><StoresPage/></ProtectedRoute>} />
-            <Route path="/users" element={<ProtectedRoute path="/users"><UserAccessPage currentUserId={user!.user_id} /></ProtectedRoute>} />
             <Route path="/employees" element={<ProtectedRoute path="/employees"><EmployeeListPage user={user} /></ProtectedRoute>} />
             <Route path="/contracts" element={<ProtectedRoute path="/contracts"><ContractManagementPage user={user} /></ProtectedRoute>} />
             <Route path="/resignations" element={<ProtectedRoute path="/resignations"><ResignationManagementPage user={user} /></ProtectedRoute>} />
@@ -227,6 +231,7 @@ export function App() {
             <Route path="/my-leave" element={legacyOvertimeDeepLink
               ? <Navigate to={legacyOvertimeTarget(true)} replace />
               : <ProtectedRoute path="/my-leave"><LeaveRequestsPage user={user} personal /></ProtectedRoute>} />
+            <Route path="/my-resignation" element={<ProtectedRoute path="/my-resignation"><MyResignationPage /></ProtectedRoute>} />
             <Route path="/overtime" element={<ProtectedRoute path="/overtime"><OvertimeRequestsPage user={user} /></ProtectedRoute>} />
             <Route path="/my-overtime" element={<ProtectedRoute path="/my-overtime"><OvertimeRequestsPage user={user} personal /></ProtectedRoute>} />
             <Route path="/payroll" element={<ProtectedRoute path="/payroll"><PayrollPage user={user} /></ProtectedRoute>} />
@@ -238,7 +243,6 @@ export function App() {
             <Route path="/projects" element={<ProtectedRoute path="/projects"><ProjectsPage /></ProtectedRoute>} />
             <Route path="/my-projects" element={<ProtectedRoute path="/my-projects"><ProjectsPage personal /></ProtectedRoute>} />
             <Route path="/reports" element={<ProtectedRoute path="/reports"><ReportsPage user={user} /></ProtectedRoute>} />
-            <Route path="/audit" element={<ProtectedRoute path="/audit"><AuditLogPage user={user} /></ProtectedRoute>} />
             <Route path="/login" element={<Navigate to="/" replace />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

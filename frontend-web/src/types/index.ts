@@ -121,9 +121,7 @@ export interface EmployeeUpdate {
   permanent_address?: string;
   current_address?: string;
   avatar?: string;
-  store_id?: number;
-  department_id?: number;
-  position_id?: number;
+  // store/department/position chỉ đổi qua employeeApi.promote
   education_level_id?: number;
   join_date?: string;
   resignation_date?: string;
@@ -139,6 +137,7 @@ export interface PromotionCreate {
   employee_id: number;
   new_position_id: number;
   new_store_id?: number;
+  new_department_id?: number;
   decision_number?: string;
   reason?: string;
 }

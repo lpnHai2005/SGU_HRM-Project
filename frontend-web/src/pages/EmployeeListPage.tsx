@@ -120,6 +120,7 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
   const [promotionData, setPromotionData] = useState<{
     new_position_id?: number
     new_store_id?: number
+    new_department_id?: number
     decision_number: string
     reason: string
   }>({
@@ -266,6 +267,8 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
   // ADMIN chỉ xem; thêm/sửa/cho thôi việc dành cho HR và Giám đốc.
   const canView = role === 'ADMIN' || role === 'HR_MANAGER' || role === 'DIRECTOR'
   const canManage = role === 'HR_MANAGER' || role === 'DIRECTOR'
+  // Chức vụ Giám đốc / phòng Ban Giám đốc: chỉ DIRECTOR được gán (backend cũng chặn)
+  const canAssignBoard = role === 'DIRECTOR'
 
   // Modal handlers
   const openModal = (mode: ModalMode, employee?: Employee) => {
@@ -330,8 +333,9 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
       })
     } else if (mode === 'promote' && employee) {
       setPromotionData({
-        new_position_id: undefined,
+        new_position_id: employee.position_id || undefined,
         new_store_id: employee.store_id || undefined,
+        new_department_id: employee.department_id || undefined,
         decision_number: 'QĐ-BN-2026',
         reason: 'Thăng cấp chức vụ theo năng lực',
       })
@@ -500,9 +504,10 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
       delete cleanedData.basic_salary
       if (!cleanedData.dob) delete cleanedData.dob
       if (!cleanedData.join_date) delete cleanedData.join_date
-      if (!cleanedData.store_id) delete cleanedData.store_id
-      if (!cleanedData.department_id) delete cleanedData.department_id
-      if (!cleanedData.position_id) delete cleanedData.position_id
+      // Chức vụ / phòng ban / cửa hàng chỉ đổi qua "Thăng chức / Điều chuyển"
+      delete cleanedData.store_id
+      delete cleanedData.department_id
+      delete cleanedData.position_id
       if (!cleanedData.education_level_id) delete cleanedData.education_level_id
 
       console.log('[DEBUG] PUT /employees/', selectedEmployee.employee_id)
@@ -536,6 +541,7 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
         employee_id: selectedEmployee.employee_id,
         new_position_id: promotionData.new_position_id,
         new_store_id: promotionData.new_store_id,
+        new_department_id: promotionData.new_department_id,
         decision_number: promotionData.decision_number,
         reason: promotionData.reason,
       }
@@ -543,7 +549,7 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
       closeModal()
       cancelConfirm()
       fetchEmployees()
-      showToast('success', 'Thăng chức thành công!')
+      showToast('success', 'Cập nhật chức vụ / điều chuyển thành công!')
     } catch (err: any) {
       setFormError(err.message || 'Lỗi khi thăng chức')
     } finally {
@@ -680,10 +686,17 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
       setFormError('Vui lòng chọn chức vụ mới')
       return
     }
+    const unchanged = promotionData.new_position_id === selectedEmployee.position_id
+      && (promotionData.new_store_id ?? selectedEmployee.store_id) === selectedEmployee.store_id
+      && (promotionData.new_department_id || undefined) === (selectedEmployee.department_id || undefined)
+    if (unchanged) {
+      setFormError('Chưa có thay đổi nào về chức vụ, phòng ban hoặc cửa hàng')
+      return
+    }
     const newPos = lookups?.positions?.find(p => p.position_id === promotionData.new_position_id)
     requestConfirm(
       'promote',
-      `Xác nhận thăng chức "${selectedEmployee.full_name}" lên vị trí "${newPos?.position_name}"?`
+      `Xác nhận cập nhật "${selectedEmployee.full_name}" sang chức vụ "${newPos?.position_name}"?`
     )
   }
 
@@ -962,6 +975,7 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
               className="form-select"
               value={formData.store_id || ''}
               onChange={(e) => handleInputChange('store_id', e.target.value ? Number(e.target.value) : undefined)}
+              disabled={isEdit}
             >
               <option value="">-- Chọn cửa hàng --</option>
               {lookups?.stores?.map(store => (
@@ -977,9 +991,10 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
               className="form-select"
               value={formData.department_id || ''}
               onChange={(e) => handleInputChange('department_id', e.target.value ? Number(e.target.value) : undefined)}
+              disabled={isEdit}
             >
               <option value="">-- Chọn phòng ban --</option>
-              {lookups?.departments?.map(dept => (
+              {lookups?.departments?.filter(d => isEdit || canAssignBoard || d.department_code !== 'BGD').map(dept => (
                 <option key={dept.department_id} value={dept.department_id}>
                   {dept.department_name}
                 </option>
@@ -992,9 +1007,10 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
               className="form-select"
               value={formData.position_id || ''}
               onChange={(e) => handleInputChange('position_id', e.target.value ? Number(e.target.value) : undefined)}
+              disabled={isEdit}
             >
               <option value="">-- Chọn chức vụ --</option>
-              {lookups?.positions?.map(pos => (
+              {lookups?.positions?.filter(p => isEdit || canAssignBoard || p.position_code !== 'DIRECTOR').map(pos => (
                 <option key={pos.position_id} value={pos.position_id}>
                   {pos.position_name}
                 </option>
@@ -1002,6 +1018,11 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
             </select>
           </div>
         </div>
+        {isEdit && (
+          <p style={{ margin: '-4px 0 12px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+            Cửa hàng, phòng ban, chức vụ chỉ thay đổi qua "Thăng chức / Điều chuyển" để có số quyết định và lịch sử.
+          </p>
+        )}
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
           <div className="form-group">
@@ -1034,12 +1055,15 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
               className="form-select"
               value={formData.employment_status || 'PROBATION'}
               onChange={(e) => handleInputChange('employment_status', e.target.value)}
+              disabled={isEdit && ['RESIGNED', 'TERMINATED'].includes(selectedEmployee?.employment_status || '')}
             >
               <option value="PROBATION">Thử việc</option>
               <option value="ACTIVE">Đang làm việc</option>
               {isEdit && <>
                 <option value="ON_LEAVE">Nghỉ thai sản</option>
-                <option value="RESIGNED">Đã nghỉ việc</option>
+                {/* Thôi việc đi qua quy trình nghỉ việc; chỉ hiển thị khi hồ sơ đã ở trạng thái này */}
+                <option value="RESIGNED" disabled>Đã nghỉ việc</option>
+                <option value="TERMINATED" disabled>Chấm dứt</option>
               </>}
             </select>
           </div>
@@ -1109,9 +1133,24 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
             onChange={(e) => handlePromotionChange('new_position_id', e.target.value ? Number(e.target.value) : undefined)}
           >
             <option value="">-- Chọn chức vụ mới --</option>
-            {lookups?.positions?.filter(p => p.position_id !== selectedEmployee.position_id).map(pos => (
+            {lookups?.positions?.filter(p => canAssignBoard || p.position_code !== 'DIRECTOR' || p.position_id === selectedEmployee.position_id).map(pos => (
               <option key={pos.position_id} value={pos.position_id}>
-                {pos.position_name}
+                {pos.position_name}{pos.position_id === selectedEmployee.position_id ? ' (hiện tại)' : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Phòng ban mới (nếu điều chuyển)</label>
+          <select
+            className="form-select"
+            value={promotionData.new_department_id || ''}
+            onChange={(e) => handlePromotionChange('new_department_id', e.target.value ? Number(e.target.value) : undefined)}
+          >
+            {lookups?.departments?.filter(d => canAssignBoard || d.department_code !== 'BGD' || d.department_id === selectedEmployee.department_id).map(dept => (
+              <option key={dept.department_id} value={dept.department_id}>
+                {dept.department_name}{dept.department_id === selectedEmployee.department_id ? ' (hiện tại)' : ''}
               </option>
             ))}
           </select>
@@ -1316,17 +1355,19 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
               <span className="action-icon icon-contract">{Icons.fileText}</span>
               <span>Xem hợp đồng</span>
             </button>
-            <button
-              className="action-dropdown-item"
-              onClick={() => {
-                setOpenMenuId(null)
-                setMenuPos(null)
-                openModal('promote', emp)
-              }}
-            >
-              <span className="action-icon icon-promote">{Icons.trendingUp}</span>
-              <span>Thăng chức / Điều chuyển</span>
-            </button>
+            {emp.employee_id !== user?.employee_id && (
+              <button
+                className="action-dropdown-item"
+                onClick={() => {
+                  setOpenMenuId(null)
+                  setMenuPos(null)
+                  openModal('promote', emp)
+                }}
+              >
+                <span className="action-icon icon-promote">{Icons.trendingUp}</span>
+                <span>Thăng chức / Điều chuyển</span>
+              </button>
+            )}
             <div className="action-dropdown-divider"></div>
           </>
         )}

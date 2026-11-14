@@ -136,7 +136,7 @@ async def _exception_cases_for_response(db: AsyncSession, request: dict, user: d
     if not await _exception_schema_available(db):
         return []
     roles = set(user.get("roles", []))
-    can_read = bool(roles & {"ADMIN", "HR_MANAGER", "DIRECTOR"}) or (
+    can_read = bool(roles & {"HR_MANAGER", "DIRECTOR"}) or (
         request["employee_id"] == user.get("employee_id") or
         request["created_by"] == user.get("user_id")
     )
@@ -270,7 +270,7 @@ async def _response(db: AsyncSession, request: dict, row: dict | None,
                     user: dict) -> dict:
     roles = set(user.get("roles", []))
     manager_scope = (request["store_id"] if "STORE_MANAGER" in roles
-                     and not roles & {"ADMIN", "HR_MANAGER", "DIRECTOR"}
+                     and not roles & {"HR_MANAGER", "DIRECTOR"}
                      and request["employee_id"] != user.get("employee_id") else None)
     current_time = _utc_now()
     current_signature, candidate, source_rows = await _source(db, request, lock=False)
@@ -330,7 +330,7 @@ async def _response(db: AsyncSession, request: dict, row: dict | None,
 
 def _may_preview(request: dict, user: dict):
     roles = set(user.get("roles", []))
-    if roles & {"ADMIN", "HR_MANAGER", "DIRECTOR"}:
+    if roles & {"HR_MANAGER", "DIRECTOR"}:
         return
     raise HTTPException(403, "Chỉ HR/Admin được tạo hoặc làm mới kết quả đối soát OT.")
 
@@ -361,13 +361,13 @@ async def list_reconciliations(status: str | None = Query(default=None),
     if date_to:
         where.append("o.work_date<=:date_to")
         params["date_to"] = date_to
-    if store_id is not None and roles & {"ADMIN", "HR_MANAGER", "DIRECTOR"}:
+    if store_id is not None and roles & {"HR_MANAGER", "DIRECTOR"}:
         where.append("r.store_id=:selected_store")
         params["selected_store"] = store_id
     if employee_id is not None:
         where.append("r.employee_id=:selected_employee")
         params["selected_employee"] = employee_id
-    if not roles & {"ADMIN", "HR_MANAGER", "DIRECTOR"}:
+    if not roles & {"HR_MANAGER", "DIRECTOR"}:
         if "STORE_MANAGER" in roles:
             params.update(store=user.get("store_id") or -1, employee=user.get("employee_id") or -1)
             where.append("(r.store_id=:store OR r.employee_id=:employee)")
@@ -421,7 +421,7 @@ async def list_reconciliations(status: str | None = Query(default=None),
                     "NO_ATTENDANCE", "ATTENDANCE_CHECKOUT_MISSING",
                 })):
             item["display_status"] = "PENDING_RECONCILIATION"
-        if ("STORE_MANAGER" in roles and not roles & {"ADMIN", "HR_MANAGER", "DIRECTOR"}
+        if ("STORE_MANAGER" in roles and not roles & {"HR_MANAGER", "DIRECTOR"}
                 and row["employee_id"] != user.get("employee_id")):
             item["attendance_ids"] = []
         results.append(item)

@@ -15,8 +15,8 @@ from app.core.database import get_db
 
 router = APIRouter()
 
-VIEWERS = ['HR_MANAGER', 'DIRECTOR', 'ADMIN', 'STORE_MANAGER']
-EDITORS = ['HR_MANAGER', 'DIRECTOR']  # ADMIN chỉ xem nghiệp vụ
+VIEWERS = ['HR_MANAGER', 'DIRECTOR', 'STORE_MANAGER']
+EDITORS = ['HR_MANAGER', 'DIRECTOR']  # ADMIN không truy cập nghiệp vụ
 COLUMNS = 'shift_id, shift_code, shift_name, start_time, end_time, work_hours, break_minutes, is_active'
 
 

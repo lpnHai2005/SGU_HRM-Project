@@ -307,14 +307,14 @@ class ContractService:
         Check if user can access the contract based on RBAC.
         Returns True if allowed, raises HTTPException if not.
 
-        - ADMIN/HR_MANAGER: Full access
+        - HR_MANAGER/DIRECTOR: Full access
         - STORE_MANAGER: Only contracts in their store
         - EMPLOYEE: Only own contracts
         """
         roles = current_user.get("roles", [])
 
-        # ADMIN, DIRECTOR and HR_MANAGER have full access
-        if "ADMIN" in roles or "HR_MANAGER" in roles or "DIRECTOR" in roles:
+        # DIRECTOR and HR_MANAGER have full access
+        if "HR_MANAGER" in roles or "DIRECTOR" in roles:
             return True
 
         # Get contract and employee info
@@ -375,7 +375,7 @@ class ContractService:
         Sensitive fields (hidden for non-HR): basic_salary, contract_file_url, termination_reason
         """
         roles = current_user.get("roles", [])
-        is_hr = "ADMIN" in roles or "HR_MANAGER" in roles or "DIRECTOR" in roles
+        is_hr = "HR_MANAGER" in roles or "DIRECTOR" in roles
 
         query = text("""
             SELECT c.*,

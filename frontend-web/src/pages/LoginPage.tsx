@@ -6,6 +6,7 @@ import { IDLE_LOGOUT_FLAG } from '../utils/idleWatch'
 
 export interface LoginPageProps {
   onLogin: () => void
+  portal?: 'staff' | 'admin'
 }
 
 function getLoginErrorMessage(error: unknown): string {
@@ -15,7 +16,7 @@ function getLoginErrorMessage(error: unknown): string {
   return error instanceof Error && error.message ? error.message : 'Đăng nhập thất bại'
 }
 
-export function LoginPage({ onLogin }: LoginPageProps) {
+export function LoginPage({ onLogin, portal = 'staff' }: LoginPageProps) {
   const { login } = useAuth()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -35,7 +36,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     setIsLoading(true)
 
     try {
-      await login(username, password)
+      await login(username, password, portal)
       onLogin()
     } catch (err: any) {
       setError(getLoginErrorMessage(err))
@@ -50,13 +51,13 @@ export function LoginPage({ onLogin }: LoginPageProps) {
         <div className="login-card">
           <div className="login-header">
             <div className="login-logo">{Icons.techzone}</div>
-            <h1 className="login-title">TechZone HRM</h1>
-            <p className="login-subtitle">Hệ thống Quản trị Nguồn nhân lực & Bán lẻ</p>
+            <h1 className="login-title">{portal === 'admin' ? 'TechZone HRM · Quản trị hệ thống' : 'TechZone HRM'}</h1>
+            <p className="login-subtitle">{portal === 'admin' ? 'Cổng dành riêng cho Quản trị viên' : 'Hệ thống Quản trị Nguồn nhân lực & Bán lẻ'}</p>
           </div>
 
           <form className="login-form" onSubmit={handleSubmit}>
             <div className="form-group">
-              <label className="form-label" htmlFor="username">Tài khoản nhân sự</label>
+              <label className="form-label" htmlFor="username">{portal === 'admin' ? 'Tài khoản quản trị' : 'Tài khoản nhân sự'}</label>
               <input
                 type="text"
                 id="username"

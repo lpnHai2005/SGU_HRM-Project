@@ -60,12 +60,12 @@ async def list_contracts(
     """
     Danh sách hợp đồng với phân trang và bộ lọc.
     RBAC:
-    - ADMIN/HR_MANAGER: Xem tất cả
+    - HR_MANAGER/DIRECTOR: Xem tất cả
     - STORE_MANAGER: Xem nhân viên cửa hàng mình (không thấy lương)
     - EMPLOYEE: Chỉ xem hợp đồng của mình (không thấy lương)
     """
     roles = current_user.get("roles", [])
-    is_hr = "ADMIN" in roles or "HR_MANAGER" in roles or "DIRECTOR" in roles
+    is_hr = "HR_MANAGER" in roles or "DIRECTOR" in roles
 
     # Base query
     q = """
@@ -191,7 +191,7 @@ async def get_contract_stats(
     Thống kê số lượng hợp đồng theo trạng thái.
     """
     roles = current_user.get("roles", [])
-    is_hr = "ADMIN" in roles or "HR_MANAGER" in roles or "DIRECTOR" in roles
+    is_hr = "HR_MANAGER" in roles or "DIRECTOR" in roles
 
     base_where = "WHERE 1=1"
     params = {}
@@ -1166,7 +1166,7 @@ async def upload_termination_document(
 
 @router.post("/sync-employee-statuses", summary="Đồng bộ trạng thái nhân viên và tài khoản theo hiệu lực hợp đồng")
 async def sync_employee_statuses(
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -1256,7 +1256,7 @@ async def get_employee_contract_history(
     Bao gồm cả hợp đồng cũ và hiện tại.
     """
     roles = current_user.get("roles", [])
-    is_hr = "ADMIN" in roles or "HR_MANAGER" in roles or "DIRECTOR" in roles
+    is_hr = "HR_MANAGER" in roles or "DIRECTOR" in roles
 
     # Check access
     if not is_hr:
@@ -1569,7 +1569,7 @@ async def stream_contract_pdf(
 
 @router.post("/cron/expire", summary="Cập nhật hợp đồng hết hạn (Cron Job)")
 async def expire_contracts(
-    current_user: dict = Depends(require_roles(["ADMIN", "DIRECTOR"])),
+    current_user: dict = Depends(require_roles(["DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """

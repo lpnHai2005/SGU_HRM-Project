@@ -15,12 +15,14 @@ const formatDate = (value: string) => {
   return match ? `${match[3]}/${match[2]}/${match[1]}` : ''
 }
 
-export function DatePicker({ value, onChange, label, disabled = false, error }: {
+export function DatePicker({ value, onChange, label, disabled = false, error, min }: {
   value: string
   onChange: (value: string) => void
   label: string
   disabled?: boolean
   error?: string
+  /** Ngày sớm nhất được chọn (YYYY-MM-DD); các ngày trước đó bị khóa */
+  min?: string
 }) {
   const pickerRef = useRef<HTMLDivElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
@@ -133,12 +135,14 @@ export function DatePicker({ value, onChange, label, disabled = false, error }: 
               const dayValue = localDate(day)
               const isSelected = dayValue === value
               const isCurrentMonth = day.getMonth() === visibleMonth.getMonth()
+              const isBeforeMin = Boolean(min && dayValue < min)
               return (
                 <button
                   type="button"
                   key={dayValue}
                   role="gridcell"
                   aria-pressed={isSelected}
+                  disabled={isBeforeMin}
                   aria-label={day.toLocaleDateString('vi-VN', { day: 'numeric', month: 'long', year: 'numeric' })}
                   className={`work-date-day ${isSelected ? 'selected' : ''} ${isCurrentMonth ? '' : 'outside-month'}`}
                   onClick={() => {
@@ -151,7 +155,7 @@ export function DatePicker({ value, onChange, label, disabled = false, error }: 
               )
             })}
           </div>
-          <button type="button" className="work-date-today" onClick={() => { onChange(localDate(new Date())); setOpen(false) }}>Hôm nay</button>
+          {!(min && localDate(new Date()) < min) && <button type="button" className="work-date-today" onClick={() => { onChange(localDate(new Date())); setOpen(false) }}>Hôm nay</button>}
         </div>,
         document.body,
       )}

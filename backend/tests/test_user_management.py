@@ -12,7 +12,7 @@ from app.api.v1.endpoints.users import (
     delete_user,
     update_user_status
 )
-from app.schemas.schemas import UserCreate, UserUpdate, AdminResetPassword
+from app.schemas.schemas import UserCreate, UserUpdate
 
 if sys.stdout.encoding != 'utf-8':
     try:
@@ -99,7 +99,6 @@ async def run_tests():
         print("\n[TEST 5] reset_user_password()...")
         reset_res = await reset_user_password(
             user_id=created_id,
-            body=AdminResetPassword(new_password="NewSecurePass2026!"),
             request=DummyRequest(),
             db=db,
             current_user=admin_user

@@ -10,6 +10,7 @@ import type {
   ResignationCreatePayload,
   ResignationApprovePayload,
   ResignationRejectPayload,
+  MyResignation,
 } from '../types/resignation';
 
 export const resignationApi = {
@@ -93,6 +94,13 @@ export const resignationApi = {
   }> => {
     return api.post(`/resignations/${resignationId}/cancel`, {});
   },
+
+  /** Nhân viên: đơn thôi việc của tôi */
+  listMine: async (): Promise<MyResignation[]> => api.get<MyResignation[]>('/resignations/me'),
+  getMyActiveContracts: async (): Promise<any[]> => api.get<any[]>('/resignations/me/active-contracts'),
+  submitMine: async (data: { contract_id: number; requested_last_working_date: string; reason: string; attachment_url?: string }) =>
+    api.post('/resignations/me', data),
+  cancelMine: async (resignationId: number) => api.post(`/resignations/me/${resignationId}/cancel`, {}),
 
   /**
    * Tải file đính kèm đơn thôi việc (đơn scan/PDF)

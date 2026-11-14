@@ -16,7 +16,7 @@ router = APIRouter()
 )
 async def get_all_roles(
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_roles(["ADMIN"]))
 ):
     # 1. Lấy danh sách Roles
     roles_res = await db.execute(text("SELECT role_id, role_code, role_name, description FROM roles ORDER BY role_id;"))
@@ -50,7 +50,7 @@ async def get_all_roles(
 )
 async def get_all_permissions(
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_roles(["ADMIN", "DIRECTOR", "HR_MANAGER"]))
+    current_user: dict = Depends(require_roles(["ADMIN"]))
 ):
     query = text("SELECT permission_id, permission_code, permission_name, module FROM permissions ORDER BY module, permission_id;")
     res = await db.execute(query)
@@ -65,7 +65,7 @@ async def get_all_permissions(
 )
 async def get_rbac_matrix(
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_roles(["ADMIN", "DIRECTOR", "HR_MANAGER"]))
+    current_user: dict = Depends(require_roles(["ADMIN"]))
 ):
     # Lấy danh sách quyền và vai trò sở hữu
     query = text("""

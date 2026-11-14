@@ -29,12 +29,12 @@
 > **TechZone HRM** là hệ sinh thái phần mềm quản trị nguồn nhân lực (Human Resource Management) chuyên biệt hóa cho mô hình chuỗi bán lẻ thiết bị công nghệ (**TechZone Retail**). Hệ thống số hóa 100% các quy trình nghiệp vụ nhân sự đa chi nhánh, ca kíp phức tạp và cơ chế đãi ngộ gắn liền với doanh số bán hàng:
 >
 > - **Cơ sở dữ liệu Quan hệ Chuẩn hóa 3NF:** Vận hành trên Supabase PostgreSQL với **56 bảng dữ liệu, 7 Views phân tích** và các Stored Procedures tính toán lương tự động ở mức cơ sở dữ liệu (`sp_calculate_monthly_commission`, `sp_generate_monthly_payroll`).
-> - **Phân quyền RBAC Đa tầng & Nguyên tắc No Self-Approval:** Hệ thống thiết lập **5 vai trò chính** (`ADMIN`, `DIRECTOR`, `HR_MANAGER`, `STORE_MANAGER`, `EMPLOYEE`) cùng **18 quyền chức năng chi tiết** phân bổ theo 7 phân hệ. Cung cấp cơ chế duyệt chéo chống xung đột lợi ích: Đơn từ của HR và Admin bắt buộc phải được Ban Giám đốc (`DIRECTOR`) phê duyệt.
+> - **Phân quyền RBAC Đa tầng & Nguyên tắc No Self-Approval:** Hệ thống thiết lập **5 vai trò chính** (`ADMIN`, `DIRECTOR`, `HR_MANAGER`, `STORE_MANAGER`, `EMPLOYEE`) cùng **18 quyền chức năng chi tiết** phân bổ theo 7 phân hệ. Cung cấp cơ chế duyệt chéo chống xung đột lợi ích: Đơn từ của HR bắt buộc phải được Ban Giám đốc (`DIRECTOR`) phê duyệt. `ADMIN` dùng **module Quản trị hệ thống tách riêng** (`/admin/login`) và bị chặn khỏi mọi API nghiệp vụ.
 > - **Chấm công Đa phương thức & Định vị Geofence:** Quản lý 4 ca làm việc (Sáng 08:00–16:00, Chiều 13:00–21:00, Full cuối tuần 08:00–21:00, Hành chính 08:00–17:00), bắt buộc chấm đúng ca được phân, xác thực vị trí thời gian thực qua **GPS Geofence bán kính 100m** bằng công thức Haversine, lưu ảnh Selfie làm bằng chứng, chấm công Web giới hạn theo mạng cửa hàng, cơ chế khóa nút Cooldown 60s và đối soát làm thêm giờ (OT Reconciliation) chặt chẽ.
 > - **Quy trình Phê duyệt Đơn từ 2 Cấp (Two-level Approval Workflow):** Xét duyệt tuần tự hoặc phân cấp: Cửa hàng trưởng duyệt sơ bộ Cấp 1 $\rightarrow$ Trưởng phòng HR duyệt chính thức Cấp 2 $\rightarrow$ Giám đốc duyệt cấp cao cho các loại đơn: Phép năm, Nghỉ ốm đau, Thai sản, Nghỉ không lương, Làm thêm giờ (OT) và Đơn thôi việc kèm bàn giao tài sản.
 > - **Tính lương Doanh số Bán lẻ & Tự động hóa Payroll:** Thuật toán tính lương bám sát thực tế: Công chuẩn linh hoạt theo từng kỳ (trừ Chủ nhật và ngày Lễ, HR/Giám đốc có thể ghi đè), hoa hồng lũy kế theo nhóm thiết bị (Điện thoại & Laptop 1%, Phụ kiện 3%), thưởng vượt KPI doanh số (1.000.000đ – 2.000.000đ), phụ cấp chức vụ, thâm niên, dự án, trích nộp bảo hiểm 10.5% (BHXH 8%, BHYT 1.5%, BHTN 1%) và bẻ nhỏ 14 khoản minh bạch vào `payroll_details`. Hệ thống chưa tự tính thuế TNCN.
 > - **Trợ lý AI Agentic RAG Doanh nghiệp:** Bộ máy **LangGraph + Mistral AI** với cơ chế tìm kiếm lai (Hybrid Search: Vector Embeddings + Full-text BM25 + Reciprocal Rank Fusion RRF), Self-RAG Grader, Guardrails chặn Prompt Injection/bảo vệ dữ liệu nhạy cảm PII, cùng Tool-calling hỗ trợ nhân viên tra cứu lương/công và tự động nộp đơn nghỉ phép qua hội thoại tự nhiên.
-> - **Đa nền tảng Web Quản trị & Mobile Tác nghiệp:** Web Quản trị (React 19 + TypeScript + Vite) dành cho Quản lý & HR; Mobile App (React Native Expo) dành cho nhân viên bán lẻ tác nghiệp tại cửa hàng, kèm các màn hình theo dõi và xử lý nhanh cho cấp quản lý.
+> - **Đa nền tảng Web Quản trị & Mobile Tác nghiệp:** Web Quản trị (React 19 + TypeScript + Vite) dành cho Quản lý & HR, kèm cổng Quản trị hệ thống riêng cho `ADMIN`; Mobile App (React Native Expo) dành cho nhân viên bán lẻ tác nghiệp tại cửa hàng, kèm các màn hình theo dõi và xử lý nhanh cho cấp quản lý.
 
 Hồ sơ đặc tả yêu cầu và ngữ cảnh master: **[`TECHZONE_HRM_MASTER_CONTEXT.md`](docs/specs/TECHZONE_HRM_MASTER_CONTEXT.md)** và **[`PRODUCT.md`](PRODUCT.md)**.  
 Kế hoạch triển khai & quy trình thực thi: **[`HRM-Project-Workflow.md`](docs/specs/HRM-Project-Workflow.md)**.  
@@ -107,17 +107,19 @@ SGU_HRM-Project/
 ├── backend/                           # Phân hệ Backend FastAPI
 │   ├── app/
 │   │   ├── api/
-│   │   │   ├── deps.py                # Dependencies kiểm tra JWT, RBAC Role Checker, Strict RBAC, Audit Log
+│   │   │   ├── deps.py                # Dependencies kiểm tra JWT, RBAC Role Checker, Strict RBAC, deny_admin, Audit Log
 │   │   │   └── v1/
-│   │   │       ├── router.py          # Bộ định tuyến API tập trung
-│   │   │       └── endpoints/         # 19 Tuyến API phân hệ nghiệp vụ:
+│   │   │       ├── router.py          # Bộ định tuyến API tập trung (gắn deny_admin cho router nghiệp vụ)
+│   │   │       └── endpoints/         # 21 Tuyến API theo phân hệ:
 │   │   │           ├── auth.py        # Đăng nhập, /me, đổi mật khẩu, danh sách test accounts
-│   │   │           ├── users.py       # Quản trị tài khoản người dùng, kích hoạt/khóa tài khoản
+│   │   │           ├── admin.py       # Tác vụ bảo trì của module Quản trị (đồng bộ trạng thái nhân viên)
+│   │   │           ├── users.py       # Quản trị tài khoản: tạo, sửa, khóa, reset mật khẩu mặc định, gán vai trò
 │   │   │           ├── roles.py       # Danh mục Roles, Permissions và Ma trận RBAC Matrix
 │   │   │           ├── employees.py   # Hồ sơ nhân sự, tìm kiếm nâng cao, thăng chức tự đổi quyền
 │   │   │           ├── contracts.py   # Vòng đời hợp đồng: tạo, kích hoạt, gia hạn, chấm dứt, xuất PDF
 │   │   │           ├── stores.py      # Mạng lưới cửa hàng, cấu hình Geofence tọa độ GPS
 │   │   │           ├── attendances.py # Chấm công, giám sát vào/ra ca, bảng công tháng
+│   │   │           ├── work_shifts.py # Danh mục ca làm việc
 │   │   │           ├── work_schedules.py # Phân ca tuần, đăng ký ca làm, đổi ca
 │   │   │           ├── fixed_schedules.py # Quản lý quy tắc phân ca cố định theo thứ
 │   │   │           ├── overtime_requests.py # Đăng ký làm thêm giờ (OT) và phê duyệt
@@ -168,6 +170,8 @@ SGU_HRM-Project/
 │
 ├── frontend-web/                      # Phân hệ Web Quản trị (React 19 + TypeScript + Vite)
 │   ├── src/
+│   │   ├── admin/
+│   │   │   └── AdminApp.tsx           # Module Quản trị hệ thống riêng (/admin): tài khoản, cửa hàng, nhật ký, bảo trì
 │   │   ├── components/
 │   │   │   ├── common/                # Thành phần UI dùng chung (StatCard, EmptyState, DatePicker, TablePagination...)
 │   │   │   ├── layout/                # Khung giao diện: Sidebar điều hướng, Topbar thông tin, BottomNav
@@ -179,7 +183,7 @@ SGU_HRM-Project/
 │   │   │   ├── OverviewPage.tsx       # Trang chủ theo vai trò, chấm công nhanh, tổng quan nhân sự
 │   │   │   ├── EmployeeListPage.tsx   # Danh sách và hồ sơ chi tiết nhân viên
 │   │   │   ├── ContractManagementPage.tsx # Quản lý hợp đồng lao động và phụ lục
-│   │   │   ├── StoreManagementPage.tsx # Quản trị cửa hàng, định vị Geofence trên bản đồ
+│   │   │   ├── StoreManagementPage.tsx # Quản trị cửa hàng, định vị Geofence trên bản đồ (module Admin)
 │   │   │   ├── AttendancePage.tsx     # Bảng theo dõi chấm công ngày theo thời gian thực
 │   │   │   ├── MonthlyAttendancePage.tsx # Bảng công tổng hợp tháng của nhân sự
 │   │   │   ├── WorkSchedulesPage.tsx  # Quản lý phân ca làm việc chi nhánh
@@ -194,9 +198,9 @@ SGU_HRM-Project/
 │   │   │   ├── ProjectsPage.tsx       # Quản lý dự án nội bộ và phụ cấp thành viên
 │   │   │   ├── ReportsPage.tsx        # Báo cáo phân tích biểu đồ & xuất file
 │   │   │   ├── ActivityPage.tsx       # Nhật ký hoạt động đội ngũ và cá nhân
-│   │   │   ├── AuditLogPage.tsx       # Nhật ký kiểm toán hệ thống
-│   │   │   ├── UserAccessPage.tsx     # Quản lý tài khoản và ma trận phân quyền người dùng
-│   │   │   └── LoginPage.tsx          # Màn hình đăng nhập hệ thống
+│   │   │   ├── AuditLogPage.tsx       # Nhật ký kiểm toán hệ thống (module Admin)
+│   │   │   ├── UserAccessPage.tsx     # Quản lý tài khoản và phân quyền người dùng (module Admin)
+│   │   │   └── LoginPage.tsx          # Màn hình đăng nhập (cổng nhân sự /login và cổng quản trị /admin/login)
 │   │   ├── services/                  # Các lớp API Client (Fetch API, tự gắn Bearer Token)
 │   │   ├── contexts/                  # React Context (AuthContext)
 │   │   ├── hooks/                     # Custom hooks (useCompanyProfile)
@@ -250,7 +254,7 @@ Tại chuỗi cửa hàng bán lẻ thiết bị công nghệ TechZone, các ho�
    - Khấu trừ nghỉ không lương: `(Lương HĐ / Công chuẩn của kỳ) × Ngày nghỉ`.
 4. **Quy trình phê duyệt phân cấp & Chống tự duyệt (No Self-Approval):**
    - Đơn xin nghỉ phép, nghỉ ốm, thai sản của nhân viên chi nhánh: Cửa hàng trưởng (Cấp 1) duyệt sơ bộ về quân số $\rightarrow$ Trưởng phòng HR (Cấp 2) duyệt chính thức về mặt quy chế.
-   - Đơn xin nghỉ phép của HR Manager hoặc Admin: **Tuyệt đối không được tự duyệt cho bản thân** mà phải được chuyển lên Ban Giám đốc (`DIRECTOR`) xét duyệt.
+   - Đơn xin nghỉ phép của HR Manager: **Tuyệt đối không được tự duyệt cho bản thân** mà phải được chuyển lên Ban Giám đốc (`DIRECTOR`) xét duyệt.
 
 ---
 
@@ -372,17 +376,18 @@ Toàn bộ logic tính toán tài chính nhạy cảm được đóng gói thàn
 
 ## **Hệ Thống Phân Quyền Bảo Mật (RBAC System)**
 
-Hệ thống triển khai cơ chế kiểm soát truy cập dựa trên vai trò (**Role-Based Access Control - RBAC**) đa tầng. Mỗi API được kiểm tra qua **2 lớp**:
+Hệ thống triển khai cơ chế kiểm soát truy cập dựa trên vai trò (**Role-Based Access Control - RBAC**) đa tầng. Mỗi API được kiểm tra qua **3 lớp**:
 
-1. **Vai trò (Role):** dependency `require_roles([...])` / `require_strict_roles([...])` trong `backend/app/api/deps.py` chặn ngay ở cửa API. **Không vai trò nào được bỏ qua kiểm tra**, kể cả `ADMIN`: mỗi endpoint phải ghi rõ vai trò được phép.
-2. **Phạm vi dữ liệu (Scope):** trong từng endpoint, dữ liệu được lọc theo cấp: *toàn chuỗi* (`ADMIN`, `DIRECTOR`, `HR_MANAGER`) → *cửa hàng phụ trách* (`STORE_MANAGER`) → *chỉ bản thân* (`EMPLOYEE`).
+1. **Tách module (Portal):** `ADMIN` chỉ dùng module Quản trị hệ thống. Dependency `deny_admin` gắn ở `backend/app/api/v1/router.py` cho toàn bộ router nghiệp vụ (nhân sự, hợp đồng, chấm công, phân ca, OT, nghỉ phép, thôi việc, lương, báo cáo, AI Chatbot), nên token có role `ADMIN` nhận `403`. Ở frontend, tài khoản `ADMIN` chỉ đăng nhập được tại `/admin/login`; các role khác chỉ đăng nhập tại `/login`.
+2. **Vai trò (Role):** dependency `require_roles([...])` / `require_strict_roles([...])` trong `backend/app/api/deps.py` chặn ngay ở cửa API. **Không vai trò nào được bỏ qua kiểm tra**: mỗi endpoint phải ghi rõ vai trò được phép.
+3. **Phạm vi dữ liệu (Scope):** trong từng endpoint, dữ liệu được lọc theo cấp: *toàn chuỗi* (`DIRECTOR`, `HR_MANAGER`) → *cửa hàng phụ trách* (`STORE_MANAGER`) → *chỉ bản thân* (`EMPLOYEE`).
 
 ### 1. Danh mục 5 Vai Trò Cốt Lõi (Roles)
 
 | Mã vai trò (`role_code`) | Tên vai trò | Trách nhiệm và quyền hạn thực tế trong doanh nghiệp TechZone |
 |---|---|---|
-| **`ADMIN`** | **Quản trị viên hệ thống (kỹ thuật)** | Quản lý tài khoản người dùng, gán vai trò, quản lý cửa hàng & GPS, tra cứu `audit_logs`, chạy tác vụ bảo trì (đồng bộ trạng thái nhân viên, quét hợp đồng hết hạn). Ở các phân hệ nghiệp vụ, `ADMIN` **chỉ được xem**, không tạo/sửa/duyệt/chốt. Không truy cập Trung tâm báo cáo & KPI. |
-| **`DIRECTOR`** | **Giám đốc điều hành** | Cấp quản lý cao nhất (BOD). Có quyền nghiệp vụ như HR (hồ sơ, hợp đồng, lương, cấu hình lương), xem báo cáo quản trị và nhật ký kiểm toán. **Là người duyệt đơn nghỉ phép, đơn thôi việc của HR Manager và Admin**, duyệt tăng ca (OT), quản lý lịch phân ca của HR, xóa dự án. |
+| **`ADMIN`** | **Quản trị viên hệ thống (kỹ thuật)** | Dùng **module riêng** `/admin`: quản lý tài khoản (tạo, sửa, khóa/mở, reset mật khẩu về mặc định `TechZone@2026`, gán vai trò), quản lý cửa hàng & GPS, tra cứu `audit_logs`, chạy tác vụ bảo trì (đồng bộ trạng thái nhân viên theo hợp đồng). **Không truy cập** bất kỳ dữ liệu nghiệp vụ nào (nhân sự, lương, chấm công, đơn từ, báo cáo). |
+| **`DIRECTOR`** | **Giám đốc điều hành** | Cấp quản lý cao nhất (BOD). Có quyền nghiệp vụ như HR (hồ sơ, hợp đồng, lương, cấu hình lương), xem báo cáo quản trị. **Là người duyệt đơn nghỉ phép, đơn thôi việc của HR Manager**, duyệt tăng ca (OT), quản lý lịch phân ca của HR, xóa dự án. |
 | **`HR_MANAGER`** | **Trưởng phòng Nhân sự** | Quản lý hồ sơ nhân sự, hợp đồng lao động, thăng chức/điều chuyển, thôi việc; duyệt nghỉ phép Cấp 2, duyệt & đối soát OT, xử lý phiên chấm công bất thường; tính, chốt, chi trả lương; cấu hình chính sách lương; xem báo cáo. |
 | **`STORE_MANAGER`** | **Cửa hàng trưởng** | Chỉ trong chi nhánh phụ trách: phân ca, theo dõi chấm công, duyệt nghỉ phép Cấp 1, tạo đơn nghỉ hộ và đề xuất OT cho nhân viên, ghi nhận doanh số, xem phiếu lương **đã duyệt** của nhân viên cửa hàng. Không tự phân ca hay đề xuất OT cho chính mình. |
 | **`EMPLOYEE`** | **Nhân viên bán lẻ / Kỹ thuật** | Chấm công GPS Geofence + selfie, xem lịch làm việc, nộp đơn nghỉ phép / đăng ký OT, xem doanh số và phiếu lương **đã duyệt** của chính mình. Chỉ thấy dữ liệu của bản thân (kể cả lịch nghỉ). |
@@ -419,46 +424,47 @@ Hệ thống triển khai cơ chế kiểm soát truy cập dựa trên vai trò
 ### 3. Ma Trận Phân Quyền Thực Thi (RBAC Matrix)
 
 Ma trận dưới đây phản ánh **đúng quyền được kiểm tra trong code backend**.
-Ký hiệu: ✅ toàn chuỗi · 🏬 chỉ cửa hàng phụ trách · 👤 chỉ dữ liệu của bản thân · 👁️ chỉ xem · ❌ không có quyền.
+Ký hiệu: ✅ toàn chuỗi · 🏬 chỉ cửa hàng phụ trách · 👤 chỉ dữ liệu của bản thân · ❌ không có quyền.
 
 | Phân hệ | Chức năng | `ADMIN` | `DIRECTOR` | `HR_MANAGER` | `STORE_MANAGER` | `EMPLOYEE` |
 |---|---|:---:|:---:|:---:|:---:|:---:|
-| **Hệ thống** | Quản lý tài khoản, gán vai trò, reset mật khẩu | ✅ | 👁️ | 👁️ | ❌ | ❌ |
-| | Quản lý cửa hàng & GPS | ✅ | ✅ | ❌ | ❌ | ❌ |
-| | Nhật ký kiểm toán (`audit_logs`) | ✅ | ✅ | ❌ | ❌ | ❌ |
-| | Xem ma trận phân quyền | ✅ | ✅ | ✅ | ❌ | ❌ |
-| **Nhân sự** | Xem hồ sơ nhân viên | 👁️ | ✅ | ✅ | 🏬 | 👤 |
+| **Hệ thống** *(module `/admin`)* | Quản lý tài khoản, gán vai trò, khóa/mở | ✅ | ❌ | ❌ | ❌ | ❌ |
+| | Reset mật khẩu về mặc định `TechZone@2026` (chỉ cần xác nhận) | ✅ | ❌ | ❌ | ❌ | ❌ |
+| | Quản lý cửa hàng & GPS | ✅ | ❌ | ❌ | ❌ | ❌ |
+| | Nhật ký kiểm toán (`audit_logs`) | ✅ | ❌ | ❌ | ❌ | ❌ |
+| | Xem danh mục vai trò & ma trận phân quyền | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Nhân sự** | Xem hồ sơ nhân viên | ❌ | ✅ | ✅ | 🏬 | 👤 |
 | | Thêm / sửa / cho thôi việc / thăng chức, điều chuyển | ❌ | ✅ | ✅ | ❌ | ❌ |
-| **Hợp đồng** | Xem hợp đồng (lương cơ bản chỉ hiện với HR, Giám đốc, Admin) | 👁️ | ✅ | ✅ | 🏬 | 👤 |
+| **Hợp đồng** | Xem hợp đồng (lương cơ bản chỉ hiện với HR, Giám đốc) | ❌ | ✅ | ✅ | 🏬 | 👤 |
 | | Tạo / sửa / kích hoạt / gia hạn / chấm dứt / hủy | ❌ | ✅ | ✅ | ❌ | ❌ |
 | | Đồng bộ trạng thái nhân viên theo hợp đồng | ✅ | ✅ | ✅ | ❌ | ❌ |
-| **Thôi việc** | Xem / tạo đơn / hoàn tất / hủy | 👁️ | ✅ | ✅ | ❌ | ❌ |
+| **Thôi việc** | Xem / tạo đơn / hoàn tất / hủy | ❌ | ✅ | ✅ | ❌ | ❌ |
 | | Duyệt / từ chối đơn của Nhân viên, Cửa hàng trưởng | ❌ | ❌ | ✅ | ❌ | ❌ |
-| | Duyệt / từ chối đơn của HR Manager, Admin | ❌ | ✅ | ❌ | ❌ | ❌ |
-| **Nghỉ phép** | Nộp đơn nghỉ của bản thân | 👤 | 👤 | 👤 | 👤 | 👤 |
+| | Duyệt / từ chối đơn của HR Manager | ❌ | ✅ | ❌ | ❌ | ❌ |
+| **Nghỉ phép** | Nộp đơn nghỉ của bản thân | ❌ | 👤 | 👤 | 👤 | 👤 |
 | | Tạo đơn hộ nhân viên khác | ❌ | ❌ | ✅ | 🏬 | ❌ |
-| | Xem danh sách đơn & lịch nghỉ | 👁️ | ✅ | ✅ | 🏬 | 👤 |
+| | Xem danh sách đơn & lịch nghỉ | ❌ | ✅ | ✅ | 🏬 | 👤 |
 | | Duyệt Cấp 1 | ❌ | ✅ | ❌ | 🏬 | ❌ |
-| | Duyệt Cấp 2 (đơn của HR/Admin: chỉ Giám đốc) | ❌ | ✅ | ✅ | ❌ | ❌ |
+| | Duyệt Cấp 2 (đơn của HR: chỉ Giám đốc) | ❌ | ✅ | ✅ | ❌ | ❌ |
 | | Từ chối đơn | ❌ | ✅ | ✅ | 🏬 | ❌ |
-| **Chấm công** | Check-in / check-out | 👤 | 👤 | 👤 | 👤 | 👤 |
-| | Xem bảng công | 👁️ | ✅ | ✅ | 🏬 | 👤 |
+| **Chấm công** | Check-in / check-out | ❌ | 👤 | 👤 | 👤 | 👤 |
+| | Xem bảng công | ❌ | ✅ | ✅ | 🏬 | 👤 |
 | | Xử lý phiên chấm công bất thường | ❌ | ✅ | ✅ | ❌ | ❌ |
-| **Phân ca** | Xem lịch làm việc | 👁️ | ✅ | ✅ | 🏬 | 👤 |
+| **Phân ca** | Xem lịch làm việc | ❌ | ✅ | ✅ | 🏬 | 👤 |
 | | Phân ca / lịch cố định (lịch của HR: chỉ Giám đốc) | ❌ | ✅ | ✅ | 🏬 | ❌ |
 | **Tăng ca (OT)** | Đề xuất OT cho nhân viên | ❌ | ❌ | ❌ | 🏬 | ❌ |
 | | Tự đăng ký OT | ❌ | ❌ | ❌ | ❌ | 👤 |
 | | Duyệt / từ chối / thu hồi / điều chỉnh OT | ❌ | ✅ | ✅ | ❌ | ❌ |
-| | Đối soát OT, yêu cầu giải trình | 👁️ | ✅ | ✅ | ❌ | ❌ |
+| | Đối soát OT, yêu cầu giải trình | ❌ | ✅ | ✅ | ❌ | ❌ |
 | **Doanh số** | Ghi nhận doanh số | ❌ | ✅ | ✅ | 🏬 | ❌ |
-| **Lương** | Xem bảng lương & phiếu lương | 👁️ | ✅ | ✅ | 🏬 *(đã duyệt)* | 👤 *(đã duyệt)* |
+| **Lương** | Xem bảng lương & phiếu lương | ❌ | ✅ | ✅ | 🏬 *(đã duyệt)* | 👤 *(đã duyệt)* |
 | | Tính / chốt / chi trả / mở lại kỳ lương, điều chỉnh phiếu | ❌ | ✅ | ✅ | ❌ | ❌ |
-| | Cấu hình chính sách lương, ngày lễ, công chuẩn, phụ cấp | 👁️ | ✅ | ✅ | ❌ | ❌ |
+| | Cấu hình chính sách lương, ngày lễ, công chuẩn, phụ cấp | ❌ | ✅ | ✅ | ❌ | ❌ |
 | **Dự án** | Tạo / sửa dự án, thành viên, phụ cấp vai trò | ❌ | ✅ | ✅ | ❌ | ❌ |
 | | Xóa dự án | ❌ | ✅ | ❌ | ❌ | ❌ |
 | **Báo cáo** | Trung tâm báo cáo & KPI, xuất Excel | ❌ | ✅ | ✅ | ❌ | ❌ |
 
-> Trợ lý AI (Chatbot) áp dụng cùng quy tắc phạm vi: ví dụ Cửa hàng trưởng chỉ tra cứu được lương **đã duyệt** của nhân viên cửa hàng mình.
+> `ADMIN` bị chặn toàn bộ cột nghiệp vụ ở tầng router (`deny_admin`), kể cả các endpoint chỉ đọc. Trợ lý AI (Chatbot) áp dụng cùng quy tắc phạm vi: ví dụ Cửa hàng trưởng chỉ tra cứu được lương **đã duyệt** của nhân viên cửa hàng mình.
 
 ---
 
@@ -467,8 +473,8 @@ Ký hiệu: ✅ toàn chuỗi · 🏬 chỉ cửa hàng phụ trách · 👤 ch�
 Hệ thống áp dụng nghiêm ngặt nguyên tắc quản trị xung đột lợi ích:
 - **Nhân viên cửa hàng:** Nộp đơn nghỉ $\rightarrow$ Cửa hàng trưởng duyệt Cấp 1 $\rightarrow$ Trưởng phòng HR duyệt Cấp 2.
 - **Cửa hàng trưởng:** Nộp đơn nghỉ $\rightarrow$ Tự động bỏ qua Cấp 1 $\rightarrow$ Trưởng phòng HR duyệt trực tiếp.
-- **Trưởng phòng HR / Quản trị viên (Admin):** Nộp đơn nghỉ $\rightarrow$ Hệ thống chặn HR tự duyệt đơn của chính mình; đơn được chuyển thẳng lên Giám đốc (`DIRECTOR`) xét duyệt qua trường `director_approver_id` và `director_approved_at`.
-- **Đơn thôi việc:** Đơn của Nhân viên / Cửa hàng trưởng do HR duyệt; đơn của HR Manager / Admin **chỉ** Giám đốc duyệt. Không ai duyệt hoặc từ chối đơn của chính mình.
+- **Trưởng phòng HR:** Nộp đơn nghỉ $\rightarrow$ Hệ thống chặn HR tự duyệt đơn của chính mình; đơn được chuyển thẳng lên Giám đốc (`DIRECTOR`) xét duyệt qua trường `director_approver_id` và `director_approved_at`.
+- **Đơn thôi việc:** Đơn của Nhân viên / Cửa hàng trưởng do HR duyệt; đơn của HR Manager **chỉ** Giám đốc duyệt. Không ai duyệt hoặc từ chối đơn của chính mình.
 - **Tăng ca (OT):** Người tạo đơn hoặc chính nhân viên được giao OT không được tự duyệt, tự thu hồi hay tự duyệt điều chỉnh; Cửa hàng trưởng không đề xuất OT cho chính mình.
 - **Phân ca:** Cửa hàng trưởng không tự phân/sửa/hủy lịch của bản thân; lịch của HR chỉ Giám đốc quản lý.
 
@@ -530,7 +536,8 @@ flowchart TD
 3. **Quy trình Duyệt đơn 2 Cấp Minh bạch:** Xử lý đơn nghỉ phép năm, ốm đau, thai sản, không lương và thôi việc với 2 cấp duyệt phân quyền; tự động tính và trừ số dư ngày phép năm còn lại.
 4. **Động cơ Lương Doanh số Bán lẻ Thiết bị:** Tự động tính hoa hồng 1% ĐT/Laptop, 3% Phụ kiện, thưởng KPI 1M-2M, trích nộp bảo hiểm 10.5%, công chuẩn và hệ số OT theo kỳ (150%, 200%, 300%), nhập dữ liệu lương từ Excel và bẻ nhỏ các khoản vào phiếu lương.
 5. **Trợ lý AI Doanh nghiệp (Agentic RAG):** Giải đáp thắc mắc quy chế, hướng dẫn xử lý quên check-out, tra cứu bảng lương/bảng công cá nhân an toàn và hỗ trợ tạo đơn nghỉ phép tự động.
-6. **Báo cáo & Thống kê Quản trị Toàn diện:** Dashboard thời gian thực, báo cáo biến động nhân sự, báo cáo cơ cấu trình độ học vấn, thâm niên, khung bậc lương, xuất file Excel (`.xlsx`) và CSV chuẩn UTF-8.
+6. **Module Quản trị hệ thống tách riêng:** Cổng đăng nhập `/admin/login` và giao diện riêng cho `ADMIN` gồm tài khoản & phân quyền, cửa hàng & GPS, nhật ký kiểm toán và bảo trì dữ liệu; reset mật khẩu là một thao tác có xác nhận, đưa về mật khẩu mặc định `TechZone@2026`.
+7. **Báo cáo & Thống kê Quản trị Toàn diện:** Dashboard thời gian thực, báo cáo biến động nhân sự, báo cáo cơ cấu trình độ học vấn, thâm niên, khung bậc lương, xuất file Excel (`.xlsx`) và CSV chuẩn UTF-8.
 
 ---
 
@@ -540,13 +547,15 @@ Hệ thống đã nạp sẵn **5 tài khoản đại diện cho 5 vai trò** đ
 
 | STT | Tài khoản (Username) | Mật khẩu | Vai trò (Role) | Họ và tên nhân sự | Chức danh thực tế | Kịch bản Demo đề xuất |
 |:---:|:---|:---:|:---:|---|---|---|
-| 1 | `tz001` | `TechZone@2026` | **`ADMIN`** | Nguyễn Văn An | Quản trị viên hệ thống | Quản trị tài khoản & gán vai trò, quản lý cửa hàng/GPS, xem ma trận RBAC, kiểm tra nhật ký `audit_logs`. Ở nghiệp vụ chỉ xem (không duyệt, không chốt lương). |
-| 2 | `tzdir` | `TechZone@2026` | **`DIRECTOR`** | Phạm Nguyệt Vượng | Giám đốc điều hành (Ban Giám đốc) | Xem báo cáo nhân sự & bảng lương toàn chuỗi, **phê duyệt đơn nghỉ/thôi việc của HR và Admin** (No Self-Approval), duyệt tăng ca (OT), xem nhật ký kiểm toán. |
+| 1 | `tz001` | `TechZone@2026` | **`ADMIN`** | Nguyễn Văn An | Quản trị viên hệ thống | **Đăng nhập tại `/admin/login`.** Quản trị tài khoản & gán vai trò, reset mật khẩu, quản lý cửa hàng/GPS, kiểm tra nhật ký `audit_logs`, đồng bộ trạng thái nhân viên. Không vào được app nghiệp vụ. |
+| 2 | `tzdir` | `TechZone@2026` | **`DIRECTOR`** | Phạm Nguyệt Vượng | Giám đốc điều hành (Ban Giám đốc) | Xem báo cáo nhân sự & bảng lương toàn chuỗi, **phê duyệt đơn nghỉ/thôi việc của HR** (No Self-Approval), duyệt tăng ca (OT). |
 | 3 | `tz002` | `TechZone@2026` | **`HR_MANAGER`** | Trần Thị Bình | Trưởng phòng Nhân sự | Quản lý hồ sơ nhân viên, duyệt đơn Cấp 2, thăng chức nhân viên, bấm nút chốt lương toàn chuỗi, xuất báo cáo Excel. |
 | 4 | `tz003` | `TechZone@2026` | **`STORE_MANAGER`** | Lê Văn Cường | Cửa hàng trưởng TechZone Q1 | Quản lý nhân viên chi nhánh Q1, phân ca tuần, duyệt đơn Cấp 1, nhập doanh số bán lẻ 3 ngành hàng. |
 | 5 | `tz004` | `TechZone@2026` | **`EMPLOYEE`** | Phạm Quốc Dũng | Nhân viên Tư vấn Bán hàng (Q3) | Chấm công GPS Geofence + Selfie trên Mobile, nộp đơn nghỉ phép, xem doanh số đạt KPI, tra cứu phiếu lương cá nhân. |
 
 *(Ngoài ra còn có tài khoản phụ `tz005` / `TechZone@2026` - Vai trò `EMPLOYEE` đại diện cho Kỹ thuật viên chi nhánh Tân Bình).*
+
+> ℹ️ Tài khoản `ADMIN` nên là tài khoản thuần, không gắn hồ sơ nhân viên và không kiêm vai trò khác. `tz001` đang gắn với nhân viên TZ-001, nên không xem được lương/chấm công cá nhân sau khi tách module Admin.
 
 Bộ dữ liệu demo gồm 60 nhân viên, được nạp bằng `backend/scripts/seed_clean_data.py`.
 
@@ -581,7 +590,8 @@ python run.py
 >
 > Sau lần chạy đầu, điền `DATABASE_URL`, `SYNC_DATABASE_URL` và `JWT_SECRET_KEY` vào `backend/.env`. Dùng Trợ lý AI cần thêm `MISTRAL_API_KEY`.
 
-- **Frontend Web Portal:** `http://localhost:3000`
+- **Frontend Web Portal:** `http://localhost:3000` (nhân sự đăng nhập tại `/login`)
+- **Module Quản trị hệ thống:** `http://localhost:3000/admin/login` (chỉ tài khoản `ADMIN`)
 - **Backend API Server:** `http://localhost:8000`
 - **Tài liệu API Swagger UI:** `http://localhost:8000/docs`
 
@@ -630,7 +640,7 @@ npx expo start
 - **ReDoc Technical Specification:** [http://localhost:8000/redoc](http://localhost:8000/redoc)
 
 ### 2. Bộ Kiểm Thử Tự Động
-Backend có **355 test case trong 48 file**, bao phủ phân quyền RBAC, quy trình duyệt nghỉ 2 cấp, đối soát OT và chốt bảng lương:
+Backend có **382 test case trong 54 file**, bao phủ phân quyền RBAC, tách module Admin, quy trình duyệt nghỉ 2 cấp, đối soát OT và chốt bảng lương:
 
 ```powershell
 cd backend
@@ -644,6 +654,8 @@ pytest tests -v
 
 **Một số bộ test tiêu biểu:**
 - `tests/test_phase1_security.py`: Kiểm thử xác thực JWT, mã hóa mật khẩu và phân quyền RBAC theo vai trò.
+- `tests/test_admin_isolation.py`: Kiểm thử `ADMIN` bị chặn `403` ở API nghiệp vụ và các role khác bị chặn ở API quản trị.
+- `tests/test_admin_reset_password.py`: Kiểm thử reset mật khẩu luôn đưa về mật khẩu mặc định `TechZone@2026`.
 - `tests/test_phase1b_to_5.py`: Kiểm thử bộ máy LangGraph AI Chatbot, cơ chế Hybrid Retrieval, bảo mật Guardrails và Tool Calling.
 - `tests/test_production_readiness.py`: Kiểm thử bộ nhớ đệm Policy Cache, tỷ lệ chịu lỗi và độ trễ phản hồi.
 - `tests/test_leaves_workflow.py`: Kiểm thử vòng đời đơn nghỉ phép 2 cấp (Store duyệt $\rightarrow$ HR duyệt $\rightarrow$ Hoàn công).

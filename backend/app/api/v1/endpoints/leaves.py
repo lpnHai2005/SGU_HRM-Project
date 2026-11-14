@@ -73,7 +73,7 @@ async def get_leave_stats(
     params: Dict[str, Any] = {}
 
     # Phân quyền: Nhân viên chỉ thấy thống kê cá nhân; Cửa hàng trưởng thấy chi nhánh; HR/Admin/Director thấy toàn chuỗi
-    if "ADMIN" not in roles and "HR_MANAGER" not in roles and "DIRECTOR" not in roles:
+    if "HR_MANAGER" not in roles and "DIRECTOR" not in roles:
         if "STORE_MANAGER" in roles:
             where_clause += " AND (e.store_id = :store_id OR lr.employee_id = :emp_id)"
             params["store_id"] = store_id
@@ -178,7 +178,7 @@ async def get_leave_calendar(
     """
     params: Dict[str, Any] = {"month": target_month}
 
-    if "ADMIN" not in roles and "HR_MANAGER" not in roles and "DIRECTOR" not in roles:
+    if "HR_MANAGER" not in roles and "DIRECTOR" not in roles:
         if "STORE_MANAGER" in roles:
             query += " AND e.store_id = :user_store_id"
             params["user_store_id"] = current_user.get("store_id")
@@ -191,7 +191,7 @@ async def get_leave_calendar(
         params["filter_store_id"] = store_id
 
     if employee_id is not None:
-        if not any(role in roles for role in ("ADMIN", "HR_MANAGER", "DIRECTOR", "STORE_MANAGER")) and employee_id != current_user.get("employee_id"):
+        if not any(role in roles for role in ("HR_MANAGER", "DIRECTOR", "STORE_MANAGER")) and employee_id != current_user.get("employee_id"):
             raise HTTPException(status_code=403, detail="Không được xem lịch nghỉ của nhân viên khác")
         query += " AND lr.employee_id = :employee_id"
         params["employee_id"] = employee_id
@@ -223,7 +223,7 @@ async def get_leave_calendar(
           AND to_char(e.resignation_date, 'YYYY-MM') = :month
     """
     resigned_params: Dict[str, Any] = {"month": target_month}
-    if "ADMIN" not in roles and "HR_MANAGER" not in roles and "DIRECTOR" not in roles:
+    if "HR_MANAGER" not in roles and "DIRECTOR" not in roles:
         if "STORE_MANAGER" in roles:
             resigned_query += " AND e.store_id = :user_store_id"
             resigned_params["user_store_id"] = current_user.get("store_id")
@@ -268,7 +268,7 @@ async def list_leaves(
     Truy vấn danh sách đơn xin nghỉ phép với cơ chế phân quyền RBAC chặt chẽ:
     - **EMPLOYEE**: Chỉ xem được các đơn do chính mình gửi.
     - **STORE_MANAGER**: Xem được đơn của toàn bộ nhân viên thuộc chi nhánh mình quản lý + đơn của bản thân.
-    - **HR_MANAGER & ADMIN**: Xem và quản lý toàn bộ đơn trên toàn chuỗi TechZone.
+    - **HR_MANAGER & DIRECTOR**: Xem và quản lý toàn bộ đơn trên toàn chuỗi TechZone.
     Hiển thị rõ ràng thông tin người duyệt cấp 1, cấp 2 và người từ chối (kèm vai trò).
     """
     query = """
@@ -330,7 +330,7 @@ async def list_leaves(
     user_store_id = current_user.get("store_id")
 
     # Áp dụng RBAC
-    if "ADMIN" not in roles and "HR_MANAGER" not in roles and "DIRECTOR" not in roles:
+    if "HR_MANAGER" not in roles and "DIRECTOR" not in roles:
         if "STORE_MANAGER" in roles:
             # Cửa hàng trưởng xem nhân viên chi nhánh mình + đơn của mình
             query += " AND (e.store_id = :user_store_id OR lr.employee_id = :user_emp_id)"
@@ -349,7 +349,7 @@ async def list_leaves(
     # Các bộ lọc tìm kiếm
     if employee_id:
         # Nhân viên thường không được xem đơn người khác
-        if "ADMIN" not in roles and "HR_MANAGER" not in roles and "DIRECTOR" not in roles and "STORE_MANAGER" not in roles:
+        if "HR_MANAGER" not in roles and "DIRECTOR" not in roles and "STORE_MANAGER" not in roles:
             if employee_id != user_emp_id:
                 raise HTTPException(status_code=403, detail="Bạn không có quyền xem đơn nghỉ phép của nhân viên khác.")
         query += " AND lr.employee_id = :employee_id"
@@ -447,7 +447,7 @@ async def get_leave_detail(
     user_store_id = current_user.get("store_id")
 
     # Kiểm tra quyền xem chi tiết
-    if "ADMIN" not in roles and "HR_MANAGER" not in roles and "DIRECTOR" not in roles:
+    if "HR_MANAGER" not in roles and "DIRECTOR" not in roles:
         if "STORE_MANAGER" in roles:
             if row["store_id"] != user_store_id and row["employee_id"] != user_emp_id:
                 raise HTTPException(status_code=403, detail="Bạn không có quyền xem đơn của nhân sự chi nhánh khác")
@@ -578,7 +578,7 @@ async def create_leave_request(
     user_store_id = current_user.get("store_id")
 
     # Xác định nhân viên được nộp đơn:
-    # Nếu chỉ định req.employee_id khác với user_emp_id -> cần quyền CHT, HR hoặc ADMIN
+    # Nếu chỉ định req.employee_id khác với user_emp_id -> cần quyền CHT hoặc HR
     target_emp_id = req.employee_id if req.employee_id is not None else user_emp_id
     if not target_emp_id:
         raise HTTPException(
@@ -600,7 +600,6 @@ async def create_leave_request(
 
     # Phân quyền khi tạo đơn thay cho nhân viên khác
     if user_emp_id is None or target_emp_id != user_emp_id:
-        # ADMIN chỉ quản trị kỹ thuật: không tạo đơn thay người khác.
         is_hr = "HR_MANAGER" in roles
         is_store_mgr = "STORE_MANAGER" in roles
 
@@ -729,7 +728,7 @@ async def create_leave_request(
         msg = f"Đã tạo đơn {leave_type['type_name']} thành công cho nhân viên {target_emp['full_name']}!"
     else:
         is_cht = "STORE_MANAGER" in roles
-        is_hr_or_admin = "HR_MANAGER" in roles or "ADMIN" in roles
+        is_hr_or_admin = "HR_MANAGER" in roles
         msg = f"Nộp đơn {leave_type['type_name']} thành công!"
         if is_cht:
             msg += " Đơn của Cửa hàng trưởng được chuyển đến Phòng Nhân sự và Giám đốc phê duyệt."
@@ -798,13 +797,12 @@ async def store_approve_leave(
         )
 
     # Kiểm tra phân quyền Cửa hàng trưởng
-    if "ADMIN" not in roles:
-        # Chỉ duyệt đơn thuộc chi nhánh mình
-        if leave_req["store_id"] != current_user.get("store_id"):
-            raise HTTPException(
-                status_code=403,
-                detail="Bạn chỉ có quyền phê duyệt đơn của nhân viên thuộc chi nhánh cửa hàng mình quản lý."
-            )
+    # Chỉ duyệt đơn thuộc chi nhánh mình
+    if leave_req["store_id"] != current_user.get("store_id"):
+        raise HTTPException(
+            status_code=403,
+            detail="Bạn chỉ có quyền phê duyệt đơn của nhân viên thuộc chi nhánh cửa hàng mình quản lý."
+        )
 
     # Đơn của Cửa hàng trưởng hoặc nhân sự quản lý không qua Cửa hàng trưởng duyệt
     applicant_mgr_check = await db.execute(text("""
@@ -1137,7 +1135,7 @@ async def reject_leave(
 
     # Kiểm tra quyền từ chối:
     # 1. Cửa hàng trưởng chỉ được từ chối nhân viên chi nhánh mình
-    if "ADMIN" not in roles and "HR_MANAGER" not in roles and "DIRECTOR" not in roles:
+    if "HR_MANAGER" not in roles and "DIRECTOR" not in roles:
         if leave_req["store_id"] != user_store_id:
             raise HTTPException(status_code=403, detail="Bạn không có quyền từ chối đơn của nhân sự chi nhánh khác.")
         if leave_req["status"] == "HR_APPROVED":
@@ -1243,7 +1241,7 @@ async def cancel_leave_request(
 ):
     """
     Cho phép nhân viên tự hủy đơn nghỉ phép của mình khi đơn còn ở trạng thái 'PENDING'.
-    Quản trị viên (ADMIN) và HR Manager có thể hủy đơn bất kỳ lúc nào nếu chưa chốt công.
+    HR Manager và Giám đốc có thể hủy đơn bất kỳ lúc nào nếu chưa chốt công.
     """
     roles = current_user.get("roles", [])
     user_emp_id = current_user.get("employee_id")
@@ -1339,7 +1337,7 @@ async def get_employee_leave_balance(
         raise HTTPException(status_code=404, detail="Không tìm thấy nhân viên trong hệ thống.")
 
     # Kiểm tra phân quyền truy cập số dư
-    if "ADMIN" not in roles and "HR_MANAGER" not in roles and "DIRECTOR" not in roles:
+    if "HR_MANAGER" not in roles and "DIRECTOR" not in roles:
         if "STORE_MANAGER" in roles:
             if emp_row["store_id"] != user_store_id and employee_id != user_emp_id:
                 raise HTTPException(status_code=403, detail="Bạn không có quyền tra cứu số dư phép của nhân viên chi nhánh khác.")

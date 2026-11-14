@@ -126,38 +126,42 @@ SGU-HRM-Project/
 | `/employees` | GET | ✅ | - | Danh sách nhân viên |
 | `/employees/metadata/lookups` | GET | ❌ | - | Danh mục (dept, store, position, edu) |
 | `/employees/{id}` | GET | ✅ | - | Chi tiết nhân viên |
-| `/employees` | POST | ✅ | ADMIN, HR_MANAGER | Tạo nhân viên mới |
-| `/employees/{id}` | PUT | ✅ | ADMIN, HR_MANAGER | Cập nhật nhân viên |
-| `/employees/{id}` | DELETE | ✅ | ADMIN, HR_MANAGER | Thôi việc (RESIGNED) |
-| `/employees/{id}/promote` | POST | ✅ | ADMIN, HR_MANAGER | Thăng chức/điều chuyển |
+| `/employees` | POST | ✅ | HR_MANAGER | Tạo nhân viên mới |
+| `/employees/{id}` | PUT | ✅ | HR_MANAGER | Cập nhật nhân viên |
+| `/employees/{id}` | DELETE | ✅ | HR_MANAGER | Thôi việc (RESIGNED) |
+| `/employees/{id}/promote` | POST | ✅ | HR_MANAGER | Thăng chức/điều chuyển |
 | `/employees/contracts` | GET | ✅ | - | Danh sách hợp đồng |
-| `/employees/contracts` | POST | ✅ | ADMIN, HR_MANAGER | Tạo hợp đồng |
+| `/employees/contracts` | POST | ✅ | HR_MANAGER | Tạo hợp đồng |
 | **Attendances** ||||
 | `/attendances` | GET | ✅ | - | Danh sách chấm công |
 | `/attendances/my-history` | GET | ✅ | - | Lịch sử chấm công của tôi |
 | `/attendances/check-in` | POST | ✅ | - | Check-in vào ca |
 | `/attendances/check-out` | POST | ✅ | - | Check-out khỏi ca |
 | `/attendances/shift-schedules` | GET | ✅ | - | Danh sách phân ca |
-| `/attendances/shift-schedules` | POST | ✅ | STORE_MANAGER, HR, ADMIN | Phân ca |
+| `/attendances/shift-schedules` | POST | ✅ | STORE_MANAGER, HR | Phân ca |
 | **Leaves** ||||
 | `/leaves/types` | GET | ❌ | - | Danh mục loại nghỉ phép |
 | `/leaves` | GET | ✅ | - | Danh sách đơn nghỉ |
 | `/leaves` | POST | ✅ | - | Nộp đơn nghỉ |
-| `/leaves/{id}/approve-store` | POST | ✅ | STORE_MANAGER, ADMIN | Duyệt cấp 1 |
-| `/leaves/{id}/approve-hr` | POST | ✅ | HR_MANAGER, ADMIN | Duyệt cấp 2 |
-| `/leaves/{id}/reject` | POST | ✅ | STORE_MANAGER, HR, ADMIN | Từ chối |
+| `/leaves/{id}/approve-store` | POST | ✅ | STORE_MANAGER | Duyệt cấp 1 |
+| `/leaves/{id}/approve-hr` | POST | ✅ | HR_MANAGER | Duyệt cấp 2 |
+| `/leaves/{id}/reject` | POST | ✅ | STORE_MANAGER, HR | Từ chối |
 | `/leaves/balances/me` | GET | ✅ | - | Số dư phép của tôi |
 | `/leaves/balances/{emp_id}` | GET | ✅ | - | Số dư phép nhân viên |
 | **Payrolls** ||||
 | `/payrolls` | GET | ✅ | - | Danh sách bảng lương |
 | `/payrolls/{id}` | GET | ✅ | - | Chi tiết phiếu lương |
-| `/payrolls/calculate` | POST | ✅ | HR_MANAGER, ADMIN | Chạy tính lương |
-| `/payrolls/sales-records` | POST | ✅ | STORE_MANAGER, HR, ADMIN | Ghi nhận doanh số |
-| `/payrolls/generate/{month}` | POST | ✅ | HR_MANAGER, ADMIN | Chốt lương tháng |
+| `/payrolls/calculate` | POST | ✅ | HR_MANAGER | Chạy tính lương |
+| `/payrolls/sales-records` | POST | ✅ | STORE_MANAGER, HR | Ghi nhận doanh số |
+| `/payrolls/generate/{month}` | POST | ✅ | HR_MANAGER | Chốt lương tháng |
 | `/payrolls/annual-summary/{emp_id}` | GET | ✅ | - | Tổng hợp thu nhập năm |
 | **Roles & Permissions** ||||
 | `/roles` | GET | ✅ | - | Danh sách roles |
-| `/roles/matrix` | GET | ✅ | ADMIN, DIRECTOR, HR_MANAGER | Ma trận RBAC |
+| `/roles/matrix` | GET | ✅ | ADMIN | Ma trận RBAC |
+| `/users/linkable-employees` | GET | ✅ | ADMIN | Nhân viên để gắn vào tài khoản (chỉ định danh) |
+| `/users/{id}/reset-password` | POST | ✅ | ADMIN | Đặt lại mật khẩu về mặc định `TechZone@2026` (không nhận mật khẩu từ client) |
+| `/admin/sync-employee-statuses` | POST | ✅ | ADMIN | Đồng bộ trạng thái nhân viên theo hợp đồng |
+| `/audit-logs` | GET | ✅ | ADMIN | Nhật ký kiểm toán |
 
 ## Quy ước Code
 
@@ -190,7 +194,7 @@ SGU-HRM-Project/
 ### RBAC Roles
 | Role | Mô tả | Quyền |
 |------|-------|-------|
-| ADMIN | Quản trị hệ thống (kỹ thuật) | Quản lý tài khoản, phân quyền, nhật ký, cửa hàng; CHỈ XEM ở nghiệp vụ (không duyệt/tạo/sửa) |
+| ADMIN | Quản trị hệ thống (kỹ thuật) | Quản lý tài khoản, phân quyền, nhật ký, cửa hàng, bảo trì dữ liệu. KHÔNG truy cập API nghiệp vụ (403) và chỉ đăng nhập qua `/admin/login` |
 | DIRECTOR | Giám đốc | Duyệt đơn của HR/Admin, duyệt tăng ca, xem báo cáo toàn công ty |
 | HR_MANAGER | Quản lý nhân sự | Quản lý nhân sự, duyệt nghỉ cấp 2, tính lương |
 | STORE_MANAGER | Cửa hàng trưởng | Quản lý cửa hàng, duyệt nghỉ cấp 1 |
@@ -244,6 +248,12 @@ npm install
 npm run dev
 # App: http://localhost:5173
 ```
+
+## Module Admin (tách riêng)
+
+- Frontend: `frontend-web/src/admin/AdminApp.tsx`, đăng nhập tại `/admin/login`; các trang `/admin/users`, `/admin/stores`, `/admin/audit`, `/admin/maintenance`. Tài khoản ADMIN vào app nghiệp vụ bị từ chối ở `/login` (và ngược lại).
+- Backend: `deny_admin` (`api/deps.py`) gắn ở `api/v1/router.py` cho mọi router nghiệp vụ → ADMIN nhận 403. `users`, `roles`, `audit-logs`, `stores` (ghi) và `admin` chỉ ADMIN.
+- Tài khoản ADMIN nên là tài khoản thuần: không gắn `employee_id`, không kiêm role khác.
 
 ## Ghi chú quan trọng
 

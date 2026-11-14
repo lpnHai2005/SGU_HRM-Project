@@ -18,13 +18,11 @@ from sqlalchemy import text
 
 def check_permission(current_user: dict, allowed_roles: List[str]) -> bool:
     user_roles = current_user.get("roles", [])
-    if "ADMIN" in user_roles:
-        return True
     return any(r in user_roles for r in allowed_roles)
 
 
 def is_hr_or_admin(current_user: dict) -> bool:
-    return check_permission(current_user, ["ADMIN", "HR_MANAGER", "DIRECTOR"])
+    return check_permission(current_user, ["HR_MANAGER", "DIRECTOR"])
 
 
 def is_store_manager(current_user: dict) -> bool:

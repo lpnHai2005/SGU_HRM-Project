@@ -12,8 +12,8 @@ from app.core.ot_cap import require_ot_within_cap
 from app.core.overtime_requests import VIETNAM_TZ, local_interval, require_transition
 
 router = APIRouter()
-MANAGER_ROLES = {"ADMIN", "HR_MANAGER", "DIRECTOR", "STORE_MANAGER"}
-REVIEW_ROLES = {"ADMIN", "HR_MANAGER", "DIRECTOR"}
+MANAGER_ROLES = {"HR_MANAGER", "DIRECTOR", "STORE_MANAGER"}
+REVIEW_ROLES = {"HR_MANAGER", "DIRECTOR"}
 
 
 class OvertimeRequestCreate(BaseModel):

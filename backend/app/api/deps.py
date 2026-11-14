@@ -121,8 +121,8 @@ def require_roles(allowed_roles: List[str]):
     """
     Dependency kiểm tra vai trò (Role-Based Access Control - RBAC).
     - Người dùng phải sở hữu ít nhất một trong các vai trò được cấp phép.
-    - ADMIN KHÔNG được bỏ qua kiểm tra: ADMIN là quản trị kỹ thuật, chỉ đọc ở nghiệp vụ,
-      nên mỗi endpoint phải ghi rõ "ADMIN" nếu cho phép.
+    - ADMIN KHÔNG được bỏ qua kiểm tra: ADMIN chỉ quản trị hệ thống (/admin), không truy cập nghiệp vụ,
+      nên chỉ endpoint quản trị mới ghi "ADMIN".
     """
     def role_checker(current_user: dict = Depends(get_current_user)):
         user_roles = current_user.get("roles", [])
@@ -133,6 +133,24 @@ def require_roles(allowed_roles: List[str]):
             )
         return current_user
     return role_checker
+
+
+def deny_admin(token: Optional[str] = Depends(oauth2_scheme)):
+    """
+    Chốt chặn cho mọi router NGHIỆP VỤ: tài khoản ADMIN chỉ dùng module /admin nên bị 403.
+    Đọc role từ JWT (không truy vấn DB) và bỏ qua request không có token để các endpoint
+    công khai (lookups, leave types) vẫn tự xử lý xác thực như cũ.
+    shortcut: role lấy từ token nên người vừa được cấp ADMIN chỉ bị chặn sau khi đăng nhập lại;
+    require_roles ở từng endpoint vẫn chặn theo role thật trong DB.
+    """
+    if not token:
+        return
+    payload = decode_token(token)
+    if payload and "ADMIN" in (payload.get("roles") or []):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tài khoản quản trị chỉ được dùng module Quản trị hệ thống (/admin)."
+        )
 
 
 def require_strict_roles(allowed_roles: List[str]):
@@ -158,10 +176,6 @@ def require_permissions(allowed_permissions: List[str]):
     Dependency kiểm tra quyền chức năng chi tiết (Permission-Based Access Control).
     """
     def perm_checker(current_user: dict = Depends(get_current_user)):
-        user_roles = current_user.get("roles", [])
-        if "ADMIN" in user_roles:
-            return current_user
-
         user_perms = current_user.get("permissions", [])
         if not any(perm in allowed_perms for perm in user_perms for allowed_perms in [allowed_permissions]):
             raise HTTPException(

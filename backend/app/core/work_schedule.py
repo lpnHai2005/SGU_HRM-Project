@@ -8,7 +8,7 @@ from app.core.attendance import VIETNAM_TZ
 from app.core.schedule_rules import check_weekly_schedule, week_bounds
 from app.core.ot_cap import require_ot_within_cap
 
-MANAGERS = {'HR_MANAGER', 'STORE_MANAGER', 'DIRECTOR'}  # ADMIN chỉ xem lịch, không phân ca
+MANAGERS = {'HR_MANAGER', 'STORE_MANAGER', 'DIRECTOR'}  # ADMIN không truy cập nghiệp vụ
 
 def interval(day, start, end):
     begin = datetime.combine(day, start, VIETNAM_TZ)
@@ -19,7 +19,7 @@ def interval(day, start, end):
 
 def scope(user, params, alias='ws'):
     roles = set(user.get('roles', []))
-    if roles & {'ADMIN', 'HR_MANAGER', 'DIRECTOR'}:
+    if roles & {'HR_MANAGER', 'DIRECTOR'}:
         return ''
     if 'STORE_MANAGER' in roles and user.get('store_id'):
         params['scope_store'] = user['store_id']
@@ -43,7 +43,7 @@ async def lock_employee(db, user, employee_id, store_id):
     employee = (await db.execute(text('SELECT employee_id,store_id FROM employees WHERE employee_id=:id FOR UPDATE'), {'id':employee_id})).mappings().first()
     if not employee:
         raise HTTPException(404, 'Employee not found')
-    if not roles & {'ADMIN', 'HR_MANAGER', 'DIRECTOR'} and (not user.get('store_id') or employee['store_id'] != user['store_id'] or store_id != user['store_id']):
+    if not roles & {'HR_MANAGER', 'DIRECTOR'} and (not user.get('store_id') or employee['store_id'] != user['store_id'] or store_id != user['store_id']):
         raise HTTPException(403, 'Store is outside manager scope')
     store = (await db.execute(text('SELECT store_id,is_active FROM stores WHERE store_id=:id FOR SHARE'), {'id':store_id})).mappings().first()
     if not store:

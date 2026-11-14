@@ -6,19 +6,22 @@ from sqlalchemy import text
 from app.core.database import get_db
 from app.core.security import get_password_hash
 from app.api.deps import get_current_user, require_roles, record_audit_log
-from app.schemas.schemas import UserResponse, UserCreate, UserUpdate, AdminResetPassword
+from app.schemas.schemas import UserResponse, UserCreate, UserUpdate
 
 router = APIRouter()
+
+# Mật khẩu mà ADMIN đặt lại cho tài khoản; người dùng nên đổi sau lần đăng nhập đầu.
+DEFAULT_RESET_PASSWORD = "TechZone@2026"
 
 @router.get(
     "",
     response_model=List[UserResponse],
     summary="Danh sách tài khoản người dùng trong hệ thống",
-    description="Truy xuất toàn bộ tài khoản người dùng kèm vai trò và thông tin nhân sự. Yêu cầu vai trò ADMIN hoặc HR_MANAGER."
+    description="Truy xuất toàn bộ tài khoản người dùng kèm vai trò và thông tin nhân sự. Chỉ ADMIN."
 )
 async def get_all_users(
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_roles(["ADMIN", "DIRECTOR", "HR_MANAGER"]))
+    current_user: dict = Depends(require_roles(["ADMIN"]))
 ):
     query = text("""
         SELECT u.user_id, u.username, u.email, u.phone, u.is_active, u.last_login, u.created_at,
@@ -54,15 +57,36 @@ async def get_all_users(
 
 
 @router.get(
+    "/linkable-employees",
+    summary="Danh sách nhân viên để gắn vào tài khoản (chỉ thông tin định danh)",
+    description="Chỉ ADMIN. Không trả lương, CCCD hay dữ liệu nghiệp vụ."
+)
+async def list_linkable_employees(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_roles(["ADMIN"]))
+):
+    res = await db.execute(text("""
+        SELECT e.employee_id, e.employee_code, e.full_name, e.phone, e.employment_status,
+               s.store_name, d.department_name, pos.position_name
+        FROM employees e
+        LEFT JOIN stores s ON e.store_id = s.store_id
+        LEFT JOIN departments d ON e.department_id = d.department_id
+        LEFT JOIN positions pos ON e.position_id = pos.position_id
+        ORDER BY e.employee_code;
+    """))
+    return [dict(r) for r in res.mappings().all()]
+
+
+@router.get(
     "/{user_id}",
     response_model=UserResponse,
     summary="Chi tiết tài khoản người dùng theo ID",
-    description="Yêu cầu vai trò ADMIN, DIRECTOR hoặc HR_MANAGER."
+    description="Chỉ ADMIN."
 )
 async def get_user_by_id(
     user_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"]))
+    current_user: dict = Depends(require_roles(["ADMIN"]))
 ):
     query = text("""
         SELECT u.user_id, u.username, u.email, u.phone, u.is_active, u.last_login, u.created_at,
@@ -378,11 +402,10 @@ async def update_user(
 @router.post(
     "/{user_id}/reset-password",
     summary="Đặt lại mật khẩu người dùng (Chỉ ADMIN)",
-    description="Quản trị viên đặt lại mật khẩu cho tài khoản người dùng mà không cần mật khẩu cũ."
+    description="Quản trị viên đặt lại mật khẩu tài khoản về mật khẩu mặc định của hệ thống, không cần mật khẩu cũ."
 )
 async def reset_user_password(
     user_id: int,
-    body: AdminResetPassword,
     request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_roles(["ADMIN"]))
@@ -392,14 +415,7 @@ async def reset_user_password(
     if not user_row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy tài khoản.")
 
-    new_pwd = body.new_password
-    if len(new_pwd) < 6 or len(new_pwd.encode("utf-8")) > 72 or new_pwd != new_pwd.strip():
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Mật khẩu mới cần ít nhất 6 ký tự, tối đa 72 byte và không có khoảng trắng ở đầu hoặc cuối."
-        )
-
-    hashed = get_password_hash(new_pwd)
+    hashed = get_password_hash(DEFAULT_RESET_PASSWORD)
     await db.execute(
         text("UPDATE users SET password_hash = :hash, updated_at = CURRENT_TIMESTAMP WHERE user_id = :id;"),
         {"hash": hashed, "id": user_id}
@@ -418,7 +434,7 @@ async def reset_user_password(
         ip_address=client_ip
     )
 
-    return {"message": f"Đặt lại mật khẩu thành công cho tài khoản '{user_row['username']}'."}
+    return {"message": f"Đã đặt lại mật khẩu tài khoản '{user_row['username']}' về mặc định: {DEFAULT_RESET_PASSWORD}"}
 
 
 @router.delete(

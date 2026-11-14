@@ -137,11 +137,15 @@ class TestPhase1BToPhase5(unittest.TestCase):
     def test_assert_can_access_employee_fail_closed(self):
         regular_user = {"employee_id": 10, "store_id": 1, "roles": ["EMPLOYEE"]}
         store_manager = {"employee_id": 2, "store_id": 1, "roles": ["STORE_MANAGER"]}
-        admin_user = {"employee_id": 1, "store_id": None, "roles": ["ADMIN"]}
+        director = {"employee_id": 1, "store_id": None, "roles": ["DIRECTOR"]}
+        admin_user = {"employee_id": 3, "store_id": None, "roles": ["ADMIN"]}
 
-        # Admin: always allowed
-        self.assertIsNone(assert_can_access_employee(admin_user, 999, 999))
-        self.assertIsNone(assert_can_access_employee(admin_user, None, None))
+        # Director: always allowed
+        self.assertIsNone(assert_can_access_employee(director, 999, 999))
+        self.assertIsNone(assert_can_access_employee(director, None, None))
+
+        # Admin has no business-data access: treated like a regular user (own employee_id only)
+        self.assertIsNotNone(assert_can_access_employee(admin_user, 999, 999))
 
         # Regular user: only own employee_id
         self.assertIsNone(assert_can_access_employee(regular_user, 10, 1))

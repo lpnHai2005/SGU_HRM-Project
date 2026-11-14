@@ -22,7 +22,7 @@ interface AuthContextType {
   user: AuthUser | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  login: (username: string, password: string, portal?: 'staff' | 'admin') => Promise<void>;
   logout: () => Promise<void>;
   hasRole: (role: UserRole | UserRole[]) => boolean;
   hasPermission: (permission: string) => boolean;
@@ -82,9 +82,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     initAuth();
   }, []);
 
-  const login = useCallback(async (username: string, password: string) => {
+  const login = useCallback(async (username: string, password: string, portal: 'staff' | 'admin' = 'staff') => {
     try {
       const response = await authApi.login(username, password);
+
+      // Hai cổng tách biệt: ADMIN chỉ vào /admin, các role khác chỉ vào app nghiệp vụ.
+      const isAdminAccount = response.roles.includes('ADMIN');
+      if (portal === 'admin' && !isAdminAccount) throw new Error('Tài khoản này không có quyền quản trị hệ thống.');
+      if (portal === 'staff' && isAdminAccount) throw new Error('Tài khoản quản trị vui lòng đăng nhập tại /admin/login.');
 
       const authUser: AuthUser = {
         user_id: response.user_id,

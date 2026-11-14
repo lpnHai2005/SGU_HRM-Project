@@ -203,7 +203,7 @@ class PayrollUnconfirmRequest(BaseModel):
 
 @router.get('/overtime-approvals')
 async def list_overtime_approvals(period:str=Query(...,pattern=r'^\d{4}-(0[1-9]|1[0-2])$'),
-    current_user:dict=Depends(require_roles(['STORE_MANAGER', 'HR_MANAGER', 'ADMIN', 'DIRECTOR'])),db:AsyncSession=Depends(get_db)):
+    current_user:dict=Depends(require_roles(['STORE_MANAGER', 'HR_MANAGER', 'DIRECTOR'])),db:AsyncSession=Depends(get_db)):
     roles = current_user.get("roles", [])
     query = '''SELECT a.attendance_id,a.employee_id,e.employee_code,e.full_name,e.store_id,
         a.work_date,a.overtime_hours AS actual_overtime_hours,ota.approved_hours,ota.decision,ota.reason,
@@ -211,7 +211,7 @@ async def list_overtime_approvals(period:str=Query(...,pattern=r'^\d{4}-(0[1-9]|
         LEFT JOIN attendance_overtime_approvals ota USING(attendance_id)
         WHERE to_char(a.work_date,'YYYY-MM')=:period AND a.overtime_hours>0 AND a.check_out_time IS NOT NULL'''
     params = {'period': period}
-    if 'STORE_MANAGER' in roles and not any(r in roles for r in ('ADMIN', 'HR_MANAGER', 'DIRECTOR')):
+    if 'STORE_MANAGER' in roles and not any(r in roles for r in ('HR_MANAGER', 'DIRECTOR')):
         user_store_id = current_user.get('store_id')
         if not user_store_id:
             raise HTTPException(403, 'Tài khoản chưa được gán cửa hàng.')
@@ -247,7 +247,7 @@ async def decide_overtime(attendance_id:int,req:OvertimeDecision,
         raise HTTPException(403, 'Không được tự phê duyệt hoặc từ chối tăng ca của chính mình.')
 
     roles = current_user.get('roles', [])
-    if 'STORE_MANAGER' in roles and not any(r in roles for r in ('ADMIN', 'HR_MANAGER', 'DIRECTOR')):
+    if 'STORE_MANAGER' in roles and not any(r in roles for r in ('HR_MANAGER', 'DIRECTOR')):
         user_store_id = current_user.get('store_id')
         if not user_store_id or row['store_id'] != user_store_id:
             raise HTTPException(403, 'Chỉ được duyệt OT cho nhân viên thuộc cửa hàng được phân công.')
@@ -293,7 +293,7 @@ async def list_payrolls(
 ):
     """
     Lấy danh sách bảng lương theo kỳ.
-    - ADMIN, HR_MANAGER: Xem toàn chuỗi, lọc linh hoạt theo store, employee, status.
+    - HR_MANAGER, DIRECTOR: Xem toàn chuỗi, lọc linh hoạt theo store, employee, status.
     - STORE_MANAGER: Tự động giới hạn theo cửa hàng do mình phụ trách.
     - EMPLOYEE: Chỉ xem bảng lương của chính mình (Rubric III.3.2.3).
     """
@@ -336,7 +336,7 @@ async def list_payrolls(
     params = {"period": period}
     roles = current_user.get("roles", [])
 
-    if "ADMIN" in roles or "HR_MANAGER" in roles or "DIRECTOR" in roles:
+    if "HR_MANAGER" in roles or "DIRECTOR" in roles:
         if store_id:
             query += " AND e.store_id = :store_id"
             params["store_id"] = store_id
@@ -449,7 +449,7 @@ async def calculate_payroll(
 @router.get("/generate/{month}", summary="Lấy danh sách bảng lương tháng (Alias workflow GET)")
 async def get_generate_payroll_month(
     month: str,
-    current_user: dict = Depends(require_roles(["HR_MANAGER", "ADMIN", "DIRECTOR"])),
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """Alias nhanh cho việc lấy danh sách bảng lương tháng"""
@@ -594,7 +594,7 @@ async def get_annual_salary(
     Hỗ trợ cả URL chuẩn workflow /api/payrolls/employee/{id}/annual và /api/payrolls/annual-summary/{id}.
     """
     roles = current_user.get("roles", [])
-    if "ADMIN" not in roles and "HR_MANAGER" not in roles and "DIRECTOR" not in roles:
+    if "HR_MANAGER" not in roles and "DIRECTOR" not in roles:
         if employee_id != current_user.get("employee_id"):
             if "STORE_MANAGER" not in roles or not current_user.get('store_id'):
                 raise HTTPException(status_code=403, detail="Bạn chỉ có thể xem báo cáo thu nhập năm của chính mình")
@@ -659,7 +659,7 @@ async def get_annual_salary(
         await db.rollback()
         row = None
 
-    if not set(roles) & {'ADMIN', 'HR_MANAGER', 'DIRECTOR'}:
+    if not set(roles) & {'HR_MANAGER', 'DIRECTOR'}:
         row = None  # The legacy view includes drafts; self-service uses released rows only.
 
     if not row and not monthly_list:
@@ -757,7 +757,7 @@ async def list_sales_records(
     params = {"period": period}
     roles = current_user.get("roles", [])
 
-    if "ADMIN" in roles or "HR_MANAGER" in roles or "DIRECTOR" in roles:
+    if "HR_MANAGER" in roles or "DIRECTOR" in roles:
         if store_id:
             query += " AND es.store_id = :store_id"
             params["store_id"] = store_id
@@ -793,7 +793,7 @@ async def record_sales(
     Hệ thống tự động kích hoạt Stored Procedure tính hoa hồng.
     """
     roles = current_user.get("roles", [])
-    if "STORE_MANAGER" in roles and not any(role in roles for role in ("ADMIN", "HR_MANAGER", "DIRECTOR")):
+    if "STORE_MANAGER" in roles and not any(role in roles for role in ("HR_MANAGER", "DIRECTOR")):
         if not current_user.get("store_id") or req.store_id != current_user["store_id"]:
             raise HTTPException(status_code=403, detail="Chỉ được ghi doanh số cửa hàng được giao")
     await ensure_period_not_finalized(db, req.salary_period)
@@ -894,7 +894,7 @@ async def list_commissions(
     params = {"period": period}
     roles = current_user.get("roles", [])
 
-    if "ADMIN" in roles or "HR_MANAGER" in roles or "DIRECTOR" in roles:
+    if "HR_MANAGER" in roles or "DIRECTOR" in roles:
         if store_id:
             query += " AND es.store_id = :store_id"
             params["store_id"] = store_id
@@ -932,7 +932,7 @@ async def list_projects_with_allowances(
     params = {}
     project_filter = ""
     member_filter = ""
-    if not any(role in roles for role in ("ADMIN", "HR_MANAGER", "DIRECTOR")):
+    if not any(role in roles for role in ("HR_MANAGER", "DIRECTOR")):
         if "STORE_MANAGER" in roles:
             store_id = current_user.get("store_id")
             if not store_id:
@@ -952,7 +952,7 @@ async def list_projects_with_allowances(
     result = []
     for p in projects:
         p_dict = dict(p)
-        if not any(role in roles for role in ("ADMIN", "HR_MANAGER", "DIRECTOR")):
+        if not any(role in roles for role in ("HR_MANAGER", "DIRECTOR")):
             p_dict["budget"] = None
         # Lấy định mức phụ cấp vai trò của dự án
         res_roles = await db.execute(text("""
@@ -1233,7 +1233,7 @@ async def add_project_member(
 
 @router.get("/policies/settings", response_model=List[PayrollPolicySettingOut], summary="Danh sách cấu hình quy chế lương doanh nghiệp")
 async def list_payroll_policy_settings(
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     res = await db.execute(text("""
@@ -1305,7 +1305,7 @@ async def update_payroll_policy_setting(
 
 @router.get("/policies/position-allowances", response_model=List[PositionAllowanceOut], summary="Danh sách định mức phụ cấp chức vụ theo vị trí công việc")
 async def list_position_allowances(
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     res = await db.execute(text("""
@@ -2345,7 +2345,7 @@ async def revert_payroll_import(
 @router.get("/import/status", summary="Lấy trạng thái và lịch sử import bảng lương của kỳ")
 async def get_payroll_import_status(
     period: str = Query(..., pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     has_table = (await db.execute(text("SELECT to_regclass('public.payroll_import_overrides')"))).scalar_one_or_none()
@@ -2398,7 +2398,7 @@ async def get_payroll_import_status(
 async def export_payroll_excel(
     period: Optional[str] = Query("2026-09", description="Kỳ lương (YYYY-MM)"),
     store_id: Optional[int] = Query(None, description="Lọc theo cửa hàng"),
-    current_user: dict = Depends(require_roles(["ADMIN", "DIRECTOR", "HR_MANAGER", "STORE_MANAGER", "EMPLOYEE"])),
+    current_user: dict = Depends(require_roles(["DIRECTOR", "HR_MANAGER", "STORE_MANAGER", "EMPLOYEE"])),
     db: AsyncSession = Depends(get_db)
 ):
     payrolls = await list_payrolls(period=period, employee_id=None, store_id=store_id, payment_status=None, current_user=current_user, db=db)
@@ -2471,18 +2471,18 @@ async def export_annual_payroll_excel(
     year: Optional[str] = Query("2026", description="Năm thống kê (YYYY)"),
     employee_id: Optional[int] = Query(None, description="Mã nhân viên (nếu xuất riêng cho 1 nhân sự)"),
     store_id: Optional[int] = Query(None, description="Lọc theo cửa hàng"),
-    current_user: dict = Depends(require_roles(["ADMIN", "DIRECTOR", "HR_MANAGER", "STORE_MANAGER", "EMPLOYEE"])),
+    current_user: dict = Depends(require_roles(["DIRECTOR", "HR_MANAGER", "STORE_MANAGER", "EMPLOYEE"])),
     db: AsyncSession = Depends(get_db)
 ):
     roles = current_user.get("roles", [])
     status_map = {"DRAFT": "Bản nháp", "CONFIRMED": "Đã duyệt", "PAID": "Đã chi trả"}
 
     target_emp_id = employee_id
-    if "EMPLOYEE" in roles and not any(r in roles for r in ["ADMIN", "HR_MANAGER", "DIRECTOR", "STORE_MANAGER"]):
+    if "EMPLOYEE" in roles and not any(r in roles for r in ["HR_MANAGER", "DIRECTOR", "STORE_MANAGER"]):
         target_emp_id = current_user.get("employee_id")
 
     # Chỉ HR/Giám đốc/Admin được xuất quyết toán nhiều người; CHT bị khóa vào cửa hàng của mình.
-    if not any(r in roles for r in ["ADMIN", "HR_MANAGER", "DIRECTOR"]):
+    if not any(r in roles for r in ["HR_MANAGER", "DIRECTOR"]):
         if "STORE_MANAGER" in roles:
             if not current_user.get("store_id") or (store_id is not None and store_id != current_user["store_id"]):
                 raise HTTPException(status_code=403, detail="Bạn chỉ được xuất lương cửa hàng mình quản lý")
@@ -2620,7 +2620,7 @@ async def export_annual_payroll_excel(
 async def export_payroll_csv(
     period: Optional[str] = Query("2026-09", description="Kỳ lương (YYYY-MM)"),
     store_id: Optional[int] = Query(None, description="Lọc theo cửa hàng"),
-    current_user: dict = Depends(require_roles(["ADMIN", "DIRECTOR", "HR_MANAGER", "STORE_MANAGER", "EMPLOYEE"])),
+    current_user: dict = Depends(require_roles(["DIRECTOR", "HR_MANAGER", "STORE_MANAGER", "EMPLOYEE"])),
     db: AsyncSession = Depends(get_db)
 ):
     payrolls = await list_payrolls(period=period, employee_id=None, store_id=store_id, payment_status=None, current_user=current_user, db=db)
@@ -2690,7 +2690,7 @@ async def get_printable_payslip(
         raise HTTPException(status_code=404, detail="Không tìm thấy bảng lương")
 
     roles = current_user.get("roles", [])
-    if "ADMIN" not in roles and "HR_MANAGER" not in roles and "DIRECTOR" not in roles:
+    if "HR_MANAGER" not in roles and "DIRECTOR" not in roles:
         own_store = "STORE_MANAGER" in roles and current_user.get("store_id") is not None and row["store_id"] == current_user.get("store_id")
         if not own_store and row["employee_id"] != current_user.get("employee_id"):
             raise HTTPException(status_code=403, detail="Bạn chỉ có thể in phiếu lương của chính mình")
@@ -2938,7 +2938,7 @@ async def get_payroll_detail(
         raise HTTPException(status_code=404, detail="Không tìm thấy bảng lương")
 
     roles = current_user.get("roles", [])
-    if "ADMIN" not in roles and "HR_MANAGER" not in roles and "DIRECTOR" not in roles:
+    if "HR_MANAGER" not in roles and "DIRECTOR" not in roles:
         if "STORE_MANAGER" in roles:
             emp_res = await db.execute(text("SELECT store_id FROM employees WHERE employee_id = :eid"), {"eid": pr["employee_id"]})
             emp_store = emp_res.scalar()

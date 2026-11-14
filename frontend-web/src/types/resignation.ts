@@ -39,6 +39,11 @@ export interface Resignation {
   updated_at?: string | null;
 }
 
+export type MyResignation = Pick<Resignation,
+  'resignation_id' | 'contract_id' | 'contract_number' | 'contract_type' | 'submitted_date' |
+  'requested_last_working_date' | 'reason' | 'attachment_url' | 'status' | 'rejection_reason' |
+  'approved_last_working_date' | 'approved_at' | 'created_at'>;
+
 export interface ResignationStats {
   total: number;
   pending: number;

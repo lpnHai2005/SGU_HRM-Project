@@ -378,7 +378,7 @@ export function ContractTerminateDialog({
                       }}
                       style={{ fontSize: '12px' }}
                     >
-                      Đi tới Quản lý thôi việc →
+                      Đi tới Đơn thôi việc →
                     </button>
                   </div>
                 )}

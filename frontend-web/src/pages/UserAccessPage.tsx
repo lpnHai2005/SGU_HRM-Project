@@ -1,10 +1,11 @@
 import { useEffect, useState, useMemo } from 'react'
 import { toast } from 'sonner'
-import { roleApi, userApi, employeeApi } from '../services/api'
+import { roleApi, userApi } from '../services/api'
 import type { Role, User, Employee, UserCreate } from '../types'
 import { useAuth } from '../contexts/AuthContext'
 import { formatDateTime, getInitials } from '../utils/formatters'
 import { Icons } from '../components/common/Icons'
+import { confirmAction } from '../components/common/ConfirmDialog'
 import { EmployeeSearchSelect } from '../components/common/EmployeeSearchSelect'
 import { TablePagination, useClientPagination } from '../components/common/TablePagination'
 import { Pencil, KeyRound, Lock, Unlock, Trash2 } from 'lucide-react'
@@ -14,7 +15,7 @@ interface UserAccessPageProps {
   currentUserId: number
 }
 
-type ModalType = 'create' | 'edit' | 'reset-password' | 'delete' | null
+type ModalType = 'create' | 'edit' | 'delete' | null
 
 export function UserAccessPage({ currentUserId }: UserAccessPageProps) {
   const { user: currentUser } = useAuth()
@@ -59,12 +60,6 @@ export function UserAccessPage({ currentUserId }: UserAccessPageProps) {
     role_id: 4,
   })
 
-  // Form state for Reset Password
-  const [resetPasswordForm, setResetPasswordForm] = useState({
-    newPassword: '',
-    confirmPassword: '',
-  })
-
   // Load all initial data
   const loadData = async () => {
     setIsLoading(true)
@@ -72,7 +67,7 @@ export function UserAccessPage({ currentUserId }: UserAccessPageProps) {
       const [accounts, availableRoles, employeeList] = await Promise.all([
         userApi.getAll(),
         roleApi.getAll(),
-        employeeApi.getAll(),
+        userApi.getLinkableEmployees(),
       ])
       setUsers(accounts)
       setRoles(availableRoles)
@@ -353,34 +348,15 @@ export function UserAccessPage({ currentUserId }: UserAccessPageProps) {
     }
   }
 
-  // Open Reset Password Modal
-  const openResetPasswordModal = (account: User) => {
-    setTargetUser(account)
-    setResetPasswordForm({
-      newPassword: '',
-      confirmPassword: '',
-    })
-    setActiveModal('reset-password')
-  }
+  // Đặt lại mật khẩu về mặc định: một thao tác, chỉ cần xác nhận
+  const handleResetPassword = async (account: User) => {
+    const ok = await confirmAction(`Đặt lại mật khẩu của tài khoản '${account.username}' về mật khẩu mặc định của hệ thống? Mật khẩu hiện tại sẽ không còn dùng được.`)
+    if (!ok) return
 
-  // Submit Reset Password
-  const handleSubmitResetPassword = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!targetUser) return
-    if (resetPasswordForm.newPassword.length < 6) {
-      toast.warning('Mật khẩu mới phải có ít nhất 6 ký tự')
-      return
-    }
-    if (resetPasswordForm.newPassword !== resetPasswordForm.confirmPassword) {
-      toast.warning('Xác nhận mật khẩu không trùng khớp')
-      return
-    }
-
-    setBusyId(targetUser.user_id)
+    setBusyId(account.user_id)
     try {
-      const res = await userApi.resetPassword(targetUser.user_id, resetPasswordForm.newPassword)
-      toast.success(res.message || `Đã đặt lại mật khẩu cho tài khoản '${targetUser.username}'`)
-      setActiveModal(null)
+      const res = await userApi.resetPassword(account.user_id)
+      toast.success(res.message || `Đã đặt lại mật khẩu cho tài khoản '${account.username}'`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Đặt lại mật khẩu thất bại')
     } finally {
@@ -451,21 +427,6 @@ export function UserAccessPage({ currentUserId }: UserAccessPageProps) {
           )}
         </div>
       </div>
-
-      {/* Notice for non-admin */}
-      {!isAdmin && (
-        <div style={{
-          padding: '10px 14px',
-          background: 'var(--surface-hover)',
-          border: '1px solid var(--border-default)',
-          borderRadius: 'var(--radius-sm)',
-          marginBottom: 16,
-          color: 'var(--text-secondary)',
-          fontSize: 13
-        }}>
-          ℹ️ <strong>Chế độ chỉ xem:</strong> Chỉ Quản trị viên (ADMIN) mới có thẩm quyền phân quyền và chỉnh sửa trạng thái tài khoản.
-        </div>
-      )}
 
       {/* Store-style KPI Stats Grid */}
       <section className="store-kpi-grid" aria-label="Thống kê tài khoản">
@@ -729,7 +690,7 @@ export function UserAccessPage({ currentUserId }: UserAccessPageProps) {
                             <button
                               type="button"
                               className="user-icon-action"
-                              onClick={() => openResetPasswordModal(account)}
+                              onClick={() => handleResetPassword(account)}
                               disabled={busyId === account.user_id}
                               title="Đặt lại mật khẩu"
                               aria-label="Đặt lại mật khẩu"
@@ -1105,69 +1066,6 @@ export function UserAccessPage({ currentUserId }: UserAccessPageProps) {
                 </button>
                 <button type="submit" className="btn btn-primary btn-sm" disabled={busyId === targetUser.user_id}>
                   {busyId === targetUser.user_id ? 'Đang lưu...' : 'Lưu cập nhật'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================== */}
-      {/* MODAL 3: RESET PASSWORD                                    */}
-      {/* ========================================================== */}
-      {activeModal === 'reset-password' && targetUser && (
-        <div className="modal-overlay" onClick={() => setActiveModal(null)}>
-          <div className="modal" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
-            <form onSubmit={handleSubmitResetPassword}>
-              <div className="modal-header">
-                <h3 className="modal-title">Đặt lại mật khẩu</h3>
-                <button type="button" className="modal-close" onClick={() => setActiveModal(null)}>
-                  {Icons.x}
-                </button>
-              </div>
-
-              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <p style={{ margin: 0, fontSize: 13, color: 'var(--text-secondary)' }}>
-                  Đặt lại mật khẩu cho tài khoản: <strong>{targetUser.username}</strong>
-                </p>
-
-                <div className="form-group">
-                  <label className="form-label">
-                    Mật khẩu mới <span style={{ color: 'var(--status-danger-text)' }}>*</span>
-                  </label>
-                  <input
-                    type="password"
-                    required
-                    minLength={6}
-                    className="form-input"
-                    placeholder="Tối thiểu 6 ký tự"
-                    value={resetPasswordForm.newPassword}
-                    onChange={e => setResetPasswordForm({ ...resetPasswordForm, newPassword: e.target.value })}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">
-                    Xác nhận mật khẩu mới <span style={{ color: 'var(--status-danger-text)' }}>*</span>
-                  </label>
-                  <input
-                    type="password"
-                    required
-                    minLength={6}
-                    className="form-input"
-                    placeholder="Nhập lại mật khẩu mới"
-                    value={resetPasswordForm.confirmPassword}
-                    onChange={e => setResetPasswordForm({ ...resetPasswordForm, confirmPassword: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <div className="modal-footer">
-                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setActiveModal(null)}>
-                  Hủy
-                </button>
-                <button type="submit" className="btn btn-primary btn-sm" disabled={busyId === targetUser.user_id}>
-                  {busyId === targetUser.user_id ? 'Đang đặt lại...' : 'Xác nhận đổi'}
                 </button>
               </div>
             </form>

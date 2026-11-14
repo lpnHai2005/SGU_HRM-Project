@@ -745,7 +745,7 @@ async def monthly_attendance(period:str=Query(...,pattern=r'^\d{4}-(0[1-9]|1[0-2
 async def notifications(user=Depends(get_current_user),db:AsyncSession=Depends(get_db)):
     params={}
     where=scope(user,params,'e')
-    manager=bool(set(user.get('roles',[])) & {'ADMIN','HR_MANAGER','STORE_MANAGER','DIRECTOR'})
+    manager=bool(set(user.get('roles',[])) & {'HR_MANAGER','STORE_MANAGER','DIRECTOR'})
     condition="lr.status IN ('PENDING','STORE_APPROVED')" if manager else "lr.status IN ('HR_APPROVED','REJECTED','STORE_APPROVED')"
     rows=(await db.execute(text('''SELECT lr.request_id,lr.status,lr.updated_at,e.full_name
         FROM leave_requests lr JOIN employees e USING(employee_id)
@@ -762,8 +762,6 @@ async def notifications(user=Depends(get_current_user),db:AsyncSession=Depends(g
     if user.get('employee_id'):
         overtime_params['ot_employee']=user['employee_id']
         recipient_clauses.append('o.employee_id=:ot_employee')
-    if 'ADMIN' in roles:
-        recipient_clauses.append('TRUE')
     if 'HR_MANAGER' in roles:
         recipient_clauses.append("(ev.to_status='PENDING_HR' OR ev.action IN ('EMPLOYEE_DECLINE','APPROVE','REJECT','REVOKE_REQUEST','REVOKE_APPROVE','REVOKE_REJECT','AMEND_APPROVE'))")
     if 'STORE_MANAGER' in roles and user.get('store_id'):
@@ -809,7 +807,7 @@ async def notifications(user=Depends(get_current_user),db:AsyncSession=Depends(g
         if user.get('employee_id'):
             case_params['case_employee']=user['employee_id']
             case_recipients.append('o.employee_id=:case_employee')
-        if roles & {'HR_MANAGER','ADMIN'}:
+        if 'HR_MANAGER' in roles:
             case_recipients.append('TRUE')
         if case_recipients:
             case_rows=(await db.execute(text('''SELECT ce.case_event_id,ce.action,ce.to_status,ce.created_at,
@@ -1306,7 +1304,7 @@ async def resolve_attendance_session(
     if decision == 'SHIFT_REASSIGNED' and not body.new_shift_id:
         raise HTTPException(400, "Vui lòng chọn ca làm việc thay thế.")
 
-    # RBAC Check: Only HR_MANAGER, ADMIN, DIRECTOR can edit/resolve attendance sessions.
+    # RBAC Check: Only HR_MANAGER, DIRECTOR can edit/resolve attendance sessions.
     # STORE_MANAGER is strictly forbidden from editing and will receive 403.
     user_roles = user.get("roles") or []
     if not any(r in user_roles for r in ('HR_MANAGER', 'DIRECTOR')):

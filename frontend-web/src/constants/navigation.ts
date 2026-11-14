@@ -14,6 +14,7 @@ export interface NavSubItemConfig {
   path: string
   label: string
   icon?: string
+  roles?: UserRole[]
 }
 
 export interface NavItemConfig {
@@ -29,33 +30,31 @@ export interface NavItemConfig {
   permission?: string
   children?: NavSubItemConfig[]
 }
-const managers: UserRole[] = ['ADMIN', 'DIRECTOR', 'HR_MANAGER', 'STORE_MANAGER']
-const financeManagers: UserRole[] = ['ADMIN', 'DIRECTOR', 'HR_MANAGER']
+// ADMIN không có trong app nghiệp vụ: tài khoản quản trị dùng module riêng /admin.
+const managers: UserRole[] = ['DIRECTOR', 'HR_MANAGER', 'STORE_MANAGER']
+const financeManagers: UserRole[] = ['DIRECTOR', 'HR_MANAGER']
 const all: UserRole[] = [...managers, 'EMPLOYEE']
 // Every item has a route; pages with unfinished workflows display their limits.
 // The backend still enforces record-level scope.
 export const NAVIGATION: NavItemConfig[] = [
   { id: 'dashboard', path: '/', label: 'Trang chủ', icon: 'dashboard', section: 'Trang chủ', roles: all },
-  { id: 'stores', path: '/stores', label: 'Quản lý cửa hàng & GPS', icon: 'store', section: 'Quản trị hệ thống', roles: ['ADMIN', 'DIRECTOR'] },
-  { id: 'users', path: '/users', label: 'Tài khoản & Phân quyền', icon: 'shield', section: 'Quản trị hệ thống', roles: ['ADMIN', 'DIRECTOR', 'HR_MANAGER'] },
-  { id: 'audit', path: '/audit', label: 'Nhật ký kiểm toán', icon: 'fileText', section: 'Quản trị hệ thống', roles: ['ADMIN', 'DIRECTOR'] },
   { id: 'employees', path: '/employees', label: 'Quản lý nhân viên', icon: 'users', section: 'Nhân sự', roles: managers },
   { id: 'contracts', path: '/contracts', label: 'Hợp đồng & Biến động nhân sự', icon: 'fileText', section: 'Nhân sự', roles: managers },
-  { id: 'resignations', path: '/resignations', label: 'Quản lý thôi việc', icon: 'clipboardList', section: 'Nhân sự', roles: ['ADMIN', 'DIRECTOR', 'HR_MANAGER'] },
-  { id: 'work-schedules', path: '/work-schedules', label: 'Quản lý lịch làm việc', icon: 'calendar', section: 'Vận hành', roles: managers },
-  { id: 'attendance', path: '/attendance', label: 'Quản lý công & OT', icon: 'clock', section: 'Vận hành', roles: managers },
   {
     id: 'leave',
     path: '/leave',
     label: 'Quản lý đơn từ',
     icon: 'clipboardList',
-    section: 'Vận hành',
+    section: 'Nhân sự',
     roles: managers,
     children: [
       { id: 'leave-requests-sub', path: '/leave', label: 'Đơn nghỉ phép', icon: 'leave' },
       { id: 'overtime-requests-sub', path: '/overtime', label: 'Đơn OT', icon: 'clock' },
+      { id: 'resignations-sub', path: '/resignations', label: 'Đơn thôi việc', icon: 'clipboardList', roles: financeManagers },
     ],
   },
+  { id: 'work-schedules', path: '/work-schedules', label: 'Quản lý lịch làm việc', icon: 'calendar', section: 'Vận hành', roles: managers },
+  { id: 'attendance', path: '/attendance', label: 'Quản lý công & OT', icon: 'clock', section: 'Vận hành', roles: managers },
   { id: 'activity', path: '/activity', label: 'Nhật ký đội ngũ', icon: 'chart', section: 'Vận hành', roles: managers },
   { id: 'projects', path: '/projects', label: 'Quản lý dự án', icon: 'briefcase', section: 'Vận hành', roles: managers },
   { id: 'sales', path: '/sales', label: 'Doanh số & Hoa hồng', icon: 'trendingUp', section: 'Kinh doanh & Tài chính', roles: managers },
@@ -78,6 +77,7 @@ export const NAVIGATION: NavItemConfig[] = [
     children: [
       { id: 'my-leave-sub', path: '/my-leave', label: 'Đơn nghỉ phép', icon: 'leave' },
       { id: 'my-overtime-sub', path: '/my-overtime', label: 'Đơn OT', icon: 'clock' },
+      { id: 'my-resignation-sub', path: '/my-resignation', label: 'Đơn thôi việc', icon: 'clipboardList' },
     ],
   },
   { id: 'my-payroll', path: '/my-payroll', label: 'Lương & Hợp đồng', icon: 'wallet', section: 'Cá nhân', roles: managers, requiresEmployee: true },
@@ -96,6 +96,7 @@ export const NAVIGATION: NavItemConfig[] = [
     children: [
       { id: 'my-leave-staff-sub', path: '/my-leave', label: 'Đơn nghỉ phép', icon: 'leave' },
       { id: 'my-overtime-staff-sub', path: '/my-overtime', label: 'Đơn OT', icon: 'clock' },
+      { id: 'my-resignation-staff-sub', path: '/my-resignation', label: 'Đơn thôi việc', icon: 'clipboardList' },
     ],
   },
   { id: 'my-payroll-staff', path: '/my-payroll', label: 'Lương & Hợp đồng', icon: 'wallet', section: 'Thu nhập', roles: ['EMPLOYEE'], requiresEmployee: true },
@@ -125,12 +126,6 @@ export function canAccessNavigation(item: NavItemConfig, user: NavigationUser | 
     return true
   }
 
-  // ADMIN là Quản trị viên hệ thống - chỉ xem các trang mà ADMIN được cấp phép trong item.roles
-  if (effectiveRole === 'ADMIN') {
-    if (item.requiresEmployee && !user.employee_id) return false
-    return item.roles.includes('ADMIN')
-  }
-
   // STORE_MANAGER cần có store_id cho các trang chi nhánh
   if (effectiveRole === 'STORE_MANAGER' && !user.store_id &&
       ['/employees', '/contracts', '/work-schedules', '/attendance', '/leave', '/activity', '/projects', '/sales', '/reports'].includes(item.path)) return false
@@ -140,8 +135,15 @@ export function canAccessNavigation(item: NavItemConfig, user: NavigationUser | 
   if (item.permission && !userRoles.includes('ADMIN') && !user.permissions?.includes(item.permission)) return false
   return true
 }
+function canAccessSubItem(child: NavSubItemConfig, user: NavigationUser | null | undefined): boolean {
+  if (!child.roles) return true
+  const userRoles = [(user as any)?.role, ...(Array.isArray(user?.roles) ? user!.roles : [])]
+    .filter((v): v is string => typeof v === 'string').map(v => v.toUpperCase())
+  return child.roles.some(r => userRoles.includes(r))
+}
 export function navigationForUser(user: NavigationUser | null | undefined): NavItemConfig[] {
   return NAVIGATION.filter(item => canAccessNavigation(item, user))
+    .map(item => item.children ? { ...item, children: item.children.filter(c => canAccessSubItem(c, user)) } : item)
 }
 export function canAccessPath(path: string, user: NavigationUser | null | undefined): boolean {
   if (!user) return false
@@ -154,16 +156,16 @@ export function canAccessPath(path: string, user: NavigationUser | null | undefi
   if (path === '/reports') {
     return userRoles.includes('DIRECTOR') || userRoles.includes('HR_MANAGER')
   }
-  if (path === '/my-leave' || path === '/my-overtime' || path === '/my-projects' || path === '/my-attendance' || path === '/my-activity' || path === '/my-schedules' || path === '/my-payroll') {
-    return Boolean(user.employee_id || userRoles.includes('ADMIN') || userRoles.includes('DIRECTOR') || userRoles.includes('HR_MANAGER') || userRoles.includes('STORE_MANAGER') || userRoles.includes('EMPLOYEE'))
+  if (path === '/my-leave' || path === '/my-overtime' || path === '/my-resignation' || path === '/my-projects' || path === '/my-attendance' || path === '/my-activity' || path === '/my-schedules' || path === '/my-payroll') {
+    return Boolean(user.employee_id || userRoles.includes('DIRECTOR') || userRoles.includes('HR_MANAGER') || userRoles.includes('STORE_MANAGER') || userRoles.includes('EMPLOYEE'))
   }
   if (path === '/overtime' || path === '/leave') {
-    return userRoles.some(r => ['ADMIN', 'DIRECTOR', 'HR_MANAGER', 'STORE_MANAGER'].includes(r))
+    return userRoles.some(r => ['DIRECTOR', 'HR_MANAGER', 'STORE_MANAGER'].includes(r))
   }
   return NAVIGATION.some(item => {
     if (!canAccessNavigation(item, user)) return false
     if (item.path === path) return true
-    if (item.children?.some(child => child.path === path)) return true
+    if (item.children?.some(child => child.path === path && canAccessSubItem(child, user))) return true
     return false
   })
 }

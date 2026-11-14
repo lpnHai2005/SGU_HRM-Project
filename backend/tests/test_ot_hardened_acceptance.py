@@ -381,7 +381,7 @@ class OvertimeWorkflowAcceptanceTests(unittest.IsolatedAsyncioTestCase):
         })
         id1 = r1.json()["request_id"]
 
-        # Admin is read-only for business data: cannot create OT
+        # Admin has no business-data access: cannot create OT
         payload_2 = {"employee_id": 30, "work_date": "2026-11-15", "start_time": "18:00", "end_time": "20:00", "reason": "Store 2 OT"}
         admin_create = await self.as_role(self.user_admin, "post", "/api/v1/overtime-requests", json=payload_2)
         self.assertEqual(admin_create.status_code, 403)
@@ -391,11 +391,11 @@ class OvertimeWorkflowAcceptanceTests(unittest.IsolatedAsyncioTestCase):
         r2 = await self.as_role(manager_2, "post", "/api/v1/overtime-requests", json=payload_2)
         id2 = r2.json()["request_id"]
 
-        # 1. Admin sees both
+        # 1. Admin has no access to business data: sees neither store's requests
         admin_list = await self.as_role(self.user_admin, "get", "/api/v1/overtime-requests?date_from=2026-11-01&date_to=2026-11-30")
-        admin_ids = {item["request_id"] for item in admin_list.json()}
-        self.assertIn(id1, admin_ids)
-        self.assertIn(id2, admin_ids)
+        admin_ids = {item["request_id"] for item in admin_list.json()} if admin_list.status_code == 200 else set()
+        self.assertNotIn(id1, admin_ids)
+        self.assertNotIn(id2, admin_ids)
 
         # 2. Manager 1 sees only Store 1
         mgr_list = await self.as_role(self.user_manager_1, "get", "/api/v1/overtime-requests?date_from=2026-11-01&date_to=2026-11-30")

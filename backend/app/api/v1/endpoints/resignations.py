@@ -6,6 +6,7 @@ from datetime import date, datetime
 from typing import Optional, List
 import os
 import base64
+from dateutil.relativedelta import relativedelta
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
@@ -15,6 +16,7 @@ from app.api.deps import get_current_user, require_roles, record_audit_log
 from app.core.resignation_service import ResignationService, ResignationStatus
 from app.schemas.schemas import (
     ResignationCreate,
+    ResignationSelfCreate,
     ResignationApprove,
     ResignationReject,
     ResignationOut,
@@ -29,7 +31,7 @@ router = APIRouter()
 
 @router.get("/stats", summary="Thống kê đơn thôi việc theo trạng thái")
 async def get_resignation_stats(
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -45,13 +47,152 @@ async def get_resignation_stats(
 @router.get("/employee-active-contracts/{employee_id}", summary="Lấy hợp đồng đang hiệu lực của nhân viên")
 async def get_employee_active_contracts(
     employee_id: int,
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Trả về danh sách hợp đồng đang ACTIVE để HR chọn khi tạo đơn thôi việc cho nhân viên.
     """
     return await ResignationService.get_employee_active_contracts(db, employee_id)
+
+
+# ===============================================================================
+# 2b. NHÂN VIÊN TỰ NỘP / XEM / RÚT ĐƠN THÔI VIỆC (khai báo trước /{resignation_id})
+# ===============================================================================
+
+ALLOWED_ATTACHMENT_PREFIXES = ("https://res.cloudinary.com/", "/uploads/resignations/")
+
+
+def self_service_min_last_day(submitted: date) -> date:
+    """Ngày làm việc cuối sớm nhất khi nhân viên tự nộp: đúng 1 tháng sau ngày nộp (31/01 -> 28/02)."""
+    return submitted + relativedelta(months=1)
+
+
+def _own_employee_id(current_user: dict) -> int:
+    employee_id = current_user.get("employee_id")
+    if not employee_id:
+        raise HTTPException(status_code=403, detail="Tài khoản chưa liên kết hồ sơ nhân viên")
+    return employee_id
+
+
+@router.get("/me", summary="Đơn thôi việc của tôi")
+async def list_my_resignations(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    employee_id = _own_employee_id(current_user)
+    res = await db.execute(text("""
+        SELECT r.resignation_id, r.contract_id, r.submitted_date, r.requested_last_working_date,
+               r.reason, r.attachment_url, r.status, r.rejection_reason, r.approved_last_working_date,
+               r.approved_at, r.created_at, c.contract_number, c.contract_type
+        FROM resignation_requests r
+        JOIN contracts c ON r.contract_id = c.contract_id
+        WHERE r.employee_id = :employee_id
+        ORDER BY r.created_at DESC
+    """), {"employee_id": employee_id})
+    return [dict(r) for r in res.mappings().fetchall()]
+
+
+@router.get("/me/active-contracts", summary="Hợp đồng đang hiệu lực của tôi")
+async def get_my_active_contracts(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    return await ResignationService.get_employee_active_contracts(db, _own_employee_id(current_user))
+
+
+@router.post("/me", summary="Nhân viên tự nộp đơn thôi việc")
+async def create_my_resignation(
+    payload: ResignationSelfCreate,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    employee_id = _own_employee_id(current_user)
+    today = date.today()
+    min_last_day = self_service_min_last_day(today)
+    if payload.requested_last_working_date < min_last_day:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Ngày làm việc cuối dự kiến phải từ {min_last_day.strftime('%d/%m/%Y')} trở đi (ít nhất 1 tháng kể từ ngày nộp đơn)"
+        )
+    # Chỉ nhận file đã upload qua hệ thống, không nhận link tùy ý
+    if payload.attachment_url and not payload.attachment_url.startswith(ALLOWED_ATTACHMENT_PREFIXES):
+        raise HTTPException(status_code=400, detail="File đính kèm không hợp lệ")
+    # validate_create kiểm tra hợp đồng thuộc chính nhân viên, đang ACTIVE, chưa có đơn PENDING
+    await ResignationService.validate_create(
+        db=db,
+        employee_id=employee_id,
+        contract_id=payload.contract_id,
+        submitted_date=today,
+        requested_last_working_date=payload.requested_last_working_date
+    )
+    user_id = current_user.get("user_id")
+    res = await db.execute(text("""
+        INSERT INTO resignation_requests (
+            employee_id, contract_id, submitted_date,
+            requested_last_working_date, reason, attachment_url, status, created_by
+        ) VALUES (
+            :employee_id, :contract_id, :submitted_date,
+            :requested_last_working_date, :reason, :attachment_url, 'PENDING', :created_by
+        )
+        RETURNING resignation_id
+    """), {
+        "employee_id": employee_id,
+        "contract_id": payload.contract_id,
+        "submitted_date": today,
+        "requested_last_working_date": payload.requested_last_working_date,
+        "reason": payload.reason,
+        "attachment_url": payload.attachment_url,
+        "created_by": user_id
+    })
+    new_id = res.mappings().first()["resignation_id"]
+    await record_audit_log(
+        db=db,
+        user_id=user_id,
+        action="RESIGNATION_SELF_SUBMITTED",
+        entity_name="resignation_request",
+        entity_id=str(new_id),
+        new_values={
+            "employee_id": employee_id,
+            "contract_id": payload.contract_id,
+            "submitted_date": str(today),
+            "requested_last_working_date": str(payload.requested_last_working_date),
+            "reason": payload.reason,
+            "status": "PENDING"
+        }
+    )
+    await db.commit()
+    return {"message": "Nộp đơn thôi việc thành công!", "resignation_id": new_id, "status": "PENDING"}
+
+
+@router.post("/me/{resignation_id}/cancel", summary="Nhân viên rút đơn thôi việc của mình")
+async def cancel_my_resignation(
+    resignation_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    employee_id = _own_employee_id(current_user)
+    # Chỉ rút đơn do chính mình nộp: đơn HR/Giám đốc nhập thay vẫn do HR xử lý
+    res = await db.execute(text("""
+        UPDATE resignation_requests
+        SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP
+        WHERE resignation_id = :rid AND employee_id = :eid
+          AND created_by = :uid AND status = 'PENDING'
+        RETURNING resignation_id
+    """), {"rid": resignation_id, "eid": employee_id, "uid": current_user.get("user_id")})
+    if not res.first():
+        raise HTTPException(status_code=400, detail="Chỉ rút được đơn do bạn tự nộp và đang chờ duyệt")
+    await record_audit_log(
+        db=db,
+        user_id=current_user.get("user_id"),
+        action="RESIGNATION_CANCELLED",
+        entity_name="resignation_request",
+        entity_id=str(resignation_id),
+        old_values={"status": "PENDING"},
+        new_values={"status": "CANCELLED"}
+    )
+    await db.commit()
+    return {"message": "Đã rút đơn thôi việc", "resignation_id": resignation_id, "status": "CANCELLED"}
 
 
 # ===============================================================================
@@ -67,7 +208,7 @@ async def list_resignations(
     search: Optional[str] = Query(None, description="Tìm theo tên/mã NV hoặc số HĐ"),
     page: int = Query(1, ge=1, description="Trang hiện tại"),
     page_size: int = Query(20, ge=1, le=100, description="Số dòng mỗi trang"),
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -179,7 +320,7 @@ async def list_resignations(
 @router.get("/{resignation_id}", summary="Chi tiết đơn thôi việc")
 async def get_resignation_detail(
     resignation_id: int,
-    current_user: dict = Depends(require_roles(["ADMIN", "HR_MANAGER", "DIRECTOR"])),
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -283,7 +424,6 @@ async def approve_resignation(
     Duyệt đơn thôi việc (No Self-Approval):
     - HR_MANAGER duyệt đơn của Employee/Store Manager.
     - DIRECTOR duyệt đơn của HR_MANAGER/ADMIN.
-    - ADMIN duyệt mọi đơn.
     - LƯU Ý: Hợp đồng CHƯA bị chấm dứt ngay.
     """
     resignation = await ResignationService.get_resignation_or_404(db, resignation_id)
@@ -323,7 +463,6 @@ async def approve_resignation(
 
     is_hr_or_admin_resigner = any(r in applicant_roles for r in ("HR_MANAGER", "ADMIN"))
     is_director = "DIRECTOR" in user_roles
-    is_admin = "ADMIN" in user_roles
     is_hr = "HR_MANAGER" in user_roles
 
     # Đơn của HR/Admin BẮT BUỘC do DIRECTOR duyệt, không được HR hoặc Admin tự duyệt
@@ -334,7 +473,7 @@ async def approve_resignation(
         )
 
     # DIRECTOR chỉ duyệt đơn của HR/Admin
-    if is_director and not is_hr_or_admin_resigner and not is_admin:
+    if is_director and not is_hr_or_admin_resigner:
         raise HTTPException(
             status_code=403,
             detail="Giám đốc chỉ duyệt đơn thôi việc của Trưởng phòng Nhân sự / Quản trị viên."
@@ -561,7 +700,6 @@ async def reject_resignation(
 
     is_hr_or_admin_resigner = any(r in applicant_roles for r in ("HR_MANAGER", "ADMIN"))
     is_director = "DIRECTOR" in user_roles
-    is_admin = "ADMIN" in user_roles
 
     # Đơn của HR/Admin BẮT BUỘC do DIRECTOR từ chối
     if is_hr_or_admin_resigner and not is_director:
@@ -571,7 +709,7 @@ async def reject_resignation(
         )
 
     # DIRECTOR chỉ xử lý đơn của HR/Admin
-    if is_director and not is_hr_or_admin_resigner and not is_admin:
+    if is_director and not is_hr_or_admin_resigner:
         raise HTTPException(
             status_code=403,
             detail="Giám đốc chỉ từ chối đơn thôi việc của Trưởng phòng Nhân sự / Quản trị viên."
@@ -694,7 +832,8 @@ async def cancel_resignation(
 @router.post("/upload-attachment", summary="Upload file đính kèm đơn thôi việc (PDF / Ảnh)")
 async def upload_resignation_attachment(
     file: UploadFile = File(...),
-    current_user: dict = Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
+    # Mọi tài khoản đăng nhập: nhân viên tự đính kèm đơn (giống /leaves/upload-proof)
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """

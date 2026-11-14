@@ -57,7 +57,7 @@ SEARCH_OPS = {
     "date": {"eq", "neq", "gt", "gte", "lt", "lte", "between"},
 }
 COMPARE_SQL = {"eq": "=", "gt": ">", "gte": ">=", "lt": "<", "lte": "<="}
-SENSITIVE_SEARCH_ROLES = {"ADMIN", "HR_MANAGER", "DIRECTOR"}
+SENSITIVE_SEARCH_ROLES = {"HR_MANAGER", "DIRECTOR"}
 MAX_SEARCH_CONDITIONS = 10
 PROFILE_DETAIL_COLUMNS = """,
                e.identity_issued_date, e.identity_issued_place, e.tax_code, e.insurance_code, e.resignation_date,
@@ -179,16 +179,16 @@ async def list_employees(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    # Kiểm tra quyền: ADMIN, DIRECTOR, HR_MANAGER, STORE_MANAGER được phép xem danh sách nhân sự
+    # Kiểm tra quyền: DIRECTOR, HR_MANAGER, STORE_MANAGER được phép xem danh sách nhân sự
     user_roles = current_user.get("roles", [])
-    if not any(role in user_roles for role in ["ADMIN", "DIRECTOR", "HR_MANAGER", "STORE_MANAGER"]):
+    if not any(role in user_roles for role in ["DIRECTOR", "HR_MANAGER", "STORE_MANAGER"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Bạn không có quyền truy cập trang quản lý nhân sự."
         )
 
     # Store Manager chỉ xem nhân viên chi nhánh mình phụ trách
-    if "STORE_MANAGER" in user_roles and "ADMIN" not in user_roles and "HR_MANAGER" not in user_roles and "DIRECTOR" not in user_roles:
+    if "STORE_MANAGER" in user_roles and "HR_MANAGER" not in user_roles and "DIRECTOR" not in user_roles:
         store_id = current_user.get("store_id")
 
     base_query = f"""
@@ -268,7 +268,7 @@ async def list_contracts_deprecated(
     """
     params = {}
     roles = current_user.get("roles", [])
-    if not any(role in roles for role in ("ADMIN", "HR_MANAGER", "DIRECTOR")):
+    if not any(role in roles for role in ("HR_MANAGER", "DIRECTOR")):
         if "STORE_MANAGER" in roles:
             if not current_user.get("store_id"):
                 raise HTTPException(status_code=403, detail="Tài khoản chưa được gán cửa hàng")
@@ -295,7 +295,7 @@ async def get_employee_contracts(
 ):
     """
     Xem lịch sử / danh sách hợp đồng của nhân viên (read-only) với phân quyền RBAC:
-    - ADMIN/HR_MANAGER/DIRECTOR: Xem đầy đủ
+    - HR_MANAGER/DIRECTOR: Xem đầy đủ
     - STORE_MANAGER: Chỉ xem nhân viên thuộc store mình
     - EMPLOYEE: Chỉ xem của chính mình
     """
@@ -327,10 +327,23 @@ async def get_employee(
     if not emp:
         raise HTTPException(status_code=404, detail="Không tìm thấy nhân viên")
     roles = set(current_user.get('roles', []))
-    if not roles & {'ADMIN', 'HR_MANAGER', 'DIRECTOR'} and employee_id != current_user.get('employee_id'):
+    if not roles & {'HR_MANAGER', 'DIRECTOR'} and employee_id != current_user.get('employee_id'):
         if 'STORE_MANAGER' not in roles or not current_user.get('store_id') or emp['store_id'] != current_user['store_id']:
             raise HTTPException(403, 'Không được xem hồ sơ ngoài phạm vi quản lý')
     return emp
+
+async def _ensure_can_assign(db: AsyncSession, current_user: dict, position_id: Optional[int], department_id: Optional[int]):
+    """Chức vụ Giám đốc / phòng Ban Giám đốc chỉ DIRECTOR được gán (lương DIRECTOR mặc định đủ công)."""
+    if 'DIRECTOR' in current_user.get('roles', []):
+        return
+    if position_id is not None:
+        code = (await db.execute(text("SELECT position_code FROM positions WHERE position_id = :id"), {"id": position_id})).scalar()
+        if code == 'DIRECTOR':
+            raise HTTPException(status_code=403, detail='Chỉ Giám đốc mới được bổ nhiệm chức vụ Giám đốc')
+    if department_id is not None:
+        code = (await db.execute(text("SELECT department_code FROM departments WHERE department_id = :id"), {"id": department_id})).scalar()
+        if code == 'BGD':
+            raise HTTPException(status_code=403, detail='Chỉ Giám đốc mới được điều chuyển nhân sự vào Ban Giám đốc')
 
 @router.post("", response_model=EmployeeOut, summary="Thêm nhân sự mới (Rubric III.3.1.1)")
 async def create_employee(
@@ -344,6 +357,7 @@ async def create_employee(
             raise HTTPException(status_code=404, detail='Không tìm thấy cửa hàng được chọn')
         if not store_active:
             raise HTTPException(status_code=409, detail='Không thể gán nhân viên mới vào cửa hàng đã ngừng hoạt động')
+    await _ensure_can_assign(db, current_user, emp.position_id, emp.department_id)
     # Tự sinh mã nhân viên TZ-xxx nếu chưa nhập
     if not emp.employee_code:
         max_id = (await db.execute(text("SELECT COALESCE(MAX(employee_id), 0) FROM employees"))).scalar() or 0
@@ -406,17 +420,16 @@ async def update_employee(
     db: AsyncSession = Depends(get_db)
 ):
     await get_employee(employee_id, current_user, db)
-    from app.core.employee_transfers import sync_transfer_schedules
-    old_store_id = (await db.execute(text('SELECT store_id FROM employees WHERE employee_id=:id FOR UPDATE'), {'id': employee_id})).scalar_one()
+    current_status = (await db.execute(text('SELECT employment_status FROM employees WHERE employee_id=:id FOR UPDATE'), {'id': employee_id})).scalar_one()
     update_fields = []
     params = {"id": employee_id}
     data = emp.model_dump(exclude_unset=True)
-    if data.get('store_id') is not None:
-        store_active = (await db.execute(text('SELECT is_active FROM stores WHERE store_id=:id'), {'id': data['store_id']})).scalar_one_or_none()
-        if store_active is None:
-            raise HTTPException(status_code=404, detail='Không tìm thấy cửa hàng được chọn')
-        if not store_active:
-            raise HTTPException(status_code=409, detail='Không thể chuyển nhân viên vào cửa hàng đã ngừng hoạt động')
+    new_status = data.get('employment_status')
+    if new_status and new_status != current_status and {new_status, current_status} & {'RESIGNED', 'TERMINATED'}:
+        raise HTTPException(
+            status_code=409,
+            detail='Thôi việc / tái tuyển dụng phải đi qua quy trình nghỉ việc hoặc gia hạn hợp đồng, không sửa trực tiếp'
+        )
 
     # Note: Thay đổi lương cơ bản của nhân viên nên được thực hiện qua:
     # 1. Tạo hợp đồng mới (renew) - Giữ nguyên lịch sử
@@ -435,8 +448,6 @@ async def update_employee(
         update_fields.append("updated_at = CURRENT_TIMESTAMP")
         q = f"UPDATE employees SET {', '.join(update_fields)} WHERE employee_id = :id"
         await db.execute(text(q), params)
-        if 'store_id' in data:
-            await sync_transfer_schedules(db, employee_id, old_store_id, data['store_id'])
         await db.commit()
 
     return await get_employee(employee_id, current_user, db)
@@ -481,6 +492,7 @@ async def promotions_endpoint(
         employee_id=promo.employee_id,
         new_position_id=promo.new_position_id,
         new_store_id=promo.new_store_id,
+        new_department_id=promo.new_department_id,
         decision_number=promo.decision_number,
         reason=promo.reason,
         current_user=current_user,
@@ -492,13 +504,17 @@ async def promote_employee(
     employee_id: int,
     new_position_id: int,
     new_store_id: Optional[int] = None,
+    new_department_id: Optional[int] = None,
     decision_number: str = "QĐ-BN-2026",
     reason: str = "Thăng cấp chức vụ theo năng lực",
     current_user: dict = Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
     db: AsyncSession = Depends(get_db)
 ):
-    # Lấy chức vụ và store hiện tại
-    emp_query = text("SELECT position_id, store_id FROM employees WHERE employee_id = :id FOR UPDATE")
+    if employee_id == current_user.get("employee_id"):
+        raise HTTPException(status_code=403, detail="Không được tự thăng chức / điều chuyển chính mình")
+
+    # Lấy chức vụ, phòng ban và store hiện tại
+    emp_query = text("SELECT position_id, department_id, store_id FROM employees WHERE employee_id = :id FOR UPDATE")
     emp = (await db.execute(emp_query, {"id": employee_id})).mappings().first()
     if not emp:
         raise HTTPException(status_code=404, detail="Không tìm thấy nhân viên")
@@ -506,6 +522,23 @@ async def promote_employee(
     old_position_id = emp["position_id"]
     old_store_id = emp["store_id"]
     target_store_id = new_store_id if new_store_id is not None else old_store_id
+    target_department_id = new_department_id if new_department_id is not None else emp["department_id"]
+    if (new_position_id, target_store_id, target_department_id) == (old_position_id, old_store_id, emp["department_id"]):
+        raise HTTPException(status_code=400, detail="Không có thay đổi nào về chức vụ, phòng ban hoặc cửa hàng")
+
+    pos_code = (await db.execute(text("SELECT position_code FROM positions WHERE position_id = :id"), {"id": new_position_id})).scalar()
+    old_pos_code = (await db.execute(text("SELECT position_code FROM positions WHERE position_id = :id"), {"id": old_position_id})).scalar()
+    if pos_code is None:
+        raise HTTPException(status_code=404, detail="Không tìm thấy chức vụ được chọn")
+    if new_department_id is not None and (await db.execute(text("SELECT 1 FROM departments WHERE department_id = :id"), {"id": new_department_id})).scalar() is None:
+        raise HTTPException(status_code=404, detail="Không tìm thấy phòng ban được chọn")
+    if target_store_id != old_store_id:
+        store_active = (await db.execute(text('SELECT is_active FROM stores WHERE store_id=:id'), {'id': target_store_id})).scalar_one_or_none()
+        if store_active is None:
+            raise HTTPException(status_code=404, detail='Không tìm thấy cửa hàng được chọn')
+        if not store_active:
+            raise HTTPException(status_code=409, detail='Không thể chuyển nhân viên vào cửa hàng đã ngừng hoạt động')
+    await _ensure_can_assign(db, current_user, new_position_id, new_department_id)
 
     # 1. Lưu lịch sử position_histories
     await db.execute(text("""
@@ -525,14 +558,13 @@ async def promote_employee(
     # 2. Cập nhật chức vụ cho employee
     await db.execute(text("""
         UPDATE employees 
-        SET position_id = :new_pos, store_id = :new_store, updated_at = CURRENT_TIMESTAMP
+        SET position_id = :new_pos, store_id = :new_store, department_id = :new_dept, updated_at = CURRENT_TIMESTAMP
         WHERE employee_id = :id
-    """), {"id": employee_id, "new_pos": new_position_id, "new_store": target_store_id})
+    """), {"id": employee_id, "new_pos": new_position_id, "new_store": target_store_id, "new_dept": target_department_id})
     from app.core.employee_transfers import sync_transfer_schedules
     await sync_transfer_schedules(db, employee_id, old_store_id, target_store_id)
 
     # 3. Tự động đổi User Role tương ứng nếu thăng lên Cửa hàng trưởng (STORE_MANAGER)
-    pos_code = (await db.execute(text("SELECT position_code FROM positions WHERE position_id = :id"), {"id": new_position_id})).scalar()
     user_id = (await db.execute(text("SELECT user_id FROM users WHERE employee_id = :id"), {"id": employee_id})).scalar()
 
     if user_id:
@@ -542,6 +574,17 @@ async def promote_employee(
                 # Xóa role cũ EMPLOYEE và gán STORE_MANAGER
                 await db.execute(text("DELETE FROM user_roles WHERE user_id = :uid"), {"uid": user_id})
                 await db.execute(text("INSERT INTO user_roles (user_id, role_id) VALUES (:uid, :rid)"), {"uid": user_id, "rid": role_id})
+        elif old_pos_code == "STORE_MGR":
+            # Rời vị trí Cửa hàng trưởng: gỡ STORE_MANAGER, nếu không còn role nào thì về EMPLOYEE
+            await db.execute(text("""
+                DELETE FROM user_roles ur USING roles r
+                WHERE ur.role_id = r.role_id AND ur.user_id = :uid AND r.role_code = 'STORE_MANAGER'
+            """), {"uid": user_id})
+            await db.execute(text("""
+                INSERT INTO user_roles (user_id, role_id)
+                SELECT :uid, role_id FROM roles
+                WHERE role_code = 'EMPLOYEE' AND NOT EXISTS (SELECT 1 FROM user_roles WHERE user_id = :uid)
+            """), {"uid": user_id})
 
     await db.commit()
     return {"message": "Thăng chức và điều chuyển nhân sự thành công!", "new_position_id": new_position_id}

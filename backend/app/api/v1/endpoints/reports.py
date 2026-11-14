@@ -20,7 +20,7 @@ router = APIRouter()
 async def _dashboard_kpis(db: AsyncSession, current_user: dict, today: date) -> dict:
     """Four workforce cards are independent of payroll and sales availability."""
     roles = set(current_user.get("roles", []))
-    manager_scope = "STORE_MANAGER" in roles and not roles.intersection({"ADMIN", "HR_MANAGER", "DIRECTOR"})
+    manager_scope = "STORE_MANAGER" in roles and not roles.intersection({"HR_MANAGER", "DIRECTOR"})
     store_id = current_user.get("store_id") if manager_scope else None
     if manager_scope and not store_id:
         raise HTTPException(403, "Tài khoản chưa được gán cửa hàng.")
@@ -88,7 +88,7 @@ async def get_dashboard_stats(
     params = {"period": period}
 
     filter_store_id = store_id
-    store_manager_scope = "STORE_MANAGER" in roles and "ADMIN" not in roles and "HR_MANAGER" not in roles and "DIRECTOR" not in roles
+    store_manager_scope = "STORE_MANAGER" in roles and "HR_MANAGER" not in roles and "DIRECTOR" not in roles
     if store_manager_scope:
         user_store_id = current_user.get("store_id")
         if not user_store_id:
@@ -551,7 +551,7 @@ async def get_payroll_fund_summary(
     period: Optional[str] = Query("2026-09", description="Kỳ lương (YYYY-MM)"),
     store_id: Optional[int] = Query(None, description="Lọc theo cửa hàng"),
     budget_cap: Optional[float] = Query(1250000000.0, description="Hạn mức ngân sách dự toán (Budget Cap)"),
-    current_user: dict = Depends(require_roles(["DIRECTOR", "HR_MANAGER", "STORE_MANAGER", "ADMIN"])),
+    current_user: dict = Depends(require_roles(["DIRECTOR", "HR_MANAGER", "STORE_MANAGER"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -568,7 +568,7 @@ async def get_payroll_fund_summary(
     user_roles = current_user.get("roles", []) if current_user else []
 
     # Store manager scoping
-    if "STORE_MANAGER" in user_roles and not any(r in ("DIRECTOR", "HR_MANAGER", "ADMIN") for r in user_roles):
+    if "STORE_MANAGER" in user_roles and not any(r in ("DIRECTOR", "HR_MANAGER") for r in user_roles):
         user_store_id = current_user.get("store_id")
         if not user_store_id:
             raise HTTPException(status_code=403, detail="Tài khoản cửa hàng trưởng chưa được gán cửa hàng.")
@@ -890,33 +890,6 @@ async def get_sales_performance_report(
 
 
 # ===================================================================================
-# 6. NHẬT KÝ HỆ THỐNG AUDIT LOGS (RUBRIC II.2 - GIAO DIỆN ADMIN)
-# ===================================================================================
-
-@router.get("/audit-logs", summary="Nhật ký hoạt động hệ thống (Admin, Giám đốc)")
-async def get_audit_logs(
-    limit: int = Query(50, ge=1, le=500),
-    action: Optional[str] = Query(None, description="Lọc theo hành động"),
-    current_user: dict = Depends(require_roles(["ADMIN", "DIRECTOR"])),
-    db: AsyncSession = Depends(get_db)
-):
-    query = """
-        SELECT a.log_id, a.user_id, u.username, a.action, a.entity_name,
-               a.entity_id, a.old_values, a.new_values, a.ip_address, a.created_at
-        FROM audit_logs a
-        LEFT JOIN users u ON a.user_id = u.user_id
-    """
-    params = {"limit": limit}
-    if action:
-        query += " WHERE a.action = :action"
-        params["action"] = action
-
-    query += " ORDER BY a.log_id DESC LIMIT :limit"
-    res = await db.execute(text(query), params)
-    return res.mappings().all()
-
-
-# ===================================================================================
 # 7. XUẤT DỮ LIỆU BÁO CÁO RA FILE EXCEL & CSV (SPEC 9.5 & RUBRIC SGU)
 # ===================================================================================
 
@@ -1005,7 +978,7 @@ async def export_demographics_csv(
 @router.get("/export/payroll-summary/excel", summary="Xuất báo cáo quỹ lương theo chi nhánh ra file Excel (.xlsx)")
 async def export_payroll_fund_excel(
     period: Optional[str] = Query("2026-09", description="Kỳ lương (YYYY-MM)"),
-    current_user: dict = Depends(require_roles(["DIRECTOR", "HR_MANAGER", "STORE_MANAGER", "ADMIN"])),
+    current_user: dict = Depends(require_roles(["DIRECTOR", "HR_MANAGER", "STORE_MANAGER"])),
     db: AsyncSession = Depends(get_db)
 ):
     fund_data = await get_payroll_fund_summary(period=period, store_id=None, budget_cap=None, current_user=current_user, db=db)
@@ -1640,7 +1613,7 @@ async def get_quarterly_payroll_matrix(
     - Kèm danh sách chi tiết N chứng từ theo từng quý phục vụ Subform
     """
     roles = current_user.get("roles", [])
-    if "STORE_MANAGER" in roles and not set(roles).intersection({"ADMIN", "HR_MANAGER", "DIRECTOR"}):
+    if "STORE_MANAGER" in roles and not set(roles).intersection({"HR_MANAGER", "DIRECTOR"}):
         user_store_id = current_user.get("store_id")
         if not user_store_id:
             raise HTTPException(403, "Tài khoản chưa được gán cửa hàng.")

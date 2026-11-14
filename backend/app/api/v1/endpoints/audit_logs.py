@@ -35,7 +35,7 @@ class AuditLogResponse(BaseModel):
     "",
     response_model=AuditLogResponse,
     summary="Nhật ký thanh tra hoạt động hệ thống (Audit Logs)",
-    description="Truy xuất lịch sử các thao tác người dùng. Yêu cầu vai trò ADMIN hoặc DIRECTOR."
+    description="Truy xuất lịch sử các thao tác người dùng. Chỉ ADMIN."
 )
 async def get_audit_logs(
     page: int = Query(1, ge=1, description="Trang hiện tại"),
@@ -46,7 +46,7 @@ async def get_audit_logs(
     start_date: Optional[str] = Query(None, description="Lọc từ ngày (YYYY-MM-DD)"),
     end_date: Optional[str] = Query(None, description="Lọc đến ngày (YYYY-MM-DD)"),
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_roles(["ADMIN", "DIRECTOR"]))
+    current_user: dict = Depends(require_roles(["ADMIN"]))
 ):
     size = page_size or limit or 20
 
@@ -115,7 +115,7 @@ async def get_audit_logs(
 )
 async def get_audit_actions(
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_roles(["ADMIN", "DIRECTOR"]))
+    current_user: dict = Depends(require_roles(["ADMIN"]))
 ):
     sql = """
         SELECT DISTINCT action FROM audit_logs WHERE action IS NOT NULL ORDER BY action
@@ -131,7 +131,7 @@ async def get_audit_actions(
 )
 async def get_audit_entities(
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_roles(["ADMIN", "DIRECTOR"]))
+    current_user: dict = Depends(require_roles(["ADMIN"]))
 ):
     sql = """
         SELECT DISTINCT entity_name FROM audit_logs WHERE entity_name IS NOT NULL ORDER BY entity_name

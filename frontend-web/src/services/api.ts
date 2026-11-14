@@ -1053,10 +1053,6 @@ export const reportApi = {
     return api.get('/reports/sales-performance', params);
   },
 
-  getAuditLogs: async (limit?: number, action?: string): Promise<any[]> => {
-    return api.get<any[]>('/reports/audit-logs', { limit: limit || 50, action });
-  },
-
   exportOverviewExcel: async (period?: string, storeId?: number): Promise<Blob> => {
     const token = tokenService.get();
     const params: Record<string, any> = {};
@@ -1159,6 +1155,11 @@ export const userApi = {
     return api.get<User[]>('/users');
   },
 
+  // Chỉ định danh (không lương/CCCD) để gắn nhân viên vào tài khoản; thay cho /employees vốn đã chặn ADMIN.
+  getLinkableEmployees: async (): Promise<Employee[]> => {
+    return api.get<Employee[]>('/users/linkable-employees');
+  },
+
   getById: async (userId: number): Promise<User> => {
     return api.get<User>(`/users/${userId}`);
   },
@@ -1171,8 +1172,9 @@ export const userApi = {
     return api.put<User>(`/users/${userId}`, data);
   },
 
-  resetPassword: async (userId: number, newPassword: string): Promise<{ message: string }> => {
-    return api.post(`/users/${userId}/reset-password`, { new_password: newPassword });
+  // Đặt lại về mật khẩu mặc định do backend quy định, không gửi mật khẩu từ client.
+  resetPassword: async (userId: number): Promise<{ message: string }> => {
+    return api.post(`/users/${userId}/reset-password`, {});
   },
 
   delete: async (userId: number): Promise<{ message: string; action: 'DELETED' | 'DEACTIVATED'; is_active?: boolean }> => {
@@ -1200,6 +1202,13 @@ export interface AuditLogResponse {
   page: number;
   page_size: number;
   total_pages: number;
+}
+
+export const adminApi = {
+  // Cổng riêng cho ADMIN: router /contracts chặn tài khoản quản trị.
+  syncEmployeeStatuses: async (): Promise<{ message: string; synchronized_count: number; details: any[] }> => {
+    return api.post('/admin/sync-employee-statuses', {});
+  },
 }
 
 export const auditApi = {

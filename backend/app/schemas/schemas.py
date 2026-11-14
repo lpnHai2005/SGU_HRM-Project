@@ -91,10 +91,6 @@ class UserUpdate(BaseModel):
     password: Optional[str] = None
 
 
-class AdminResetPassword(BaseModel):
-    new_password: str = Field(..., min_length=6, max_length=72, description="Mật khẩu mới tối thiểu 6 ký tự, tối đa 72 byte")
-
-
 class UserResponse(BaseModel):
     user_id: int
     username: str
@@ -209,9 +205,7 @@ class EmployeeUpdate(BaseModel):
     permanent_address: Optional[str] = None
     current_address: Optional[str] = None
     avatar: Optional[str] = None
-    store_id: Optional[int] = None
-    department_id: Optional[int] = None
-    position_id: Optional[int] = None
+    # store/department/position chỉ đổi qua /employees/promotions (có quyết định + lịch sử)
     education_level_id: Optional[int] = None
     join_date: Optional[date] = None
     resignation_date: Optional[date] = None
@@ -229,7 +223,7 @@ class EmployeeUpdate(BaseModel):
             return None
         return v
 
-    @field_validator("store_id", "department_id", "position_id", "education_level_id", mode="before")
+    @field_validator("education_level_id", mode="before")
     @classmethod
     def empty_str_to_none_int(cls, v):
         if v == "" or v is None:
@@ -259,6 +253,7 @@ class PromotionCreate(BaseModel):
     employee_id: int
     new_position_id: int
     new_store_id: Optional[int] = None
+    new_department_id: Optional[int] = None
     decision_number: str = "QĐ-BN-2026"
     reason: str = "Thăng cấp chức vụ theo năng lực"
 
@@ -419,6 +414,13 @@ class ResignationCreate(BaseModel):
         if v == "" or v is None:
             return None
         return v
+
+
+class ResignationSelfCreate(BaseModel):
+    contract_id: int = Field(..., description="ID hợp đồng đang ACTIVE của chính nhân viên")
+    requested_last_working_date: date = Field(..., description="Ngày dự kiến nghỉ việc")
+    reason: str = Field(..., min_length=5, description="Lý do thôi việc")
+    attachment_url: Optional[str] = Field(None, description="URL file đính kèm (từ /resignations/upload-attachment)")
 
 
 class ResignationApprove(BaseModel):

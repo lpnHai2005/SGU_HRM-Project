@@ -101,7 +101,13 @@
   cursor: pointer;
 }
 
-.work-date-day:hover {
+.work-date-day:disabled {
+  color: var(--text-muted);
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.work-date-day:hover:not(:disabled) {
   border-color: var(--border-default);
   background: var(--surface-subtle);
 }

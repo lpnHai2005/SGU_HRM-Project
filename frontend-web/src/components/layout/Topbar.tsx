@@ -22,7 +22,7 @@ const PAGE_TITLES: Record<string, string> = {
   audit: 'Nhật ký kiểm toán',
   employees: 'Quản lý nhân viên',
   contracts: 'Hợp đồng & Biến động nhân sự',
-  resignations: 'Quản lý thôi việc',
+  resignations: 'Đơn thôi việc',
   'work-schedules': 'Quản lý lịch làm việc',
   attendance: 'Quản lý công & OT',
   leave: 'Đơn nghỉ phép',
@@ -41,6 +41,7 @@ const PAGE_TITLES: Record<string, string> = {
   'my-projects': 'Dự án của tôi',
   'my-leave': 'Đơn nghỉ phép',
   'my-overtime': 'Đơn OT',
+  'my-resignation': 'Đơn thôi việc',
   'my-payroll': 'Lương & Hợp đồng',
 }
 
