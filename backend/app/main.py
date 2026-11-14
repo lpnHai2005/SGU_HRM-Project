@@ -1,3 +1,4 @@
+import ipaddress
 import logging
 import asyncio
 from contextlib import suppress
@@ -92,10 +93,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.middleware("http")
-async def remember_client_ip(request: Request, call_next):
-    client_ip_var.set(request.client.host if request.client else None)
-    return await call_next(request)
+class ClientIPMiddleware:
+    """Xác định IP người dùng cho request.client (chấm công web) và client_ip_var (audit log).
+
+    Không tin X-Forwarded-For trên Render: proxy của Render chỉ nối thêm vào header client gửi.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            if settings.TRUST_TRUE_CLIENT_IP:
+                raw = dict(scope["headers"]).get(b"true-client-ip", b"").decode("latin-1").strip()
+                try:
+                    scope["client"] = (str(ipaddress.ip_address(raw)), 0)
+                except ValueError:
+                    pass  # Thiếu/sai header: giữ IP kết nối (proxy) thay vì đoán
+            client_ip_var.set(scope["client"][0] if scope.get("client") else None)
+        await self.app(scope, receive, send)
+
+
+app.add_middleware(ClientIPMiddleware)
 
 from sqlalchemy.exc import SQLAlchemyError
 

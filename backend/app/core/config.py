@@ -95,6 +95,8 @@ class Settings(BaseSettings):
         "http://localhost:8000"
     ]
     # Exact LAN development origin used by frontend-web; keep this narrow.
+    # Chỉ bật khi chạy sau Cloudflare (Render): edge ghi đè True-Client-IP nên client không giả được.
+    TRUST_TRUE_CLIENT_IP: bool = False
     CORS_ORIGIN_REGEX: str = r"^https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|26\.\d+\.\d+\.\d+)(:\d+)?$"
 
     @field_validator("CORS_ORIGINS", mode="before")

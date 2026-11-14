@@ -36,5 +36,6 @@ COPY . .
 EXPOSE 8000
 
 # Khởi động FastAPI thông qua uvicorn
-# Render chỉ cho vào qua proxy của nó: tin X-Forwarded-For để lấy IP người dùng thay vì IP proxy 10.x
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='*'"]
+# Render đứng sau Cloudflare: lấy IP người dùng từ True-Client-IP (X-Forwarded-For giả mạo được). Bỏ dòng này nếu deploy nơi không có Cloudflare.
+ENV TRUST_TRUE_CLIENT_IP=1
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
