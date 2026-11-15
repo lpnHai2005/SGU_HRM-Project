@@ -121,6 +121,30 @@ export function EmployeeAttendancePrintModal({
 
   const totalLatePenalty = employee.late_penalty_amount ?? (employee.late_session_count ?? 0) * 50000
 
+  const totalWorkHours = regularSessions.reduce((sum: number, s: any) => {
+    const hrs =
+      s.actual_work_hours != null
+        ? Number(s.actual_work_hours)
+        : s.raw_duration_minutes
+        ? s.raw_duration_minutes / 60
+        : 0
+    return sum + (Number.isFinite(hrs) ? Math.max(0, hrs) : 0)
+  }, 0)
+  const totalPrintLateMinutes = regularSessions.reduce(
+    (sum: number, s: any) => sum + (s.is_valid_late ? Number(s.late_minutes || 0) : 0),
+    0
+  )
+
+  const totalPrintEarlyMinutes = regularSessions.reduce(
+    (sum: number, s: any) => sum + (s.is_valid_early ? Number(s.early_minutes || 0) : 0),
+    0
+  )
+
+  const totalPrintOtHours = regularSessions.reduce(
+    (sum: number, s: any) => sum + (s.has_verified_ot ? Number(s.verified_ot_hours || 0) : 0),
+    0
+  )
+
   // Sinh mã Checksum SHA-256 thật bằng Web Crypto API
   useEffect(() => {
     const rawData = [
@@ -470,6 +494,37 @@ export function EmployeeAttendancePrintModal({
               </tr>
             )}
           </tbody>
+          <tfoot>
+            <tr className="print-table-total-row">
+              <td colSpan={6} style={{ textAlign: 'right', paddingRight: '8px', fontWeight: 700 }}>
+                TỔNG CỘNG:
+              </td>
+              <td className="text-center" style={{ fontWeight: 700 }}>
+                {totalWorkHours.toFixed(1)}h
+              </td>
+              <td
+                className="text-center"
+                style={{ fontWeight: 700, color: totalPrintLateMinutes > 0 ? '#b91c1c' : '#64748b' }}
+              >
+                {totalPrintLateMinutes}
+              </td>
+              <td
+                className="text-center"
+                style={{ fontWeight: 700, color: totalPrintEarlyMinutes > 0 ? '#c2410c' : '#64748b' }}
+              >
+                {totalPrintEarlyMinutes}
+              </td>
+              <td
+                className="text-center"
+                style={{ fontWeight: 700, color: totalPrintOtHours > 0 ? '#059669' : '#64748b' }}
+              >
+                {totalPrintOtHours > 0 ? `${totalPrintOtHours.toFixed(1)}h` : '0h'}
+              </td>
+              <td className="text-center" style={{ fontWeight: 700 }}>
+                {totalLatePenalty > 0 ? formatCurrency(totalLatePenalty) : '0₫'}
+              </td>
+            </tr>
+          </tfoot>
         </table>
 
         {/* 6. Bảng III: Các phiên bất thường vẫn cần HR xác minh */}

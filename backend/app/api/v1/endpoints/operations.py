@@ -320,6 +320,61 @@ def is_valid_early_session(row: dict) -> bool:
     return True
 
 
+def _as_time(value):
+    if value is None:
+        return None
+    if isinstance(value, time):
+        return value
+    if isinstance(value, timedelta):  # asyncpg có thể trả TIME dạng timedelta
+        return (datetime.min + value).time()
+    try:
+        return time.fromisoformat(str(value)[:8])
+    except ValueError:
+        return None
+
+
+def in_shift_hours(row: dict) -> float | None:
+    """Số giờ của phiên nằm trong khung ca (giờ Việt Nam, ca qua đêm cộng 1 ngày).
+
+    Trả None khi thiếu check-in/check-out hoặc không xác định được khung ca.
+    """
+    check_in, check_out, work_date = row.get("check_in_time"), row.get("check_out_time"), row.get("work_date")
+    if not check_in or not check_out or not work_date:
+        return None
+    ctx = row.get("attendance_context") or {}
+    if isinstance(ctx, str):
+        try:
+            ctx = json.loads(ctx)
+        except Exception:
+            ctx = {}
+    snapshot = ctx.get("actual") or {}
+    start = _as_time(row.get("scheduled_start") or snapshot.get("start_time"))
+    end = _as_time(row.get("scheduled_end") or snapshot.get("end_time"))
+    if start is None or end is None:
+        return None
+    if isinstance(work_date, str):
+        work_date = date.fromisoformat(work_date[:10])
+    shift_start = datetime.combine(work_date, start, tzinfo=VIETNAM_TZ)
+    shift_end = datetime.combine(work_date, end, tzinfo=VIETNAM_TZ)
+    if end <= start:
+        shift_end += timedelta(days=1)
+    local_in, local_out = _as_vietnam_datetime(check_in), _as_vietnam_datetime(check_out)
+    overlap = (min(local_out, shift_end) - max(local_in, shift_start)).total_seconds()
+    return round(max(0.0, overlap) / 3600, 2)
+
+
+def raw_work_credit(row: dict) -> dict:
+    """Giờ được tính khi HR "Xác nhận công loại trừ thô": chỉ phần trong khung ca.
+
+    Kết quả được lưu vào attendance_context.hr_review lúc HR xử lý phiên.
+    """
+    raw_hours = round(max(0.0, float(row.get("actual_work_hours") or 0)), 2)
+    within_shift = in_shift_hours(row)
+    credited = round(min(raw_hours, within_shift), 2) if within_shift is not None else raw_hours
+    return {"raw_work_hours": raw_hours, "credited_work_hours": credited,
+            "hr_excluded_hours": round(raw_hours - credited, 2)}
+
+
 def enrich_session_record(row: dict, tolerance_minutes: int = 15) -> dict:
     """
     ATT-UI-04: Normalize and enrich attendance session with explicit duration,
@@ -458,6 +513,11 @@ def enrich_session_record(row: dict, tolerance_minutes: int = 15) -> dict:
     row["outside_schedule_hours"] = outside_schedule_hours
     row["excessive_late_threshold_minutes"] = EXCESSIVE_LATE_THRESHOLD_MINUTES
 
+    # Giờ thô trước khi áp quyết định HR; phần HR loại khỏi giờ công ghi riêng
+    # để bảng tháng, bản in và chi tiết cộng ra cùng một con số.
+    raw_work_hours = actual_hours
+    hr_excluded_hours = 0.0
+
     # Evaluate decision logic (Mục 3 & 4)
     if review_decision == "CONFIRMED_LATE":
         is_valid_late = True
@@ -471,9 +531,21 @@ def enrich_session_record(row: dict, tolerance_minutes: int = 15) -> dict:
         is_valid_early = False
         is_excluded = True
         needs_hr_review = False
+        hr_excluded_hours = raw_work_hours
         actual_hours = 0.0
+        outside_schedule_hours = 0.0
     elif review_decision == "CONFIRMED_RAW_WORK":
-        # HR xác nhận phiên có công thực tế: giữ giờ gốc, không kết luận trễ/sớm hợp lệ.
+        # "Xác nhận công loại trừ thô": chỉ công nhận phần giờ nằm trong khung ca,
+        # phần ngoài ca bị loại khỏi giờ công. Không kết luận trễ/sớm hợp lệ.
+        # Ưu tiên số giờ đã lưu lúc HR xử lý (bảng lương đọc cùng số này qua
+        # fn_attendance_payable_hours), chỉ tự tính khi phiên cũ chưa có.
+        stored = (hr_rev or {}).get("credited_work_hours")
+        within_shift = float(stored) if stored is not None else in_shift_hours(row)
+        if within_shift is not None:
+            credited = min(raw_work_hours, within_shift)
+            hr_excluded_hours = round(raw_work_hours - credited, 2)
+            actual_hours = credited
+        outside_schedule_hours = 0.0
         is_excluded = False
         needs_hr_review = False
         is_valid_late = False
@@ -501,7 +573,10 @@ def enrich_session_record(row: dict, tolerance_minutes: int = 15) -> dict:
 
     row["is_excluded"] = is_excluded
     row["payroll_hold"] = payroll_hold
+    row["raw_work_hours"] = raw_work_hours
+    row["hr_excluded_hours"] = hr_excluded_hours
     row["actual_work_hours"] = actual_hours
+    row["outside_schedule_hours"] = outside_schedule_hours
     row["is_valid_late"] = is_valid_late
     row["is_grace_late"] = is_grace_late
     row["is_valid_early"] = is_valid_early
@@ -512,6 +587,32 @@ def enrich_session_record(row: dict, tolerance_minutes: int = 15) -> dict:
     row["raw_early_minutes"] = early_m
     row["verified_early_minutes"] = early_m if is_valid_early else 0
     return row
+
+
+def summarize_work_sessions(rows: list[dict]) -> dict:
+    """Tổng hợp CÔNG & GIỜ LÀM từ các phiên đã qua enrich_session_record.
+
+    Một nguồn số duy nhất cho bảng công tháng, bản in xác nhận và chi tiết nhân viên:
+      - Chỉ phiên đã check-out mới có công; phiên mở chưa tính.
+      - Phiên HR loại trừ không có công; phiên "cần thêm giải trình" bị tạm giữ.
+      - raw_work_hours = actual_work_hours + excluded_hours + held_hours.
+    """
+    closed = [r for r in rows if r.get('check_in_time') and r.get('check_out_time')]
+    held = [r for r in closed if r.get('payroll_hold') and not r.get('is_excluded')]
+    counted = [r for r in closed if not r.get('is_excluded') and not r.get('payroll_hold')]
+    actual = round(sum(float(r.get('actual_work_hours') or 0) for r in counted), 2)
+    return {
+        'working_days': len({str(r['work_date'])[:10] for r in counted if float(r.get('actual_work_hours') or 0) > 0}),
+        'actual_work_hours': actual,
+        'raw_work_hours': round(sum(float(r.get('raw_work_hours', r.get('actual_work_hours')) or 0) for r in closed), 2),
+        'excluded_session_count': sum(1 for r in closed if r.get('is_excluded')),
+        'excluded_hours': round(sum(float(r.get('hr_excluded_hours') or 0) for r in closed if not r.get('payroll_hold') or r.get('is_excluded')), 2),
+        'trimmed_outside_shift_hours': round(sum(float(r.get('hr_excluded_hours') or 0) for r in closed if not r.get('is_excluded') and not r.get('payroll_hold')), 2),
+        'held_session_count': len(held),
+        'held_hours': round(sum(float(r.get('actual_work_hours') or 0) for r in held), 2),
+        'open_session_count': sum(1 for r in rows if r.get('check_in_time') and not r.get('check_out_time')),
+        'outside_schedule_hours': round(sum(float(r.get('outside_schedule_hours') or 0) for r in counted), 2),
+    }
 
 
 @router.get('/monthly-attendance')
@@ -663,13 +764,12 @@ async def monthly_attendance(period:str=Query(...,pattern=r'^\d{4}-(0[1-9]|1[0-2
         unreviewed_late_minutes = sum(int(s.get("late_minutes") or 0) for s in rows if s.get("needs_hr_review"))
         unreviewed_early_minutes = sum(int(s.get("early_minutes") or 0) for s in rows if s.get("needs_hr_review"))
 
-        valid_work_rows = [r for r in rows if not r.get('is_excluded') and not r.get('payroll_hold')]
+        work = summarize_work_sessions(rows)
         person.update(
             sessions=rows,
             scheduled_days=sched_info['days'],
             scheduled_hours=sched_info['hours'],
-            actual_work_hours=sum(float(r['actual_work_hours'] or 0) for r in valid_work_rows),
-            outside_schedule_hours=round(sum(float(r.get('outside_schedule_hours') if r.get('outside_schedule_hours') is not None else (r.get('overtime_hours') or 0.0)) for r in rows), 2),
+            **work,
             overtime_hours=sum(float(r['overtime_hours'] or 0) for r in rows),
             verified_ot_hours=(round(ot_verified.get(person['employee_id'], 0.0), 2)
                                if verified_ot_source_available else None),
@@ -693,7 +793,6 @@ async def monthly_attendance(period:str=Query(...,pattern=r'^\d{4}-(0[1-9]|1[0-2
             unreviewed_early_minutes=unreviewed_early_minutes,
             needs_review_session_count=needs_review_session_count,
             flagged_sessions_count=needs_review_session_count,
-            working_days=len({r['work_date'] for r in valid_work_rows if r.get('check_in_time')}),
             standard_working_days=standard_working_days,
             leave_requests=lr,
             paid_leave_days=paid_leave,
@@ -1434,6 +1533,10 @@ async def resolve_attendance_session(
         "new_shift_id": new_shift_id,
         "version": new_version
     }
+    if decision == 'CONFIRMED_RAW_WORK':
+        # Lưu giờ được tính (chỉ phần trong khung ca) vào attendance_context.hr_review;
+        # sp_generate_monthly_payroll đọc đúng số này nên bảng lương khớp bảng công.
+        new_hr_review.update(raw_work_credit(session_dict))
 
     audit_entry = {
         "version": new_version,

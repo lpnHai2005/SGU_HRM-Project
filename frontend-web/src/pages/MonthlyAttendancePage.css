@@ -1943,7 +1943,42 @@
 }
 
 .att-detail-table tbody tr:last-child td {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.att-detail-table tfoot {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+}
+
+.att-detail-table tfoot tr.att-detail-table-total-row {
+  background: var(--surface-subtle, #f8fafc);
+  border-top: 2px solid var(--border-default, #cbd5e1);
+  box-shadow: 0 -2px 6px -1px rgba(0, 0, 0, 0.06);
+  font-weight: 700;
+}
+
+.att-detail-table tfoot td {
+  padding: 10px 8px;
+  vertical-align: middle;
   border-bottom: none;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.att-detail-table tfoot tr:hover {
+  background: var(--surface-subtle, #f8fafc);
+}
+
+[data-theme="dark"] .att-detail-table tfoot tr.att-detail-table-total-row {
+  background: var(--surface-subtle, #1e1e24);
+  border-top-color: var(--border-default, #38383f);
+  box-shadow: 0 -2px 6px -1px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .att-detail-table tfoot tr:hover {
+  background: var(--surface-subtle, #1e1e24);
 }
 
 .att-detail-table tbody tr.session-row-flagged {
@@ -2667,6 +2702,12 @@
   .hr-master-attendance-table th, .hr-master-attendance-table td {
     border: 1px solid #ccc !important;
     padding: 4px 6px !important;
+  }
+  .att-detail-table thead {
+    display: table-header-group !important;
+  }
+  .att-detail-table tfoot {
+    display: table-footer-group !important;
   }
   @page {
     size: A4 landscape;

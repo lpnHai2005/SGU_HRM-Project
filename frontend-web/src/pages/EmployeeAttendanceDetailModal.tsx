@@ -1379,6 +1379,21 @@ export function EmployeeAttendanceDetailModal({
   const totalLatePenalty =
     employee.late_penalty_amount ?? (employee.late_session_count ?? 0) * 50000
 
+  const totalActualHours = filteredSessions.reduce((sum, s) => {
+    const hrs =
+      s.actual_work_hours != null
+        ? Number(s.actual_work_hours)
+        : s.raw_duration_minutes
+        ? s.raw_duration_minutes / 60
+        : 0
+    return sum + (Number.isFinite(hrs) ? Math.max(0, hrs) : 0)
+  }, 0)
+
+  const totalLateMinutes = filteredSessions.reduce(
+    (sum, s) => sum + (s.is_valid_late ? Number(s.late_minutes || 0) : 0),
+    0
+  )
+
   return (
     <>
       <div
@@ -1630,6 +1645,53 @@ export function EmployeeAttendanceDetailModal({
                   </tr>
                 )}
               </tbody>
+              <tfoot>
+                <tr className="att-detail-table-total-row">
+                  <td
+                    colSpan={4}
+                    style={{
+                      textAlign: 'right',
+                      fontWeight: 700,
+                      paddingRight: '12px',
+                      color: 'var(--text-secondary)',
+                    }}
+                  >
+                    TỔNG CỘNG:
+                  </td>
+                  <td style={{ textAlign: 'center', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    {totalActualHours.toFixed(1)}h
+                  </td>
+                  <td style={{ textAlign: 'center', fontWeight: 700 }}>
+                    {totalLateMinutes > 0 ? (
+                      <span style={{ color: 'var(--status-error)' }}>Trễ {totalLateMinutes}p</span>
+                    ) : (
+                      <span style={{ color: 'var(--text-tertiary)' }}>0p trễ</span>
+                    )}
+                  </td>
+                  <td
+                    style={{
+                      textAlign: 'center',
+                      fontWeight: 700,
+                      color: totalLatePenalty > 0 ? 'var(--status-error)' : 'var(--text-primary)',
+                    }}
+                  >
+                    {formatCurrency(totalLatePenalty)}
+                  </td>
+                  <td
+                    style={{
+                      textAlign: 'center',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      color: 'var(--text-secondary)',
+                    }}
+                  >
+                    {(employee.needs_review_session_count ?? 0) > 0
+                      ? `${employee.needs_review_session_count} cần HR`
+                      : 'Đã chuẩn hóa'}
+                  </td>
+                  <td></td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>
