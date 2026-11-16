@@ -363,6 +363,35 @@ def in_shift_hours(row: dict) -> float | None:
     return round(max(0.0, overlap) / 3600, 2)
 
 
+def spans_shift_midpoint(row: dict) -> bool:
+    """Phiên có kéo qua thời điểm giữa ca không (giờ Việt Nam, ca qua đêm cộng 1 ngày).
+
+    Dùng để quyết định có trừ nghỉ giữa ca hay không — cùng quy tắc với fn_attendance_payable_hours.
+    """
+    check_in, check_out, work_date = row.get("check_in_time"), row.get("check_out_time"), row.get("work_date")
+    if not check_in or not check_out or not work_date:
+        return False
+    ctx = row.get("attendance_context") or {}
+    if isinstance(ctx, str):
+        try:
+            ctx = json.loads(ctx)
+        except Exception:
+            ctx = {}
+    snapshot = ctx.get("actual") or {}
+    start = _as_time(row.get("scheduled_start") or snapshot.get("start_time"))
+    end = _as_time(row.get("scheduled_end") or snapshot.get("end_time"))
+    if start is None or end is None:
+        return False
+    if isinstance(work_date, str):
+        work_date = date.fromisoformat(work_date[:10])
+    shift_start = datetime.combine(work_date, start, tzinfo=VIETNAM_TZ)
+    shift_end = datetime.combine(work_date, end, tzinfo=VIETNAM_TZ)
+    if end <= start:
+        shift_end += timedelta(days=1)
+    midpoint = shift_start + (shift_end - shift_start) / 2
+    return _as_vietnam_datetime(check_in) <= midpoint <= _as_vietnam_datetime(check_out)
+
+
 def raw_work_credit(row: dict) -> dict:
     """Giờ được tính khi HR "Xác nhận công loại trừ thô": chỉ phần trong khung ca.
 
@@ -571,6 +600,33 @@ def enrich_session_record(row: dict, tolerance_minutes: int = 15) -> dict:
         is_grace_late = is_grace_late_session(row, tolerance_minutes)
         is_valid_early = is_valid_early_session(row)
 
+    # Giờ được tính công của phiên — cùng quy tắc với fn_attendance_payable_hours (bảng lương):
+    #   - trừ nghỉ giữa ca (break_minutes) khi phiên kéo qua thời điểm giữa ca,
+    #   + cộng lại phút trễ trong ân hạn (1..tolerance phút),
+    #   - trừ giờ OT đã duyệt của phiên (trả riêng qua tiền OT, không tính hai lần),
+    #   tối đa bằng số giờ của ca; phần vượt ca không có OT duyệt thì không tính công.
+    grace_credit = ot_paid = over_cap = payable = break_deducted = 0.0
+    if check_in and check_out and not is_excluded and not payroll_hold:
+        worked = actual_hours
+        if break_m and break_m > 0 and spans_shift_midpoint(row):
+            break_deducted = min(worked, break_m / 60.0)
+            worked -= break_deducted
+        if 1 <= late_m <= tolerance_minutes:
+            grace_credit = late_m / 60.0
+        ot_paid = min(float(row.get("approved_ot_hours") or 0), worked)
+        base = worked + grace_credit - ot_paid
+        cap = row.get("scheduled_hours") or (ctx.get("actual") or {}).get("work_hours")
+        cap = float(cap) if cap not in (None, "") and float(cap) > 0 else None
+        if cap is not None and base > cap:
+            over_cap = base - cap
+            base = cap
+        payable = max(0.0, base)
+    row["payable_hours"] = round(payable, 2)
+    row["grace_credit_hours"] = round(grace_credit, 2)
+    row["ot_paid_hours"] = round(ot_paid, 2)
+    row["over_cap_hours"] = round(over_cap, 2)
+    row["break_deducted_hours"] = round(break_deducted, 2)
+
     row["is_excluded"] = is_excluded
     row["payroll_hold"] = payroll_hold
     row["raw_work_hours"] = raw_work_hours
@@ -595,15 +651,27 @@ def summarize_work_sessions(rows: list[dict]) -> dict:
     Một nguồn số duy nhất cho bảng công tháng, bản in xác nhận và chi tiết nhân viên:
       - Chỉ phiên đã check-out mới có công; phiên mở chưa tính.
       - Phiên HR loại trừ không có công; phiên "cần thêm giải trình" bị tạm giữ.
-      - raw_work_hours = actual_work_hours + excluded_hours + held_hours.
+      - Giờ được tính mỗi phiên = giờ làm + phút trễ trong ân hạn − giờ OT đã duyệt, tối đa bằng giờ ca
+        (khớp fn_attendance_payable_hours của bảng lương).
+      - Phiên kéo qua giữa ca của ca có nghỉ giữa ca bị trừ break_minutes.
+      - raw_work_hours + grace_credit_hours = actual_work_hours + excluded_hours + held_hours
+            + ot_paid_hours + over_cap_hours + break_deducted_hours.
     """
     closed = [r for r in rows if r.get('check_in_time') and r.get('check_out_time')]
     held = [r for r in closed if r.get('payroll_hold') and not r.get('is_excluded')]
     counted = [r for r in closed if not r.get('is_excluded') and not r.get('payroll_hold')]
-    actual = round(sum(float(r.get('actual_work_hours') or 0) for r in counted), 2)
+
+    def payable(r):
+        return float(r.get('payable_hours', r.get('actual_work_hours')) or 0)
+
+    actual = round(sum(payable(r) for r in counted), 2)
     return {
-        'working_days': len({str(r['work_date'])[:10] for r in counted if float(r.get('actual_work_hours') or 0) > 0}),
+        'working_days': len({str(r['work_date'])[:10] for r in counted if payable(r) > 0}),
         'actual_work_hours': actual,
+        'grace_credit_hours': round(sum(float(r.get('grace_credit_hours') or 0) for r in counted), 2),
+        'ot_paid_hours': round(sum(float(r.get('ot_paid_hours') or 0) for r in counted), 2),
+        'over_cap_hours': round(sum(float(r.get('over_cap_hours') or 0) for r in counted), 2),
+        'break_deducted_hours': round(sum(float(r.get('break_deducted_hours') or 0) for r in counted), 2),
         'raw_work_hours': round(sum(float(r.get('raw_work_hours', r.get('actual_work_hours')) or 0) for r in closed), 2),
         'excluded_session_count': sum(1 for r in closed if r.get('is_excluded')),
         'excluded_hours': round(sum(float(r.get('hr_excluded_hours') or 0) for r in closed if not r.get('payroll_hold') or r.get('is_excluded')), 2),
@@ -688,8 +756,10 @@ async def monthly_attendance(period:str=Query(...,pattern=r'^\d{4}-(0[1-9]|1[0-2
         COALESCE(a.attendance_context->>'schedule_status','LEGACY_UNKNOWN') AS schedule_status,
         sh.shift_name,sh.start_time AS scheduled_start,sh.end_time AS scheduled_end,sh.work_hours AS scheduled_hours,
         sh.break_minutes AS break_minutes,
-        s.store_name AS attendance_store_name
+        s.store_name AS attendance_store_name,
+        COALESCE(ota.approved_hours, 0) AS approved_ot_hours
         FROM attendances a LEFT JOIN work_shifts sh USING(shift_id) LEFT JOIN stores s ON a.store_id=s.store_id
+        LEFT JOIN attendance_overtime_approvals ota ON ota.attendance_id=a.attendance_id AND ota.decision='APPROVED'
         WHERE a.employee_id=ANY(:ids) AND a.work_date BETWEEN :start AND :end ORDER BY a.work_date,a.check_in_time,a.attendance_id'''),params)).mappings().all()]
     planned={r['employee_id']:{'hours':float(r['hours']),'days':int(r['days'])} for r in (await db.execute(text('''SELECT ws.employee_id,
         COUNT(DISTINCT ws.work_date) AS days,
