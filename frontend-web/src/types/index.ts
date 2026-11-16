@@ -931,6 +931,15 @@ export interface AttendanceSummaryData {
   total_late_minutes: number;
   on_time_rate: number;
   details?: any[];
+  by_store?: Array<{
+    store_id: number;
+    store_name: string;
+    total_records: number;
+    on_time_count: number;
+    on_time_rate: number;
+    total_working_hours: number;
+    total_ot_hours: number;
+  }>;
 }
 
 export interface LeaveSummaryData {
@@ -947,6 +956,11 @@ export interface LeaveSummaryData {
     count: number;
   }>;
   details?: any[];
+  by_store?: Array<{
+    store_id: number;
+    store_name: string;
+    total_requests: number;
+  }>;
 }
 
 export interface SalesPerformanceReportData {

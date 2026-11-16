@@ -1388,11 +1388,73 @@ export function ReportsPage({ user }: ReportsPageProps) {
     })
   }
 
+  // Hàm lấy thống kê chuyên cần & nghỉ phép riêng cho từng cơ sở
+  const getStoreAttendanceStats = useCallback(
+    (store: any) => {
+      const storeId = store?.store_id || 0
+      const storeName = (store?.store_name || '').trim().toLowerCase()
+
+      // 1. Nếu backend có by_store cho attendance
+      const attMatch = attendanceSummary?.by_store?.find(
+        (b: any) => (storeId && b.store_id === storeId) || (b.store_name || '').trim().toLowerCase() === storeName
+      )
+
+      // 2. Nếu backend có by_store cho leave
+      const leaveMatch = leaveSummary?.by_store?.find(
+        (l: any) => (storeId && l.store_id === storeId) || (l.store_name || '').trim().toLowerCase() === storeName
+      )
+
+      let totalRecords = attMatch?.total_records
+      let onTimeRate = attMatch?.on_time_rate
+      let workingHours = attMatch?.total_working_hours
+      let otHours = attMatch?.total_ot_hours
+      let leaveRequests = leaveMatch?.total_requests
+
+      // Fallback tính toán từ attendanceSummary.details nếu backend chưa có by_store
+      if (totalRecords === undefined) {
+        const attDetails = Array.isArray(attendanceSummary?.details) ? attendanceSummary.details : []
+        const matchedAtts = attDetails.filter((d: any) => {
+          if (storeId && d.store_id && d.store_id === storeId) return true
+          return (d.store_name || '').trim().toLowerCase() === storeName
+        })
+        totalRecords = matchedAtts.length
+        const onTimeCount = matchedAtts.filter((d: any) => d.status === 'NORMAL').length
+        onTimeRate = totalRecords > 0 ? Math.round((onTimeCount / totalRecords) * 1000) / 10 : 0
+        workingHours = Math.round(matchedAtts.reduce((sum: number, d: any) => sum + (Number(d.actual_work_hours) || 0), 0) * 100) / 100
+        otHours = Math.round(matchedAtts.reduce((sum: number, d: any) => sum + (Number(d.overtime_hours) || 0), 0) * 100) / 100
+      }
+
+      // Fallback tính toán từ leaveSummary.details nếu backend chưa có by_store
+      if (leaveRequests === undefined) {
+        const leaveDetails = Array.isArray(leaveSummary?.details) ? leaveSummary.details : []
+        const matchedLeaves = leaveDetails.filter((l: any) => {
+          if (storeId && l.store_id && l.store_id === storeId) return true
+          return (l.store_name || '').trim().toLowerCase() === storeName
+        })
+        leaveRequests = matchedLeaves.length
+      }
+
+      return {
+        totalRecords: totalRecords || 0,
+        onTimeRate: onTimeRate || 0,
+        workingHours: workingHours || 0,
+        otHours: otHours || 0,
+        leaveRequests: leaveRequests || 0,
+      }
+    },
+    [attendanceSummary, leaveSummary]
+  )
+
   // Xử lý Drilldown khi nhấp vào hàng Cơ sở ở Tab 3 (Chấm công)
   const handleStoreAttendanceRowClick = (store: any) => {
     if (!store) return
+    const storeId = store.store_id || 0
+    const storeName = (store.store_name || '').trim().toLowerCase()
     const detailsList = Array.isArray(attendanceSummary?.details) ? attendanceSummary.details : []
-    const filtered = detailsList.filter((d: any) => d.store_id === store.store_id || d.store_name === store.store_name)
+    const filtered = detailsList.filter((d: any) => {
+      if (storeId && d.store_id && d.store_id === storeId) return true
+      return (d.store_name || '').trim().toLowerCase() === storeName
+    })
     openSubform({
       title: `Chấm công cơ sở: ${store.store_name}`,
       subtitle: `Kỳ ${period} - Ghi nhận ${filtered.length} lượt chấm công`,
@@ -2359,36 +2421,47 @@ export function ReportsPage({ user }: ReportsPageProps) {
                         </tr>
                       </thead>
                       <tbody>
-                        {monthlyStatusList.map((store, idx) => (
-                          <tr
-                            key={store.store_id || idx}
-                            onClick={() => handleStoreAttendanceRowClick(store)}
-                            style={{ cursor: 'pointer' }}
-                            title="Bấm vào để xem danh sách chấm công của cơ sở này"
-                          >
-                            <td style={{ textAlign: 'center' }}>{idx + 1}</td>
-                            <td style={{ fontWeight: 600 }}>
-                              <span style={{ textDecoration: 'underline', textDecorationStyle: 'dotted' }}>{store.store_name}</span>
-                            </td>
-                            <td style={{ textAlign: 'center' }}>{store.active_staff || 0} NS</td>
-                            <td style={{ textAlign: 'center' }}>
-                              <span className="badge badge-success" style={{ fontSize: '11px' }}>
-                                {attendanceSummary?.on_time_rate ? `${attendanceSummary.on_time_rate.toFixed(0)}%` : '96%'}
-                              </span>
-                            </td>
-                            <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>
-                              {attendanceSummary?.total_working_hours ? Math.round(attendanceSummary.total_working_hours / Math.max(monthlyStatusList.length, 1)) : 0}h
-                            </td>
-                            <td style={{ textAlign: 'right', fontFamily: 'monospace', color: CHART_COLORS.warning, fontWeight: 600 }}>
-                              {attendanceSummary?.total_ot_hours ? Math.round(attendanceSummary.total_ot_hours / Math.max(monthlyStatusList.length, 1)) : 0}h
-                            </td>
-                            <td style={{ textAlign: 'center' }}>
-                              <span className="badge badge-info" style={{ fontSize: '11px' }}>
-                                {leaveSummary?.total_requests || 0} đơn
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
+                        {monthlyStatusList.map((store, idx) => {
+                          const stats = getStoreAttendanceStats(store)
+                          const badgeColor = stats.totalRecords === 0
+                            ? 'badge-secondary'
+                            : stats.onTimeRate >= 90
+                            ? 'badge-success'
+                            : stats.onTimeRate >= 75
+                            ? 'badge-warning'
+                            : 'badge-danger'
+
+                          return (
+                            <tr
+                              key={store.store_id || idx}
+                              onClick={() => handleStoreAttendanceRowClick(store)}
+                              style={{ cursor: 'pointer' }}
+                              title="Bấm vào để xem danh sách chấm công của cơ sở này"
+                            >
+                              <td style={{ textAlign: 'center' }}>{idx + 1}</td>
+                              <td style={{ fontWeight: 600 }}>
+                                <span style={{ textDecoration: 'underline', textDecorationStyle: 'dotted' }}>{store.store_name}</span>
+                              </td>
+                              <td style={{ textAlign: 'center' }}>{store.active_staff || 0} NS</td>
+                              <td style={{ textAlign: 'center' }}>
+                                <span className={`badge ${badgeColor}`} style={{ fontSize: '11px' }}>
+                                  {stats.totalRecords > 0 ? `${stats.onTimeRate.toFixed(1)}%` : '---'}
+                                </span>
+                              </td>
+                              <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>
+                                {stats.workingHours.toLocaleString('vi-VN')}h
+                              </td>
+                              <td style={{ textAlign: 'right', fontFamily: 'monospace', color: stats.otHours > 0 ? CHART_COLORS.warning : 'inherit', fontWeight: stats.otHours > 0 ? 600 : 400 }}>
+                                {stats.otHours.toLocaleString('vi-VN')}h
+                              </td>
+                              <td style={{ textAlign: 'center' }}>
+                                <span className="badge badge-info" style={{ fontSize: '11px' }}>
+                                  {stats.leaveRequests} đơn
+                                </span>
+                              </td>
+                            </tr>
+                          )
+                        })}
                       </tbody>
                     </table>
                   </div>

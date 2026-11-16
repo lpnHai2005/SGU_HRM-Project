@@ -1291,6 +1291,7 @@ async def get_attendance_summary(
             a.attendance_id,
             e.employee_code,
             e.full_name as employee_name,
+            COALESCE(e.store_id, 0) as store_id,
             COALESCE(s.store_name, 'Văn phòng chính') as store_name,
             TO_CHAR(a.work_date, 'DD/MM/YYYY') as work_date,
             TO_CHAR(a.check_in_time, 'HH24:MI') as check_in_time,
@@ -1320,6 +1321,37 @@ async def get_attendance_summary(
     """)
     att_details = (await db.execute(att_details_query, params)).mappings().all()
 
+    # 5. Thống kê theo từng cơ sở phục vụ bảng chuyên cần chi tiết
+    store_stats_query = text(f"""
+        SELECT 
+            COALESCE(e.store_id, 0) as store_id,
+            COALESCE(s.store_name, 'Văn phòng chính') as store_name,
+            COUNT(a.attendance_id) as total_records,
+            COALESCE(SUM(a.actual_work_hours), 0) as total_working_hours,
+            COALESCE(SUM(a.overtime_hours), 0) as total_ot_hours,
+            COUNT(a.attendance_id) FILTER (WHERE a.status = 'NORMAL') as on_time_count
+        FROM attendances a
+        JOIN employees e ON a.employee_id = e.employee_id
+        LEFT JOIN stores s ON e.store_id = s.store_id
+        WHERE TO_CHAR(a.work_date, 'YYYY-MM') = :period {details_store_filter}
+        GROUP BY e.store_id, s.store_name
+    """)
+    store_stats_rows = (await db.execute(store_stats_query, params)).mappings().all()
+    by_store = []
+    for r in store_stats_rows:
+        tot = int(r["total_records"])
+        ontime = int(r["on_time_count"])
+        rate = round((ontime / tot * 100), 1) if tot > 0 else 100.0
+        by_store.append({
+            "store_id": int(r["store_id"]),
+            "store_name": r["store_name"],
+            "total_records": tot,
+            "on_time_count": ontime,
+            "on_time_rate": rate,
+            "total_working_hours": round(float(r["total_working_hours"]), 2),
+            "total_ot_hours": round(float(r["total_ot_hours"]), 2),
+        })
+
     return {
         "period": period_str,
         "total_records": total_records,
@@ -1333,6 +1365,7 @@ async def get_attendance_summary(
         "by_status": by_status,
         "status_distribution": [dict(r) for r in status_rows],
         "daily_ot": [dict(r) for r in daily_ot],
+        "by_store": by_store,
         "details": [dict(r) for r in att_details]
     }
 
@@ -1422,6 +1455,7 @@ async def get_leave_summary(
             lr.request_id,
             e.employee_code,
             e.full_name as employee_name,
+            COALESCE(e.store_id, 0) as store_id,
             COALESCE(s.store_name, 'Văn phòng chính') as store_name,
             COALESCE(lt.type_name, 'Khác') as type_name,
             TO_CHAR(lr.start_date, 'DD/MM/YYYY') as start_date,
@@ -1446,6 +1480,28 @@ async def get_leave_summary(
     """)
     leave_details = (await db.execute(leave_details_query, params)).mappings().all()
 
+    # 4. Thống kê đơn nghỉ phép theo từng cơ sở
+    leave_store_query = text(f"""
+        SELECT 
+            COALESCE(e.store_id, 0) as store_id,
+            COALESCE(s.store_name, 'Văn phòng chính') as store_name,
+            COUNT(lr.request_id) as total_requests
+        FROM leave_requests lr
+        JOIN employees e ON lr.employee_id = e.employee_id
+        LEFT JOIN stores s ON e.store_id = s.store_id
+        WHERE TO_CHAR(lr.start_date, 'YYYY-MM') = :period {store_filter}
+        GROUP BY e.store_id, s.store_name
+    """)
+    leave_store_rows = (await db.execute(leave_store_query, params)).mappings().all()
+    leave_by_store = [
+        {
+            "store_id": int(r["store_id"]),
+            "store_name": r["store_name"],
+            "total_requests": int(r["total_requests"])
+        }
+        for r in leave_store_rows
+    ]
+
     return {
         "period": period_str,
         "total_requests": total_requests,
@@ -1453,6 +1509,7 @@ async def get_leave_summary(
         "pending_count": pending_count,
         "by_type": by_type,
         "by_status": by_status,
+        "by_store": leave_by_store,
         "details": [dict(r) for r in leave_details]
     }
 
