@@ -115,33 +115,53 @@ async def get_dashboard_stats(
     params["m_start"] = period_start
     params["m_end"] = period_end
 
-    # 1. Số nhân sự thực tế công tác tại kỳ đó (Đã gia nhập và chưa thôi việc trước kỳ)
+    # 1. Tổng biên chế hồ sơ nhân sự tính đến cuối kỳ (bao gồm cả đang làm, nghỉ phép và đã thôi việc)
+    total_emp_query = f"""
+        SELECT COUNT(*) FROM employees e
+        WHERE e.join_date <= :m_end
+          {emp_store_filter}
+    """
+    total_headcount_employees = (await db.execute(text(total_emp_query), params)).scalar() or 0
+
+    # 2. Số nhân sự thực tế đang công tác tại kỳ đó (Đã gia nhập và chưa thôi việc tính đến cuối kỳ)
     active_emp_query = f"""
         SELECT COUNT(*) FROM employees e
         WHERE e.join_date <= :m_end 
-          AND (e.resignation_date IS NULL OR e.resignation_date >= :m_start)
+          AND (e.resignation_date IS NULL OR e.resignation_date > :m_end)
+          AND e.employment_status NOT IN ('RESIGNED', 'TERMINATED')
           {emp_store_filter}
     """
     period_active_employees = (await db.execute(text(active_emp_query), params)).scalar() or 0
 
-    # 2. Tuyển mới trong kỳ
+    # 3. Tuyển mới trong kỳ
     hires_query = f"""
         SELECT COUNT(*) FROM employees e
         WHERE e.join_date BETWEEN :m_start AND :m_end {emp_store_filter}
     """
     new_hires = (await db.execute(text(hires_query), params)).scalar() or 0
 
-    # 3. Thôi việc trong kỳ
-    resigned_query = f"""
+    # 4. Thôi việc trong kỳ và tổng thôi việc luỹ kế đến kỳ
+    resigned_in_period_query = f"""
         SELECT COUNT(*) FROM employees e
         WHERE e.resignation_date BETWEEN :m_start AND :m_end {emp_store_filter}
     """
-    resigned_employees = (await db.execute(text(resigned_query), params)).scalar() or 0
+    resigned_in_period = (await db.execute(text(resigned_in_period_query), params)).scalar() or 0
 
-    # 4. Cửa hàng đang hoạt động
+    total_resigned_query = f"""
+        SELECT COUNT(*) FROM employees e
+        WHERE e.join_date <= :m_end
+          AND (
+              (e.resignation_date IS NOT NULL AND e.resignation_date <= :m_end)
+              OR (e.employment_status IN ('RESIGNED', 'TERMINATED') AND (e.resignation_date IS NULL OR e.resignation_date <= :m_end))
+          )
+          {emp_store_filter}
+    """
+    resigned_employees = (await db.execute(text(total_resigned_query), params)).scalar() or 0
+
+    # 5. Cửa hàng đang hoạt động
     total_stores = (await db.execute(text("SELECT count(*) FROM stores WHERE is_active = TRUE"))).scalar() or 0
 
-    # 5. Quỹ lương kỳ
+    # 6. Quỹ lương kỳ
     pr_query = f"""
         SELECT COALESCE(SUM(p.net_salary), 0), COALESCE(SUM(p.gross_income), 0)
         FROM payrolls p 
@@ -152,7 +172,7 @@ async def get_dashboard_stats(
     monthly_net_fund = float(pr_res[0] or 0)
     monthly_gross_fund = float(pr_res[1] or 0)
 
-    # 6. Doanh số toàn chuỗi trong kỳ
+    # 7. Doanh số toàn chuỗi trong kỳ
     sales_query = f"SELECT COALESCE(SUM(total_revenue), 0) FROM employee_sales WHERE salary_period = :period {sales_store_filter}"
     total_sales = float((await db.execute(text(sales_query), params)).scalar() or 0)
 
@@ -161,10 +181,11 @@ async def get_dashboard_stats(
 
     return {
         **kpis,
-        "total_employees": period_active_employees,
+        "total_employees": total_headcount_employees,
         "active_employees": period_active_employees,
         "new_hires": new_hires,
         "resigned_employees": resigned_employees,
+        "resigned_in_period": resigned_in_period,
         "total_stores": total_stores,
         "monthly_net_payroll_fund": monthly_net_fund,
         "monthly_gross_payroll_fund": monthly_gross_fund,
@@ -174,7 +195,6 @@ async def get_dashboard_stats(
     }
 
 
-# ===================================================================================
 # ===================================================================================
 # 2. RUBRIC III.3.1.4: BÁO CÁO BIẾN ĐỘNG NHÂN SỰ THEO THÁNG
 # ===================================================================================
@@ -188,11 +208,11 @@ async def get_monthly_status_report(
 ):
     """
     Truy vấn Báo cáo tình hình nhân sự theo kỳ thống kê:
-    - total_active_employees (Đang làm việc: ACTIVE, PROBATION, NEW_HIRE)
+    - total_active_employees (Đang làm việc: Chính thức + Thử việc + Tuyển mới đang đi làm)
     - total_on_leave_employees (Đang nghỉ phép trong kỳ: ON_LEAVE hoặc có đơn HR_APPROVED trong kỳ)
-    - total_resigned_employees (Thôi việc trong kỳ hoặc đã thôi việc)
-    - total_headcount (Tổng quân số biên chế trong kỳ)
-    - by_store: Phân bổ nhân sự theo từng cơ sở (Cửa hàng / Phòng ban)
+    - total_resigned_employees (Nghỉ việc / Thôi việc: bao gồm nghỉ trong kỳ và đã nghỉ việc trước đó)
+    - total_headcount (Tổng hồ sơ nhân sự tính đến cuối kỳ = Đang làm + Nghỉ phép + Nghỉ việc)
+    - by_store: Phân bổ nhân sự theo từng cơ sở (Cửa hàng / Phòng ban) khớp 100% tổng ngang & dọc
     - details: Danh sách chi tiết từng nhân sự kèm trạng thái, học vấn, mức lương, thâm niên.
     """
     roles = current_user.get("roles", [])
@@ -223,34 +243,65 @@ async def get_monthly_status_report(
         params["store_id"] = filter_store_id
         emp_store_filter = " AND e.store_id = :store_id"
 
-    # 1. Map đơn nghỉ phép được duyệt trong kỳ
+    # 1. Map đơn nghỉ phép được duyệt trong kỳ (hỗ trợ nhiều đơn trong cùng kỳ cho 1 nhân viên)
     leave_sql = f"""
-        SELECT lr.employee_id, lt.type_name, lr.start_date, lr.end_date
+        SELECT lr.employee_id, lt.type_name, lr.start_date, lr.end_date, lr.total_days
         FROM leave_requests lr
         JOIN leave_types lt ON lr.leave_type_id = lt.leave_type_id
         JOIN employees e ON lr.employee_id = e.employee_id
         WHERE lr.status = 'HR_APPROVED'
           AND lr.start_date <= :p_end AND lr.end_date >= :p_start
           {emp_store_filter}
+        ORDER BY lr.start_date ASC
     """
     leave_res = await db.execute(text(leave_sql), params)
-    leave_map = {}
+    leave_list_map: Dict[int, List[str]] = {}
+    leave_days_map: Dict[int, float] = {}
     for r in leave_res.mappings().all():
+        eid = r['employee_id']
         s_date = r['start_date'].strftime('%d/%m') if hasattr(r['start_date'], 'strftime') else str(r['start_date'])
         e_date = r['end_date'].strftime('%d/%m') if hasattr(r['end_date'], 'strftime') else str(r['end_date'])
-        leave_map[r['employee_id']] = f"{r['type_name']} ({s_date} - {e_date})"
+        days_val = float(r.get('total_days') or 1)
+        date_range = f"{s_date} - {e_date}" if s_date != e_date else s_date
+        leave_list_map.setdefault(eid, []).append(f"{r['type_name']} ({date_range}, {days_val:g} ngày)")
+        leave_days_map[eid] = leave_days_map.get(eid, 0.0) + days_val
 
-    # 2. Chi tiết nhân viên trong kỳ
+    leave_map = {eid: "; ".join(items) for eid, items in leave_list_map.items()}
+
+    # 1b. Map thông tin đơn xin thôi việc (lí do thôi việc hoặc đơn đang chờ duyệt)
+    resign_req_sql = f"""
+        SELECT rr.employee_id, rr.reason, rr.status, rr.requested_last_working_date
+        FROM resignation_requests rr
+        JOIN employees e ON rr.employee_id = e.employee_id
+        WHERE rr.status IN ('APPROVED', 'PENDING')
+          {emp_store_filter}
+        ORDER BY rr.submitted_date DESC
+    """
+    resign_req_res = await db.execute(text(resign_req_sql), params)
+    resign_reason_map: Dict[int, str] = {}
+    pending_resign_map: Dict[int, str] = {}
+    for rr in resign_req_res.mappings().all():
+        eid = rr['employee_id']
+        if rr['status'] == 'APPROVED' and eid not in resign_reason_map and rr.get('reason'):
+            resign_reason_map[eid] = rr['reason']
+        elif rr['status'] == 'PENDING' and eid not in pending_resign_map:
+            req_d = rr['requested_last_working_date'].strftime('%d/%m/%Y') if rr.get('requested_last_working_date') else ''
+            pending_resign_map[eid] = f"Chờ duyệt đơn thôi việc (dự kiến {req_d})" if req_d else "Đang chờ duyệt đơn thôi việc"
+
+    # 2. Chi tiết toàn bộ nhân viên tính đến kỳ báo cáo (bao gồm cả Đang làm, Nghỉ phép, Nghỉ việc)
     leave_ids_str = ','.join(map(str, leave_map.keys())) if leave_map else '0'
     details_sql = f"""
         SELECT 
             e.employee_id, e.employee_code, e.full_name, e.gender,
             e.join_date, e.resignation_date, e.employment_status,
-            s.store_id, COALESCE(s.store_name, 'Văn phòng chính') as store_name,
-            d.department_name,
-            pos.position_name,
+            COALESCE(e.store_id, 0) as store_id,
+            COALESCE(s.store_name, 'Văn phòng chính') as store_name,
+            COALESCE(d.department_name, 'Khối Vận Hành') as department_name,
+            COALESCE(pos.position_name, 'Nhân viên') as position_name,
             COALESCE(edu.level_name, 'Đại học') as education_level,
             c.basic_salary,
+            c.contract_status,
+            c.termination_reason,
             CASE 
                 WHEN c.basic_salary IS NULL THEN 'Chưa có hợp đồng'
                 WHEN c.basic_salary < 7000000 THEN 'Dưới 7 triệu'
@@ -258,19 +309,21 @@ async def get_monthly_status_report(
                 WHEN c.basic_salary BETWEEN 12000001 AND 20000000 THEN 'Từ 12 - 20 triệu'
                 ELSE 'Trên 20 triệu'
             END AS salary_bracket,
-            EXTRACT(YEAR FROM age(CURRENT_DATE, e.join_date))::int as seniority_years,
+            EXTRACT(YEAR FROM age(COALESCE(e.resignation_date, CURRENT_DATE), e.join_date))::int as seniority_years,
+            EXTRACT(MONTH FROM age(COALESCE(e.resignation_date, CURRENT_DATE), e.join_date))::int as seniority_months,
             CASE 
-                WHEN EXTRACT(YEAR FROM age(CURRENT_DATE, e.join_date)) < 1 THEN 'Dưới 1 năm'
-                WHEN EXTRACT(YEAR FROM age(CURRENT_DATE, e.join_date)) BETWEEN 1 AND 3 THEN 'Từ 1 - 3 năm'
-                WHEN EXTRACT(YEAR FROM age(CURRENT_DATE, e.join_date)) BETWEEN 4 AND 5 THEN 'Từ 3 - 5 năm'
+                WHEN EXTRACT(YEAR FROM age(COALESCE(e.resignation_date, CURRENT_DATE), e.join_date)) < 1 THEN 'Dưới 1 năm'
+                WHEN EXTRACT(YEAR FROM age(COALESCE(e.resignation_date, CURRENT_DATE), e.join_date)) BETWEEN 1 AND 3 THEN 'Từ 1 - 3 năm'
+                WHEN EXTRACT(YEAR FROM age(COALESCE(e.resignation_date, CURRENT_DATE), e.join_date)) BETWEEN 4 AND 5 THEN 'Từ 3 - 5 năm'
                 ELSE 'Trên 5 năm'
             END AS seniority_group,
             CASE
                 WHEN e.resignation_date BETWEEN :p_start AND :p_end THEN 'RESIGNED_IN_PERIOD'
-                WHEN e.resignation_date < :p_start OR (e.employment_status IN ('RESIGNED', 'TERMINATED') AND (e.resignation_date IS NULL OR e.resignation_date <= :p_end)) THEN 'RESIGNED'
+                WHEN (e.resignation_date IS NOT NULL AND e.resignation_date < :p_start)
+                     OR (e.employment_status IN ('RESIGNED', 'TERMINATED') AND (e.resignation_date IS NULL OR e.resignation_date <= :p_end)) THEN 'RESIGNED'
                 WHEN e.employment_status = 'ON_LEAVE' OR e.employee_id IN ({leave_ids_str}) THEN 'ON_LEAVE'
-                WHEN e.join_date BETWEEN :p_start AND :p_end THEN 'NEW_HIRE'
                 WHEN e.employment_status = 'PROBATION' THEN 'PROBATION'
+                WHEN e.join_date BETWEEN :p_start AND :p_end THEN 'NEW_HIRE'
                 ELSE 'ACTIVE'
             END as status_category
         FROM employees e
@@ -278,16 +331,25 @@ async def get_monthly_status_report(
         LEFT JOIN departments d ON e.department_id = d.department_id
         LEFT JOIN positions pos ON e.position_id = pos.position_id
         LEFT JOIN education_levels edu ON e.education_level_id = edu.education_level_id
-        LEFT JOIN contracts c ON e.employee_id = c.employee_id AND c.status = 'ACTIVE'
+        LEFT JOIN LATERAL (
+            SELECT basic_salary, status as contract_status, termination_reason
+            FROM contracts c_sub
+            WHERE c_sub.employee_id = e.employee_id
+            ORDER BY CASE WHEN c_sub.status = 'ACTIVE' THEN 0 WHEN c_sub.status = 'TERMINATED' THEN 1 ELSE 2 END,
+                     c_sub.start_date DESC
+            LIMIT 1
+        ) c ON TRUE
         WHERE e.join_date <= :p_end
-          AND (e.resignation_date IS NULL OR e.resignation_date >= :p_start)
           {emp_store_filter}
         ORDER BY 
             CASE 
                 WHEN e.resignation_date BETWEEN :p_start AND :p_end THEN 1
-                WHEN e.employment_status = 'ON_LEAVE' OR e.employee_id IN ({leave_ids_str}) THEN 2
-                WHEN e.join_date BETWEEN :p_start AND :p_end THEN 3
-                ELSE 4
+                WHEN (e.resignation_date IS NOT NULL AND e.resignation_date < :p_start)
+                     OR e.employment_status IN ('RESIGNED', 'TERMINATED') THEN 2
+                WHEN e.employment_status = 'ON_LEAVE' OR e.employee_id IN ({leave_ids_str}) THEN 3
+                WHEN e.join_date BETWEEN :p_start AND :p_end THEN 4
+                WHEN e.employment_status = 'PROBATION' THEN 5
+                ELSE 6
             END, e.employee_id ASC
     """
 
@@ -295,33 +357,56 @@ async def get_monthly_status_report(
     details = []
     for r in rows:
         item = dict(r)
+        eid = item["employee_id"]
         cat = item.get("status_category")
-        res_d = item['resignation_date'].strftime('%d/%m/%Y') if item.get('resignation_date') else ''
-        join_d = item['join_date'].strftime('%d/%m/%Y') if item.get('join_date') else ''
+        raw_join = item.get("join_date")
+        raw_res = item.get("resignation_date")
+        res_d = raw_res.strftime('%d/%m/%Y') if raw_res and hasattr(raw_res, 'strftime') else ''
+        join_d = raw_join.strftime('%d/%m/%Y') if raw_join and hasattr(raw_join, 'strftime') else ''
+
+        is_new_hire = bool(raw_join and period_start <= raw_join <= period_end)
+        is_resigned_in_period = bool(raw_res and period_start <= raw_res <= period_end)
+        item["is_new_hire"] = is_new_hire
+        item["is_resigned_in_period"] = is_resigned_in_period
+
+        yr = int(item.get("seniority_years") or 0)
+        mo = int(item.get("seniority_months") or 0)
+        if yr > 0 and mo > 0:
+            item["seniority_label"] = f"{yr} năm {mo} tháng"
+        elif yr > 0:
+            item["seniority_label"] = f"{yr} năm"
+        elif mo > 0:
+            item["seniority_label"] = f"Dưới 1 năm ({mo} tháng)"
+        else:
+            item["seniority_label"] = "Mới vào (< 1 tháng)"
+
+        reason_str = item.get("termination_reason") or resign_reason_map.get(eid) or ""
 
         if cat == 'RESIGNED_IN_PERIOD':
-            item['status_label'] = f'Thôi việc ({res_d})' if res_d else 'Thôi việc trong kỳ'
-            item['status_note'] = f'Thôi việc ngày {res_d}' if res_d else 'Đã thôi việc'
+            item['status_label'] = 'Nghỉ việc trong kỳ'
+            item['status_note'] = f"Nghỉ ngày {res_d}" + (f" • {reason_str}" if reason_str else "") if res_d else "Nghỉ việc trong kỳ"
         elif cat == 'RESIGNED':
-            item['status_label'] = 'Đã thôi việc'
-            item['status_note'] = f'Nghỉ việc từ {res_d}' if res_d else 'Đã thôi việc'
+            item['status_label'] = 'Đã nghỉ việc'
+            item['status_note'] = f"Nghỉ từ {res_d}" + (f" • {reason_str}" if reason_str else "") if res_d else "Đã nghỉ việc"
         elif cat == 'ON_LEAVE':
             item['status_label'] = 'Đang nghỉ phép'
-            item['status_note'] = leave_map.get(item['employee_id'], 'Nghỉ phép / Thai sản')
-        elif cat == 'NEW_HIRE':
-            item['status_label'] = 'Tuyển mới trong kỳ'
-            item['status_note'] = f'Gia nhập ngày {join_d}' if join_d else 'Mới gia nhập'
+            item['status_note'] = leave_map.get(eid, 'Nghỉ chế độ / Thai sản dài hạn')
         elif cat == 'PROBATION':
             item['status_label'] = 'Đang thử việc'
-            item['status_note'] = 'Hợp đồng thử việc'
+            item['status_note'] = f"Tuyển mới • Vào ngày {join_d}" if is_new_hire and join_d else (f"Thử việc từ {join_d}" if join_d else "Hợp đồng thử việc")
+        elif cat == 'NEW_HIRE':
+            item['status_label'] = 'Tuyển mới trong kỳ'
+            item['status_note'] = f"Gia nhập ngày {join_d}" if join_d else 'Mới gia nhập'
         else:
             item['status_label'] = 'Đang làm việc'
-            item['status_note'] = 'Nhân viên chính thức'
+            pending_note = pending_resign_map.get(eid)
+            item['status_note'] = pending_note if pending_note else (f"Chính thức (từ {join_d})" if join_d else 'Nhân viên chính thức')
 
-        item['leave_info'] = leave_map.get(item['employee_id'])
-        if item.get('join_date'):
+        item['leave_info'] = leave_map.get(eid)
+        item['leave_days_in_period'] = leave_days_map.get(eid, 0.0)
+        if item.get('join_date') and hasattr(item['join_date'], 'isoformat'):
             item['join_date'] = item['join_date'].isoformat()
-        if item.get('resignation_date'):
+        if item.get('resignation_date') and hasattr(item['resignation_date'], 'isoformat'):
             item['resignation_date'] = item['resignation_date'].isoformat()
         if item.get('basic_salary') is not None:
             item['basic_salary'] = float(item['basic_salary'])
@@ -329,14 +414,17 @@ async def get_monthly_status_report(
 
     total_headcount = len(details)
     active_count = sum(1 for d in details if d["status_category"] in ("ACTIVE", "PROBATION", "NEW_HIRE"))
+    official_active_count = sum(1 for d in details if d["status_category"] in ("ACTIVE", "NEW_HIRE"))
     probation_count = sum(1 for d in details if d["status_category"] == "PROBATION")
     on_leave_count = sum(1 for d in details if d["status_category"] == "ON_LEAVE")
     resigned_count = sum(1 for d in details if d["status_category"] in ("RESIGNED_IN_PERIOD", "RESIGNED"))
-    new_hires_count = sum(1 for d in details if d["status_category"] == "NEW_HIRE")
+    resigned_in_period_count = sum(1 for d in details if d["status_category"] == "RESIGNED_IN_PERIOD")
+    new_hires_count = sum(1 for d in details if d.get("is_new_hire"))
+    working_headcount = total_headcount - resigned_count
 
     total_div = max(total_headcount, 1)
 
-    # Thống kê phân bổ nhân sự theo từng cơ sở
+    # Thống kê phân bổ nhân sự theo từng cơ sở (Đảm bảo: Tổng = Chính thức + Thử việc + Nghỉ phép + Nghỉ việc)
     store_map = {}
     for d in details:
         sid = d.get("store_id") or 0
@@ -346,20 +434,35 @@ async def get_monthly_status_report(
                 "store_id": sid,
                 "store_name": sname,
                 "total_staff": 0,
+                "working_staff": 0,
                 "active_staff": 0,
                 "probation_staff": 0,
+                "on_leave_staff": 0,
                 "resigned_staff": 0,
+                "new_hire_staff": 0,
                 "total_contract_salary": 0.0,
             }
         store_map[sid]["total_staff"] += 1
+        if d.get("is_new_hire"):
+            store_map[sid]["new_hire_staff"] += 1
+
         if d["status_category"] in ("ACTIVE", "NEW_HIRE"):
             store_map[sid]["active_staff"] += 1
+            store_map[sid]["working_staff"] += 1
+            if d.get("basic_salary"):
+                store_map[sid]["total_contract_salary"] += float(d["basic_salary"])
         elif d["status_category"] == "PROBATION":
             store_map[sid]["probation_staff"] += 1
+            store_map[sid]["working_staff"] += 1
+            if d.get("basic_salary"):
+                store_map[sid]["total_contract_salary"] += float(d["basic_salary"])
+        elif d["status_category"] == "ON_LEAVE":
+            store_map[sid]["on_leave_staff"] += 1
+            store_map[sid]["working_staff"] += 1
+            if d.get("basic_salary"):
+                store_map[sid]["total_contract_salary"] += float(d["basic_salary"])
         elif d["status_category"] in ("RESIGNED_IN_PERIOD", "RESIGNED"):
             store_map[sid]["resigned_staff"] += 1
-        if d.get("basic_salary"):
-            store_map[sid]["total_contract_salary"] += float(d["basic_salary"])
 
     by_store = list(store_map.values())
     by_store.sort(key=lambda s: s["store_name"])
@@ -379,10 +482,13 @@ async def get_monthly_status_report(
     return {
         "report_period": period_str,
         "total_headcount": total_headcount,
+        "working_headcount": working_headcount,
         "total_active_employees": active_count,
+        "total_official_employees": official_active_count,
         "total_probation_employees": probation_count,
         "total_on_leave_employees": on_leave_count,
         "total_resigned_employees": resigned_count,
+        "resigned_in_period_employees": resigned_in_period_count,
         "total_new_hires": new_hires_count,
         "active_percent": round((active_count / total_div) * 100, 1),
         "on_leave_percent": round((on_leave_count / total_div) * 100, 1),
@@ -406,11 +512,11 @@ async def get_demographics_report(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Truy vấn View v_hr_demographics_report kết hợp gom nhóm đa chiều phục vụ biểu đồ Recharts:
+    Truy vấn thông tin cơ cấu nhân sự đa chiều phục vụ biểu đồ và bảng đối soát:
     1. Trình độ học vấn (education_distribution): Đại học, Cao đẳng, Trung cấp, THPT
-    2. Nhóm thâm niên (seniority_distribution): Dưới 1 năm, 1-3 năm, 3-5 năm, Trên 5 năm
-    3. Phân khúc mức lương (salary_distribution): Chưa có hợp đồng, <7M, 7-12M, 12-20M, >20M
-    4. Chi tiết từng nhân sự (details)
+    2. Nhóm thâm niên (seniority_distribution): Dưới 1 năm, Từ 1 - 3 năm, Từ 3 - 5 năm, Trên 5 năm
+    3. Phân khúc mức lương (salary_distribution): Chưa có hợp đồng, Dưới 7 triệu, Từ 7 - 12 triệu, Từ 12 - 20 triệu, Trên 20 triệu
+    4. Chi tiết từng nhân sự (details) kèm chỉ số tổng hợp (summary)
     """
     filter_store_id = store_id if isinstance(store_id, int) else None
     is_include_resigned = include_resigned if isinstance(include_resigned, bool) else False
@@ -426,31 +532,18 @@ async def get_demographics_report(
 
     where_clause = f" WHERE {' AND '.join(where_conditions)}" if where_conditions else ""
 
-    # 1. Danh sách chi tiết nhân viên
+    # 1. Danh sách chi tiết nhân viên (chuẩn hóa store_name, salary_bracket, seniority_label)
     details_query = f"""
-        SELECT d.*, s.store_name, e.join_date, e.resignation_date
-        FROM v_hr_demographics_report d
-        JOIN employees e ON d.employee_id = e.employee_id
-        LEFT JOIN stores s ON e.store_id = s.store_id
-        {where_clause}
-        ORDER BY d.employee_id ASC
-    """
-    rows = (await db.execute(text(details_query), params)).mappings().all()
-
-    # 2. Phân bổ học vấn
-    edu_query = f"""
-        SELECT edu.level_name, count(e.employee_id) as count
-        FROM employees e
-        JOIN education_levels edu ON e.education_level_id = edu.education_level_id
-        {where_clause}
-        GROUP BY edu.level_name
-        ORDER BY count DESC
-    """
-    edu_stats = (await db.execute(text(edu_query), params)).mappings().all()
-
-    # 3. Phân bổ khung mức lương (Chuẩn hóa: basic_salary IS NULL xếp vào 'Chưa có hợp đồng')
-    salary_query = f"""
         SELECT 
+            e.employee_id,
+            e.employee_code,
+            e.full_name,
+            COALESCE(e.store_id, 0) as store_id,
+            COALESCE(s.store_name, 'Văn phòng chính') as store_name,
+            COALESCE(d.department_name, 'Khối Vận Hành') as department_name,
+            COALESCE(p.position_name, 'Nhân viên') as position_name,
+            COALESCE(edu.level_name, 'Đại học') as education_level,
+            c.basic_salary,
             CASE 
                 WHEN c.basic_salary IS NULL THEN 'Chưa có hợp đồng'
                 WHEN c.basic_salary < 7000000 THEN 'Dưới 7 triệu'
@@ -458,78 +551,130 @@ async def get_demographics_report(
                 WHEN c.basic_salary BETWEEN 12000001 AND 20000000 THEN 'Từ 12 - 20 triệu'
                 ELSE 'Trên 20 triệu'
             END AS salary_bracket,
-            COUNT(e.employee_id) as count
-        FROM employees e
-        LEFT JOIN contracts c ON e.employee_id = c.employee_id AND c.status = 'ACTIVE'
-        {where_clause}
-        GROUP BY salary_bracket
-        ORDER BY 
+            EXTRACT(YEAR FROM age(COALESCE(e.resignation_date, CURRENT_DATE), e.join_date))::int AS seniority_years,
+            EXTRACT(MONTH FROM age(COALESCE(e.resignation_date, CURRENT_DATE), e.join_date))::int AS seniority_months,
             CASE 
-                WHEN CASE 
-                    WHEN c.basic_salary IS NULL THEN 'Chưa có hợp đồng'
-                    WHEN c.basic_salary < 7000000 THEN 'Dưới 7 triệu'
-                    WHEN c.basic_salary BETWEEN 7000000 AND 12000000 THEN 'Từ 7 - 12 triệu'
-                    WHEN c.basic_salary BETWEEN 12000001 AND 20000000 THEN 'Từ 12 - 20 triệu'
-                    ELSE 'Trên 20 triệu'
-                END = 'Chưa có hợp đồng' THEN 0
-                WHEN CASE 
-                    WHEN c.basic_salary IS NULL THEN 'Chưa có hợp đồng'
-                    WHEN c.basic_salary < 7000000 THEN 'Dưới 7 triệu'
-                    WHEN c.basic_salary BETWEEN 7000000 AND 12000000 THEN 'Từ 7 - 12 triệu'
-                    WHEN c.basic_salary BETWEEN 12000001 AND 20000000 THEN 'Từ 12 - 20 triệu'
-                    ELSE 'Trên 20 triệu'
-                END = 'Dưới 7 triệu' THEN 1
-                WHEN CASE 
-                    WHEN c.basic_salary IS NULL THEN 'Chưa có hợp đồng'
-                    WHEN c.basic_salary < 7000000 THEN 'Dưới 7 triệu'
-                    WHEN c.basic_salary BETWEEN 7000000 AND 12000000 THEN 'Từ 7 - 12 triệu'
-                    WHEN c.basic_salary BETWEEN 12000001 AND 20000000 THEN 'Từ 12 - 20 triệu'
-                    ELSE 'Trên 20 triệu'
-                END = 'Từ 7 - 12 triệu' THEN 2
-                WHEN CASE 
-                    WHEN c.basic_salary IS NULL THEN 'Chưa có hợp đồng'
-                    WHEN c.basic_salary < 7000000 THEN 'Dưới 7 triệu'
-                    WHEN c.basic_salary BETWEEN 7000000 AND 12000000 THEN 'Từ 7 - 12 triệu'
-                    WHEN c.basic_salary BETWEEN 12000001 AND 20000000 THEN 'Từ 12 - 20 triệu'
-                    ELSE 'Trên 20 triệu'
-                END = 'Từ 12 - 20 triệu' THEN 3
-                ELSE 4
-            END ASC
-    """
-    salary_stats = (await db.execute(text(salary_query), params)).mappings().all()
-
-    # 4. Phân bổ thâm niên công tác
-    seniority_query = f"""
-        SELECT 
-            CASE 
-                WHEN EXTRACT(YEAR FROM age(CURRENT_DATE, e.join_date)) < 1 THEN 'Dưới 1 năm'
-                WHEN EXTRACT(YEAR FROM age(CURRENT_DATE, e.join_date)) BETWEEN 1 AND 3 THEN 'Từ 1 - 3 năm'
-                WHEN EXTRACT(YEAR FROM age(CURRENT_DATE, e.join_date)) BETWEEN 4 AND 5 THEN 'Từ 3 - 5 năm'
+                WHEN EXTRACT(YEAR FROM age(COALESCE(e.resignation_date, CURRENT_DATE), e.join_date)) < 1 THEN 'Dưới 1 năm'
+                WHEN EXTRACT(YEAR FROM age(COALESCE(e.resignation_date, CURRENT_DATE), e.join_date)) BETWEEN 1 AND 3 THEN 'Từ 1 - 3 năm'
+                WHEN EXTRACT(YEAR FROM age(COALESCE(e.resignation_date, CURRENT_DATE), e.join_date)) BETWEEN 4 AND 5 THEN 'Từ 3 - 5 năm'
                 ELSE 'Trên 5 năm'
             END AS seniority_group,
-            COUNT(e.employee_id) as count
+            e.employment_status,
+            e.join_date,
+            e.resignation_date
         FROM employees e
+        LEFT JOIN stores s ON e.store_id = s.store_id
+        LEFT JOIN departments d ON e.department_id = d.department_id
+        LEFT JOIN positions p ON e.position_id = p.position_id
+        LEFT JOIN education_levels edu ON e.education_level_id = edu.education_level_id
+        LEFT JOIN LATERAL (
+            SELECT basic_salary
+            FROM contracts c_sub
+            WHERE c_sub.employee_id = e.employee_id
+            ORDER BY CASE WHEN c_sub.status = 'ACTIVE' THEN 0 WHEN c_sub.status = 'TERMINATED' THEN 1 ELSE 2 END,
+                     c_sub.start_date DESC
+            LIMIT 1
+        ) c ON TRUE
         {where_clause}
-        GROUP BY seniority_group
+        ORDER BY e.employee_id ASC
     """
-    seniority_stats = (await db.execute(text(seniority_query), params)).mappings().all()
+    raw_rows = (await db.execute(text(details_query), params)).mappings().all()
+    rows = []
+    for r in raw_rows:
+        item = dict(r)
+        yr = int(item.get("seniority_years") or 0)
+        mo = int(item.get("seniority_months") or 0)
+        if yr > 0 and mo > 0:
+            item["seniority_label"] = f"{yr} năm {mo} tháng"
+        elif yr > 0:
+            item["seniority_label"] = f"{yr} năm"
+        elif mo > 0:
+            item["seniority_label"] = f"Dưới 1 năm ({mo} tháng)"
+        else:
+            item["seniority_label"] = "Mới vào (< 1 tháng)"
+
+        if item.get("basic_salary") is not None:
+            item["basic_salary"] = float(item["basic_salary"])
+        if item.get("join_date") and hasattr(item["join_date"], "isoformat"):
+            item["join_date"] = item["join_date"].isoformat()
+        if item.get("resignation_date") and hasattr(item["resignation_date"], "isoformat"):
+            item["resignation_date"] = item["resignation_date"].isoformat()
+        rows.append(item)
+
+    # 2. Phân bổ học vấn (tính trực tiếp từ rows để đồng bộ 100% với details)
+    edu_counts: Dict[str, int] = {}
+    salary_counts: Dict[str, int] = {}
+    seniority_counts: Dict[str, int] = {}
+    salaries_list: List[float] = []
+    seniority_exact_list: List[float] = []
+
+    for d in rows:
+        el = d.get("education_level") or "Khác"
+        edu_counts[el] = edu_counts.get(el, 0) + 1
+
+        sb = d.get("salary_bracket") or "Chưa có hợp đồng"
+        salary_counts[sb] = salary_counts.get(sb, 0) + 1
+
+        sg = d.get("seniority_group") or "Dưới 1 năm"
+        seniority_counts[sg] = seniority_counts.get(sg, 0) + 1
+
+        if d.get("basic_salary") is not None:
+            salaries_list.append(float(d["basic_salary"]))
+        yr = float(d.get("seniority_years") or 0)
+        mo = float(d.get("seniority_months") or 0)
+        seniority_exact_list.append(yr + (mo / 12.0))
+
+    total_emp = max(len(rows), 1)
 
     formatted_edu = [
-        {"education_level": r["level_name"], "level_name": r["level_name"], "total": r["count"], "count": r["count"]}
-        for r in edu_stats
+        {
+            "education_level": k,
+            "level_name": k,
+            "total": v,
+            "count": v,
+            "percent": round((v / total_emp) * 100, 1)
+        }
+        for k, v in sorted(edu_counts.items(), key=lambda x: x[1], reverse=True)
     ]
+
+    salary_order = ["Chưa có hợp đồng", "Dưới 7 triệu", "Từ 7 - 12 triệu", "Từ 12 - 20 triệu", "Trên 20 triệu"]
     formatted_salary = [
-        {"salary_range": r["salary_bracket"], "salary_bracket": r["salary_bracket"], "total": r["count"], "count": r["count"]}
-        for r in salary_stats
+        {
+            "salary_range": k,
+            "salary_bracket": k,
+            "total": salary_counts[k],
+            "count": salary_counts[k],
+            "percent": round((salary_counts[k] / total_emp) * 100, 1)
+        }
+        for k in salary_order if k in salary_counts
     ]
+
+    seniority_order = ["Dưới 1 năm", "Từ 1 - 3 năm", "Từ 3 - 5 năm", "Trên 5 năm"]
     formatted_seniority = [
-        {"seniority_group": r["seniority_group"], "total": r["count"], "count": r["count"]}
-        for r in seniority_stats
+        {
+            "seniority_group": k,
+            "total": seniority_counts[k],
+            "count": seniority_counts[k],
+            "percent": round((seniority_counts[k] / total_emp) * 100, 1)
+        }
+        for k in seniority_order if k in seniority_counts
     ]
+
+    summary = {
+        "total_employees": len(rows),
+        "avg_basic_salary": round(sum(salaries_list) / len(salaries_list), 0) if salaries_list else 0,
+        "min_basic_salary": min(salaries_list) if salaries_list else 0,
+        "max_basic_salary": max(salaries_list) if salaries_list else 0,
+        "avg_seniority_years": round(sum(seniority_exact_list) / len(seniority_exact_list), 1) if seniority_exact_list else 0.0,
+        "top_education": formatted_edu[0]["education_level"] if formatted_edu else "—",
+        "top_salary_bracket": max(formatted_salary, key=lambda x: x["count"])["salary_bracket"] if formatted_salary else "—",
+        "top_seniority_group": max(formatted_seniority, key=lambda x: x["count"])["seniority_group"] if formatted_seniority else "—",
+    }
 
     return {
         "store_id": filter_store_id,
         "total_employees": len(rows),
+        "summary": summary,
         "education": formatted_edu,
         "education_distribution": formatted_edu,
         "salary_range": formatted_salary,
@@ -1522,15 +1667,23 @@ async def get_leave_summary(
 async def export_overview_excel(
     period: Optional[str] = Query(None, description="Kỳ báo cáo (YYYY-MM)"),
     store_id: Optional[int] = Query(None, description="Lọc theo cửa hàng"),
-    current_user: dict = Depends(require_strict_roles(["DIRECTOR", "HR_MANAGER"])),
+    current_user: dict = Depends(require_roles(["DIRECTOR", "HR_MANAGER", "STORE_MANAGER"])),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Xuất file Excel tích hợp 3 Sheet dữ liệu quản trị chuẩn:
+    Xuất file Excel tích hợp 4 Sheet dữ liệu quản trị chuẩn:
     - Sheet 1: Cơ cấu nhân sự & Học vấn
     - Sheet 2: Tổng hợp chi phí quỹ lương
-    - Sheet 3: Báo cáo hiệu suất bán lẻ
+    - Sheet 3: Bảng kê chấm công & Chuyên cần
+    - Sheet 4: Sổ theo dõi đơn nghỉ phép
     """
+    roles = current_user.get("roles", [])
+    if "STORE_MANAGER" in roles and not set(roles).intersection({"HR_MANAGER", "DIRECTOR"}):
+        user_store_id = current_user.get("store_id")
+        if not user_store_id:
+            raise HTTPException(403, "Tài khoản chưa được gán cửa hàng.")
+        store_id = user_store_id
+
     today = local_now().date()
     period_str = period if isinstance(period, str) and period else today.strftime('%Y-%m')
 
@@ -1643,11 +1796,14 @@ async def export_overview_excel(
     ]
 
     file_stream = create_multisheet_excel(sheets, (await get_company_profile(db)).get("name"))
-    filename = f"Bao_Cao_Tong_Hop_TechZone_{period}.xlsx"
-    return StreamingResponse(
-        file_stream,
+    filename = f"Bao_Cao_Tong_Hop_TechZone_{period_str}.xlsx"
+    return Response(
+        content=file_stream.getvalue(),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename={filename}"}
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Access-Control-Expose-Headers": "Content-Disposition",
+        }
     )
 
 

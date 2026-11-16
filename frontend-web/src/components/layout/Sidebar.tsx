@@ -4,6 +4,7 @@ import { Icons } from '../common/Icons'
 import { navigationForUser, ROLE_LABELS, type NavItemConfig, type NavSubItemConfig } from '../../constants/navigation'
 import { getInitials } from '../../utils/formatters'
 import type { UserRole } from '../../types'
+import { prefetchReportsOverview } from '../../pages/ReportsPage'
 
 export interface SidebarProps {
   collapsed: boolean
@@ -169,6 +170,12 @@ export function Sidebar({
                                 key={child.id}
                                 className={`nav-subitem ${isSubActive ? 'active' : ''}`}
                                 onClick={() => handleNavigate(child.path)}
+                                onMouseEnter={() => {
+                                  if (child.path === '/reports') prefetchReportsOverview()
+                                }}
+                                onFocus={() => {
+                                  if (child.path === '/reports') prefetchReportsOverview()
+                                }}
                                 onKeyDown={event => {
                                   if (event.key === 'Enter' || event.key === ' ') handleNavigate(child.path)
                                 }}
@@ -197,6 +204,12 @@ export function Sidebar({
                     key={item.id}
                     className={`nav-item ${isActive ? 'active' : ''}`}
                     onClick={() => handleNavigate(item.path)}
+                    onMouseEnter={() => {
+                      if (item.path === '/reports') prefetchReportsOverview()
+                    }}
+                    onFocus={() => {
+                      if (item.path === '/reports') prefetchReportsOverview()
+                    }}
                     onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') handleNavigate(item.path) }}
                     role="link"
                     tabIndex={0}

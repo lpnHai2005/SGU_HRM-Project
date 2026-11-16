@@ -893,9 +893,19 @@ export interface DemographicsGroupItem {
 
 export interface DemographicsReportData {
   total_employees?: number;
-  education: Array<{ education_level: string; total: number }>;
-  salary_range: Array<{ salary_range: string; total: number }>;
-  seniority: Array<{ seniority_group: string; total: number }>;
+  summary?: {
+    total_employees: number;
+    avg_basic_salary: number;
+    min_basic_salary: number;
+    max_basic_salary: number;
+    avg_seniority_years: number;
+    top_education: string;
+    top_salary_bracket: string;
+    top_seniority_group: string;
+  };
+  education: Array<{ education_level: string; total: number; percent?: number }>;
+  salary_range: Array<{ salary_range: string; total: number; percent?: number }>;
+  seniority: Array<{ seniority_group: string; total: number; percent?: number }>;
   gender?: Array<{ gender: string; total: number }>;
   age_group?: Array<{ age_group: string; total: number }>;
   details?: any[];
@@ -994,9 +1004,12 @@ export interface HRStatusReportData {
   store_id: number;
   store_name: string;
   total_staff: number;
+  working_staff?: number;
   active_staff: number;
   probation_staff: number;
+  on_leave_staff?: number;
   resigned_staff: number;
+  new_hire_staff?: number;
   total_contract_salary: number;
 }
 

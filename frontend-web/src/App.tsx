@@ -38,7 +38,7 @@ import { AttendancePage } from './pages/AttendancePage'
 import { LeaveRequestsPage } from './pages/LeaveRequestsPage'
 import { OvertimeRequestsPage } from './pages/OvertimeRequestsPage'
 import { PayrollPage } from './pages/PayrollPage'
-import { ReportsPage } from './pages/ReportsPage'
+import { ReportsPage, prefetchReportsOverview } from './pages/ReportsPage'
 import { WorkSchedulesPage } from './pages/WorkSchedulesPage'
 
 // ProtectedRoute: chặn EMPLOYEE truy cập các trang quản lý
@@ -122,6 +122,16 @@ export function App() {
       else toast.dismiss('idle-warning')
     })
   }, [isAuthenticated, handleLogout])
+
+  // Tải trước dữ liệu báo cáo trong lúc rảnh tay cho Giám đốc / Trưởng phòng nhân sự
+  useEffect(() => {
+    if (isAuthenticated && (roles.includes('DIRECTOR') || roles.includes('HR_MANAGER'))) {
+      const timer = setTimeout(() => {
+        prefetchReportsOverview()
+      }, 1500)
+      return () => clearTimeout(timer)
+    }
+  }, [isAuthenticated, roles])
 
   const handleCheckIn = async () => {
     setAttendanceLoading(true)

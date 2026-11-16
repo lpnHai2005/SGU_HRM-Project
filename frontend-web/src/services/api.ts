@@ -225,9 +225,15 @@ class ApiClient {
   }
 
   async getBlob(endpoint: string, params?: Record<string, any>): Promise<Blob> {
+    const headers: Record<string, string> = {};
+    const token = tokenService.get();
+    if (token && token !== 'null' && token !== 'undefined') {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
     const response = await fetch(this.buildUrl(endpoint, params), {
       method: 'GET',
-      headers: this.getHeaders(),
+      headers,
     });
     if (response.status === 401) {
       if (tokenService.get()) {
@@ -1054,30 +1060,21 @@ export const reportApi = {
   },
 
   exportOverviewExcel: async (period?: string, storeId?: number): Promise<Blob> => {
-    const token = tokenService.get();
     const params: Record<string, any> = {};
     if (period) params.period = period;
     if (storeId) params.store_id = storeId;
-    if (token && token !== 'null' && token !== 'undefined') params.token = token;
-    
     return api.getBlob('/reports/export/overview/excel', params);
   },
 
   exportDemographicsExcel: async (storeId?: number): Promise<Blob> => {
-    const token = tokenService.get();
     const params: Record<string, any> = {};
     if (storeId) params.store_id = storeId;
-    if (token && token !== 'null' && token !== 'undefined') params.token = token;
-    
     return api.getBlob('/reports/export/demographics/excel', params);
   },
 
   exportPayrollSummaryExcel: async (period?: string): Promise<Blob> => {
-    const token = tokenService.get();
     const params: Record<string, any> = {};
     if (period) params.period = period;
-    if (token && token !== 'null' && token !== 'undefined') params.token = token;
-    
     return api.getBlob('/reports/export/payroll-summary/excel', params);
   },
 

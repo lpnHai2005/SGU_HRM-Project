@@ -23,7 +23,7 @@ export const ReportsPrintModal: React.FC<ReportsPrintModalProps> = ({
   onClose,
   period,
   stats,
-  demographics: _demographics,
+  demographics,
   payrollFund,
   attendance,
   sales,
@@ -47,11 +47,14 @@ export const ReportsPrintModal: React.FC<ReportsPrintModalProps> = ({
     ? monthlyStatus.by_store
     : [];
 
-  const totalStaff = stats?.total_employees || storeList.reduce((acc, s) => acc + (s.total_staff || 0), 0) || 0;
-  const activeStaff = stats?.active_employees || storeList.reduce((acc, s) => acc + (s.active_staff || 0), 0) || 0;
+  const totalStaff = storeList.reduce((acc, s) => acc + (s.total_staff || 0), 0) || stats?.total_employees || 0;
+  const activeStaff = storeList.reduce((acc, s) => acc + (s.active_staff || 0), 0);
+  const probationStaff = storeList.reduce((acc, s) => acc + (s.probation_staff || 0), 0);
+  const onLeaveStaff = storeList.reduce((acc, s) => acc + (s.on_leave_staff || 0), 0);
+  const resignedStaff = storeList.reduce((acc, s) => acc + (s.resigned_staff || 0), 0);
   const netSalaryTotal = payrollFund?.total_net_salary || 0;
   const grossSalaryTotal = payrollFund?.total_gross_income || 0;
-  const onTimeRate = attendance?.on_time_rate ? `${attendance.on_time_rate.toFixed(1)}%` : '96.5%';
+  const onTimeRate = attendance?.on_time_rate ? `${attendance.on_time_rate.toFixed(1)}%` : '100%';
   const grandSalesRevenue = sales?.summary?.grand_total_revenue || 0;
 
   const handlePrint = () => {
@@ -146,17 +149,19 @@ export const ReportsPrintModal: React.FC<ReportsPrintModalProps> = ({
           </div>
         </div>
 
-        {/* Bảng 1: Phân bổ nhân sự theo chi nhánh */}
-        <div className="report-a4-section-title">I. PHÂN BỔ NHÂN SỰ VÀ HỢP ĐỒNG THEO CƠ SỞ</div>
+        {/* Bảng 1: Phân bổ tình hình nhân sự theo chi nhánh */}
+        <div className="report-a4-section-title">I. THỐNG KÊ TÌNH HÌNH NHÂN SỰ THEO THÁNG (ĐANG LÀM, NGHỈ PHÉP, NGHỈ VIỆC)</div>
         <table className="report-a4-table">
           <thead>
             <tr>
-              <th style={{ width: '40px' }}>STT</th>
+              <th style={{ width: '36px' }}>STT</th>
               <th>Chi nhánh / Phòng ban</th>
-              <th style={{ width: '100px' }}>Tổng nhân sự</th>
-              <th style={{ width: '100px' }}>Đang làm việc</th>
-              <th style={{ width: '90px' }}>Thử việc</th>
-              <th style={{ width: '140px' }}>Quỹ lương cơ bản HĐ</th>
+              <th style={{ width: '75px' }}>Tổng biên chế</th>
+              <th style={{ width: '75px' }}>Chính thức</th>
+              <th style={{ width: '65px' }}>Thử việc</th>
+              <th style={{ width: '70px' }}>Nghỉ phép</th>
+              <th style={{ width: '70px' }}>Nghỉ việc</th>
+              <th style={{ width: '130px' }}>Quỹ lương cơ bản HĐ</th>
             </tr>
           </thead>
           <tbody>
@@ -165,24 +170,26 @@ export const ReportsPrintModal: React.FC<ReportsPrintModalProps> = ({
                 <tr key={item.store_id || idx}>
                   <td className="text-center">{idx + 1}</td>
                   <td>{item.store_name}</td>
-                  <td className="text-center">{item.total_staff}</td>
+                  <td className="text-center" style={{ fontWeight: 600 }}>{item.total_staff}</td>
                   <td className="text-center">{item.active_staff}</td>
-                  <td className="text-center">{item.probation_staff}</td>
+                  <td className="text-center">{item.probation_staff || 0}</td>
+                  <td className="text-center">{item.on_leave_staff || 0}</td>
+                  <td className="text-center">{item.resigned_staff || 0}</td>
                   <td className="text-right">{formatFullCurrency(item.total_contract_salary || 0)}</td>
                 </tr>
               ))
             ) : (
               <tr>
-                <td colSpan={6} className="text-center">Chưa có dữ liệu chi nhánh</td>
+                <td colSpan={8} className="text-center">Chưa có dữ liệu chi nhánh</td>
               </tr>
             )}
             <tr className="total-row">
               <td colSpan={2} className="text-center">TỔNG CỘNG HỆ THỐNG</td>
               <td className="text-center">{totalStaff}</td>
               <td className="text-center">{activeStaff}</td>
-              <td className="text-center">
-                {storeList.reduce((acc, s) => acc + (s.probation_staff || 0), 0)}
-              </td>
+              <td className="text-center">{probationStaff}</td>
+              <td className="text-center">{onLeaveStaff}</td>
+              <td className="text-center">{resignedStaff}</td>
               <td className="text-right">
                 {formatFullCurrency(storeList.reduce((acc, s) => acc + (s.total_contract_salary || 0), 0))}
               </td>
@@ -190,8 +197,60 @@ export const ReportsPrintModal: React.FC<ReportsPrintModalProps> = ({
           </tbody>
         </table>
 
+        {/* Bảng 1B: Cơ cấu thông tin nhân sự: Trình độ, Mức lương, Thâm niên */}
+        <div className="report-a4-section-title">II. THỐNG KÊ THÔNG TIN NHÂN SỰ: TRÌNH ĐỘ, MỨC LƯƠNG & THÂM NIÊN</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '14px' }}>
+          <table className="report-a4-table" style={{ margin: 0 }}>
+            <thead>
+              <tr>
+                <th colSpan={2} style={{ backgroundColor: '#e2e8f0', color: '#1e3a8a' }}>1. TRÌNH ĐỘ HỌC VẤN</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(demographics?.education || []).map((e: any, idx: number) => (
+                <tr key={idx}>
+                  <td>{e.education_level}</td>
+                  <td className="text-right" style={{ fontWeight: 600 }}>{e.total} NS ({e.percent ?? Math.round((e.total / Math.max(demographics?.total_employees || 1, 1)) * 100)}%)</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <table className="report-a4-table" style={{ margin: 0 }}>
+            <thead>
+              <tr>
+                <th colSpan={2} style={{ backgroundColor: '#e2e8f0', color: '#1e3a8a' }}>2. KHUNG MỨC LƯƠNG HĐ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(demographics?.salary_range || []).map((s: any, idx: number) => (
+                <tr key={idx}>
+                  <td>{s.salary_range}</td>
+                  <td className="text-right" style={{ fontWeight: 600 }}>{s.total} NS ({s.percent ?? Math.round((s.total / Math.max(demographics?.total_employees || 1, 1)) * 100)}%)</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <table className="report-a4-table" style={{ margin: 0 }}>
+            <thead>
+              <tr>
+                <th colSpan={2} style={{ backgroundColor: '#e2e8f0', color: '#1e3a8a' }}>3. THÂM NIÊN CÔNG TÁC</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(demographics?.seniority || []).map((sen: any, idx: number) => (
+                <tr key={idx}>
+                  <td>{sen.seniority_group}</td>
+                  <td className="text-right" style={{ fontWeight: 600 }}>{sen.total} NS ({sen.percent ?? Math.round((sen.total / Math.max(demographics?.total_employees || 1, 1)) * 100)}%)</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
         {/* Bảng 2: Tổng hợp chi phí tiền lương */}
-        <div className="report-a4-section-title">II. TỔNG HỢP CHI PHÍ TIỀN LƯƠNG & CHẾ ĐỘ PHÚC LỢI</div>
+        <div className="report-a4-section-title">III. TỔNG HỢP CHI PHÍ TIỀN LƯƠNG & CHẾ ĐỘ PHÚC LỢI</div>
         <table className="report-a4-table">
           <thead>
             <tr>
@@ -251,7 +310,7 @@ export const ReportsPrintModal: React.FC<ReportsPrintModalProps> = ({
         </table>
 
         {/* Bảng 3: Kỷ luật Chấm công & Tình hình Nghỉ phép */}
-        <div className="report-a4-section-title">III. KỶ LUẬT LAO ĐỘNG, CHẤM CÔNG & NGHỈ PHÉP</div>
+        <div className="report-a4-section-title">IV. KỶ LUẬT LAO ĐỘNG, CHẤM CÔNG & NGHỈ PHÉP</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
           {/* Bảng trái: Chuyên cần */}
           <table className="report-a4-table" style={{ margin: 0 }}>
@@ -268,13 +327,13 @@ export const ReportsPrintModal: React.FC<ReportsPrintModalProps> = ({
               <tr>
                 <td>Lượt đi làm đúng giờ (On-time)</td>
                 <td className="text-right" style={{ color: '#16a34a', fontWeight: 600 }}>
-                  {attendance?.on_time_count !== undefined ? attendance.on_time_count : 16} ca ({onTimeRate})
+                  {attendance?.on_time_count ?? 0} ca ({onTimeRate})
                 </td>
               </tr>
               <tr>
                 <td>Lượt đi muộn / Về sớm</td>
                 <td className="text-right" style={{ color: '#d97706', fontWeight: 600 }}>
-                  {attendance?.late_count !== undefined ? attendance.late_count : 5} lượt ({attendance?.total_late_minutes || 0}p)
+                  {attendance?.late_count ?? 0} lượt ({attendance?.total_late_minutes || 0}p)
                 </td>
               </tr>
               <tr>
@@ -301,19 +360,21 @@ export const ReportsPrintModal: React.FC<ReportsPrintModalProps> = ({
               <tr>
                 <td>Nghỉ phép năm hưởng nguyên lương</td>
                 <td className="text-right">
-                  {leaveSummary?.by_type?.find((t: any) => t.type_name?.includes('phép năm'))?.days || 0} ngày
+                  {leaveSummary?.by_type?.find((t: any) => t.type_name?.toLowerCase().includes('phép năm'))?.days || 0} ngày
                 </td>
               </tr>
               <tr>
                 <td>Nghỉ chế độ thai sản theo luật</td>
                 <td className="text-right">
-                  {leaveSummary?.by_type?.find((t: any) => t.type_name?.includes('thai sản'))?.days || 0} ngày
+                  {leaveSummary?.by_type?.find((t: any) => t.type_name?.toLowerCase().includes('thai sản'))?.days || 0} ngày
                 </td>
               </tr>
               <tr>
-                <td>Nghỉ việc riêng hưởng nguyên lương</td>
+                <td>Nghỉ việc riêng / Ốm đau</td>
                 <td className="text-right" style={{ color: '#7c3aed', fontWeight: 600 }}>
-                  {leaveSummary?.by_type?.find((t: any) => t.type_name?.includes('việc riêng'))?.days || 0} ngày (1 đơn)
+                  {(leaveSummary?.by_type || [])
+                    .filter((t: any) => !t.type_name?.toLowerCase().includes('phép năm') && !t.type_name?.toLowerCase().includes('thai sản'))
+                    .reduce((sum: number, t: any) => sum + (t.days || 0), 0)} ngày
                 </td>
               </tr>
             </tbody>

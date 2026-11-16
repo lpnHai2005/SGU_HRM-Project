@@ -211,13 +211,12 @@ const PAYROLL_DRILLDOWN_COLUMNS: DrilldownColumn[] = [
     align: 'center',
     render: (r: any) => (
       <span
-        className={`badge ${
-          r.payment_status === 'PAID'
+        className={`badge ${r.payment_status === 'PAID'
             ? 'badge-success'
             : r.payment_status === 'CONFIRMED'
-            ? 'badge-primary'
-            : 'badge-warning'
-        }`}
+              ? 'badge-primary'
+              : 'badge-warning'
+          }`}
         style={{ fontSize: '11px' }}
       >
         {r.payment_status === 'PAID' ? 'Đã chi trả' : r.payment_status === 'CONFIRMED' ? 'Đã duyệt' : 'Bản nháp'}
@@ -242,20 +241,27 @@ const MONTHLY_STATUS_DRILLDOWN_COLUMNS: DrilldownColumn[] = [
     title: 'Tình trạng trong kỳ',
     align: 'center',
     render: (r: any) => {
-      const isResigned = r.status_category === 'RESIGNED_IN_PERIOD' || r.status_category === 'RESIGNED' || r.employment_status === 'RESIGNED' || r.employment_status === 'TERMINATED'
-      const isOnLeave = r.status_category === 'ON_LEAVE' || r.employment_status === 'ON_LEAVE'
-      const isNewHire = r.status_category === 'NEW_HIRE'
-      const isProbation = r.status_category === 'PROBATION' || r.employment_status === 'PROBATION'
+      const cat = r.status_category
+      const isResigned = cat
+        ? (cat === 'RESIGNED_IN_PERIOD' || cat === 'RESIGNED')
+        : (r.employment_status === 'RESIGNED' || r.employment_status === 'TERMINATED')
+      const isOnLeave = cat
+        ? cat === 'ON_LEAVE'
+        : r.employment_status === 'ON_LEAVE'
+      const isNewHire = cat === 'NEW_HIRE'
+      const isProbation = cat
+        ? cat === 'PROBATION'
+        : r.employment_status === 'PROBATION'
 
       const badgeClass = isResigned
         ? 'badge-danger'
         : isOnLeave
-        ? 'badge-warning'
-        : isNewHire
-        ? 'badge-info'
-        : isProbation
-        ? 'badge-secondary'
-        : 'badge-success'
+          ? 'badge-warning'
+          : isNewHire
+            ? 'badge-info'
+            : isProbation
+              ? 'badge-secondary'
+              : 'badge-success'
 
       return (
         <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
@@ -282,7 +288,11 @@ const MONTHLY_STATUS_DRILLDOWN_COLUMNS: DrilldownColumn[] = [
     key: 'seniority_years',
     title: 'Thâm niên',
     align: 'center',
-    render: (r: any) => <span style={{ fontWeight: 600 }}>{r.seniority_years ? `${r.seniority_years} năm` : '—'}</span>,
+    render: (r: any) => (
+      <span style={{ fontWeight: 600 }}>
+        {r.seniority_label || (r.seniority_years ? `${r.seniority_years} năm` : 'Dưới 1 năm')}
+      </span>
+    ),
   },
   {
     key: 'basic_salary',
@@ -303,8 +313,94 @@ function triggerBlobDownload(blob: Blob, filename: string) {
   a.download = filename
   document.body.appendChild(a)
   a.click()
-  window.URL.revokeObjectURL(url)
-  document.body.removeChild(a)
+  setTimeout(() => {
+    window.URL.revokeObjectURL(url)
+    document.body.removeChild(a)
+  }, 500)
+}
+
+// ==============================================================================
+// BỘ NHỚ ĐỆM CLIENT (SWR - Stale While Revalidate) VÀ PREFETCHING TRUNG TÂM BÁO CÁO
+// Giúp chuyển trang http://localhost:3000/reports tức thì (0ms) thay vì phải đợi API
+// ==============================================================================
+export interface ReportsCachePayload {
+  dashboardStats?: any;
+  monthlyStatus?: HRStatusReportData[];
+  monthlyStatusFull?: any;
+  demographics?: DemographicsReportData | null;
+  headcountTrend?: HeadcountTrendPoint[];
+  payrollTrend?: PayrollTrendPoint[];
+  payrollFund?: any;
+  attendanceSummary?: AttendanceSummaryData | null;
+  leaveSummary?: LeaveSummaryData | null;
+  salesReport?: SalesPerformanceReportData | null;
+  payrolls?: any[];
+  timestamp: number;
+}
+
+export const reportsPageDataCache = new Map<string, ReportsCachePayload>();
+
+// Tải trước dữ liệu báo cáo (Prefetch khi hover vào menu hoặc khi app idle)
+export const prefetchReportsOverview = async (targetPeriod?: string, targetStoreId?: number) => {
+  const now = new Date()
+  const period = targetPeriod || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  const cacheKey = `${period}_${targetStoreId || 'all'}`
+  const existing = reportsPageDataCache.get(cacheKey)
+  // Nếu đã có cache còn mới trong vòng 2 phút thì không cần fetch lại
+  if (existing && Date.now() - existing.timestamp < 120_000) {
+    return existing
+  }
+
+  try {
+    const [
+      statsRes,
+      monthlyStatusRes,
+      demographicsRes,
+      headcountTrendRes,
+    ] = await Promise.allSettled([
+      reportApi.getDashboardStats(period, targetStoreId),
+      reportApi.getMonthlyStatus(period, targetStoreId),
+      reportApi.getDemographics(targetStoreId, false),
+      reportApi.getHeadcountTrend(6),
+    ])
+
+    const partialData: Partial<ReportsCachePayload> = {
+      timestamp: Date.now()
+    }
+
+    if (statsRes.status === 'fulfilled') partialData.dashboardStats = statsRes.value
+    if (monthlyStatusRes.status === 'fulfilled') {
+      const val = monthlyStatusRes.value
+      partialData.monthlyStatusFull = val
+      partialData.monthlyStatus = Array.isArray(val) ? val : Array.isArray(val?.by_store) ? val.by_store : []
+    }
+    if (demographicsRes.status === 'fulfilled' && demographicsRes.value) {
+      const d = demographicsRes.value
+      partialData.demographics = {
+        ...d,
+        education: d.education || d.education_distribution || [],
+        salary_range: d.salary_range || d.salary_distribution || [],
+        seniority: d.seniority || d.seniority_distribution || [],
+        gender: d.gender || [],
+        age_group: d.age_group || []
+      }
+    }
+    if (headcountTrendRes.status === 'fulfilled') {
+      const list = headcountTrendRes.value || []
+      partialData.headcountTrend = list.map((pt: any) => ({
+        ...pt,
+        month: pt.month || pt.period || '',
+        hired: pt.hired ?? pt.new_hires ?? 0,
+        resigned: pt.resigned ?? 0,
+        active_total: pt.active_total ?? pt.active_count ?? 0
+      }))
+    }
+
+    const currentCached = reportsPageDataCache.get(cacheKey) || { timestamp: Date.now() }
+    reportsPageDataCache.set(cacheKey, { ...currentCached, ...partialData })
+  } catch (err) {
+    // Không ném lỗi ra ngoài khi prefetch ngầm
+  }
 }
 
 export function ReportsPage({ user }: ReportsPageProps) {
@@ -370,6 +466,7 @@ export function ReportsPage({ user }: ReportsPageProps) {
     columns: DrilldownColumn[];
     data: any[];
     filterFields?: SearchFieldConfig[];
+    initialQuickFilters?: Record<string, string>;
   }) => {
     setSubformConfig({
       title: config.title,
@@ -382,7 +479,7 @@ export function ReportsPage({ user }: ReportsPageProps) {
     setSubformSearch('')
     setSubformConditions([])
     setSubformMatchMode('AND')
-    setSubformQuickFilters({})
+    setSubformQuickFilters(config.initialQuickFilters || {})
     setIsClosingSubform(false)
     setIsSubformOpen(true)
   }
@@ -397,9 +494,9 @@ export function ReportsPage({ user }: ReportsPageProps) {
 
   // Tự động trích xuất các lựa chọn thực tế cho trường đang chọn (hỗ trợ lấy danh sách chi nhánh đầy đủ từ DB)
   const getOptionsForField = useCallback((fieldKey: string): { label: string; value: string; count: number }[] => {
-    const data = subformConfig.data || []
+    let data = subformConfig.data || []
 
-    // 1. Nếu là Cơ sở / Chi nhánh (store_name): Lấy toàn bộ danh sách chi nhánh trong DB (stores state)
+    // 1. Nếu là Cơ sở / Chi nhánh (store_name): Lấy toàn bộ danh sách chi nhánh trong DB có phát sinh dữ liệu
     if (fieldKey === 'store_name') {
       const counts = new Map<string, number>()
       data.forEach((row: any) => {
@@ -412,22 +509,24 @@ export function ReportsPage({ user }: ReportsPageProps) {
 
       const storeMap = new Map<string, { label: string; value: string; count: number }>()
 
-      // Đưa các cửa hàng từ DB vào danh sách
+      // Đưa các cửa hàng từ DB có phát sinh dữ liệu vào danh sách
       stores.forEach((st: any) => {
         const sName = st.store_name || ''
         if (sName) {
           const count = counts.get(sName) || 0
-          storeMap.set(sName, {
-            label: count > 0 ? `${sName} (${count})` : `${sName} (0)`,
-            value: sName,
-            count,
-          })
+          if (count > 0) {
+            storeMap.set(sName, {
+              label: `${sName} (${count})`,
+              value: sName,
+              count,
+            })
+          }
         }
       })
 
       // Đưa các cơ sở khác có trong data mà chưa có trong stores (ví dụ: 'Văn phòng chính')
       counts.forEach((count, sName) => {
-        if (!storeMap.has(sName)) {
+        if (!storeMap.has(sName) && count > 0) {
           storeMap.set(sName, {
             label: `${sName} (${count})`,
             value: sName,
@@ -440,6 +539,13 @@ export function ReportsPage({ user }: ReportsPageProps) {
         if (b.count !== a.count) return b.count - a.count
         return a.label.localeCompare(b.label, 'vi')
       })
+    }
+
+    // Với các trường khác (Chức vụ, Học vấn, Trạng thái):
+    // Áp dụng bộ lọc store_name (nếu đang chọn 1 chi nhánh) để tính số lượng chính xác cho chi nhánh đó
+    const activeStore = subformQuickFilters['store_name']
+    if (activeStore) {
+      data = data.filter((row: any) => String(row.store_name || '').trim() === activeStore.trim())
     }
 
     if (data.length === 0) return []
@@ -472,7 +578,7 @@ export function ReportsPage({ user }: ReportsPageProps) {
     })
 
     return options.sort((a, b) => b.count - a.count)
-  }, [subformConfig.data, stores])
+  }, [subformConfig.data, stores, subformQuickFilters])
 
   // Trường tìm kiếm nâng cao của Subform, danh mục lấy từ dữ liệu thực tế
   const subformSearchFields = useMemo<SearchField[]>(
@@ -553,7 +659,7 @@ export function ReportsPage({ user }: ReportsPageProps) {
 
     openSubform({
       title: `Chi tiết bảng lương: Kỳ ${clickedPeriod}`,
-      subtitle: payrolls && payrolls.length > 0 
+      subtitle: payrolls && payrolls.length > 0
         ? `Ghi nhận ${payrolls.length} nhân sự | Tổng quỹ lương: ${formatFullCurrency(payrolls.reduce((sum: number, p: any) => sum + (p.gross_income || 0), 0))}`
         : `Kỳ ${clickedPeriod} chưa phát sinh bảng lương hoặc chưa được chốt lương.`,
       tag: 'Quỹ lương kỳ',
@@ -641,18 +747,105 @@ export function ReportsPage({ user }: ReportsPageProps) {
       .catch((err: any) => console.warn('Không thể tải danh sách cửa hàng:', err))
   }, [])
 
-  // Tải dữ liệu báo cáo khi thay đổi Period hoặc StoreId
+  // Tải dữ liệu báo cáo khi thay đổi Period hoặc StoreId (Tối ưu phân tầng & SWR Cache)
   useEffect(() => {
     let isCancelled = false
-    setIsLoading(true)
+    const cacheKey = `${period}_${selectedStoreId || 'all'}`
+    const cached = reportsPageDataCache.get(cacheKey)
+
+    // Nếu đã có cache: load dữ liệu ngay lập tức (0ms) và không bật spinner chặn màn hình
+    if (cached) {
+      if (cached.dashboardStats) setDashboardStats(cached.dashboardStats)
+      if (cached.monthlyStatus) setMonthlyStatus(cached.monthlyStatus)
+      if (cached.monthlyStatusFull) setMonthlyStatusFull(cached.monthlyStatusFull)
+      if (cached.demographics) setDemographics(cached.demographics)
+      if (cached.headcountTrend) setHeadcountTrend(cached.headcountTrend)
+      if (cached.payrollTrend) setPayrollTrend(cached.payrollTrend)
+      if (cached.payrollFund) setPayrollFund(cached.payrollFund)
+      if (cached.attendanceSummary) setAttendanceSummary(cached.attendanceSummary)
+      if (cached.leaveSummary) setLeaveSummary(cached.leaveSummary)
+      if (cached.salesReport) setSalesReport(cached.salesReport)
+      if (cached.payrolls) payrollsCacheRef.current[cacheKey] = cached.payrolls
+      setIsLoading(false)
+    } else {
+      setIsLoading(true)
+    }
 
     const fetchAllReportData = async () => {
       try {
+        // GIAI ĐOẠN 1: Tải nhanh các chỉ số và dữ liệu Tab 1 (Demographics) để hiển thị ngay cho người dùng
         const [
           statsRes,
           monthlyStatusRes,
           demographicsRes,
           headcountTrendRes,
+        ] = await Promise.allSettled([
+          reportApi.getDashboardStats(period, selectedStoreId),
+          reportApi.getMonthlyStatus(period, selectedStoreId),
+          reportApi.getDemographics(selectedStoreId, false),
+          reportApi.getHeadcountTrend(6),
+        ])
+
+        if (isCancelled) return
+
+        let newStats = cached?.dashboardStats
+        let newMonthlyStatus = cached?.monthlyStatus || []
+        let newMonthlyStatusFull = cached?.monthlyStatusFull
+        let newDemo = cached?.demographics || null
+        let newHeadcount = cached?.headcountTrend || []
+
+        if (statsRes.status === 'fulfilled') {
+          newStats = statsRes.value
+          setDashboardStats(newStats)
+        }
+        if (monthlyStatusRes.status === 'fulfilled') {
+          const val = monthlyStatusRes.value
+          newMonthlyStatusFull = val
+          setMonthlyStatusFull(val)
+          if (Array.isArray(val)) {
+            newMonthlyStatus = val
+            setMonthlyStatus(val)
+          } else if (Array.isArray(val?.by_store)) {
+            newMonthlyStatus = val.by_store
+            setMonthlyStatus(val.by_store)
+          } else {
+            newMonthlyStatus = []
+            setMonthlyStatus([])
+          }
+        }
+        if (demographicsRes.status === 'fulfilled') {
+          const d = demographicsRes.value
+          if (d) {
+            newDemo = {
+              ...d,
+              education: d.education || d.education_distribution || [],
+              salary_range: d.salary_range || d.salary_distribution || [],
+              seniority: d.seniority || d.seniority_distribution || [],
+              gender: d.gender || [],
+              age_group: d.age_group || []
+            }
+            setDemographics(newDemo)
+          }
+        }
+        if (headcountTrendRes.status === 'fulfilled') {
+          const list = headcountTrendRes.value || []
+          newHeadcount = list.map((pt: any) => ({
+            ...pt,
+            month: pt.month || pt.period || '',
+            hired: pt.hired ?? pt.new_hires ?? 0,
+            resigned: pt.resigned ?? 0,
+            active_total: pt.active_total ?? pt.active_count ?? 0
+          }))
+          setHeadcountTrend(newHeadcount)
+        }
+
+        // Mở màn hình ngay lập tức sau Giai đoạn 1 (không cần chờ Payroll hay Chấm công)!
+        if (!isCancelled) {
+          setIsLoading(false)
+        }
+
+        // GIAI ĐOẠN 2: Tải ngầm các Tab còn lại (Quỹ lương, Chấm công, Nghỉ phép, Doanh số)
+        const [
           payrollTrendRes,
           payrollFundRes,
           attendanceRes,
@@ -660,10 +853,6 @@ export function ReportsPage({ user }: ReportsPageProps) {
           salesRes,
           payrollsRes,
         ] = await Promise.allSettled([
-          reportApi.getDashboardStats(period, selectedStoreId),
-          reportApi.getMonthlyStatus(period, selectedStoreId),
-          reportApi.getDemographics(selectedStoreId, false),
-          reportApi.getHeadcountTrend(6),
           reportApi.getPayrollTrend(6),
           reportApi.getPayrollFund(period, selectedStoreId),
           reportApi.getAttendanceSummary(period, selectedStoreId),
@@ -674,44 +863,16 @@ export function ReportsPage({ user }: ReportsPageProps) {
 
         if (isCancelled) return
 
-        if (statsRes.status === 'fulfilled') setDashboardStats(statsRes.value)
-        if (monthlyStatusRes.status === 'fulfilled') {
-          const val = monthlyStatusRes.value
-          setMonthlyStatusFull(val)
-          if (Array.isArray(val)) {
-            setMonthlyStatus(val)
-          } else if (Array.isArray(val?.by_store)) {
-            setMonthlyStatus(val.by_store)
-          } else {
-            setMonthlyStatus([])
-          }
-        }
-        if (demographicsRes.status === 'fulfilled') {
-          const d = demographicsRes.value
-          if (d) {
-            setDemographics({
-              ...d,
-              education: d.education || d.education_distribution || [],
-              salary_range: d.salary_range || d.salary_distribution || [],
-              seniority: d.seniority || d.seniority_distribution || [],
-              gender: d.gender || [],
-              age_group: d.age_group || []
-            })
-          }
-        }
-        if (headcountTrendRes.status === 'fulfilled') {
-          const list = headcountTrendRes.value || []
-          setHeadcountTrend(list.map((pt: any) => ({
-            ...pt,
-            month: pt.month || pt.period || '',
-            hired: pt.hired ?? pt.new_hires ?? 0,
-            resigned: pt.resigned ?? 0,
-            active_total: pt.active_total ?? pt.active_count ?? 0
-          })))
-        }
+        let newPayrollTrend = cached?.payrollTrend || []
+        let newPayrollFund = cached?.payrollFund || null
+        let newAtt = cached?.attendanceSummary || null
+        let newLeave = cached?.leaveSummary || null
+        let newSales = cached?.salesReport || null
+        let newPayrolls = cached?.payrolls || []
+
         if (payrollTrendRes.status === 'fulfilled') {
           const list = payrollTrendRes.value || []
-          setPayrollTrend(list.map((pt: any) => ({
+          newPayrollTrend = list.map((pt: any) => ({
             ...pt,
             period: pt.period || pt.salary_period || '',
             employee_count: pt.employee_count ?? 0,
@@ -719,41 +880,45 @@ export function ReportsPage({ user }: ReportsPageProps) {
             net_total: pt.net_total ?? pt.total_net ?? 0,
             insurance_total: pt.insurance_total ?? pt.total_insurance ?? 0,
             bonus_total: pt.bonus_total ?? pt.total_bonuses ?? 0
-          })))
+          }))
+          setPayrollTrend(newPayrollTrend)
         }
         if (payrollFundRes.status === 'fulfilled') {
           const pf = payrollFundRes.value
-          setPayrollFund(pf ? {
+          newPayrollFund = pf ? {
             ...pf,
             total_net_salary: pf.total_net_salary ?? pf.company_totals?.total_net_fund ?? 0,
             total_gross_income: pf.total_gross_income ?? pf.company_totals?.total_gross_fund ?? 0,
             total_insurance_deducted: pf.total_insurance_deducted ?? pf.company_totals?.total_insurance_fund ?? 0
-          } : null)
+          } : null
+          setPayrollFund(newPayrollFund)
         }
         if (attendanceRes.status === 'fulfilled') {
           const att = attendanceRes.value
-          setAttendanceSummary(att ? {
+          newAtt = att ? {
             ...att,
             on_time_rate: att.on_time_rate ?? att.ontime_rate ?? 100,
             total_working_hours: att.total_working_hours ?? 0,
             total_ot_hours: att.total_ot_hours ?? 0,
             by_status: att.by_status || att.status_distribution || []
-          } : null)
+          } : null
+          setAttendanceSummary(newAtt)
         }
         if (leaveRes.status === 'fulfilled') {
           const lv = leaveRes.value
-          setLeaveSummary(lv ? {
+          newLeave = lv ? {
             ...lv,
             by_type: (lv.by_type || []).map((t: any) => ({
               ...t,
               days: t.days ?? t.total_days ?? 0
             })),
             by_status: lv.by_status || []
-          } : null)
+          } : null
+          setLeaveSummary(newLeave)
         }
         if (salesRes.status === 'fulfilled') {
           const sr = salesRes.value
-          setSalesReport(sr ? {
+          newSales = sr ? {
             ...sr,
             summary: {
               ...(sr.summary || {}),
@@ -762,11 +927,29 @@ export function ReportsPage({ user }: ReportsPageProps) {
               total_sales_employees: sr.summary?.total_sales_employees ?? (sr.sales_staff_details?.length || 0)
             },
             records: sr.records || sr.sales_staff_details || []
-          } : null)
+          } : null
+          setSalesReport(newSales)
         }
         if (payrollsRes.status === 'fulfilled') {
-          payrollsCacheRef.current[`${period}_${selectedStoreId || 'all'}`] = payrollsRes.value || []
+          newPayrolls = payrollsRes.value || []
+          payrollsCacheRef.current[cacheKey] = newPayrolls
         }
+
+        // Ghi vào bộ nhớ đệm client để các lần truy cập sau hiển thị 0ms
+        reportsPageDataCache.set(cacheKey, {
+          dashboardStats: newStats,
+          monthlyStatus: newMonthlyStatus,
+          monthlyStatusFull: newMonthlyStatusFull,
+          demographics: newDemo,
+          headcountTrend: newHeadcount,
+          payrollTrend: newPayrollTrend,
+          payrollFund: newPayrollFund,
+          attendanceSummary: newAtt,
+          leaveSummary: newLeave,
+          salesReport: newSales,
+          payrolls: newPayrolls,
+          timestamp: Date.now()
+        })
       } catch (err) {
         console.error('Lỗi khi tải dữ liệu báo cáo:', err)
         toast.error('Có lỗi xảy ra khi cập nhật số liệu báo cáo')
@@ -981,13 +1164,12 @@ export function ReportsPage({ user }: ReportsPageProps) {
           align: 'center',
           render: (r: any) => (
             <span
-              className={`badge ${
-                r.status === 'HR_APPROVED'
+              className={`badge ${r.status === 'HR_APPROVED'
                   ? 'badge-success'
                   : r.status === 'PENDING' || r.status === 'STORE_APPROVED'
-                  ? 'badge-warning'
-                  : 'badge-danger'
-              }`}
+                    ? 'badge-warning'
+                    : 'badge-danger'
+                }`}
             >
               {r.status_label || r.status}
             </span>
@@ -1004,7 +1186,7 @@ export function ReportsPage({ user }: ReportsPageProps) {
     const statusVal = entry.status || entry.payload?.status
     const statusLabel = entry.name || entry.label || entry.payload?.name || entry.payload?.label || ''
     const detailsList = Array.isArray(attendanceSummary?.details) ? attendanceSummary.details : []
-    
+
     const filtered = detailsList.filter((d: any) => {
       // 1. So khớp mã trạng thái chính xác
       if (statusVal && d.status === statusVal) return true
@@ -1079,13 +1261,12 @@ export function ReportsPage({ user }: ReportsPageProps) {
           align: 'center',
           render: (r: any) => (
             <span
-              className={`badge ${
-                r.status === 'NORMAL' || r.status === 'PRESENT'
+              className={`badge ${r.status === 'NORMAL' || r.status === 'PRESENT'
                   ? 'badge-success'
                   : r.status === 'LATE' || r.status === 'EARLY' || r.status === 'LATE_AND_EARLY'
-                  ? 'badge-warning'
-                  : 'badge-danger'
-              }`}
+                    ? 'badge-warning'
+                    : 'badge-danger'
+                }`}
             >
               {r.status_label || r.status}
             </span>
@@ -1101,31 +1282,32 @@ export function ReportsPage({ user }: ReportsPageProps) {
     const detailsList = Array.isArray(monthlyStatusFull?.details) ? monthlyStatusFull.details : (demographics?.details || [])
     const filtered = filterCategory
       ? detailsList.filter((d: any) => {
-          if (filterCategory === 'RESIGNED') {
-            return d.status_category === 'RESIGNED_IN_PERIOD' || d.status_category === 'RESIGNED' || d.employment_status === 'RESIGNED' || d.employment_status === 'TERMINATED'
-          }
-          if (filterCategory === 'ON_LEAVE') {
-            return d.status_category === 'ON_LEAVE' || d.employment_status === 'ON_LEAVE'
-          }
-          if (filterCategory === 'ACTIVE') {
-            return d.status_category === 'ACTIVE' || d.status_category === 'PROBATION' || d.status_category === 'NEW_HIRE' || d.employment_status === 'ACTIVE' || d.employment_status === 'PROBATION'
-          }
-          if (filterCategory === 'NEW_HIRE') {
-            return d.status_category === 'NEW_HIRE'
-          }
-          return true
-        })
+        const cat = d.status_category
+        if (filterCategory === 'RESIGNED') {
+          return cat ? (cat === 'RESIGNED_IN_PERIOD' || cat === 'RESIGNED') : false
+        }
+        if (filterCategory === 'ON_LEAVE') {
+          return cat ? cat === 'ON_LEAVE' : false
+        }
+        if (filterCategory === 'ACTIVE') {
+          return cat ? (cat === 'ACTIVE' || cat === 'PROBATION' || cat === 'NEW_HIRE') : true
+        }
+        if (filterCategory === 'NEW_HIRE') {
+          return Boolean(d.is_new_hire || cat === 'NEW_HIRE')
+        }
+        return true
+      })
       : detailsList
 
     const titlePrefix = filterCategory === 'RESIGNED'
-      ? 'Danh sách nhân sự thôi việc'
+      ? 'Danh sách nhân sự đã nghỉ việc'
       : filterCategory === 'ON_LEAVE'
-      ? 'Danh sách nhân sự đang nghỉ phép'
-      : filterCategory === 'ACTIVE'
-      ? 'Danh sách nhân sự đang làm việc'
-      : filterCategory === 'NEW_HIRE'
-      ? 'Danh sách nhân sự tuyển mới'
-      : 'Báo cáo tình hình nhân sự tháng'
+        ? 'Danh sách nhân sự đang nghỉ phép'
+        : filterCategory === 'ACTIVE'
+          ? 'Danh sách nhân sự đang làm việc'
+          : filterCategory === 'NEW_HIRE'
+            ? 'Danh sách nhân sự tuyển mới'
+            : 'Báo cáo tình hình nhân sự tháng'
 
     const activeCount = monthlyStatusFull?.total_active_employees ?? activeEmployeesCount
     const onLeaveCount = monthlyStatusFull?.total_on_leave_employees ?? 0
@@ -1133,11 +1315,72 @@ export function ReportsPage({ user }: ReportsPageProps) {
 
     openSubform({
       title: `${titlePrefix}: Kỳ ${period}`,
-      subtitle: `Tổng cộng ${filtered.length} nhân sự | Đang làm: ${activeCount} • Nghỉ phép: ${onLeaveCount} • Thôi việc kỳ này: ${resignedCount}`,
+      subtitle: `Hiển thị ${filtered.length} nhân sự | Toàn kỳ: Đang làm ${activeCount} • Nghỉ phép ${onLeaveCount} • Nghỉ việc ${resignedCount}`,
       tag: 'Tình hình nhân sự theo tháng',
       filterFields: MONTHLY_STATUS_FILTER_FIELDS,
       columns: MONTHLY_STATUS_DRILLDOWN_COLUMNS,
       data: filtered,
+    })
+  }
+
+  // Mở bảng tổng hợp thông tin nhân sự: Trình độ, Mức lương, Thâm niên
+  const handleDemographicsOverviewClick = () => {
+    const detailsList = Array.isArray(demographics?.details) ? demographics.details : []
+    openSubform({
+      title: `Thông tin nhân sự: Trình độ, Mức lương & Thâm niên`,
+      subtitle: `Tổng cộng ${detailsList.length} nhân sự đang công tác | Lương HĐ TB: ${formatFullCurrency(demographics?.summary?.avg_basic_salary || 0)} • Thâm niên TB: ${demographics?.summary?.avg_seniority_years || 0} năm`,
+      tag: 'Cơ cấu nhân sự',
+      filterFields: EMPLOYEE_FILTER_FIELDS,
+      columns: [
+        {
+          key: 'full_name',
+          title: 'Nhân viên',
+          render: (r: any) => (
+            <div>
+              <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{r.full_name}</div>
+              <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{r.employee_code} • {r.position_name}</div>
+            </div>
+          ),
+        },
+        { key: 'store_name', title: 'Cơ sở / Chi nhánh' },
+        {
+          key: 'education_level',
+          title: 'Trình độ học vấn',
+          align: 'center',
+          render: (r: any) => (
+            <span className="badge badge-info" style={{ fontSize: '11px' }}>
+              {r.education_level || '—'}
+            </span>
+          ),
+        },
+        {
+          key: 'seniority_years',
+          title: 'Thâm niên',
+          align: 'center',
+          render: (r: any) => (
+            <div>
+              <div style={{ fontWeight: 600 }}>
+                {r.seniority_label || (r.seniority_years ? `${r.seniority_years} năm` : 'Dưới 1 năm')}
+              </div>
+              <div style={{ fontSize: '10.5px', color: 'var(--text-tertiary)' }}>{r.seniority_group}</div>
+            </div>
+          ),
+        },
+        {
+          key: 'basic_salary',
+          title: 'Mức lương HĐ',
+          align: 'right',
+          render: (r: any) => (
+            <div>
+              <div style={{ fontFamily: 'monospace', fontWeight: 700, color: CHART_COLORS.primary }}>
+                {r.basic_salary ? formatFullCurrency(r.basic_salary) : 'Chưa có HĐ'}
+              </div>
+              <div style={{ fontSize: '10.5px', color: 'var(--text-tertiary)' }}>{r.salary_bracket}</div>
+            </div>
+          ),
+        },
+      ],
+      data: detailsList,
     })
   }
 
@@ -1189,22 +1432,46 @@ export function ReportsPage({ user }: ReportsPageProps) {
   const handleHeadcountTrendClick = (chartEvent: any) => {
     const clickedMonth = chartEvent?.activePayload?.[0]?.payload?.month || chartEvent?.month
     if (!clickedMonth) return
-    const detailsList = Array.isArray(demographics?.details) ? demographics.details : []
+    const allList = Array.isArray(monthlyStatusFull?.details)
+      ? monthlyStatusFull.details
+      : (Array.isArray(demographics?.details) ? demographics.details : [])
+
+    // Lọc đúng nhân sự đã gia nhập tính đến tháng được chọn và chưa thôi việc trước tháng đó
+    const filteredByMonth = allList.filter((d: any) => {
+      const joinMonth = d.join_date ? String(d.join_date).slice(0, 7) : ''
+      const resignMonth = d.resignation_date ? String(d.resignation_date).slice(0, 7) : ''
+      if (joinMonth && joinMonth > clickedMonth) return false
+      if (resignMonth && resignMonth < clickedMonth) return false
+      return true
+    })
+
+    const newHiresInMonth = filteredByMonth.filter(
+      (d: any) => d.join_date && String(d.join_date).slice(0, 7) === clickedMonth
+    ).length
+
     openSubform({
       title: `Danh sách quân số: Tháng ${clickedMonth}`,
-      subtitle: `Ghi nhận ${detailsList.length} nhân sự đang hoạt động trong toàn hệ thống`,
+      subtitle: `Ghi nhận ${filteredByMonth.length} nhân sự trong tháng ${clickedMonth} (Tuyển mới: ${newHiresInMonth} NS)`,
       tag: 'Quân số hệ thống',
       filterFields: EMPLOYEE_FILTER_FIELDS,
       columns: [
         {
           key: 'full_name',
           title: 'Họ và Tên',
-          render: (r: any) => (
-            <div>
-              <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{r.full_name}</div>
-              <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{r.employee_code}</div>
-            </div>
-          ),
+          render: (r: any) => {
+            const isJoinedThisMonth = r.join_date && String(r.join_date).slice(0, 7) === clickedMonth
+            return (
+              <div>
+                <div style={{ fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span>{r.full_name}</span>
+                  {isJoinedThisMonth && (
+                    <span className="badge badge-info" style={{ fontSize: '10px', padding: '1px 6px' }}>Mới tuyển</span>
+                  )}
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{r.employee_code}</div>
+              </div>
+            )
+          },
         },
         { key: 'position_name', title: 'Chức vụ' },
         { key: 'store_name', title: 'Cơ sở / Chi nhánh' },
@@ -1212,7 +1479,9 @@ export function ReportsPage({ user }: ReportsPageProps) {
           key: 'seniority_years',
           title: 'Thâm niên',
           align: 'center',
-          render: (r: any) => <span>{r.seniority_years ? `${r.seniority_years} năm` : '—'}</span>,
+          render: (r: any) => (
+            <span>{r.seniority_label || (r.seniority_years ? `${r.seniority_years} năm` : 'Dưới 1 năm')}</span>
+          ),
         },
         {
           key: 'basic_salary',
@@ -1220,12 +1489,12 @@ export function ReportsPage({ user }: ReportsPageProps) {
           align: 'right',
           render: (r: any) => (
             <span style={{ fontFamily: 'monospace', fontWeight: 600, color: CHART_COLORS.primary }}>
-              {formatFullCurrency(r.basic_salary || 0)}
+              {r.basic_salary ? formatFullCurrency(r.basic_salary) : '—'}
             </span>
           ),
         },
       ],
-      data: detailsList,
+      data: filteredByMonth,
     })
   }
 
@@ -1258,7 +1527,9 @@ export function ReportsPage({ user }: ReportsPageProps) {
           key: 'seniority_years',
           title: 'Thâm niên',
           align: 'center',
-          render: (r: any) => <span>{r.seniority_years ? `${r.seniority_years} năm` : '—'}</span>,
+          render: (r: any) => (
+            <span>{r.seniority_label || (r.seniority_years ? `${r.seniority_years} năm` : 'Dưới 1 năm')}</span>
+          ),
         },
         {
           key: 'basic_salary',
@@ -1266,7 +1537,7 @@ export function ReportsPage({ user }: ReportsPageProps) {
           align: 'right',
           render: (r: any) => (
             <span style={{ fontFamily: 'monospace', fontWeight: 600, color: CHART_COLORS.primary }}>
-              {formatFullCurrency(r.basic_salary || 0)}
+              {r.basic_salary ? formatFullCurrency(r.basic_salary) : '—'}
             </span>
           ),
         },
@@ -1301,9 +1572,13 @@ export function ReportsPage({ user }: ReportsPageProps) {
         { key: 'store_name', title: 'Cơ sở / Chi nhánh' },
         {
           key: 'seniority_years',
-          title: 'Số năm công tác',
+          title: 'Thời gian công tác',
           align: 'center',
-          render: (r: any) => <span style={{ fontWeight: 600 }}>{r.seniority_years} năm</span>,
+          render: (r: any) => (
+            <span style={{ fontWeight: 600 }}>
+              {r.seniority_label || (r.seniority_years ? `${r.seniority_years} năm` : 'Dưới 1 năm')}
+            </span>
+          ),
         },
         {
           key: 'join_date',
@@ -1317,7 +1592,7 @@ export function ReportsPage({ user }: ReportsPageProps) {
           align: 'right',
           render: (r: any) => (
             <span style={{ fontFamily: 'monospace', fontWeight: 600, color: CHART_COLORS.primary }}>
-              {formatFullCurrency(r.basic_salary || 0)}
+              {r.basic_salary ? formatFullCurrency(r.basic_salary) : '—'}
             </span>
           ),
         },
@@ -1329,7 +1604,7 @@ export function ReportsPage({ user }: ReportsPageProps) {
   // Xử lý Drilldown khi nhấp vào Biểu đồ Bậc lương HĐ
   const handleSalaryBarClick = (entry: any) => {
     if (!entry) return
-    const bracketName = entry.salary_bracket || entry.name
+    const bracketName = entry.salary_bracket || entry.salary_range || entry.name
     const detailsList = Array.isArray(demographics?.details) ? demographics.details : []
     const filtered = detailsList.filter((d: any) => d.salary_bracket === bracketName)
     openSubform({
@@ -1356,7 +1631,7 @@ export function ReportsPage({ user }: ReportsPageProps) {
           align: 'right',
           render: (r: any) => (
             <span style={{ fontFamily: 'monospace', fontWeight: 600, color: CHART_COLORS.primary }}>
-              {formatFullCurrency(r.basic_salary || 0)}
+              {r.basic_salary ? formatFullCurrency(r.basic_salary) : 'Chưa có HĐ'}
             </span>
           ),
         },
@@ -1364,7 +1639,9 @@ export function ReportsPage({ user }: ReportsPageProps) {
           key: 'seniority_years',
           title: 'Thâm niên',
           align: 'center',
-          render: (r: any) => <span>{r.seniority_years ? `${r.seniority_years} năm` : '—'}</span>,
+          render: (r: any) => (
+            <span>{r.seniority_label || (r.seniority_years ? `${r.seniority_years} năm` : 'Dưới 1 năm')}</span>
+          ),
         },
       ],
       data: filtered,
@@ -1374,17 +1651,19 @@ export function ReportsPage({ user }: ReportsPageProps) {
   // Xử lý Drilldown khi nhấp vào hàng Cơ sở ở Tab 1
   const handleStoreRowClick = (store: any) => {
     if (!store) return
+    const storeName = store.store_name || ''
     const detailsList = Array.isArray(monthlyStatusFull?.details)
       ? monthlyStatusFull.details
       : (Array.isArray(demographics?.details) ? demographics.details : [])
-    const filtered = detailsList.filter((d: any) => d.store_id === store.store_id || d.store_name === store.store_name)
+
     openSubform({
-      title: `Nhân sự cơ sở: ${store.store_name}`,
-      subtitle: `Ghi nhận ${filtered.length} nhân sự | Quỹ lương cơ bản: ${formatFullCurrency(store.total_contract_salary || 0)}`,
+      title: `Nhân sự cơ sở: ${storeName}`,
+      subtitle: `Tổng biên chế: ${store.total_staff || 0} NS (Chính thức: ${store.active_staff || 0} • Thử việc: ${store.probation_staff || 0} • Nghỉ phép: ${store.on_leave_staff || 0} • Nghỉ việc: ${store.resigned_staff || 0}) | Quỹ lương HĐ: ${formatFullCurrency(store.total_contract_salary || 0)}`,
       tag: 'Chi nhánh',
       filterFields: MONTHLY_STATUS_FILTER_FIELDS,
       columns: MONTHLY_STATUS_DRILLDOWN_COLUMNS,
-      data: filtered,
+      data: detailsList,
+      initialQuickFilters: storeName ? { store_name: storeName } : {},
     })
   }
 
@@ -1448,16 +1727,12 @@ export function ReportsPage({ user }: ReportsPageProps) {
   // Xử lý Drilldown khi nhấp vào hàng Cơ sở ở Tab 3 (Chấm công)
   const handleStoreAttendanceRowClick = (store: any) => {
     if (!store) return
-    const storeId = store.store_id || 0
-    const storeName = (store.store_name || '').trim().toLowerCase()
+    const storeName = store.store_name || ''
     const detailsList = Array.isArray(attendanceSummary?.details) ? attendanceSummary.details : []
-    const filtered = detailsList.filter((d: any) => {
-      if (storeId && d.store_id && d.store_id === storeId) return true
-      return (d.store_name || '').trim().toLowerCase() === storeName
-    })
+    const storeAttList = detailsList.filter((d: any) => (d.store_name || '').trim().toLowerCase() === storeName.trim().toLowerCase())
     openSubform({
-      title: `Chấm công cơ sở: ${store.store_name}`,
-      subtitle: `Kỳ ${period} - Ghi nhận ${filtered.length} lượt chấm công`,
+      title: `Chấm công cơ sở: ${storeName}`,
+      subtitle: `Kỳ ${period} - Ghi nhận ${storeAttList.length} lượt chấm công`,
       tag: 'Chấm công',
       filterFields: ATTENDANCE_FILTER_FIELDS,
       columns: [
@@ -1512,20 +1787,20 @@ export function ReportsPage({ user }: ReportsPageProps) {
           align: 'center',
           render: (r: any) => (
             <span
-              className={`badge ${
-                r.status === 'NORMAL' || r.status === 'PRESENT'
+              className={`badge ${r.status === 'NORMAL' || r.status === 'PRESENT'
                   ? 'badge-success'
                   : r.status === 'LATE' || r.status === 'EARLY' || r.status === 'LATE_AND_EARLY'
-                  ? 'badge-warning'
-                  : 'badge-danger'
-              }`}
+                    ? 'badge-warning'
+                    : 'badge-danger'
+                }`}
             >
               {r.status_label || r.status}
             </span>
           ),
         },
       ],
-      data: filtered,
+      data: detailsList,
+      initialQuickFilters: storeName ? { store_name: storeName } : {},
     })
   }
 
@@ -1610,18 +1885,12 @@ export function ReportsPage({ user }: ReportsPageProps) {
       {/* 3 Thẻ StatCard cốt lõi Quản trị Nhân sự HRM */}
       <div className="stat-grid-3 kpi-hover-grid">
         <StatCard
-          label={selectedStoreId ? "Nhân sự cơ sở đã chọn" : `Tổng quân số kỳ (${period})`}
-          value={totalEmployeesCount}
+          label={selectedStoreId ? "Nhân sự cơ sở đã chọn" : `Tổng biên chế kỳ (${period})`}
+          value={monthlyStatusFull?.total_headcount ?? totalEmployeesCount}
           iconColor="blue"
           onClick={() => handleHeadcountKpiClick()}
           className="cursor-pointer"
-          footerNote={
-            dashboardStats?.resigned_employees
-              ? `Đang làm việc: ${activeEmployeesCount} (Thôi việc kỳ này: ${dashboardStats.resigned_employees}) • Bấm xem chi tiết`
-              : dashboardStats?.new_hires
-              ? `Đang làm việc: ${activeEmployeesCount} (Tuyển mới kỳ này: ${dashboardStats.new_hires}) • Bấm xem chi tiết`
-              : `Đang làm việc: ${activeEmployeesCount} nhân sự • Bấm xem chi tiết`
-          }
+          footerNote={`Đang làm: ${monthlyStatusFull?.total_active_employees ?? activeEmployeesCount} • Nghỉ phép: ${monthlyStatusFull?.total_on_leave_employees ?? 0} • Nghỉ việc: ${monthlyStatusFull?.total_resigned_employees ?? dashboardStats?.resigned_employees ?? 0}`}
         />
         <StatCard
           label={`Quỹ thực chi Net (${period})`}
@@ -1707,1442 +1976,1584 @@ export function ReportsPage({ user }: ReportsPageProps) {
             </button>
           </div>
 
-      {/* Nội dung từng Tab */}
-      {isLoading ? (
-        <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-secondary)' }}>
-          <div className="spinner" style={{ margin: '0 auto 16px auto' }} />
-          <span>Đang tổng hợp dữ liệu biểu đồ và thống kê...</span>
-        </div>
-      ) : (
-        <>
-          {/* ========================================================================= */}
-          {/* TAB 1: NHÂN SỰ & HỌC VẤN */}
-          {/* ========================================================================= */}
-          {activeTab === 'demographics' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              {/* PHẦN 1: BÁO CÁO THỐNG KÊ TÌNH HÌNH NHÂN SỰ THEO THÁNG */}
-              <div className="card" style={{ padding: '16px 20px', backgroundColor: 'var(--surface-primary, #ffffff)', border: '1px solid var(--border-default)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '14px' }}>
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                      Báo cáo thống kê tình hình nhân sự theo tháng: Kỳ {period}
-                    </h3>
-                    <p style={{ margin: '4px 0 0 0', fontSize: '12.5px', color: 'var(--text-secondary)' }}>
-                      Thống kê nhân sự đang làm việc, nghỉ phép, thôi việc và tuyển mới (Bấm vào từng nhóm để xem danh sách chi tiết)
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => handleHeadcountKpiClick()}
-                    style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-                  >
-                    <Eye size={14} />
-                    Xem toàn bộ nhân sự kỳ này ({totalEmployeesCount})
-                  </button>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '12px' }}>
-                  <div
-                    onClick={() => handleHeadcountKpiClick('ACTIVE')}
-                    style={{
-                      padding: '12px 14px',
-                      borderRadius: '8px',
-                      backgroundColor: 'rgba(16, 185, 129, 0.08)',
-                      border: '1px solid rgba(16, 185, 129, 0.25)',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease-in-out'
-                    }}
-                    title="Bấm để xem danh sách nhân sự đang làm việc"
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '12px', fontWeight: 600, color: '#059669' }}>Đang làm việc</span>
-                      <span className="badge badge-success" style={{ fontSize: '10px' }}>ACTIVE</span>
-                    </div>
-                    <div style={{ fontSize: '20px', fontWeight: 700, color: '#047857', marginTop: '4px' }}>
-                      {monthlyStatusFull?.total_active_employees ?? activeEmployeesCount} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>nhân sự</span>
-                    </div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                      Chính thức & Thử việc • {monthlyStatusFull?.active_percent || 0}% biên chế
-                    </div>
-                  </div>
-
-                  <div
-                    onClick={() => handleHeadcountKpiClick('ON_LEAVE')}
-                    style={{
-                      padding: '12px 14px',
-                      borderRadius: '8px',
-                      backgroundColor: 'rgba(245, 158, 11, 0.08)',
-                      border: '1px solid rgba(245, 158, 11, 0.25)',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease-in-out'
-                    }}
-                    title="Bấm để xem danh sách nhân sự đang nghỉ phép"
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '12px', fontWeight: 600, color: '#d97706' }}>Đang nghỉ phép</span>
-                      <span className="badge badge-warning" style={{ fontSize: '10px' }}>ON_LEAVE</span>
-                    </div>
-                    <div style={{ fontSize: '20px', fontWeight: 700, color: '#b45309', marginTop: '4px' }}>
-                      {monthlyStatusFull?.total_on_leave_employees ?? 0} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>nhân sự</span>
-                    </div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                      Nghỉ phép năm, thai sản, ốm đau có duyệt
-                    </div>
-                  </div>
-
-                  <div
-                    onClick={() => handleHeadcountKpiClick('RESIGNED')}
-                    style={{
-                      padding: '12px 14px',
-                      borderRadius: '8px',
-                      backgroundColor: 'rgba(239, 68, 68, 0.08)',
-                      border: '1px solid rgba(239, 68, 68, 0.25)',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease-in-out'
-                    }}
-                    title="Bấm để xem ai đã thôi việc trong kỳ"
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '12px', fontWeight: 600, color: '#dc2626' }}>Thôi việc kỳ này</span>
-                      <span className="badge badge-danger" style={{ fontSize: '10px' }}>RESIGNED</span>
-                    </div>
-                    <div style={{ fontSize: '20px', fontWeight: 700, color: '#b91c1c', marginTop: '4px' }}>
-                      {monthlyStatusFull?.total_resigned_employees ?? dashboardStats?.resigned_employees ?? 0} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>nhân sự</span>
-                    </div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                      {(monthlyStatusFull?.total_resigned_employees ?? dashboardStats?.resigned_employees)
-                        ? 'Bấm để xem danh sách ai đã thôi việc'
-                        : 'Không có nhân sự thôi việc trong kỳ'}
-                    </div>
-                  </div>
-
-                  <div
-                    onClick={() => handleHeadcountKpiClick('NEW_HIRE')}
-                    style={{
-                      padding: '12px 14px',
-                      borderRadius: '8px',
-                      backgroundColor: 'rgba(59, 130, 246, 0.08)',
-                      border: '1px solid rgba(59, 130, 246, 0.25)',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease-in-out'
-                    }}
-                    title="Bấm để xem danh sách nhân sự mới tuyển"
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '12px', fontWeight: 600, color: '#2563eb' }}>Tuyển mới trong kỳ</span>
-                      <span className="badge badge-info" style={{ fontSize: '10px' }}>NEW HIRE</span>
-                    </div>
-                    <div style={{ fontSize: '20px', fontWeight: 700, color: '#1d4ed8', marginTop: '4px' }}>
-                      {monthlyStatusFull?.total_new_hires ?? dashboardStats?.new_hires ?? 0} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>nhân sự</span>
-                    </div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                      Tiếp nhận thử việc & gia nhập mới
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* PHẦN 2: BÁO CÁO CƠ CẤU THÔNG TIN NHÂN SỰ: TRÌNH ĐỘ, MỨC LƯƠNG, THÂM NIÊN */}
-              <div style={{ marginTop: '4px' }}>
-                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                  Báo cáo thống kê thông tin nhân sự: Trình độ, Mức lương & Thâm niên
-                </h3>
-              </div>
-
-              <div className="charts-grid-2">
-                {/* Biểu đồ 1: AreaChart Biến động quân số */}
-                <div className="chart-card">
-                  <div className="chart-card-header">
-                    <div>
-                      <h3 className="chart-card-title">Xu hướng biến động quân số hệ thống</h3>
-                      <p className="chart-card-desc">Lịch sử tiếp nhận tuyển mới và số lượng nhân sự qua các tháng (Bấm vào để xem chi tiết)</p>
-                    </div>
-                  </div>
-                  <div className="chart-container-wrapper">
-                    {headcountTrend.length === 0 ? (
-                      <div className="chart-empty-state">Chưa có dữ liệu lịch sử quân số</div>
-                    ) : (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart
-                          data={headcountTrend}
-                          margin={{ top: 10, right: 20, left: -10, bottom: 0 }}
-                          onClick={handleHeadcountTrendClick}
-                          style={{ cursor: 'pointer' }}
-                        >
-                          <defs>
-                            <linearGradient id="colorHired" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor={CHART_COLORS.primary} stopOpacity={0.4} />
-                              <stop offset="95%" stopColor={CHART_COLORS.primary} stopOpacity={0} />
-                            </linearGradient>
-                            <linearGradient id="colorActive" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor={CHART_COLORS.success} stopOpacity={0.3} />
-                              <stop offset="95%" stopColor={CHART_COLORS.success} stopOpacity={0} />
-                            </linearGradient>
-                          </defs>
-                          <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle, #f1f5f9)" />
-                          <XAxis dataKey="month" stroke="var(--text-tertiary)" fontSize={11} />
-                          <YAxis stroke="var(--text-tertiary)" fontSize={11} allowDecimals={false} />
-                          <Tooltip content={<CustomChartTooltip />} />
-                          <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-                          <Area
-                            type="monotone"
-                            dataKey="active_total"
-                            name="Quân số tích luỹ"
-                            stroke={CHART_COLORS.success}
-                            fillOpacity={1}
-                            fill="url(#colorActive)"
-                            isAnimationActive={isChartAnimated}
-                          />
-                          <Area
-                            type="monotone"
-                            dataKey="hired"
-                            name="Tuyển mới"
-                            stroke={CHART_COLORS.primary}
-                            fillOpacity={1}
-                            fill="url(#colorHired)"
-                            isAnimationActive={isChartAnimated}
-                          />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    )}
-                  </div>
-                </div>
-
-                {/* Biểu đồ 2: BarChart Học vấn */}
-                <div className="chart-card">
-                  <div className="chart-card-header">
-                    <div>
-                      <h3 className="chart-card-title">Cơ cấu trình độ học vấn</h3>
-                      <p className="chart-card-desc">Tỷ lệ bằng cấp của đội ngũ nhân viên đang công tác</p>
-                    </div>
-                  </div>
-                  <div className="chart-container-wrapper">
-                    {!demographics?.education || demographics.education.length === 0 ? (
-                      <div className="chart-empty-state">Chưa ghi nhận dữ liệu học vấn</div>
-                    ) : (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart
-                          data={demographics.education}
-                          margin={{ top: 10, right: 20, left: -10, bottom: 0 }}
-                        >
-                          <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle, #f1f5f9)" />
-                          <XAxis dataKey="education_level" stroke="var(--text-tertiary)" fontSize={11} />
-                          <YAxis stroke="var(--text-tertiary)" fontSize={11} allowDecimals={false} />
-                          <Tooltip content={<CustomChartTooltip />} />
-                          <Bar
-                            dataKey="total"
-                            name="Số nhân sự"
-                            radius={[4, 4, 0, 0]}
-                            onClick={(entry) => handleEducationBarClick(entry)}
-                            style={{ cursor: 'pointer' }}
-                            isAnimationActive={isChartAnimated}
-                          >
-                            {demographics.education.map((_, index) => (
-                              <Cell key={`edu-cell-${index}`} fill={PALETTE_CATEGORIES[index % PALETTE_CATEGORIES.length]} />
-                            ))}
-                          </Bar>
-                        </BarChart>
-                      </ResponsiveContainer>
-                    )}
-                  </div>
-                </div>
-
-                {/* Biểu đồ 3: BarChart Ngang Mức lương hợp đồng */}
-                <div className="chart-card">
-                  <div className="chart-card-header">
-                    <div>
-                      <h3 className="chart-card-title">Phân khúc mức lương thỏa thuận theo HĐ</h3>
-                      <p className="chart-card-desc">Thống kê mức lương cơ bản ghi nhận trên hợp đồng lao động</p>
-                    </div>
-                  </div>
-                  <div className="chart-container-wrapper">
-                    {!demographics?.salary_range || demographics.salary_range.length === 0 ? (
-                      <div className="chart-empty-state">Chưa có thông tin hợp đồng</div>
-                    ) : (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart
-                          layout="vertical"
-                          data={demographics.salary_range}
-                          margin={{ top: 10, right: 30, left: 30, bottom: 0 }}
-                        >
-                          <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle, #f1f5f9)" />
-                          <XAxis type="number" stroke="var(--text-tertiary)" fontSize={11} allowDecimals={false} />
-                          <YAxis dataKey="salary_range" type="category" stroke="var(--text-tertiary)" fontSize={11} />
-                          <Tooltip content={<CustomChartTooltip />} />
-                          <Bar
-                            dataKey="total"
-                            name="Số lượng"
-                            fill={CHART_COLORS.indigo}
-                            radius={[0, 4, 4, 0]}
-                            onClick={(entry) => handleSalaryBarClick(entry)}
-                            style={{ cursor: 'pointer' }}
-                            isAnimationActive={isChartAnimated}
-                          />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    )}
-                  </div>
-                </div>
-
-                {/* Biểu đồ 4: PieChart Thâm niên công tác */}
-                <div className="chart-card">
-                  <div className="chart-card-header">
-                    <div>
-                      <h3 className="chart-card-title">Thâm niên gắn bó với TechZone</h3>
-                      <p className="chart-card-desc">Phân bố nhân sự theo khoảng thời gian làm việc thực tế</p>
-                    </div>
-                  </div>
-                  <div className="chart-container-wrapper">
-                    {!demographics?.seniority || demographics.seniority.length === 0 ? (
-                      <div className="chart-empty-state">Chưa có dữ liệu thâm niên</div>
-                    ) : (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={demographics.seniority}
-                            dataKey="total"
-                            nameKey="seniority_group"
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={55}
-                            outerRadius={85}
-                            paddingAngle={4}
-                            label={({ name, percent }: any) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
-                            labelLine={false}
-                            onClick={(entry) => handleSeniorityPieClick(entry)}
-                            style={{ cursor: 'pointer' }}
-                            isAnimationActive={isChartAnimated}
-                          >
-                            {demographics.seniority.map((_, index) => (
-                              <Cell key={`sen-cell-${index}`} fill={PALETTE_CATEGORIES[index % PALETTE_CATEGORIES.length]} />
-                            ))}
-                          </Pie>
-                          <Tooltip content={<CustomChartTooltip />} />
-                          <Legend wrapperStyle={{ fontSize: '12px' }} />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Bảng phân bổ cơ sở */}
-              <div className="card">
-                <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <h3 className="card-title">Chi tiết phân bổ nhân lực & quỹ lương theo Chi nhánh / Phòng ban</h3>
-                  <span className="badge badge-info" style={{ fontSize: '12px' }}>
-                    {monthlyStatusList.length} Cơ sở hoạt động
-                  </span>
-                </div>
-                <div className="table-responsive">
-                  <table className="table data-table">
-                    <thead>
-                      <tr>
-                        <th>Cơ sở / Đơn vị</th>
-                        <th style={{ textAlign: 'center' }}>Tổng nhân sự</th>
-                        <th style={{ textAlign: 'center' }}>Chính thức</th>
-                        <th style={{ textAlign: 'center' }}>Thử việc</th>
-                        <th style={{ textAlign: 'center' }}>Thôi việc</th>
-                        <th style={{ textAlign: 'right' }}>Quỹ lương cơ bản HĐ</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {monthlyStatusList.length === 0 ? (
-                        <tr>
-                          <td colSpan={6} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)' }}>
-                            Chưa có dữ liệu cơ sở
-                          </td>
-                        </tr>
-                      ) : (
-                        monthlyStatusList.map((s) => (
-                          <tr
-                            key={s.store_id}
-                            onClick={() => handleStoreRowClick(s)}
-                            style={{ cursor: 'pointer' }}
-                            title="Bấm vào để xem danh sách nhân sự cơ sở này"
-                          >
-                            <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
-                              <span style={{ textDecoration: 'underline', textDecorationStyle: 'dotted' }}>{s.store_name}</span>
-                            </td>
-                            <td style={{ textAlign: 'center', fontWeight: 600 }}>{s.total_staff}</td>
-                            <td style={{ textAlign: 'center', color: 'var(--status-success)' }}>{s.active_staff}</td>
-                            <td style={{ textAlign: 'center', color: 'var(--status-warning)' }}>{s.probation_staff}</td>
-                            <td style={{ textAlign: 'center', color: 'var(--text-tertiary)' }}>{s.resigned_staff}</td>
-                            <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 600 }}>
-                              {formatFullCurrency(s.total_contract_salary || 0)}
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+          {/* Nội dung từng Tab */}
+          {isLoading ? (
+            <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-secondary)' }}>
+              <div className="spinner" style={{ margin: '0 auto 16px auto' }} />
+              <span>Đang tổng hợp dữ liệu biểu đồ và thống kê...</span>
             </div>
-          )}
+          ) : (
+            <>
+              {/* ========================================================================= */}
+              {/* TAB 1: NHÂN SỰ & HỌC VẤN */}
+              {/* ========================================================================= */}
+              {activeTab === 'demographics' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  {/* PHẦN 1: BÁO CÁO THỐNG KÊ TÌNH HÌNH NHÂN SỰ THEO THÁNG */}
+                  <div className="card" style={{ padding: '16px 20px', backgroundColor: 'var(--surface-primary, #ffffff)', border: '1px solid var(--border-default)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '14px' }}>
+                      <div>
+                        <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                          Báo cáo thống kê tình hình nhân sự theo tháng: Kỳ {period}
+                        </h3>
+                        <p style={{ margin: '4px 0 0 0', fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+                          Thống kê nhân sự còn đang làm việc, đang nghỉ phép và đã nghỉ việc (Bấm vào từng thẻ để xem danh sách chi tiết từng người)
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => handleHeadcountKpiClick()}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                      >
+                        <Eye size={14} />
+                        Xem toàn bộ nhân sự kỳ này ({monthlyStatusFull?.total_headcount ?? totalEmployeesCount})
+                      </button>
+                    </div>
 
-          {/* ========================================================================= */}
-          {/* TAB 2: CHI PHÍ & QUỸ LƯƠNG */}
-          {/* ========================================================================= */}
-          {activeTab === 'payroll' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              <div className="charts-grid-2">
-                {/* Biểu đồ 1: ComposedChart Xu hướng quỹ lương */}
-                <div className="chart-card">
-                  <div className="chart-card-header">
-                    <div>
-                      <h3 className="chart-card-title">Biến động quỹ chi trả tiền lương qua các kỳ</h3>
-                      <p className="chart-card-desc">So sánh tổng thu nhập Gross, thực nhận Net và chi phí bảo hiểm (Bấm vào cột tháng để xem bảng lương)</p>
-                    </div>
-                  </div>
-                  <div className="chart-container-wrapper">
-                    {payrollTrend.length === 0 ? (
-                      <div className="chart-empty-state">Chưa có lịch sử bảng lương</div>
-                    ) : (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <ComposedChart
-                          data={payrollTrend}
-                          margin={{ top: 10, right: 20, left: 10, bottom: 0 }}
-                          onClick={handlePayrollTrendClick}
-                          style={{ cursor: 'pointer' }}
-                        >
-                          <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle, #f1f5f9)" />
-                          <XAxis dataKey="period" stroke="var(--text-tertiary)" fontSize={11} />
-                          <YAxis
-                            stroke="var(--text-tertiary)"
-                            fontSize={11}
-                            tickFormatter={(v) => formatChartCurrency(v)}
-                          />
-                          <Tooltip
-                            content={
-                              <CustomChartTooltip
-                                formatter={(val) => (typeof val === 'number' ? formatFullCurrency(val) : val)}
-                              />
-                            }
-                          />
-                          <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-                          <Bar
-                            dataKey="gross_total"
-                            name="Tổng Gross"
-                            fill={CHART_COLORS.primaryLight}
-                            radius={[4, 4, 0, 0]}
-                            isAnimationActive={isChartAnimated}
-                            onClick={(entry) => handlePayrollTrendClick(entry)}
-                            style={{ cursor: 'pointer' }}
-                          />
-                          <Bar
-                            dataKey="net_total"
-                            name="Thực chi Net"
-                            fill={CHART_COLORS.navy}
-                            radius={[4, 4, 0, 0]}
-                            isAnimationActive={isChartAnimated}
-                            onClick={(entry) => handlePayrollTrendClick(entry)}
-                            style={{ cursor: 'pointer' }}
-                          />
-                          <Line
-                            type="monotone"
-                            dataKey="insurance_total"
-                            name="Trích nộp BHXH"
-                            stroke={CHART_COLORS.error}
-                            strokeWidth={2}
-                            isAnimationActive={isChartAnimated}
-                          />
-                        </ComposedChart>
-                      </ResponsiveContainer>
-                    )}
-                  </div>
-                </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '12px' }}>
+                      <div
+                        onClick={() => handleHeadcountKpiClick('ACTIVE')}
+                        style={{
+                          padding: '12px 14px',
+                          borderRadius: '8px',
+                          backgroundColor: 'rgba(16, 185, 129, 0.08)',
+                          border: '1px solid rgba(16, 185, 129, 0.25)',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease-in-out'
+                        }}
+                        title="Bấm để xem danh sách nhân sự còn đang làm việc"
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 600, color: '#059669' }}>Đang làm việc</span>
+                          <span className="badge badge-success" style={{ fontSize: '10px' }}>ACTIVE</span>
+                        </div>
+                        <div style={{ fontSize: '20px', fontWeight: 700, color: '#047857', marginTop: '4px' }}>
+                          {monthlyStatusFull?.total_active_employees ?? activeEmployeesCount} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>nhân sự</span>
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                          Chính thức: {monthlyStatusFull?.total_official_employees ?? ((monthlyStatusFull?.total_active_employees || 0) - (monthlyStatusFull?.total_probation_employees || 0))} • Thử việc: {monthlyStatusFull?.total_probation_employees ?? 0} ({monthlyStatusFull?.active_percent || 0}%)
+                        </div>
+                      </div>
 
-                {/* Biểu đồ 2: PieChart Cơ cấu quỹ lương kỳ hiện tại */}
-                <div className="chart-card">
-                  <div className="chart-card-header">
-                    <div>
-                      <h3 className="chart-card-title">Cơ cấu quỹ lương tháng {period}</h3>
-                      <p className="chart-card-desc">Tỷ trọng các cấu phần thu nhập, phụ cấp, thưởng và trích nộp (Bấm vào để xem chi tiết)</p>
-                    </div>
-                  </div>
-                  <div className="chart-container-wrapper">
-                    {payrollBreakdownData.length === 0 ? (
-                      <div className="chart-empty-state">Kỳ lương này chưa phát sinh dữ liệu chi trả</div>
-                    ) : (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={payrollBreakdownData}
-                            dataKey="value"
-                            nameKey="name"
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={55}
-                            outerRadius={85}
-                            paddingAngle={3}
-                            label={({ name, percent }: any) => `${name}: ${((percent || 0) * 100).toFixed(1)}%`}
-                            labelLine={false}
-                            isAnimationActive={isChartAnimated}
-                            onClick={(entry) => handlePayrollBreakdownClick(entry)}
-                            style={{ cursor: 'pointer' }}
-                          >
-                            {payrollBreakdownData.map((entry, index) => (
-                              <Cell key={`pay-breakdown-${index}`} fill={entry.color} />
-                            ))}
-                          </Pie>
-                          <Tooltip
-                            content={
-                              <CustomChartTooltip
-                                formatter={(val) => (typeof val === 'number' ? formatFullCurrency(val) : val)}
-                              />
-                            }
-                          />
-                          <Legend wrapperStyle={{ fontSize: '11.5px' }} />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    )}
-                  </div>
-                </div>
-              </div>
+                      <div
+                        onClick={() => handleHeadcountKpiClick('ON_LEAVE')}
+                        style={{
+                          padding: '12px 14px',
+                          borderRadius: '8px',
+                          backgroundColor: 'rgba(245, 158, 11, 0.08)',
+                          border: '1px solid rgba(245, 158, 11, 0.25)',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease-in-out'
+                        }}
+                        title="Bấm để xem danh sách nhân sự đang nghỉ phép trong tháng"
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 600, color: '#d97706' }}>Nghỉ phép trong tháng</span>
+                          <span className="badge badge-warning" style={{ fontSize: '10px' }}>ON_LEAVE</span>
+                        </div>
+                        <div style={{ fontSize: '20px', fontWeight: 700, color: '#b45309', marginTop: '4px' }}>
+                          {monthlyStatusFull?.total_on_leave_employees ?? 0} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>nhân sự</span>
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                          Phép năm, thai sản, ốm đau có duyệt ({monthlyStatusFull?.on_leave_percent || 0}%)
+                        </div>
+                      </div>
 
-              {/* Bảng phân tích chi phí lương */}
-              <div className="card">
-                <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <h3 className="card-title">Bảng tổng hợp thanh toán & đối soát lương tháng {period}</h3>
-                  <button
-                    className="btn btn-secondary btn-sm"
-                    onClick={async () => {
-                      try {
-                        toast.info('Đang tải file Excel quỹ lương...')
-                        const blob = await reportApi.exportPayrollSummaryExcel(period)
-                        triggerBlobDownload(blob, `Quy_luong_TechZone_${period}.xlsx`)
-                        toast.success('Đã tải file Excel quỹ lương!')
-                      } catch (err: any) {
-                        toast.error(err.message || 'Lỗi tải file')
-                      }
-                    }}
-                  >
-                    Tải bảng lương Excel
-                  </button>
-                </div>
-                <div className="card-body">
-                  <div className="stat-grid-4">
-                    <div className="stat-card" style={{ padding: '12px' }}>
-                      <span className="stat-card-label">Tổng thu nhập Gross</span>
-                      <div className="stat-card-value" style={{ fontSize: '18px', color: CHART_COLORS.primary }}>
-                        {formatFullCurrency(payrollFund?.total_gross_income || 0)}
+                      <div
+                        onClick={() => handleHeadcountKpiClick('RESIGNED')}
+                        style={{
+                          padding: '12px 14px',
+                          borderRadius: '8px',
+                          backgroundColor: 'rgba(239, 68, 68, 0.08)',
+                          border: '1px solid rgba(239, 68, 68, 0.25)',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease-in-out'
+                        }}
+                        title="Bấm để xem danh sách nhân sự đã nghỉ việc / thôi việc"
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 600, color: '#dc2626' }}>Nghỉ việc / Thôi việc</span>
+                          <span className="badge badge-danger" style={{ fontSize: '10px' }}>RESIGNED</span>
+                        </div>
+                        <div style={{ fontSize: '20px', fontWeight: 700, color: '#b91c1c', marginTop: '4px' }}>
+                          {monthlyStatusFull?.total_resigned_employees ?? dashboardStats?.resigned_employees ?? 0} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>nhân sự</span>
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                          Trong kỳ: {monthlyStatusFull?.resigned_in_period_employees ?? 0} • Trước đó: {Math.max(0, (monthlyStatusFull?.total_resigned_employees || 0) - (monthlyStatusFull?.resigned_in_period_employees || 0))} ({monthlyStatusFull?.resigned_percent || 0}%)
+                        </div>
                       </div>
-                    </div>
-                    <div className="stat-card" style={{ padding: '12px' }}>
-                      <span className="stat-card-label">Tổng trích nộp BHXH</span>
-                      <div className="stat-card-value" style={{ fontSize: '18px', color: CHART_COLORS.error }}>
-                        {formatFullCurrency(payrollFund?.total_insurance_deducted || 0)}
-                      </div>
-                    </div>
-                    <div className="stat-card" style={{ padding: '12px' }}>
-                      <span className="stat-card-label">Thuế TNCN khấu trừ</span>
-                      <div className="stat-card-value" style={{ fontSize: '18px', color: CHART_COLORS.purple }}>
-                        {formatFullCurrency(payrollFund?.total_tax_deducted || 0)}
-                      </div>
-                    </div>
-                    <div className="stat-card" style={{ padding: '12px' }}>
-                      <span className="stat-card-label">Thực trả nhân viên (Net)</span>
-                      <div className="stat-card-value" style={{ fontSize: '18px', color: CHART_COLORS.success }}>
-                        {formatFullCurrency(payrollFund?.total_net_salary || 0)}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
 
-          {/* ========================================================================= */}
-          {/* TAB 3: CHẤM CÔNG & NGHỈ PHÉP */}
-          {/* ========================================================================= */}
-          {activeTab === 'attendance' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              <div className="charts-grid-2">
-                {/* Biểu đồ 1: Pie Tỷ lệ chuyên cần */}
-                <div className="chart-card">
-                  <div className="chart-card-header">
-                    <div>
-                      <h3 className="chart-card-title">Tỷ lệ trạng thái chấm công tháng {period}</h3>
-                      <p className="chart-card-desc">Cơ cấu chuyên cần: Đúng giờ, Đi muộn, Về sớm, Nghỉ phép</p>
-                    </div>
-                  </div>
-                  <div className="chart-container-wrapper">
-                    {attendancePieData.length === 0 ? (
-                      <div className="chart-empty-state">Chưa có dữ liệu chấm công kỳ này</div>
-                    ) : (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={attendancePieData}
-                            dataKey="value"
-                            nameKey="name"
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={50}
-                            outerRadius={85}
-                            paddingAngle={3}
-                            label={({ name, percent }: any) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
-                            labelLine={false}
-                            isAnimationActive={isChartAnimated}
-                            onClick={(entry) => handleAttendancePieClick(entry)}
-                            style={{ cursor: 'pointer' }}
-                          >
-                            {attendancePieData.map((entry, index) => (
-                              <Cell key={`att-cell-${index}`} fill={entry.color} />
-                            ))}
-                          </Pie>
-                          <Tooltip
-                            content={
-                              <CustomChartTooltip
-                                formatter={(val: any) => `${val} lượt chấm công`}
-                              />
-                            }
-                          />
-                          <Legend wrapperStyle={{ fontSize: '12px' }} />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    )}
-                  </div>
-                </div>
-
-                {/* Biểu đồ 2: Cơ cấu loại đơn nghỉ phép */}
-                <div className="chart-card">
-                  <div className="chart-card-header">
-                    <div>
-                      <h3 className="chart-card-title">Cơ cấu loại nghỉ phép (Số ngày nghỉ)</h3>
-                      <p className="chart-card-desc">Phân loại ngày nghỉ: Phép năm, Nghỉ ốm, Thai sản, Việc riêng (Bấm vào để xem chi tiết)</p>
-                    </div>
-                  </div>
-                  <div className="chart-container-wrapper">
-                    {leavePieData.length === 0 ? (
-                      <div className="chart-empty-state">Không có đơn xin nghỉ phép trong kỳ</div>
-                    ) : (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={leavePieData}
-                            dataKey="value"
-                            nameKey="name"
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={50}
-                            outerRadius={85}
-                            paddingAngle={3}
-                            label={({ name, value }: any) => `${name}: ${value} ngày`}
-                            labelLine={false}
-                            isAnimationActive={isChartAnimated}
-                            onClick={(entry) => handleLeavePieClick(entry)}
-                            style={{ cursor: 'pointer' }}
-                          >
-                            {leavePieData.map((entry, index) => (
-                              <Cell key={`leave-cell-${index}`} fill={entry.color} />
-                            ))}
-                          </Pie>
-                          <Tooltip
-                            content={
-                              <CustomChartTooltip
-                                formatter={(val: any, _name?: string, item?: any) => `${val} ngày nghỉ (${item?.payload?.count || 1} đơn)`}
-                              />
-                            }
-                          />
-                          <Legend wrapperStyle={{ fontSize: '12px' }} />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Thẻ tóm tắt chỉ số Chuyên cần & Nghỉ phép */}
-              <div className="card">
-                <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <h3 className="card-title">Chỉ số vận hành chuyên cần & Kỷ luật lao động tháng {period}</h3>
-                    <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                      Tổng hợp giờ công, làm thêm OT và tình hình giải quyết chế độ nghỉ phép toàn chuỗi cửa hàng
-                    </p>
-                  </div>
-                  <button
-                    className="btn btn-secondary btn-sm"
-                    onClick={handleExportOverviewExcel}
-                    disabled={isExportingExcel}
-                    style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                      <polyline points="7 10 12 15 17 10" />
-                      <line x1="12" y1="15" x2="12" y2="3" />
-                    </svg>
-                    {isExportingExcel ? 'Đang xuất...' : 'Xuất Excel Chấm công & Phép'}
-                  </button>
-                </div>
-                <div className="card-body">
-                  <div className="stat-grid-4">
-                    <div className="stat-card" style={{ padding: '12px' }}>
-                      <span className="stat-card-label">Tổng lượt chấm công</span>
-                      <div className="stat-card-value" style={{ fontSize: '18px' }}>
-                        {attendanceSummary?.total_records || 0} lượt
-                      </div>
-                    </div>
-                    <div className="stat-card" style={{ padding: '12px' }}>
-                      <span className="stat-card-label">Tỷ lệ đúng giờ tiêu chuẩn</span>
-                      <div className="stat-card-value" style={{ fontSize: '18px', color: CHART_COLORS.success }}>
-                        {attendanceSummary?.on_time_rate ? `${attendanceSummary.on_time_rate.toFixed(1)}%` : '0%'}
-                      </div>
-                    </div>
-                    <div className="stat-card" style={{ padding: '12px' }}>
-                      <span className="stat-card-label">Tổng giờ làm việc & OT</span>
-                      <div className="stat-card-value" style={{ fontSize: '18px', color: CHART_COLORS.primary }}>
-                        {attendanceSummary?.total_working_hours || 0}h <span style={{ fontSize: '12px', color: CHART_COLORS.warning }}>(OT: {attendanceSummary?.total_ot_hours || 0}h)</span>
-                      </div>
-                    </div>
-                    <div className="stat-card" style={{ padding: '12px' }}>
-                      <span className="stat-card-label">Tổng số đơn nghỉ phép</span>
-                      <div className="stat-card-value" style={{ fontSize: '18px', color: CHART_COLORS.indigo }}>
-                        {leaveSummary?.total_requests || 0} đơn
+                      <div
+                        onClick={() => handleHeadcountKpiClick('NEW_HIRE')}
+                        style={{
+                          padding: '12px 14px',
+                          borderRadius: '8px',
+                          backgroundColor: 'rgba(59, 130, 246, 0.08)',
+                          border: '1px solid rgba(59, 130, 246, 0.25)',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease-in-out'
+                        }}
+                        title="Bấm để xem danh sách nhân sự mới tuyển trong kỳ"
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 600, color: '#2563eb' }}>Tuyển mới trong kỳ</span>
+                          <span className="badge badge-info" style={{ fontSize: '10px' }}>NEW HIRE</span>
+                        </div>
+                        <div style={{ fontSize: '20px', fontWeight: 700, color: '#1d4ed8', marginTop: '4px' }}>
+                          {monthlyStatusFull?.total_new_hires ?? dashboardStats?.new_hires ?? 0} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>nhân sự</span>
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                          Tiếp nhận gia nhập mới trong tháng {period}
+                        </div>
                       </div>
                     </div>
                   </div>
 
-                  {/* Bảng chi tiết chuyên cần theo điểm bán */}
-                  <div style={{ marginTop: '20px', overflowX: 'auto' }}>
-                    <table className="table" style={{ width: '100%', fontSize: '13px' }}>
-                      <thead>
-                        <tr>
-                          <th style={{ width: '50px', textAlign: 'center' }}>STT</th>
-                          <th>Điểm bán / Cơ sở</th>
-                          <th style={{ textAlign: 'center' }}>Quân số</th>
-                          <th style={{ textAlign: 'center' }}>Đúng giờ</th>
-                          <th style={{ textAlign: 'right' }}>Giờ làm thực tế</th>
-                          <th style={{ textAlign: 'right' }}>Giờ tăng ca (OT)</th>
-                          <th style={{ textAlign: 'center' }}>Đơn nghỉ phép</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {monthlyStatusList.map((store, idx) => {
-                          const stats = getStoreAttendanceStats(store)
-                          const badgeColor = stats.totalRecords === 0
-                            ? 'badge-secondary'
-                            : stats.onTimeRate >= 90
-                            ? 'badge-success'
-                            : stats.onTimeRate >= 75
-                            ? 'badge-warning'
-                            : 'badge-danger'
+                  {/* PHẦN 2: BÁO CÁO CƠ CẤU THÔNG TIN NHÂN SỰ: TRÌNH ĐỘ, MỨC LƯƠNG, THÂM NIÊN */}
+                  <div className="card" style={{ padding: '16px 20px', backgroundColor: 'var(--surface-primary, #ffffff)', border: '1px solid var(--border-default)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '14px' }}>
+                      <div>
+                        <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                          Báo cáo thống kê các thông tin về nhân sự: Trình độ, Mức lương & Thâm niên
+                        </h3>
+                        <p style={{ margin: '4px 0 0 0', fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+                          Phân tích trình độ chuyên môn, phân khúc lương thỏa thuận hợp đồng và thâm niên công tác của {demographics?.total_employees || 0} nhân sự đang làm việc
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        onClick={handleDemographicsOverviewClick}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                      >
+                        <TableIcon size={14} />
+                        Bảng tổng hợp Trình độ • Mức lương • Thâm niên ({demographics?.total_employees || 0})
+                      </button>
+                    </div>
 
-                          return (
-                            <tr
-                              key={store.store_id || idx}
-                              onClick={() => handleStoreAttendanceRowClick(store)}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+                      <div
+                        onClick={handleDemographicsOverviewClick}
+                        style={{ padding: '12px 14px', borderRadius: '8px', backgroundColor: 'var(--surface-secondary, #f8fafc)', border: '1px solid var(--border-subtle, #e2e8f0)', cursor: 'pointer' }}
+                        title="Bấm để xem chi tiết trình độ học vấn từng nhân sự"
+                      >
+                        <div style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--text-secondary)' }}>1. Cơ cấu trình độ học vấn</div>
+                        <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '4px' }}>
+                          {demographics?.education?.length || 0} bậc đào tạo
+                        </div>
+                        <div style={{ fontSize: '11.5px', color: 'var(--text-tertiary)', marginTop: '2px' }}>
+                          Chiếm tỷ trọng cao nhất: <strong style={{ color: 'var(--text-primary)' }}>{demographics?.summary?.top_education || '—'}</strong>
+                        </div>
+                      </div>
+
+                      <div
+                        onClick={handleDemographicsOverviewClick}
+                        style={{ padding: '12px 14px', borderRadius: '8px', backgroundColor: 'var(--surface-secondary, #f8fafc)', border: '1px solid var(--border-subtle, #e2e8f0)', cursor: 'pointer' }}
+                        title="Bấm để xem chi tiết mức lương hợp đồng từng nhân sự"
+                      >
+                        <div style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--text-secondary)' }}>2. Mức lương HĐ trung bình</div>
+                        <div style={{ fontSize: '16px', fontWeight: 700, color: CHART_COLORS.primary, marginTop: '4px', fontFamily: 'monospace' }}>
+                          {formatFullCurrency(demographics?.summary?.avg_basic_salary || 0)}
+                        </div>
+                        <div style={{ fontSize: '11.5px', color: 'var(--text-tertiary)', marginTop: '2px' }}>
+                          Biên độ: {formatChartCurrency(demographics?.summary?.min_basic_salary || 0)} → {formatChartCurrency(demographics?.summary?.max_basic_salary || 0)}
+                        </div>
+                      </div>
+
+                      <div
+                        onClick={handleDemographicsOverviewClick}
+                        style={{ padding: '12px 14px', borderRadius: '8px', backgroundColor: 'var(--surface-secondary, #f8fafc)', border: '1px solid var(--border-subtle, #e2e8f0)', cursor: 'pointer' }}
+                        title="Bấm để xem chi tiết thâm niên từng nhân sự"
+                      >
+                        <div style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--text-secondary)' }}>3. Thâm niên công tác trung bình</div>
+                        <div style={{ fontSize: '16px', fontWeight: 700, color: '#059669', marginTop: '4px' }}>
+                          {demographics?.summary?.avg_seniority_years || 0} năm
+                        </div>
+                        <div style={{ fontSize: '11.5px', color: 'var(--text-tertiary)', marginTop: '2px' }}>
+                          Nhóm chủ đạo: <strong style={{ color: 'var(--text-primary)' }}>{demographics?.summary?.top_seniority_group || '—'}</strong>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="charts-grid-2">
+                    {/* Biểu đồ 1: AreaChart Biến động quân số */}
+                    <div className="chart-card">
+                      <div className="chart-card-header">
+                        <div>
+                          <h3 className="chart-card-title">Xu hướng biến động quân số hệ thống</h3>
+                          <p className="chart-card-desc">Lịch sử tiếp nhận tuyển mới và số lượng nhân sự qua các tháng (Bấm vào để xem chi tiết)</p>
+                        </div>
+                      </div>
+                      <div className="chart-container-wrapper">
+                        {headcountTrend.length === 0 ? (
+                          <div className="chart-empty-state">Chưa có dữ liệu lịch sử quân số</div>
+                        ) : (
+                          <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart
+                              data={headcountTrend}
+                              margin={{ top: 10, right: 20, left: -10, bottom: 0 }}
+                              onClick={handleHeadcountTrendClick}
                               style={{ cursor: 'pointer' }}
-                              title="Bấm vào để xem danh sách chấm công của cơ sở này"
                             >
-                              <td style={{ textAlign: 'center' }}>{idx + 1}</td>
-                              <td style={{ fontWeight: 600 }}>
-                                <span style={{ textDecoration: 'underline', textDecorationStyle: 'dotted' }}>{store.store_name}</span>
-                              </td>
-                              <td style={{ textAlign: 'center' }}>{store.active_staff || 0} NS</td>
-                              <td style={{ textAlign: 'center' }}>
-                                <span className={`badge ${badgeColor}`} style={{ fontSize: '11px' }}>
-                                  {stats.totalRecords > 0 ? `${stats.onTimeRate.toFixed(1)}%` : '---'}
-                                </span>
-                              </td>
-                              <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>
-                                {stats.workingHours.toLocaleString('vi-VN')}h
-                              </td>
-                              <td style={{ textAlign: 'right', fontFamily: 'monospace', color: stats.otHours > 0 ? CHART_COLORS.warning : 'inherit', fontWeight: stats.otHours > 0 ? 600 : 400 }}>
-                                {stats.otHours.toLocaleString('vi-VN')}h
-                              </td>
-                              <td style={{ textAlign: 'center' }}>
-                                <span className="badge badge-info" style={{ fontSize: '11px' }}>
-                                  {stats.leaveRequests} đơn
-                                </span>
+                              <defs>
+                                <linearGradient id="colorHired" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="5%" stopColor={CHART_COLORS.primary} stopOpacity={0.4} />
+                                  <stop offset="95%" stopColor={CHART_COLORS.primary} stopOpacity={0} />
+                                </linearGradient>
+                                <linearGradient id="colorActive" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="5%" stopColor={CHART_COLORS.success} stopOpacity={0.3} />
+                                  <stop offset="95%" stopColor={CHART_COLORS.success} stopOpacity={0} />
+                                </linearGradient>
+                              </defs>
+                              <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle, #f1f5f9)" />
+                              <XAxis dataKey="month" stroke="var(--text-tertiary)" fontSize={11} />
+                              <YAxis stroke="var(--text-tertiary)" fontSize={11} allowDecimals={false} />
+                              <Tooltip content={<CustomChartTooltip />} />
+                              <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
+                              <Area
+                                type="monotone"
+                                dataKey="active_total"
+                                name="Quân số tích luỹ"
+                                stroke={CHART_COLORS.success}
+                                fillOpacity={1}
+                                fill="url(#colorActive)"
+                                isAnimationActive={isChartAnimated}
+                              />
+                              <Area
+                                type="monotone"
+                                dataKey="hired"
+                                name="Tuyển mới"
+                                stroke={CHART_COLORS.primary}
+                                fillOpacity={1}
+                                fill="url(#colorHired)"
+                                isAnimationActive={isChartAnimated}
+                              />
+                            </AreaChart>
+                          </ResponsiveContainer>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Biểu đồ 2: BarChart Học vấn */}
+                    <div className="chart-card">
+                      <div className="chart-card-header">
+                        <div>
+                          <h3 className="chart-card-title">Cơ cấu trình độ học vấn</h3>
+                          <p className="chart-card-desc">Tỷ lệ bằng cấp của đội ngũ nhân viên đang công tác</p>
+                        </div>
+                      </div>
+                      <div className="chart-container-wrapper">
+                        {!demographics?.education || demographics.education.length === 0 ? (
+                          <div className="chart-empty-state">Chưa ghi nhận dữ liệu học vấn</div>
+                        ) : (
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart
+                              data={demographics.education}
+                              margin={{ top: 10, right: 20, left: -10, bottom: 0 }}
+                            >
+                              <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle, #f1f5f9)" />
+                              <XAxis dataKey="education_level" stroke="var(--text-tertiary)" fontSize={11} />
+                              <YAxis stroke="var(--text-tertiary)" fontSize={11} allowDecimals={false} />
+                              <Tooltip content={<CustomChartTooltip />} />
+                              <Bar
+                                dataKey="total"
+                                name="Số nhân sự"
+                                radius={[4, 4, 0, 0]}
+                                onClick={(entry) => handleEducationBarClick(entry)}
+                                style={{ cursor: 'pointer' }}
+                                isAnimationActive={isChartAnimated}
+                              >
+                                {demographics.education.map((_, index) => (
+                                  <Cell key={`edu-cell-${index}`} fill={PALETTE_CATEGORIES[index % PALETTE_CATEGORIES.length]} />
+                                ))}
+                              </Bar>
+                            </BarChart>
+                          </ResponsiveContainer>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Biểu đồ 3: BarChart Ngang Mức lương hợp đồng */}
+                    <div className="chart-card">
+                      <div className="chart-card-header">
+                        <div>
+                          <h3 className="chart-card-title">Phân khúc mức lương thỏa thuận theo HĐ</h3>
+                          <p className="chart-card-desc">Thống kê mức lương cơ bản ghi nhận trên hợp đồng lao động</p>
+                        </div>
+                      </div>
+                      <div className="chart-container-wrapper">
+                        {!demographics?.salary_range || demographics.salary_range.length === 0 ? (
+                          <div className="chart-empty-state">Chưa có thông tin hợp đồng</div>
+                        ) : (
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart
+                              layout="vertical"
+                              data={demographics.salary_range}
+                              margin={{ top: 10, right: 30, left: 30, bottom: 0 }}
+                            >
+                              <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle, #f1f5f9)" />
+                              <XAxis type="number" stroke="var(--text-tertiary)" fontSize={11} allowDecimals={false} />
+                              <YAxis dataKey="salary_range" type="category" stroke="var(--text-tertiary)" fontSize={11} />
+                              <Tooltip content={<CustomChartTooltip />} />
+                              <Bar
+                                dataKey="total"
+                                name="Số lượng"
+                                fill={CHART_COLORS.indigo}
+                                radius={[0, 4, 4, 0]}
+                                onClick={(entry) => handleSalaryBarClick(entry)}
+                                style={{ cursor: 'pointer' }}
+                                isAnimationActive={isChartAnimated}
+                              />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Biểu đồ 4: PieChart Thâm niên công tác */}
+                    <div className="chart-card">
+                      <div className="chart-card-header">
+                        <div>
+                          <h3 className="chart-card-title">Thâm niên gắn bó với TechZone</h3>
+                          <p className="chart-card-desc">Phân bố nhân sự theo khoảng thời gian làm việc thực tế</p>
+                        </div>
+                      </div>
+                      <div className="chart-container-wrapper">
+                        {!demographics?.seniority || demographics.seniority.length === 0 ? (
+                          <div className="chart-empty-state">Chưa có dữ liệu thâm niên</div>
+                        ) : (
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                              <Pie
+                                data={demographics.seniority}
+                                dataKey="total"
+                                nameKey="seniority_group"
+                                cx="50%"
+                                cy="50%"
+                                innerRadius={55}
+                                outerRadius={85}
+                                paddingAngle={4}
+                                label={({ name, percent }: any) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
+                                labelLine={false}
+                                onClick={(entry) => handleSeniorityPieClick(entry)}
+                                style={{ cursor: 'pointer' }}
+                                isAnimationActive={isChartAnimated}
+                              >
+                                {demographics.seniority.map((_, index) => (
+                                  <Cell key={`sen-cell-${index}`} fill={PALETTE_CATEGORIES[index % PALETTE_CATEGORIES.length]} />
+                                ))}
+                              </Pie>
+                              <Tooltip content={<CustomChartTooltip />} />
+                              <Legend wrapperStyle={{ fontSize: '12px' }} />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bảng phân bổ cơ sở */}
+                  <div className="card">
+                    <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <h3 className="card-title">Chi tiết phân bổ nhân lực & quỹ lương theo Chi nhánh / Phòng ban</h3>
+                        <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                          Đối soát quân số: Tổng biên chế = Chính thức + Thử việc + Nghỉ phép + Nghỉ việc (Bấm vào từng cơ sở để xem danh sách)
+                        </p>
+                      </div>
+                      <span className="badge badge-info" style={{ fontSize: '12px' }}>
+                        {monthlyStatusList.length} Cơ sở hoạt động
+                      </span>
+                    </div>
+                    <div className="table-responsive">
+                      <table className="table data-table">
+                        <thead>
+                          <tr>
+                            <th>Cơ sở / Đơn vị</th>
+                            <th style={{ textAlign: 'center' }}>Tổng biên chế</th>
+                            <th style={{ textAlign: 'center' }}>Chính thức</th>
+                            <th style={{ textAlign: 'center' }}>Thử việc</th>
+                            <th style={{ textAlign: 'center' }}>Nghỉ phép</th>
+                            <th style={{ textAlign: 'center' }}>Nghỉ việc</th>
+                            <th style={{ textAlign: 'right' }}>Quỹ lương cơ bản HĐ</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {monthlyStatusList.length === 0 ? (
+                            <tr>
+                              <td colSpan={7} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)' }}>
+                                Chưa có dữ liệu cơ sở
                               </td>
                             </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
+                          ) : (
+                            monthlyStatusList.map((s) => (
+                              <tr
+                                key={s.store_id}
+                                onClick={() => handleStoreRowClick(s)}
+                                style={{ cursor: 'pointer' }}
+                                title="Bấm vào để xem danh sách nhân sự cơ sở này"
+                              >
+                                <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
+                                  <span style={{ textDecoration: 'underline', textDecorationStyle: 'dotted' }}>{s.store_name}</span>
+                                </td>
+                                <td style={{ textAlign: 'center', fontWeight: 700 }}>{s.total_staff}</td>
+                                <td style={{ textAlign: 'center', color: 'var(--status-success)', fontWeight: 600 }}>{s.active_staff}</td>
+                                <td style={{ textAlign: 'center', color: 'var(--status-info, #2563eb)' }}>{s.probation_staff || 0}</td>
+                                <td style={{ textAlign: 'center', color: 'var(--status-warning)' }}>{s.on_leave_staff || 0}</td>
+                                <td style={{ textAlign: 'center', color: s.resigned_staff ? 'var(--status-danger)' : 'var(--text-tertiary)', fontWeight: s.resigned_staff ? 600 : 400 }}>{s.resigned_staff || 0}</td>
+                                <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 600 }}>
+                                  {formatFullCurrency(s.total_contract_salary || 0)}
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                        {monthlyStatusList.length > 0 && (
+                          <tfoot>
+                            <tr style={{ backgroundColor: 'var(--surface-secondary, #f8fafc)', fontWeight: 700 }}>
+                              <td>TỔNG CỘNG TOÀN HỆ THỐNG</td>
+                              <td style={{ textAlign: 'center' }}>
+                                {monthlyStatusList.reduce((acc, s) => acc + (s.total_staff || 0), 0)}
+                              </td>
+                              <td style={{ textAlign: 'center', color: 'var(--status-success)' }}>
+                                {monthlyStatusList.reduce((acc, s) => acc + (s.active_staff || 0), 0)}
+                              </td>
+                              <td style={{ textAlign: 'center', color: 'var(--status-info, #2563eb)' }}>
+                                {monthlyStatusList.reduce((acc, s) => acc + (s.probation_staff || 0), 0)}
+                              </td>
+                              <td style={{ textAlign: 'center', color: 'var(--status-warning)' }}>
+                                {monthlyStatusList.reduce((acc, s) => acc + (s.on_leave_staff || 0), 0)}
+                              </td>
+                              <td style={{ textAlign: 'center', color: 'var(--status-danger)' }}>
+                                {monthlyStatusList.reduce((acc, s) => acc + (s.resigned_staff || 0), 0)}
+                              </td>
+                              <td style={{ textAlign: 'right', fontFamily: 'monospace', color: CHART_COLORS.primary }}>
+                                {formatFullCurrency(monthlyStatusList.reduce((acc, s) => acc + (s.total_contract_salary || 0), 0))}
+                              </td>
+                            </tr>
+                          </tfoot>
+                        )}
+                      </table>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </div>
-          )}
+              )}
 
-          {/* ========================================================================= */}
-          {/* TAB 4: THỐNG KÊ MA TRẬN ĐA CHIỀU THEO THỜI GIAN & ĐỐI TƯỢNG (MATRIX)     */}
-          {/* ========================================================================= */}
-          {activeTab === 'matrix' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              <div className="matrix-report-card">
-                {/* Toolbar điều khiển ma trận */}
-                <div className="matrix-toolbar">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>Năm thống kê:</span>
-                      <select
-                        className="form-select"
-                        style={{ width: 'auto' }}
-                        value={matrixYear}
-                        onChange={(e) => setMatrixYear(Number(e.target.value))}
-                      >
-                        <option value={2026}>Năm 2026</option>
-                        <option value={2025}>Năm 2025</option>
-                        <option value={2024}>Năm 2024</option>
-                      </select>
-                    </div>
-
-                    <div className="matrix-view-toggle">
-                      <button
-                        type="button"
-                        className={`matrix-view-btn ${matrixViewMode === 'payroll' ? 'active' : ''}`}
-                        onClick={() => setMatrixViewMode('payroll')}
-                      >
-                        <DollarSign size={14} />
-                        Bảng 1: Quỹ lương theo Quý
-                      </button>
-                      <button
-                        type="button"
-                        className={`matrix-view-btn ${matrixViewMode === 'store' ? 'active' : ''}`}
-                        onClick={() => setMatrixViewMode('store')}
-                      >
-                        <Building2 size={14} />
-                        Bảng 2: Theo Chi nhánh
-                      </button>
-                      <button
-                        type="button"
-                        className={`matrix-view-btn ${matrixViewMode === 'employee' ? 'active' : ''}`}
-                        onClick={() => setMatrixViewMode('employee')}
-                      >
-                        <UserIcon size={14} />
-                        Bảng 3: Theo Nhân viên
-                      </button>
-                    </div>
-                  </div>
-
-                  <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span>💡 Nhấp vào ô hoặc nút</span>
-                    <span className="btn btn-icon btn-sm btn-secondary" style={{ width: '22px', height: '22px', padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Eye size={12} />
-                    </span>
-                    <span>để xem chi tiết 1-N ở Subform bên cạnh</span>
-                  </div>
-                </div>
-
-                {/* Nội dung bảng ma trận */}
-                <div className="matrix-table-container">
-                  {isLoadingMatrix ? (
-                    <div style={{ textAlign: 'center', padding: '48px', color: 'var(--text-secondary)' }}>
-                      <div className="spinner" style={{ margin: '0 auto 12px auto' }} />
-                      <span>Đang tính toán số liệu ma trận 4 Quý năm {matrixYear}...</span>
-                    </div>
-                  ) : matrixViewMode === 'payroll' ? (
-                    /* ------------------------------------------------------------- */
-                    /* BẢNG 1: MA TRẬN QUỸ LƯƠNG & CHI PHÍ THEO QUÝ VÀ NĂM          */
-                    /* ------------------------------------------------------------- */
-                    <table className="matrix-table">
-                      <thead>
-                        <tr>
-                          <th style={{ textAlign: 'left', minWidth: '260px' }}>Chỉ số chi phí lương (Năm {matrixYear})</th>
-                          <th style={{ textAlign: 'right', minWidth: '130px' }}>Quý 1</th>
-                          <th style={{ textAlign: 'right', minWidth: '130px' }}>Quý 2</th>
-                          <th style={{ textAlign: 'right', minWidth: '130px' }}>Quý 3</th>
-                          <th style={{ textAlign: 'right', minWidth: '130px' }}>Quý 4</th>
-                          <th style={{ textAlign: 'right', minWidth: '150px', background: 'var(--status-info-bg)' }}>CẢ NĂM {matrixYear}</th>
-                          <th style={{ textAlign: 'center', width: '80px' }}>Subform</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(!matrixPayroll?.indicators || matrixPayroll.indicators.length === 0) ? (
-                          <tr>
-                            <td colSpan={7} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-tertiary)' }}>
-                              Chưa có dữ liệu chi phí lương năm {matrixYear}
-                            </td>
-                          </tr>
+              {/* ========================================================================= */}
+              {/* TAB 2: CHI PHÍ & QUỸ LƯƠNG */}
+              {/* ========================================================================= */}
+              {activeTab === 'payroll' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  <div className="charts-grid-2">
+                    {/* Biểu đồ 1: ComposedChart Xu hướng quỹ lương */}
+                    <div className="chart-card">
+                      <div className="chart-card-header">
+                        <div>
+                          <h3 className="chart-card-title">Biến động quỹ chi trả tiền lương qua các kỳ</h3>
+                          <p className="chart-card-desc">So sánh tổng thu nhập Gross, thực nhận Net và chi phí bảo hiểm (Bấm vào cột tháng để xem bảng lương)</p>
+                        </div>
+                      </div>
+                      <div className="chart-container-wrapper">
+                        {payrollTrend.length === 0 ? (
+                          <div className="chart-empty-state">Chưa có lịch sử bảng lương</div>
                         ) : (
-                          matrixPayroll.indicators.map((ind: any, idx: number) => {
-                            const isCount = ind.is_count
-                            const fmt = (v: number) => isCount ? `${v} NS` : formatFullCurrency(v || 0)
-                            const rowClass = ind.is_highlight ? 'matrix-row-highlight' : ind.is_header ? 'matrix-row-header' : ind.is_sub ? 'matrix-row-sub' : ''
-                            
-                            return (
-                              <tr key={ind.code || idx} className={rowClass}>
-                                <td style={{ fontWeight: ind.is_highlight || ind.is_header ? 700 : 500 }}>
-                                  {ind.name}
-                                </td>
-                                <td
-                                  className="matrix-cell-interactive"
-                                  style={{ textAlign: 'right', fontFamily: 'monospace' }}
-                                  title="Nhấp để xem chi tiết chứng từ Quý 1 ở Subform"
-                                  onClick={() => openSubform({
-                                    title: `Chi tiết bảng lương Quý 1/${matrixYear}`,
-                                    subtitle: ind.name + ` - ${fmt(ind.q1)}`,
-                                    tag: 'Quý 1',
-                                    columns: PAYROLL_DRILLDOWN_COLUMNS,
-                                    data: matrixPayroll.quarter_details?.Q1 || [],
-                                    filterFields: PAYROLL_FILTER_FIELDS,
-                                  })}
+                          <ResponsiveContainer width="100%" height="100%">
+                            <ComposedChart
+                              data={payrollTrend}
+                              margin={{ top: 10, right: 20, left: 10, bottom: 0 }}
+                              onClick={handlePayrollTrendClick}
+                              style={{ cursor: 'pointer' }}
+                            >
+                              <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle, #f1f5f9)" />
+                              <XAxis dataKey="period" stroke="var(--text-tertiary)" fontSize={11} />
+                              <YAxis
+                                stroke="var(--text-tertiary)"
+                                fontSize={11}
+                                tickFormatter={(v) => formatChartCurrency(v)}
+                              />
+                              <Tooltip
+                                content={
+                                  <CustomChartTooltip
+                                    formatter={(val) => (typeof val === 'number' ? formatFullCurrency(val) : val)}
+                                  />
+                                }
+                              />
+                              <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
+                              <Bar
+                                dataKey="gross_total"
+                                name="Tổng Gross"
+                                fill={CHART_COLORS.primaryLight}
+                                radius={[4, 4, 0, 0]}
+                                isAnimationActive={isChartAnimated}
+                                onClick={(entry) => handlePayrollTrendClick(entry)}
+                                style={{ cursor: 'pointer' }}
+                              />
+                              <Bar
+                                dataKey="net_total"
+                                name="Thực chi Net"
+                                fill={CHART_COLORS.navy}
+                                radius={[4, 4, 0, 0]}
+                                isAnimationActive={isChartAnimated}
+                                onClick={(entry) => handlePayrollTrendClick(entry)}
+                                style={{ cursor: 'pointer' }}
+                              />
+                              <Line
+                                type="monotone"
+                                dataKey="insurance_total"
+                                name="Trích nộp BHXH"
+                                stroke={CHART_COLORS.error}
+                                strokeWidth={2}
+                                isAnimationActive={isChartAnimated}
+                              />
+                            </ComposedChart>
+                          </ResponsiveContainer>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Biểu đồ 2: PieChart Cơ cấu quỹ lương kỳ hiện tại */}
+                    <div className="chart-card">
+                      <div className="chart-card-header">
+                        <div>
+                          <h3 className="chart-card-title">Cơ cấu quỹ lương tháng {period}</h3>
+                          <p className="chart-card-desc">Tỷ trọng các cấu phần thu nhập, phụ cấp, thưởng và trích nộp (Bấm vào để xem chi tiết)</p>
+                        </div>
+                      </div>
+                      <div className="chart-container-wrapper">
+                        {payrollBreakdownData.length === 0 ? (
+                          <div className="chart-empty-state">Kỳ lương này chưa phát sinh dữ liệu chi trả</div>
+                        ) : (
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                              <Pie
+                                data={payrollBreakdownData}
+                                dataKey="value"
+                                nameKey="name"
+                                cx="50%"
+                                cy="50%"
+                                innerRadius={55}
+                                outerRadius={85}
+                                paddingAngle={3}
+                                label={({ name, percent }: any) => `${name}: ${((percent || 0) * 100).toFixed(1)}%`}
+                                labelLine={false}
+                                isAnimationActive={isChartAnimated}
+                                onClick={(entry) => handlePayrollBreakdownClick(entry)}
+                                style={{ cursor: 'pointer' }}
+                              >
+                                {payrollBreakdownData.map((entry, index) => (
+                                  <Cell key={`pay-breakdown-${index}`} fill={entry.color} />
+                                ))}
+                              </Pie>
+                              <Tooltip
+                                content={
+                                  <CustomChartTooltip
+                                    formatter={(val) => (typeof val === 'number' ? formatFullCurrency(val) : val)}
+                                  />
+                                }
+                              />
+                              <Legend wrapperStyle={{ fontSize: '11.5px' }} />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bảng phân tích chi phí lương */}
+                  <div className="card">
+                    <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <h3 className="card-title">Bảng tổng hợp thanh toán & đối soát lương tháng {period}</h3>
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={async () => {
+                          try {
+                            toast.info('Đang tải file Excel quỹ lương...')
+                            const blob = await reportApi.exportPayrollSummaryExcel(period)
+                            triggerBlobDownload(blob, `Quy_luong_TechZone_${period}.xlsx`)
+                            toast.success('Đã tải file Excel quỹ lương!')
+                          } catch (err: any) {
+                            toast.error(err.message || 'Lỗi tải file')
+                          }
+                        }}
+                      >
+                        Tải bảng lương Excel
+                      </button>
+                    </div>
+                    <div className="card-body">
+                      <div className="stat-grid-4">
+                        <div className="stat-card" style={{ padding: '12px' }}>
+                          <span className="stat-card-label">Tổng thu nhập Gross</span>
+                          <div className="stat-card-value" style={{ fontSize: '18px', color: CHART_COLORS.primary }}>
+                            {formatFullCurrency(payrollFund?.total_gross_income || 0)}
+                          </div>
+                        </div>
+                        <div className="stat-card" style={{ padding: '12px' }}>
+                          <span className="stat-card-label">Tổng trích nộp BHXH</span>
+                          <div className="stat-card-value" style={{ fontSize: '18px', color: CHART_COLORS.error }}>
+                            {formatFullCurrency(payrollFund?.total_insurance_deducted || 0)}
+                          </div>
+                        </div>
+                        <div className="stat-card" style={{ padding: '12px' }}>
+                          <span className="stat-card-label">Thuế TNCN khấu trừ</span>
+                          <div className="stat-card-value" style={{ fontSize: '18px', color: CHART_COLORS.purple }}>
+                            {formatFullCurrency(payrollFund?.total_tax_deducted || 0)}
+                          </div>
+                        </div>
+                        <div className="stat-card" style={{ padding: '12px' }}>
+                          <span className="stat-card-label">Thực trả nhân viên (Net)</span>
+                          <div className="stat-card-value" style={{ fontSize: '18px', color: CHART_COLORS.success }}>
+                            {formatFullCurrency(payrollFund?.total_net_salary || 0)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ========================================================================= */}
+              {/* TAB 3: CHẤM CÔNG & NGHỈ PHÉP */}
+              {/* ========================================================================= */}
+              {activeTab === 'attendance' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  <div className="charts-grid-2">
+                    {/* Biểu đồ 1: Pie Tỷ lệ chuyên cần */}
+                    <div className="chart-card">
+                      <div className="chart-card-header">
+                        <div>
+                          <h3 className="chart-card-title">Tỷ lệ trạng thái chấm công tháng {period}</h3>
+                          <p className="chart-card-desc">Cơ cấu chuyên cần: Đúng giờ, Đi muộn, Về sớm, Nghỉ phép</p>
+                        </div>
+                      </div>
+                      <div className="chart-container-wrapper">
+                        {attendancePieData.length === 0 ? (
+                          <div className="chart-empty-state">Chưa có dữ liệu chấm công kỳ này</div>
+                        ) : (
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                              <Pie
+                                data={attendancePieData}
+                                dataKey="value"
+                                nameKey="name"
+                                cx="50%"
+                                cy="50%"
+                                innerRadius={50}
+                                outerRadius={85}
+                                paddingAngle={3}
+                                label={({ name, percent }: any) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
+                                labelLine={false}
+                                isAnimationActive={isChartAnimated}
+                                onClick={(entry) => handleAttendancePieClick(entry)}
+                                style={{ cursor: 'pointer' }}
+                              >
+                                {attendancePieData.map((entry, index) => (
+                                  <Cell key={`att-cell-${index}`} fill={entry.color} />
+                                ))}
+                              </Pie>
+                              <Tooltip
+                                content={
+                                  <CustomChartTooltip
+                                    formatter={(val: any) => `${val} lượt chấm công`}
+                                  />
+                                }
+                              />
+                              <Legend wrapperStyle={{ fontSize: '12px' }} />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Biểu đồ 2: Cơ cấu loại đơn nghỉ phép */}
+                    <div className="chart-card">
+                      <div className="chart-card-header">
+                        <div>
+                          <h3 className="chart-card-title">Cơ cấu loại nghỉ phép (Số ngày nghỉ)</h3>
+                          <p className="chart-card-desc">Phân loại ngày nghỉ: Phép năm, Nghỉ ốm, Thai sản, Việc riêng (Bấm vào để xem chi tiết)</p>
+                        </div>
+                      </div>
+                      <div className="chart-container-wrapper">
+                        {leavePieData.length === 0 ? (
+                          <div className="chart-empty-state">Không có đơn xin nghỉ phép trong kỳ</div>
+                        ) : (
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                              <Pie
+                                data={leavePieData}
+                                dataKey="value"
+                                nameKey="name"
+                                cx="50%"
+                                cy="50%"
+                                innerRadius={50}
+                                outerRadius={85}
+                                paddingAngle={3}
+                                label={({ name, value }: any) => `${name}: ${value} ngày`}
+                                labelLine={false}
+                                isAnimationActive={isChartAnimated}
+                                onClick={(entry) => handleLeavePieClick(entry)}
+                                style={{ cursor: 'pointer' }}
+                              >
+                                {leavePieData.map((entry, index) => (
+                                  <Cell key={`leave-cell-${index}`} fill={entry.color} />
+                                ))}
+                              </Pie>
+                              <Tooltip
+                                content={
+                                  <CustomChartTooltip
+                                    formatter={(val: any, _name?: string, item?: any) => `${val} ngày nghỉ (${item?.payload?.count || 1} đơn)`}
+                                  />
+                                }
+                              />
+                              <Legend wrapperStyle={{ fontSize: '12px' }} />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Thẻ tóm tắt chỉ số Chuyên cần & Nghỉ phép */}
+                  <div className="card">
+                    <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <h3 className="card-title">Chỉ số vận hành chuyên cần & Kỷ luật lao động tháng {period}</h3>
+                        <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                          Tổng hợp giờ công, làm thêm OT và tình hình giải quyết chế độ nghỉ phép toàn chuỗi cửa hàng
+                        </p>
+                      </div>
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={handleExportOverviewExcel}
+                        disabled={isExportingExcel}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                          <polyline points="7 10 12 15 17 10" />
+                          <line x1="12" y1="15" x2="12" y2="3" />
+                        </svg>
+                        {isExportingExcel ? 'Đang xuất...' : 'Xuất Excel Chấm công & Phép'}
+                      </button>
+                    </div>
+                    <div className="card-body">
+                      <div className="stat-grid-4">
+                        <div className="stat-card" style={{ padding: '12px' }}>
+                          <span className="stat-card-label">Tổng lượt chấm công</span>
+                          <div className="stat-card-value" style={{ fontSize: '18px' }}>
+                            {attendanceSummary?.total_records || 0} lượt
+                          </div>
+                        </div>
+                        <div className="stat-card" style={{ padding: '12px' }}>
+                          <span className="stat-card-label">Tỷ lệ đúng giờ tiêu chuẩn</span>
+                          <div className="stat-card-value" style={{ fontSize: '18px', color: CHART_COLORS.success }}>
+                            {attendanceSummary?.on_time_rate ? `${attendanceSummary.on_time_rate.toFixed(1)}%` : '0%'}
+                          </div>
+                        </div>
+                        <div className="stat-card" style={{ padding: '12px' }}>
+                          <span className="stat-card-label">Tổng giờ làm việc & OT</span>
+                          <div className="stat-card-value" style={{ fontSize: '18px', color: CHART_COLORS.primary }}>
+                            {attendanceSummary?.total_working_hours || 0}h <span style={{ fontSize: '12px', color: CHART_COLORS.warning }}>(OT: {attendanceSummary?.total_ot_hours || 0}h)</span>
+                          </div>
+                        </div>
+                        <div className="stat-card" style={{ padding: '12px' }}>
+                          <span className="stat-card-label">Tổng số đơn nghỉ phép</span>
+                          <div className="stat-card-value" style={{ fontSize: '18px', color: CHART_COLORS.indigo }}>
+                            {leaveSummary?.total_requests || 0} đơn
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Bảng chi tiết chuyên cần theo điểm bán */}
+                      <div style={{ marginTop: '20px', overflowX: 'auto' }}>
+                        <table className="table" style={{ width: '100%', fontSize: '13px' }}>
+                          <thead>
+                            <tr>
+                              <th style={{ width: '50px', textAlign: 'center' }}>STT</th>
+                              <th>Điểm bán / Cơ sở</th>
+                              <th style={{ textAlign: 'center' }}>Quân số</th>
+                              <th style={{ textAlign: 'center' }}>Đúng giờ</th>
+                              <th style={{ textAlign: 'right' }}>Giờ làm thực tế</th>
+                              <th style={{ textAlign: 'right' }}>Giờ tăng ca (OT)</th>
+                              <th style={{ textAlign: 'center' }}>Đơn nghỉ phép</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {monthlyStatusList.map((store, idx) => {
+                              const stats = getStoreAttendanceStats(store)
+                              const badgeColor = stats.totalRecords === 0
+                                ? 'badge-secondary'
+                                : stats.onTimeRate >= 90
+                                  ? 'badge-success'
+                                  : stats.onTimeRate >= 75
+                                    ? 'badge-warning'
+                                    : 'badge-danger'
+
+                              return (
+                                <tr
+                                  key={store.store_id || idx}
+                                  onClick={() => handleStoreAttendanceRowClick(store)}
+                                  style={{ cursor: 'pointer' }}
+                                  title="Bấm vào để xem danh sách chấm công của cơ sở này"
                                 >
-                                  {fmt(ind.q1)}
-                                </td>
-                                <td
-                                  className="matrix-cell-interactive"
-                                  style={{ textAlign: 'right', fontFamily: 'monospace' }}
-                                  title="Nhấp để xem chi tiết chứng từ Quý 2 ở Subform"
-                                  onClick={() => openSubform({
-                                    title: `Chi tiết bảng lương Quý 2/${matrixYear}`,
-                                    subtitle: ind.name + ` - ${fmt(ind.q2)}`,
-                                    tag: 'Quý 2',
-                                    columns: PAYROLL_DRILLDOWN_COLUMNS,
-                                    data: matrixPayroll.quarter_details?.Q2 || [],
-                                    filterFields: PAYROLL_FILTER_FIELDS,
-                                  })}
-                                >
-                                  {fmt(ind.q2)}
-                                </td>
-                                <td
-                                  className="matrix-cell-interactive"
-                                  style={{ textAlign: 'right', fontFamily: 'monospace' }}
-                                  title="Nhấp để xem chi tiết chứng từ Quý 3 ở Subform"
-                                  onClick={() => openSubform({
-                                    title: `Chi tiết bảng lương Quý 3/${matrixYear}`,
-                                    subtitle: ind.name + ` - ${fmt(ind.q3)}`,
-                                    tag: 'Quý 3',
-                                    columns: PAYROLL_DRILLDOWN_COLUMNS,
-                                    data: matrixPayroll.quarter_details?.Q3 || [],
-                                    filterFields: PAYROLL_FILTER_FIELDS,
-                                  })}
-                                >
-                                  {fmt(ind.q3)}
-                                </td>
-                                <td
-                                  className="matrix-cell-interactive"
-                                  style={{ textAlign: 'right', fontFamily: 'monospace' }}
-                                  title="Nhấp để xem chi tiết chứng từ Quý 4 ở Subform"
-                                  onClick={() => openSubform({
-                                    title: `Chi tiết bảng lương Quý 4/${matrixYear}`,
-                                    subtitle: ind.name + ` - ${fmt(ind.q4)}`,
-                                    tag: 'Quý 4',
-                                    columns: PAYROLL_DRILLDOWN_COLUMNS,
-                                    data: matrixPayroll.quarter_details?.Q4 || [],
-                                    filterFields: PAYROLL_FILTER_FIELDS,
-                                  })}
-                                >
-                                  {fmt(ind.q4)}
-                                </td>
-                                <td
-                                  className="matrix-cell-interactive"
-                                  style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 800, background: 'var(--status-info-bg)' }}
-                                  title="Nhấp để xem toàn bộ chứng từ cả năm ở Subform"
-                                  onClick={() => openSubform({
-                                    title: `Tổng hợp bảng lương cả năm ${matrixYear}`,
-                                    subtitle: ind.name + ` - ${fmt(ind.total)}`,
-                                    tag: 'Cả năm',
-                                    columns: PAYROLL_DRILLDOWN_COLUMNS,
-                                    data: matrixPayroll.quarter_details?.ALL || [],
-                                    filterFields: PAYROLL_FILTER_FIELDS,
-                                  })}
-                                >
-                                  {fmt(ind.total)}
+                                  <td style={{ textAlign: 'center' }}>{idx + 1}</td>
+                                  <td style={{ fontWeight: 600 }}>
+                                    <span style={{ textDecoration: 'underline', textDecorationStyle: 'dotted' }}>{store.store_name}</span>
+                                  </td>
+                                  <td style={{ textAlign: 'center' }}>{store.working_staff ?? store.active_staff ?? 0} NS</td>
+                                  <td style={{ textAlign: 'center' }}>
+                                    <span className={`badge ${badgeColor}`} style={{ fontSize: '11px' }}>
+                                      {stats.totalRecords > 0 ? `${stats.onTimeRate.toFixed(1)}%` : '---'}
+                                    </span>
+                                  </td>
+                                  <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>
+                                    {stats.workingHours.toLocaleString('vi-VN')}h
+                                  </td>
+                                  <td style={{ textAlign: 'right', fontFamily: 'monospace', color: stats.otHours > 0 ? CHART_COLORS.warning : 'inherit', fontWeight: stats.otHours > 0 ? 600 : 400 }}>
+                                    {stats.otHours.toLocaleString('vi-VN')}h
+                                  </td>
+                                  <td style={{ textAlign: 'center' }}>
+                                    <span className="badge badge-info" style={{ fontSize: '11px' }}>
+                                      {stats.leaveRequests} đơn
+                                    </span>
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                          {monthlyStatusList.length > 0 && (
+                            <tfoot>
+                              <tr style={{ backgroundColor: 'var(--surface-secondary, #f8fafc)', fontWeight: 700 }}>
+                                <td colSpan={2} style={{ textAlign: 'center' }}>TỔNG CỘNG / TRUNG BÌNH HỆ THỐNG</td>
+                                <td style={{ textAlign: 'center' }}>
+                                  {monthlyStatusList.reduce((acc, s) => acc + (s.working_staff ?? s.active_staff ?? 0), 0)} NS
                                 </td>
                                 <td style={{ textAlign: 'center' }}>
-                                  <button
-                                    type="button"
-                                    className="btn btn-icon btn-sm btn-secondary"
-                                    title="Xem chi tiết các kỳ lương này ở subform bên cạnh"
+                                  <span className="badge badge-success" style={{ fontSize: '11px' }}>
+                                    {attendanceSummary?.on_time_rate ? `${attendanceSummary.on_time_rate.toFixed(1)}%` : '0%'}
+                                  </span>
+                                </td>
+                                <td style={{ textAlign: 'right', fontFamily: 'monospace', color: CHART_COLORS.primary }}>
+                                  {(attendanceSummary?.total_working_hours || 0).toLocaleString('vi-VN')}h
+                                </td>
+                                <td style={{ textAlign: 'right', fontFamily: 'monospace', color: CHART_COLORS.warning }}>
+                                  {(attendanceSummary?.total_ot_hours || 0).toLocaleString('vi-VN')}h
+                                </td>
+                                <td style={{ textAlign: 'center' }}>
+                                  <span className="badge badge-info" style={{ fontSize: '11px' }}>
+                                    {leaveSummary?.total_requests || 0} đơn
+                                  </span>
+                                </td>
+                              </tr>
+                            </tfoot>
+                          )}
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ========================================================================= */}
+              {/* TAB 4: THỐNG KÊ MA TRẬN ĐA CHIỀU THEO THỜI GIAN & ĐỐI TƯỢNG (MATRIX)     */}
+              {/* ========================================================================= */}
+              {activeTab === 'matrix' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  <div className="matrix-report-card">
+                    {/* Toolbar điều khiển ma trận */}
+                    <div className="matrix-toolbar">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>Năm thống kê:</span>
+                          <select
+                            className="form-select"
+                            style={{ width: 'auto' }}
+                            value={matrixYear}
+                            onChange={(e) => setMatrixYear(Number(e.target.value))}
+                          >
+                            <option value={2026}>Năm 2026</option>
+                            <option value={2025}>Năm 2025</option>
+                            <option value={2024}>Năm 2024</option>
+                          </select>
+                        </div>
+
+                        <div className="matrix-view-toggle">
+                          <button
+                            type="button"
+                            className={`matrix-view-btn ${matrixViewMode === 'payroll' ? 'active' : ''}`}
+                            onClick={() => setMatrixViewMode('payroll')}
+                          >
+                            <DollarSign size={14} />
+                            Bảng 1: Quỹ lương theo Quý
+                          </button>
+                          <button
+                            type="button"
+                            className={`matrix-view-btn ${matrixViewMode === 'store' ? 'active' : ''}`}
+                            onClick={() => setMatrixViewMode('store')}
+                          >
+                            <Building2 size={14} />
+                            Bảng 2: Theo Chi nhánh
+                          </button>
+                          <button
+                            type="button"
+                            className={`matrix-view-btn ${matrixViewMode === 'employee' ? 'active' : ''}`}
+                            onClick={() => setMatrixViewMode('employee')}
+                          >
+                            <UserIcon size={14} />
+                            Bảng 3: Theo Nhân viên
+                          </button>
+                        </div>
+                      </div>
+
+                      <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span>💡 Nhấp vào ô hoặc nút</span>
+                        <span className="btn btn-icon btn-sm btn-secondary" style={{ width: '22px', height: '22px', padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Eye size={12} />
+                        </span>
+                        <span>để xem chi tiết 1-N ở Subform bên cạnh</span>
+                      </div>
+                    </div>
+
+                    {/* Nội dung bảng ma trận */}
+                    <div className="matrix-table-container">
+                      {isLoadingMatrix ? (
+                        <div style={{ textAlign: 'center', padding: '48px', color: 'var(--text-secondary)' }}>
+                          <div className="spinner" style={{ margin: '0 auto 12px auto' }} />
+                          <span>Đang tính toán số liệu ma trận 4 Quý năm {matrixYear}...</span>
+                        </div>
+                      ) : matrixViewMode === 'payroll' ? (
+                        /* ------------------------------------------------------------- */
+                        /* BẢNG 1: MA TRẬN QUỸ LƯƠNG & CHI PHÍ THEO QUÝ VÀ NĂM          */
+                        /* ------------------------------------------------------------- */
+                        <table className="matrix-table">
+                          <thead>
+                            <tr>
+                              <th style={{ textAlign: 'left', minWidth: '260px' }}>Chỉ số chi phí lương (Năm {matrixYear})</th>
+                              <th style={{ textAlign: 'right', minWidth: '130px' }}>Quý 1</th>
+                              <th style={{ textAlign: 'right', minWidth: '130px' }}>Quý 2</th>
+                              <th style={{ textAlign: 'right', minWidth: '130px' }}>Quý 3</th>
+                              <th style={{ textAlign: 'right', minWidth: '130px' }}>Quý 4</th>
+                              <th style={{ textAlign: 'right', minWidth: '150px', background: 'var(--status-info-bg)' }}>CẢ NĂM {matrixYear}</th>
+                              <th style={{ textAlign: 'center', width: '80px' }}>Subform</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(!matrixPayroll?.indicators || matrixPayroll.indicators.length === 0) ? (
+                              <tr>
+                                <td colSpan={7} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-tertiary)' }}>
+                                  Chưa có dữ liệu chi phí lương năm {matrixYear}
+                                </td>
+                              </tr>
+                            ) : (
+                              matrixPayroll.indicators.map((ind: any, idx: number) => {
+                                const isCount = ind.is_count
+                                const fmt = (v: number) => isCount ? `${v} NS` : formatFullCurrency(v || 0)
+                                const rowClass = ind.is_highlight ? 'matrix-row-highlight' : ind.is_header ? 'matrix-row-header' : ind.is_sub ? 'matrix-row-sub' : ''
+
+                                return (
+                                  <tr key={ind.code || idx} className={rowClass}>
+                                    <td style={{ fontWeight: ind.is_highlight || ind.is_header ? 700 : 500 }}>
+                                      {ind.name}
+                                    </td>
+                                    <td
+                                      className="matrix-cell-interactive"
+                                      style={{ textAlign: 'right', fontFamily: 'monospace' }}
+                                      title="Nhấp để xem chi tiết chứng từ Quý 1 ở Subform"
+                                      onClick={() => openSubform({
+                                        title: `Chi tiết bảng lương Quý 1/${matrixYear}`,
+                                        subtitle: ind.name + ` - ${fmt(ind.q1)}`,
+                                        tag: 'Quý 1',
+                                        columns: PAYROLL_DRILLDOWN_COLUMNS,
+                                        data: matrixPayroll.quarter_details?.Q1 || [],
+                                        filterFields: PAYROLL_FILTER_FIELDS,
+                                      })}
+                                    >
+                                      {fmt(ind.q1)}
+                                    </td>
+                                    <td
+                                      className="matrix-cell-interactive"
+                                      style={{ textAlign: 'right', fontFamily: 'monospace' }}
+                                      title="Nhấp để xem chi tiết chứng từ Quý 2 ở Subform"
+                                      onClick={() => openSubform({
+                                        title: `Chi tiết bảng lương Quý 2/${matrixYear}`,
+                                        subtitle: ind.name + ` - ${fmt(ind.q2)}`,
+                                        tag: 'Quý 2',
+                                        columns: PAYROLL_DRILLDOWN_COLUMNS,
+                                        data: matrixPayroll.quarter_details?.Q2 || [],
+                                        filterFields: PAYROLL_FILTER_FIELDS,
+                                      })}
+                                    >
+                                      {fmt(ind.q2)}
+                                    </td>
+                                    <td
+                                      className="matrix-cell-interactive"
+                                      style={{ textAlign: 'right', fontFamily: 'monospace' }}
+                                      title="Nhấp để xem chi tiết chứng từ Quý 3 ở Subform"
+                                      onClick={() => openSubform({
+                                        title: `Chi tiết bảng lương Quý 3/${matrixYear}`,
+                                        subtitle: ind.name + ` - ${fmt(ind.q3)}`,
+                                        tag: 'Quý 3',
+                                        columns: PAYROLL_DRILLDOWN_COLUMNS,
+                                        data: matrixPayroll.quarter_details?.Q3 || [],
+                                        filterFields: PAYROLL_FILTER_FIELDS,
+                                      })}
+                                    >
+                                      {fmt(ind.q3)}
+                                    </td>
+                                    <td
+                                      className="matrix-cell-interactive"
+                                      style={{ textAlign: 'right', fontFamily: 'monospace' }}
+                                      title="Nhấp để xem chi tiết chứng từ Quý 4 ở Subform"
+                                      onClick={() => openSubform({
+                                        title: `Chi tiết bảng lương Quý 4/${matrixYear}`,
+                                        subtitle: ind.name + ` - ${fmt(ind.q4)}`,
+                                        tag: 'Quý 4',
+                                        columns: PAYROLL_DRILLDOWN_COLUMNS,
+                                        data: matrixPayroll.quarter_details?.Q4 || [],
+                                        filterFields: PAYROLL_FILTER_FIELDS,
+                                      })}
+                                    >
+                                      {fmt(ind.q4)}
+                                    </td>
+                                    <td
+                                      className="matrix-cell-interactive"
+                                      style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 800, background: 'var(--status-info-bg)' }}
+                                      title="Nhấp để xem toàn bộ chứng từ cả năm ở Subform"
+                                      onClick={() => openSubform({
+                                        title: `Tổng hợp bảng lương cả năm ${matrixYear}`,
+                                        subtitle: ind.name + ` - ${fmt(ind.total)}`,
+                                        tag: 'Cả năm',
+                                        columns: PAYROLL_DRILLDOWN_COLUMNS,
+                                        data: matrixPayroll.quarter_details?.ALL || [],
+                                        filterFields: PAYROLL_FILTER_FIELDS,
+                                      })}
+                                    >
+                                      {fmt(ind.total)}
+                                    </td>
+                                    <td style={{ textAlign: 'center' }}>
+                                      <button
+                                        type="button"
+                                        className="btn btn-icon btn-sm btn-secondary"
+                                        title="Xem chi tiết các kỳ lương này ở subform bên cạnh"
+                                        onClick={() => openSubform({
+                                          title: `Chi tiết: ${ind.name}`,
+                                          subtitle: `Năm ${matrixYear} - Tổng giá trị: ${fmt(ind.total)}`,
+                                          tag: 'Ma trận',
+                                          columns: PAYROLL_DRILLDOWN_COLUMNS,
+                                          data: matrixPayroll.quarter_details?.ALL || [],
+                                          filterFields: PAYROLL_FILTER_FIELDS,
+                                        })}
+                                      >
+                                        <Eye size={16} />
+                                      </button>
+                                    </td>
+                                  </tr>
+                                )
+                              })
+                            )}
+                          </tbody>
+                        </table>
+                      ) : matrixViewMode === 'store' ? (
+                        /* ------------------------------------------------------------- */
+                        /* BẢNG 2: MA TRẬN CHI PHÍ LƯƠNG THEO CHI NHÁNH & QUÝ           */
+                        /* ------------------------------------------------------------- */
+                        <table className="matrix-table">
+                          <thead>
+                            <tr>
+                              <th style={{ textAlign: 'left', minWidth: '220px' }}>Cơ sở / Chi nhánh</th>
+                              <th style={{ textAlign: 'center', width: '80px' }}>Mã</th>
+                              <th style={{ textAlign: 'right', minWidth: '120px' }}>Quý 1 (Net)</th>
+                              <th style={{ textAlign: 'right', minWidth: '120px' }}>Quý 2 (Net)</th>
+                              <th style={{ textAlign: 'right', minWidth: '120px' }}>Quý 3 (Net)</th>
+                              <th style={{ textAlign: 'right', minWidth: '120px' }}>Quý 4 (Net)</th>
+                              <th style={{ textAlign: 'right', minWidth: '140px', background: 'var(--status-info-bg)' }}>TỔNG NET NĂM</th>
+                              <th style={{ textAlign: 'right', minWidth: '140px' }}>Tổng Gross</th>
+                              <th style={{ textAlign: 'center', width: '90px' }}>Nhân sự</th>
+                              <th style={{ textAlign: 'center', width: '80px' }}>Subform</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(!matrixByStore?.rows || matrixByStore.rows.length === 0) ? (
+                              <tr>
+                                <td colSpan={10} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-tertiary)' }}>
+                                  Chưa có dữ liệu chi nhánh năm {matrixYear}
+                                </td>
+                              </tr>
+                            ) : (
+                              matrixByStore.rows.map((row: any) => (
+                                <tr key={row.store_id}>
+                                  <td style={{ fontWeight: 600 }}>{row.store_name}</td>
+                                  <td style={{ textAlign: 'center' }}>
+                                    <span className="badge badge-secondary" style={{ fontSize: '11px' }}>{row.store_code || 'HQ'}</span>
+                                  </td>
+                                  <td
+                                    className="matrix-cell-interactive"
+                                    style={{ textAlign: 'right', fontFamily: 'monospace' }}
                                     onClick={() => openSubform({
-                                      title: `Chi tiết: ${ind.name}`,
-                                      subtitle: `Năm ${matrixYear} - Tổng giá trị: ${fmt(ind.total)}`,
-                                      tag: 'Ma trận',
+                                      title: `Chi phí lương Quý 1 - ${row.store_name}`,
+                                      subtitle: `Năm ${matrixYear}`,
+                                      tag: 'Chi nhánh',
                                       columns: PAYROLL_DRILLDOWN_COLUMNS,
-                                      data: matrixPayroll.quarter_details?.ALL || [],
+                                      data: (row.details || []).filter((p: any) => [`${matrixYear}-01`, `${matrixYear}-02`, `${matrixYear}-03`].includes(p.salary_period)),
                                       filterFields: PAYROLL_FILTER_FIELDS,
                                     })}
                                   >
-                                    <Eye size={16} />
-                                  </button>
+                                    {formatFullCurrency(row.q1_net)}
+                                  </td>
+                                  <td
+                                    className="matrix-cell-interactive"
+                                    style={{ textAlign: 'right', fontFamily: 'monospace' }}
+                                    onClick={() => openSubform({
+                                      title: `Chi phí lương Quý 2 - ${row.store_name}`,
+                                      subtitle: `Năm ${matrixYear}`,
+                                      tag: 'Chi nhánh',
+                                      columns: PAYROLL_DRILLDOWN_COLUMNS,
+                                      data: (row.details || []).filter((p: any) => [`${matrixYear}-04`, `${matrixYear}-05`, `${matrixYear}-06`].includes(p.salary_period)),
+                                      filterFields: PAYROLL_FILTER_FIELDS,
+                                    })}
+                                  >
+                                    {formatFullCurrency(row.q2_net)}
+                                  </td>
+                                  <td
+                                    className="matrix-cell-interactive"
+                                    style={{ textAlign: 'right', fontFamily: 'monospace' }}
+                                    onClick={() => openSubform({
+                                      title: `Chi phí lương Quý 3 - ${row.store_name}`,
+                                      subtitle: `Năm ${matrixYear}`,
+                                      tag: 'Chi nhánh',
+                                      columns: PAYROLL_DRILLDOWN_COLUMNS,
+                                      data: (row.details || []).filter((p: any) => [`${matrixYear}-07`, `${matrixYear}-08`, `${matrixYear}-09`].includes(p.salary_period)),
+                                      filterFields: PAYROLL_FILTER_FIELDS,
+                                    })}
+                                  >
+                                    {formatFullCurrency(row.q3_net)}
+                                  </td>
+                                  <td
+                                    className="matrix-cell-interactive"
+                                    style={{ textAlign: 'right', fontFamily: 'monospace' }}
+                                    onClick={() => openSubform({
+                                      title: `Chi phí lương Quý 4 - ${row.store_name}`,
+                                      subtitle: `Năm ${matrixYear}`,
+                                      tag: 'Chi nhánh',
+                                      columns: PAYROLL_DRILLDOWN_COLUMNS,
+                                      data: (row.details || []).filter((p: any) => [`${matrixYear}-10`, `${matrixYear}-11`, `${matrixYear}-12`].includes(p.salary_period)),
+                                      filterFields: PAYROLL_FILTER_FIELDS,
+                                    })}
+                                  >
+                                    {formatFullCurrency(row.q4_net)}
+                                  </td>
+                                  <td
+                                    className="matrix-cell-interactive"
+                                    style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 800, color: CHART_COLORS.success, background: 'var(--status-info-bg)' }}
+                                    onClick={() => openSubform({
+                                      title: `Tổng hợp nhân sự & lương: ${row.store_name}`,
+                                      subtitle: `Năm ${matrixYear} - Tổng Net: ${formatFullCurrency(row.total_net)}`,
+                                      tag: 'Chi nhánh',
+                                      columns: PAYROLL_DRILLDOWN_COLUMNS,
+                                      data: row.details || [],
+                                      filterFields: PAYROLL_FILTER_FIELDS,
+                                    })}
+                                  >
+                                    {formatFullCurrency(row.total_net)}
+                                  </td>
+                                  <td style={{ textAlign: 'right', fontFamily: 'monospace', color: CHART_COLORS.primary }}>
+                                    {formatFullCurrency(row.total_gross)}
+                                  </td>
+                                  <td style={{ textAlign: 'center', fontWeight: 600 }}>
+                                    {row.employee_count} NS
+                                  </td>
+                                  <td style={{ textAlign: 'center' }}>
+                                    <button
+                                      type="button"
+                                      className="btn btn-icon btn-sm btn-secondary"
+                                      title="Xem chi tiết nhân sự chi nhánh này ở subform bên cạnh"
+                                      onClick={() => openSubform({
+                                        title: `Nhân sự & Bảng lương: ${row.store_name}`,
+                                        subtitle: `Năm ${matrixYear} (${row.employee_count} nhân sự)`,
+                                        tag: 'Chi nhánh',
+                                        columns: PAYROLL_DRILLDOWN_COLUMNS,
+                                        data: row.details || [],
+                                        filterFields: PAYROLL_FILTER_FIELDS,
+                                      })}
+                                    >
+                                      <Eye size={16} />
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      ) : (
+                        /* ------------------------------------------------------------- */
+                        /* BẢNG 3: MA TRẬN THU NHẬP THEO NHÂN VIÊN & QUÝ / NĂM          */
+                        /* ------------------------------------------------------------- */
+                        <table className="matrix-table">
+                          <thead>
+                            <tr>
+                              <th style={{ textAlign: 'center', width: '50px' }}>STT</th>
+                              <th style={{ textAlign: 'left', minWidth: '180px' }}>Nhân viên</th>
+                              <th style={{ textAlign: 'left', minWidth: '150px' }}>Cơ sở</th>
+                              <th style={{ textAlign: 'left', minWidth: '130px' }}>Chức vụ</th>
+                              <th style={{ textAlign: 'right', minWidth: '115px' }}>Quý 1</th>
+                              <th style={{ textAlign: 'right', minWidth: '115px' }}>Quý 2</th>
+                              <th style={{ textAlign: 'right', minWidth: '115px' }}>Quý 3</th>
+                              <th style={{ textAlign: 'right', minWidth: '115px' }}>Quý 4</th>
+                              <th style={{ textAlign: 'right', minWidth: '140px', background: 'var(--status-info-bg)' }}>TỔNG NET NĂM</th>
+                              <th style={{ textAlign: 'center', width: '80px' }}>Subform</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(!matrixByEmployee?.rows || matrixByEmployee.rows.length === 0) ? (
+                              <tr>
+                                <td colSpan={10} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-tertiary)' }}>
+                                  Chưa có dữ liệu nhân viên năm {matrixYear}
                                 </td>
                               </tr>
-                            )
-                          })
-                        )}
-                      </tbody>
-                    </table>
-                  ) : matrixViewMode === 'store' ? (
-                    /* ------------------------------------------------------------- */
-                    /* BẢNG 2: MA TRẬN CHI PHÍ LƯƠNG THEO CHI NHÁNH & QUÝ           */
-                    /* ------------------------------------------------------------- */
-                    <table className="matrix-table">
-                      <thead>
-                        <tr>
-                          <th style={{ textAlign: 'left', minWidth: '220px' }}>Cơ sở / Chi nhánh</th>
-                          <th style={{ textAlign: 'center', width: '80px' }}>Mã</th>
-                          <th style={{ textAlign: 'right', minWidth: '120px' }}>Quý 1 (Net)</th>
-                          <th style={{ textAlign: 'right', minWidth: '120px' }}>Quý 2 (Net)</th>
-                          <th style={{ textAlign: 'right', minWidth: '120px' }}>Quý 3 (Net)</th>
-                          <th style={{ textAlign: 'right', minWidth: '120px' }}>Quý 4 (Net)</th>
-                          <th style={{ textAlign: 'right', minWidth: '140px', background: 'var(--status-info-bg)' }}>TỔNG NET NĂM</th>
-                          <th style={{ textAlign: 'right', minWidth: '140px' }}>Tổng Gross</th>
-                          <th style={{ textAlign: 'center', width: '90px' }}>Nhân sự</th>
-                          <th style={{ textAlign: 'center', width: '80px' }}>Subform</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(!matrixByStore?.rows || matrixByStore.rows.length === 0) ? (
-                          <tr>
-                            <td colSpan={10} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-tertiary)' }}>
-                              Chưa có dữ liệu chi nhánh năm {matrixYear}
-                            </td>
-                          </tr>
-                        ) : (
-                          matrixByStore.rows.map((row: any) => (
-                            <tr key={row.store_id}>
-                              <td style={{ fontWeight: 600 }}>{row.store_name}</td>
-                              <td style={{ textAlign: 'center' }}>
-                                <span className="badge badge-secondary" style={{ fontSize: '11px' }}>{row.store_code || 'HQ'}</span>
-                              </td>
-                              <td
-                                className="matrix-cell-interactive"
-                                style={{ textAlign: 'right', fontFamily: 'monospace' }}
-                                onClick={() => openSubform({
-                                  title: `Chi phí lương Quý 1 - ${row.store_name}`,
-                                  subtitle: `Năm ${matrixYear}`,
-                                  tag: 'Chi nhánh',
-                                  columns: PAYROLL_DRILLDOWN_COLUMNS,
-                                  data: (row.details || []).filter((p: any) => ['2026-01', '2026-02', '2026-03'].includes(p.salary_period)),
-                                  filterFields: PAYROLL_FILTER_FIELDS,
-                                })}
-                              >
-                                {formatFullCurrency(row.q1_net)}
-                              </td>
-                              <td
-                                className="matrix-cell-interactive"
-                                style={{ textAlign: 'right', fontFamily: 'monospace' }}
-                                onClick={() => openSubform({
-                                  title: `Chi phí lương Quý 2 - ${row.store_name}`,
-                                  subtitle: `Năm ${matrixYear}`,
-                                  tag: 'Chi nhánh',
-                                  columns: PAYROLL_DRILLDOWN_COLUMNS,
-                                  data: (row.details || []).filter((p: any) => ['2026-04', '2026-05', '2026-06'].includes(p.salary_period)),
-                                  filterFields: PAYROLL_FILTER_FIELDS,
-                                })}
-                              >
-                                {formatFullCurrency(row.q2_net)}
-                              </td>
-                              <td
-                                className="matrix-cell-interactive"
-                                style={{ textAlign: 'right', fontFamily: 'monospace' }}
-                                onClick={() => openSubform({
-                                  title: `Chi phí lương Quý 3 - ${row.store_name}`,
-                                  subtitle: `Năm ${matrixYear}`,
-                                  tag: 'Chi nhánh',
-                                  columns: PAYROLL_DRILLDOWN_COLUMNS,
-                                  data: (row.details || []).filter((p: any) => ['2026-07', '2026-08', '2026-09'].includes(p.salary_period)),
-                                  filterFields: PAYROLL_FILTER_FIELDS,
-                                })}
-                              >
-                                {formatFullCurrency(row.q3_net)}
-                              </td>
-                              <td
-                                className="matrix-cell-interactive"
-                                style={{ textAlign: 'right', fontFamily: 'monospace' }}
-                                onClick={() => openSubform({
-                                  title: `Chi phí lương Quý 4 - ${row.store_name}`,
-                                  subtitle: `Năm ${matrixYear}`,
-                                  tag: 'Chi nhánh',
-                                  columns: PAYROLL_DRILLDOWN_COLUMNS,
-                                  data: (row.details || []).filter((p: any) => ['2026-10', '2026-11', '2026-12'].includes(p.salary_period)),
-                                  filterFields: PAYROLL_FILTER_FIELDS,
-                                })}
-                              >
-                                {formatFullCurrency(row.q4_net)}
-                              </td>
-                              <td
-                                className="matrix-cell-interactive"
-                                style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 800, color: CHART_COLORS.success, background: 'var(--status-info-bg)' }}
-                                onClick={() => openSubform({
-                                  title: `Tổng hợp nhân sự & lương: ${row.store_name}`,
-                                  subtitle: `Năm ${matrixYear} - Tổng Net: ${formatFullCurrency(row.total_net)}`,
-                                  tag: 'Chi nhánh',
-                                  columns: PAYROLL_DRILLDOWN_COLUMNS,
-                                  data: row.details || [],
-                                  filterFields: PAYROLL_FILTER_FIELDS,
-                                })}
-                              >
-                                {formatFullCurrency(row.total_net)}
-                              </td>
-                              <td style={{ textAlign: 'right', fontFamily: 'monospace', color: CHART_COLORS.primary }}>
-                                {formatFullCurrency(row.total_gross)}
-                              </td>
-                              <td style={{ textAlign: 'center', fontWeight: 600 }}>
-                                {row.employee_count} NS
-                              </td>
-                              <td style={{ textAlign: 'center' }}>
-                                <button
-                                  type="button"
-                                  className="btn btn-icon btn-sm btn-secondary"
-                                  title="Xem chi tiết nhân sự chi nhánh này ở subform bên cạnh"
-                                  onClick={() => openSubform({
-                                    title: `Nhân sự & Bảng lương: ${row.store_name}`,
-                                    subtitle: `Năm ${matrixYear} (${row.employee_count} nhân sự)`,
-                                    tag: 'Chi nhánh',
-                                    columns: PAYROLL_DRILLDOWN_COLUMNS,
-                                    data: row.details || [],
-                                    filterFields: PAYROLL_FILTER_FIELDS,
-                                  })}
-                                >
-                                  <Eye size={16} />
-                                </button>
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  ) : (
-                    /* ------------------------------------------------------------- */
-                    /* BẢNG 3: MA TRẬN THU NHẬP THEO NHÂN VIÊN & QUÝ / NĂM          */
-                    /* ------------------------------------------------------------- */
-                    <table className="matrix-table">
-                      <thead>
-                        <tr>
-                          <th style={{ textAlign: 'center', width: '50px' }}>STT</th>
-                          <th style={{ textAlign: 'left', minWidth: '180px' }}>Nhân viên</th>
-                          <th style={{ textAlign: 'left', minWidth: '150px' }}>Cơ sở</th>
-                          <th style={{ textAlign: 'left', minWidth: '130px' }}>Chức vụ</th>
-                          <th style={{ textAlign: 'right', minWidth: '115px' }}>Quý 1</th>
-                          <th style={{ textAlign: 'right', minWidth: '115px' }}>Quý 2</th>
-                          <th style={{ textAlign: 'right', minWidth: '115px' }}>Quý 3</th>
-                          <th style={{ textAlign: 'right', minWidth: '115px' }}>Quý 4</th>
-                          <th style={{ textAlign: 'right', minWidth: '140px', background: 'var(--status-info-bg)' }}>TỔNG NET NĂM</th>
-                          <th style={{ textAlign: 'center', width: '80px' }}>Subform</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(!matrixByEmployee?.rows || matrixByEmployee.rows.length === 0) ? (
-                          <tr>
-                            <td colSpan={10} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-tertiary)' }}>
-                              Chưa có dữ liệu nhân viên năm {matrixYear}
-                            </td>
-                          </tr>
-                        ) : (
-                          matrixByEmployee.rows.map((emp: any, idx: number) => (
-                            <tr key={emp.employee_id}>
-                              <td style={{ textAlign: 'center', color: 'var(--text-tertiary)' }}>{idx + 1}</td>
-                              <td>
-                                <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{emp.employee_name}</div>
-                                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{emp.employee_code}</div>
-                              </td>
-                              <td>{emp.store_name}</td>
-                              <td>{emp.position_name}</td>
-                              <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{formatFullCurrency(emp.q1_net)}</td>
-                              <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{formatFullCurrency(emp.q2_net)}</td>
-                              <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{formatFullCurrency(emp.q3_net)}</td>
-                              <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{formatFullCurrency(emp.q4_net)}</td>
-                              <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 800, color: CHART_COLORS.success, background: 'var(--status-info-bg)' }}>
-                                {formatFullCurrency(emp.total_net)}
-                              </td>
-                              <td style={{ textAlign: 'center' }}>
-                                <button
-                                  type="button"
-                                  className="btn btn-icon btn-sm btn-secondary"
-                                  title="Xem chi tiết các kỳ lương này ở subform bên cạnh"
-                                  onClick={() => openSubform({
-                                    title: `Lịch sử phiếu lương: ${emp.employee_name}`,
-                                    subtitle: `${emp.employee_code} • ${emp.store_name} - Năm ${matrixYear}`,
-                                    tag: 'Nhân viên',
-                                    columns: PAYROLL_DRILLDOWN_COLUMNS,
-                                    data: emp.payrolls || [],
-                                    filterFields: PAYROLL_FILTER_FIELDS,
-                                  })}
-                                >
-                                  <Eye size={16} />
-                                </button>
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  )}
+                            ) : (
+                              matrixByEmployee.rows.map((emp: any, idx: number) => (
+                                <tr key={emp.employee_id}>
+                                  <td style={{ textAlign: 'center', color: 'var(--text-tertiary)' }}>{idx + 1}</td>
+                                  <td>
+                                    <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{emp.employee_name}</div>
+                                    <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{emp.employee_code}</div>
+                                  </td>
+                                  <td>{emp.store_name}</td>
+                                  <td>{emp.position_name}</td>
+                                  <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{formatFullCurrency(emp.q1_net)}</td>
+                                  <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{formatFullCurrency(emp.q2_net)}</td>
+                                  <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{formatFullCurrency(emp.q3_net)}</td>
+                                  <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{formatFullCurrency(emp.q4_net)}</td>
+                                  <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 800, color: CHART_COLORS.success, background: 'var(--status-info-bg)' }}>
+                                    {formatFullCurrency(emp.total_net)}
+                                  </td>
+                                  <td style={{ textAlign: 'center' }}>
+                                    <button
+                                      type="button"
+                                      className="btn btn-icon btn-sm btn-secondary"
+                                      title="Xem chi tiết các kỳ lương này ở subform bên cạnh"
+                                      onClick={() => openSubform({
+                                        title: `Lịch sử phiếu lương: ${emp.employee_name}`,
+                                        subtitle: `${emp.employee_code} • ${emp.store_name} - Năm ${matrixYear}`,
+                                        tag: 'Nhân viên',
+                                        columns: PAYROLL_DRILLDOWN_COLUMNS,
+                                        data: emp.payrolls || [],
+                                        filterFields: PAYROLL_FILTER_FIELDS,
+                                      })}
+                                    >
+                                      <Eye size={16} />
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
-          )}
-        </>
-      )}
-    </div>
-
-    {/* CỘT PHẢI (SUBFORM PANE): CHI TIẾT DANH SÁCH 1-N (TRƯỢT TỪ PHẢI SANG KHI CLICK) */}
-    {isSubformOpen && (
-      <div className={`mypayslip-subform-pane ${isClosingSubform ? 'is-closing' : ''}`}>
-        <div className="reports-subform-card">
-          {/* Header Subform */}
-          <div className="reports-subform-header">
-            <div>
-              <h4 className="reports-subform-title">
-                {subformConfig.title}
-                {subformConfig.tag && (
-                  <span className="badge badge-primary" style={{ fontSize: '11px', padding: '2px 8px' }}>
-                    {subformConfig.tag}
-                  </span>
-                )}
-              </h4>
-              {subformConfig.subtitle && (
-                <p className="reports-subform-subtitle">{subformConfig.subtitle}</p>
               )}
-            </div>
-            <button
-              type="button"
-              className="reports-subform-close"
-              onClick={closeSubform}
-              title="Đóng chi tiết (Esc)"
-            >
-              {Icons.x}
-            </button>
-          </div>
+            </>
+          )}
+        </div>
 
-          {/* Toolbar Tìm kiếm & Lọc nâng cao */}
-          <div className="reports-subform-toolbar">
-            <div className="reports-subform-search-row">
-              <div className="reports-subform-input-wrap">
-                <span className="reports-subform-search-icon">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="11" cy="11" r="8" />
-                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                  </svg>
-                </span>
-                <input
-                  type="text"
-                  placeholder="Tìm nhanh theo từ khóa..."
-                  value={subformSearch}
-                  onChange={(e) => setSubformSearch(e.target.value)}
+        {/* CỘT PHẢI (SUBFORM PANE): CHI TIẾT DANH SÁCH 1-N (TRƯỢT TỪ PHẢI SANG KHI CLICK) */}
+        {isSubformOpen && (
+          <div className={`mypayslip-subform-pane ${isClosingSubform ? 'is-closing' : ''}`}>
+            <div className="reports-subform-card">
+              {/* Header Subform */}
+              <div className="reports-subform-header">
+                <div>
+                  <h4 className="reports-subform-title">
+                    {subformConfig.tag === 'Chi nhánh' && subformQuickFilters['store_name']
+                      ? `Nhân sự cơ sở: ${subformQuickFilters['store_name']}`
+                      : subformConfig.title}
+                    {subformConfig.tag && (
+                      <span className="badge badge-primary" style={{ fontSize: '11px', padding: '2px 8px' }}>
+                        {subformConfig.tag}
+                      </span>
+                    )}
+                  </h4>
+                  {(() => {
+                    if (subformConfig.tag === 'Chi nhánh') {
+                      const activeStoreName = subformQuickFilters['store_name']
+                      if (activeStoreName) {
+                        const sMatch = monthlyStatusList.find(
+                          (s) => (s.store_name || '').trim().toLowerCase() === activeStoreName.trim().toLowerCase()
+                        )
+                        if (sMatch) {
+                          return (
+                            <p className="reports-subform-subtitle">
+                              Tổng biên chế: {filteredSubformData.length} NS (Chính thức: {sMatch.active_staff || 0} • Thử việc: {sMatch.probation_staff || 0} • Nghỉ phép: {sMatch.on_leave_staff || 0} • Nghỉ việc: {sMatch.resigned_staff || 0}) | Quỹ lương HĐ: {formatFullCurrency(sMatch.total_contract_salary || 0)}
+                            </p>
+                          )
+                        }
+                      }
+                      return (
+                        <p className="reports-subform-subtitle">
+                          {subformConfig.subtitle || `Hiển thị ${filteredSubformData.length} nhân sự`}
+                        </p>
+                      )
+                    }
+                    return subformConfig.subtitle ? (
+                      <p className="reports-subform-subtitle">{subformConfig.subtitle}</p>
+                    ) : null
+                  })()}
+                </div>
+                <button
+                  type="button"
+                  className="reports-subform-close"
+                  onClick={closeSubform}
+                  title="Đóng chi tiết (Esc)"
+                >
+                  {Icons.x}
+                </button>
+              </div>
+
+              {/* Toolbar Tìm kiếm & Lọc nâng cao */}
+              <div className="reports-subform-toolbar">
+                <div className="reports-subform-search-row">
+                  <div className="reports-subform-input-wrap">
+                    <span className="reports-subform-search-icon">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="11" cy="11" r="8" />
+                        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                      </svg>
+                    </span>
+                    <input
+                      type="text"
+                      placeholder="Tìm nhanh theo từ khóa..."
+                      value={subformSearch}
+                      onChange={(e) => setSubformSearch(e.target.value)}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className={`btn ${subformConditions.length > 0 ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setShowSubformSearch(true)}
+                    disabled={subformSearchFields.length === 0}
+                    title={subformSearchFields.length === 0 ? 'Không có dữ liệu để tìm kiếm' : 'Tìm kiếm nâng cao'}
+                  >
+                    {Icons.search}
+                    <span>Tìm kiếm nâng cao</span>
+                    {subformConditions.length > 0 && (
+                      <span className="search-count-badge">{subformConditions.length}</span>
+                    )}
+                  </button>
+                </div>
+
+                {/* Thanh lọc nhanh theo Dropdown danh mục thực tế (Cơ sở / Chi nhánh từ DB, Chức vụ, Trạng thái...) */}
+                {(() => {
+                  const hasStoreField = subformConfig.filterFields.some((f) => f.key === 'store_name')
+                  const storeOptions = hasStoreField ? getOptionsForField('store_name') : []
+
+                  const hasPositionField = subformConfig.filterFields.some((f) => f.key === 'position_name')
+                  const positionOptions = hasPositionField ? getOptionsForField('position_name') : []
+
+                  const hasEduField = subformConfig.filterFields.some((f) => f.key === 'education_level')
+                  const eduOptions = hasEduField ? getOptionsForField('education_level') : []
+
+                  const statusField = subformConfig.filterFields.find((f) => f.key === 'payment_status' || f.key === 'status_label')
+                  const statusOptions = statusField ? getOptionsForField(statusField.key) : []
+
+                  const hasLeaveType = subformConfig.filterFields.some((f) => f.key === 'type_name')
+                  const leaveTypeOptions = hasLeaveType ? getOptionsForField('type_name') : []
+
+                  if (!hasStoreField && positionOptions.length <= 1 && eduOptions.length <= 1 && statusOptions.length <= 1 && leaveTypeOptions.length <= 1) {
+                    return null
+                  }
+
+                  return (
+                    <div className="reports-quick-dropdowns-bar">
+                      {hasStoreField && (
+                        <div className="reports-quick-select-wrap">
+                          <span className="reports-quick-select-label">Cơ sở / Chi nhánh:</span>
+                          <select
+                            className={`reports-quick-select ${getActiveFilterValue('store_name') ? 'active' : ''}`}
+                            value={getActiveFilterValue('store_name')}
+                            onChange={(e) => handleQuickDropdownFilter('store_name', e.target.value)}
+                          >
+                            <option value="">
+                              Tất cả chi nhánh ({subformConfig.data.length || storeOptions.reduce((acc, opt) => acc + opt.count, 0)})
+                            </option>
+                            {storeOptions.map((opt) => (
+                              <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      {hasPositionField && positionOptions.length > 1 && (
+                        <div className="reports-quick-select-wrap">
+                          <span className="reports-quick-select-label">Chức vụ:</span>
+                          <select
+                            className={`reports-quick-select ${getActiveFilterValue('position_name') ? 'active' : ''}`}
+                            value={getActiveFilterValue('position_name')}
+                            onChange={(e) => handleQuickDropdownFilter('position_name', e.target.value)}
+                          >
+                            <option value="">Tất cả chức vụ ({positionOptions.length})</option>
+                            {positionOptions.map((opt) => (
+                              <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      {hasEduField && eduOptions.length > 1 && (
+                        <div className="reports-quick-select-wrap">
+                          <span className="reports-quick-select-label">Học vấn:</span>
+                          <select
+                            className={`reports-quick-select ${getActiveFilterValue('education_level') ? 'active' : ''}`}
+                            value={getActiveFilterValue('education_level')}
+                            onChange={(e) => handleQuickDropdownFilter('education_level', e.target.value)}
+                          >
+                            <option value="">Tất cả học vấn ({eduOptions.length})</option>
+                            {eduOptions.map((opt) => (
+                              <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      {statusField && statusOptions.length > 1 && (
+                        <div className="reports-quick-select-wrap">
+                          <span className="reports-quick-select-label">{statusField.label}:</span>
+                          <select
+                            className={`reports-quick-select ${getActiveFilterValue(statusField.key) ? 'active' : ''}`}
+                            value={getActiveFilterValue(statusField.key)}
+                            onChange={(e) => handleQuickDropdownFilter(statusField.key, e.target.value)}
+                          >
+                            <option value="">Tất cả {statusField.label.toLowerCase()} ({statusOptions.length})</option>
+                            {statusOptions.map((opt) => (
+                              <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      {hasLeaveType && leaveTypeOptions.length > 1 && (
+                        <div className="reports-quick-select-wrap">
+                          <span className="reports-quick-select-label">Loại nghỉ:</span>
+                          <select
+                            className={`reports-quick-select ${getActiveFilterValue('type_name') ? 'active' : ''}`}
+                            value={getActiveFilterValue('type_name')}
+                            onChange={(e) => handleQuickDropdownFilter('type_name', e.target.value)}
+                          >
+                            <option value="">Tất cả loại nghỉ ({leaveTypeOptions.length})</option>
+                            {leaveTypeOptions.map((opt) => (
+                              <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
+
+                <AdvancedSearchFilterBar
+                  conditions={subformConditions}
+                  matchMode={subformMatchMode}
+                  fields={subformSearchFields}
+                  onEdit={() => setShowSubformSearch(true)}
+                  onClear={() => setSubformConditions([])}
+                  style={{ margin: '8px 0 0' }}
+                />
+
+                <EmployeeAdvancedSearchModal
+                  isOpen={showSubformSearch && subformSearchFields.length > 0}
+                  onClose={() => setShowSubformSearch(false)}
+                  onApply={(conditions, matchMode) => {
+                    setSubformMatchMode(matchMode)
+                    setSubformConditions(conditions)
+                  }}
+                  onClear={() => setSubformConditions([])}
+                  initialConditions={subformConditions}
+                  initialMatchMode={subformMatchMode}
+                  fields={subformSearchFields}
+                  title={`Tìm kiếm nâng cao: ${subformConfig.title}`}
+                  entityLabel="bản ghi"
                 />
               </div>
-              <button
-                type="button"
-                className={`btn ${subformConditions.length > 0 ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => setShowSubformSearch(true)}
-                disabled={subformSearchFields.length === 0}
-                title={subformSearchFields.length === 0 ? 'Không có dữ liệu để tìm kiếm' : 'Tìm kiếm nâng cao'}
-              >
-                {Icons.search}
-                <span>Tìm kiếm nâng cao</span>
-                {subformConditions.length > 0 && (
-                  <span className="search-count-badge">{subformConditions.length}</span>
-                )}
-              </button>
-            </div>
 
-            {/* Thanh lọc nhanh theo Dropdown danh mục thực tế (Cơ sở / Chi nhánh từ DB, Chức vụ, Trạng thái...) */}
-            {(() => {
-              const hasStoreField = subformConfig.filterFields.some((f) => f.key === 'store_name')
-              const storeOptions = hasStoreField ? getOptionsForField('store_name') : []
-
-              const hasPositionField = subformConfig.filterFields.some((f) => f.key === 'position_name')
-              const positionOptions = hasPositionField ? getOptionsForField('position_name') : []
-
-              const hasEduField = subformConfig.filterFields.some((f) => f.key === 'education_level')
-              const eduOptions = hasEduField ? getOptionsForField('education_level') : []
-
-              const statusField = subformConfig.filterFields.find((f) => f.key === 'payment_status' || f.key === 'status_label')
-              const statusOptions = statusField ? getOptionsForField(statusField.key) : []
-
-              const hasLeaveType = subformConfig.filterFields.some((f) => f.key === 'type_name')
-              const leaveTypeOptions = hasLeaveType ? getOptionsForField('type_name') : []
-
-              if (!hasStoreField && positionOptions.length <= 1 && eduOptions.length <= 1 && statusOptions.length <= 1 && leaveTypeOptions.length <= 1) {
-                return null
-              }
-
-              return (
-                <div className="reports-quick-dropdowns-bar">
-                  {hasStoreField && (
-                    <div className="reports-quick-select-wrap">
-                      <span className="reports-quick-select-label">Cơ sở / Chi nhánh:</span>
-                      <select
-                        className={`reports-quick-select ${getActiveFilterValue('store_name') ? 'active' : ''}`}
-                        value={getActiveFilterValue('store_name')}
-                        onChange={(e) => handleQuickDropdownFilter('store_name', e.target.value)}
-                      >
-                        <option value="">Tất cả chi nhánh ({stores.length || storeOptions.length})</option>
-                        {storeOptions.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </option>
+              {/* Bảng dữ liệu con (Subform Table) */}
+              <div className="reports-subform-table-wrap">
+                {filteredSubformData.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '36px 16px', color: 'var(--text-tertiary)' }}>
+                    Không tìm thấy bản ghi nào phù hợp với điều kiện tìm kiếm.
+                  </div>
+                ) : (
+                  <table className="reports-subform-table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: '40px', textAlign: 'center' }}>STT</th>
+                        {subformConfig.columns.map((col) => (
+                          <th key={col.key} style={{ textAlign: col.align || 'left', width: col.width }}>
+                            {col.title}
+                          </th>
                         ))}
-                      </select>
-                    </div>
-                  )}
-
-                  {hasPositionField && positionOptions.length > 1 && (
-                    <div className="reports-quick-select-wrap">
-                      <span className="reports-quick-select-label">Chức vụ:</span>
-                      <select
-                        className={`reports-quick-select ${getActiveFilterValue('position_name') ? 'active' : ''}`}
-                        value={getActiveFilterValue('position_name')}
-                        onChange={(e) => handleQuickDropdownFilter('position_name', e.target.value)}
-                      >
-                        <option value="">Tất cả chức vụ ({positionOptions.length})</option>
-                        {positionOptions.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-
-                  {hasEduField && eduOptions.length > 1 && (
-                    <div className="reports-quick-select-wrap">
-                      <span className="reports-quick-select-label">Học vấn:</span>
-                      <select
-                        className={`reports-quick-select ${getActiveFilterValue('education_level') ? 'active' : ''}`}
-                        value={getActiveFilterValue('education_level')}
-                        onChange={(e) => handleQuickDropdownFilter('education_level', e.target.value)}
-                      >
-                        <option value="">Tất cả học vấn ({eduOptions.length})</option>
-                        {eduOptions.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-
-                  {statusField && statusOptions.length > 1 && (
-                    <div className="reports-quick-select-wrap">
-                      <span className="reports-quick-select-label">{statusField.label}:</span>
-                      <select
-                        className={`reports-quick-select ${getActiveFilterValue(statusField.key) ? 'active' : ''}`}
-                        value={getActiveFilterValue(statusField.key)}
-                        onChange={(e) => handleQuickDropdownFilter(statusField.key, e.target.value)}
-                      >
-                        <option value="">Tất cả {statusField.label.toLowerCase()} ({statusOptions.length})</option>
-                        {statusOptions.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-
-                  {hasLeaveType && leaveTypeOptions.length > 1 && (
-                    <div className="reports-quick-select-wrap">
-                      <span className="reports-quick-select-label">Loại nghỉ:</span>
-                      <select
-                        className={`reports-quick-select ${getActiveFilterValue('type_name') ? 'active' : ''}`}
-                        value={getActiveFilterValue('type_name')}
-                        onChange={(e) => handleQuickDropdownFilter('type_name', e.target.value)}
-                      >
-                        <option value="">Tất cả loại nghỉ ({leaveTypeOptions.length})</option>
-                        {leaveTypeOptions.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                </div>
-              )
-            })()}
-
-            <AdvancedSearchFilterBar
-              conditions={subformConditions}
-              matchMode={subformMatchMode}
-              fields={subformSearchFields}
-              onEdit={() => setShowSubformSearch(true)}
-              onClear={() => setSubformConditions([])}
-              style={{ margin: '8px 0 0' }}
-            />
-
-            <EmployeeAdvancedSearchModal
-              isOpen={showSubformSearch && subformSearchFields.length > 0}
-              onClose={() => setShowSubformSearch(false)}
-              onApply={(conditions, matchMode) => {
-                setSubformMatchMode(matchMode)
-                setSubformConditions(conditions)
-              }}
-              onClear={() => setSubformConditions([])}
-              initialConditions={subformConditions}
-              initialMatchMode={subformMatchMode}
-              fields={subformSearchFields}
-              title={`Tìm kiếm nâng cao: ${subformConfig.title}`}
-              entityLabel="bản ghi"
-            />
-          </div>
-
-          {/* Bảng dữ liệu con (Subform Table) */}
-          <div className="reports-subform-table-wrap">
-            {filteredSubformData.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '36px 16px', color: 'var(--text-tertiary)' }}>
-                Không tìm thấy bản ghi nào phù hợp với điều kiện tìm kiếm.
-              </div>
-            ) : (
-              <table className="reports-subform-table">
-                <thead>
-                  <tr>
-                    <th style={{ width: '40px', textAlign: 'center' }}>STT</th>
-                    {subformConfig.columns.map((col) => (
-                      <th key={col.key} style={{ textAlign: col.align || 'left', width: col.width }}>
-                        {col.title}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredSubformData.map((row, idx) => (
-                    <tr key={row.employee_id || row.payroll_id || row.attendance_id || row.leave_id || idx}>
-                      <td style={{ textAlign: 'center', color: 'var(--text-tertiary)' }}>{idx + 1}</td>
-                      {subformConfig.columns.map((col) => (
-                        <td key={col.key} style={{ textAlign: col.align || 'left' }}>
-                          {col.render ? col.render(row) : (row[col.key] ?? '—')}
-                        </td>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredSubformData.map((row, idx) => (
+                        <tr key={row.employee_id || row.payroll_id || row.attendance_id || row.leave_id || idx}>
+                          <td style={{ textAlign: 'center', color: 'var(--text-tertiary)' }}>{idx + 1}</td>
+                          {subformConfig.columns.map((col) => (
+                            <td key={col.key} style={{ textAlign: col.align || 'left' }}>
+                              {col.render ? col.render(row) : (row[col.key] ?? '—')}
+                            </td>
+                          ))}
+                        </tr>
                       ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+                    </tbody>
+                  </table>
+                )}
+              </div>
 
-          {/* Footer Subform */}
-          <div className="reports-subform-footer">
-            <span>Hiển thị <strong>{filteredSubformData.length}</strong> / {subformConfig.data?.length || 0} bản ghi</span>
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              style={{ fontSize: '11.5px', padding: '4px 10px' }}
-              onClick={handleExportSubformData}
-              title="Tải xuống toàn bộ dữ liệu chi tiết trong bảng dưới định dạng CSV/Excel"
-            >
-              Xuất dữ liệu Excel (CSV)
-            </button>
+              {/* Footer Subform */}
+              <div className="reports-subform-footer">
+                <span>Hiển thị <strong>{filteredSubformData.length}</strong> / {subformConfig.data?.length || 0} bản ghi</span>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  style={{ fontSize: '11.5px', padding: '4px 10px' }}
+                  onClick={handleExportSubformData}
+                  title="Tải xuống toàn bộ dữ liệu chi tiết trong bảng dưới định dạng CSV/Excel"
+                >
+                  Xuất dữ liệu Excel (CSV)
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
+        )}
       </div>
-    )}
-  </div>
 
-  {/* Modal In & Xuất PDF A4 */}
-  <ReportsPrintModal
-    isOpen={isPrintModalOpen}
-    onClose={() => setIsPrintModalOpen(false)}
-    period={period}
-    stats={dashboardStats}
-    demographics={demographics}
-    payrollFund={payrollFund}
-    attendance={attendanceSummary}
-    sales={salesReport}
-    monthlyStatus={monthlyStatus}
-    currentUser={user}
-    leaveSummary={leaveSummary}
-  />
-</div>
+      {/* Modal In & Xuất PDF A4 */}
+      <ReportsPrintModal
+        isOpen={isPrintModalOpen}
+        onClose={() => setIsPrintModalOpen(false)}
+        period={period}
+        stats={dashboardStats}
+        demographics={demographics}
+        payrollFund={payrollFund}
+        attendance={attendanceSummary}
+        sales={salesReport}
+        monthlyStatus={monthlyStatus}
+        currentUser={user}
+        leaveSummary={leaveSummary}
+      />
+    </div>
   )
 }
 

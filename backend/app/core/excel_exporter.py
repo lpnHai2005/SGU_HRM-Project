@@ -27,15 +27,15 @@ def create_styled_excel(
     ws.views.sheetView[0].showGridLines = True
 
     # Style constants
-    HEADER_FILL = PatternFill(start_color="1E3A8A", end_color="1E3A8A", fill_type="solid")  # Navy Blue
-    HEADER_FONT = Font(name="Segoe UI", size=10, bold=True, color="FFFFFF")
-    TITLE_FONT = Font(name="Segoe UI", size=15, bold=True, color="1E3A8A")
-    SUBTITLE_FONT = Font(name="Segoe UI", size=10, italic=True, color="475569")
-    BOLD_FONT = Font(name="Segoe UI", size=10, bold=True)
-    REGULAR_FONT = Font(name="Segoe UI", size=10)
-    TOTAL_FILL = PatternFill(start_color="E2E8F0", end_color="E2E8F0", fill_type="solid")
-    ZEBRA_FILL = PatternFill(start_color="F8FAFC", end_color="F8FAFC", fill_type="solid")
-    WHITE_FILL = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
+    HEADER_FILL = PatternFill(start_color="FFE2E8F0", end_color="FFE2E8F0", fill_type="solid")  # Slate Gray Header
+    HEADER_FONT = Font(name="Segoe UI", size=10, bold=True, color="FF000000")  # Black Header Text
+    TITLE_FONT = Font(name="Segoe UI", size=15, bold=True, color="FF1E3A8A")
+    SUBTITLE_FONT = Font(name="Segoe UI", size=10, italic=True, color="FF475569")
+    BOLD_FONT = Font(name="Segoe UI", size=10, bold=True, color="FF000000")
+    REGULAR_FONT = Font(name="Segoe UI", size=10, color="FF000000")
+    TOTAL_FILL = PatternFill(start_color="FFE2E8F0", end_color="FFE2E8F0", fill_type="solid")
+    ZEBRA_FILL = PatternFill(start_color="FFF8FAFC", end_color="FFF8FAFC", fill_type="solid")
+    WHITE_FILL = PatternFill(start_color="FFFFFFFF", end_color="FFFFFFFF", fill_type="solid")
 
     THIN_BORDER = Border(
         left=Side(style='thin', color='CBD5E1'),
@@ -56,7 +56,7 @@ def create_styled_excel(
     # 1. Company Name Header
     ws.merge_cells(f"A1:{last_col_letter}1")
     ws["A1"] = f"TECHZONE - {company_name}" if company_name else "TECHZONE"
-    ws["A1"].font = Font(name="Segoe UI", size=11, bold=True, color="1E3A8A")
+    ws["A1"].font = Font(name="Segoe UI", size=11, bold=True, color="FF1E3A8A")
     ws["A1"].alignment = Alignment(horizontal="left", vertical="center")
     ws.row_dimensions[1].height = 20
 
@@ -202,15 +202,15 @@ def create_multisheet_excel(sheets: List[Dict[str, Any]], company_name: Optional
     wb = Workbook()
     default_sheet = wb.active
 
-    HEADER_FILL = PatternFill(start_color="1E3A8A", end_color="1E3A8A", fill_type="solid")  # Navy Blue
-    HEADER_FONT = Font(name="Segoe UI", size=10, bold=True, color="FFFFFF")
-    TITLE_FONT = Font(name="Segoe UI", size=15, bold=True, color="1E3A8A")
-    SUBTITLE_FONT = Font(name="Segoe UI", size=10, italic=True, color="475569")
-    BOLD_FONT = Font(name="Segoe UI", size=10, bold=True)
-    REGULAR_FONT = Font(name="Segoe UI", size=10)
-    TOTAL_FILL = PatternFill(start_color="E2E8F0", end_color="E2E8F0", fill_type="solid")
-    ZEBRA_FILL = PatternFill(start_color="F8FAFC", end_color="F8FAFC", fill_type="solid")
-    WHITE_FILL = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
+    HEADER_FILL = PatternFill(start_color="FFE2E8F0", end_color="FFE2E8F0", fill_type="solid")  # Slate Gray Header
+    HEADER_FONT = Font(name="Segoe UI", size=10, bold=True, color="FF000000")  # Black Header Text
+    TITLE_FONT = Font(name="Segoe UI", size=15, bold=True, color="FF1E3A8A")
+    SUBTITLE_FONT = Font(name="Segoe UI", size=10, italic=True, color="FF475569")
+    BOLD_FONT = Font(name="Segoe UI", size=10, bold=True, color="FF000000")
+    REGULAR_FONT = Font(name="Segoe UI", size=10, color="FF000000")
+    TOTAL_FILL = PatternFill(start_color="FFE2E8F0", end_color="FFE2E8F0", fill_type="solid")
+    ZEBRA_FILL = PatternFill(start_color="FFF8FAFC", end_color="FFF8FAFC", fill_type="solid")
+    WHITE_FILL = PatternFill(start_color="FFFFFFFF", end_color="FFFFFFFF", fill_type="solid")
 
     THIN_BORDER = Border(
         left=Side(style='thin', color='CBD5E1'),
@@ -243,7 +243,7 @@ def create_multisheet_excel(sheets: List[Dict[str, Any]], company_name: Optional
         # 1. Company Name Header
         ws.merge_cells(f"A1:{last_col_letter}1")
         ws["A1"] = f"TECHZONE - {company_name}" if company_name else "TECHZONE"
-        ws["A1"].font = Font(name="Segoe UI", size=11, bold=True, color="1E3A8A")
+        ws["A1"].font = Font(name="Segoe UI", size=11, bold=True, color="FF1E3A8A")
         ws["A1"].alignment = Alignment(horizontal="left", vertical="center")
         ws.row_dimensions[1].height = 20
 
