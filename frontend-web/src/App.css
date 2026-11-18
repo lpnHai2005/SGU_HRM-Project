@@ -3227,48 +3227,6 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   border-color: var(--border-default);
 }
 
-/* Resigned Staff Notice Panel */
-.resigned-staff-panel {
-  border: 1px solid var(--border-default);
-  background: var(--surface-card);
-  border-radius: var(--radius-md);
-  padding: 16px;
-  margin-bottom: 24px;
-  box-shadow: var(--shadow-card);
-}
-
-.resigned-staff-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.resigned-staff-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 12px;
-}
-
-.resigned-staff-card {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  padding: 12px 14px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-subtle);
-  border: 1px solid var(--border-subtle);
-  border-left: 3px solid var(--status-error);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-
-.resigned-staff-card:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-}
-
 /* Calendar Matrix Cell styling */
 .calendar-day-cell {
   min-height: 125px;

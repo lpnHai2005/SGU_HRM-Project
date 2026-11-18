@@ -355,12 +355,15 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
         leaveApi.getTypes(),
         isPersonalView ? Promise.resolve(null) : leaveApi.getStats().catch(() => null),
       ])
-      setLeaveRequests(isPersonalView ? (requests || []).filter(req => req.employee_id === user.employee_id) : (requests || []))
+      // Thôi việc xử lý ở /resignations & /my-resignation, không hiện ở trang nghỉ phép
+      const leaveOnly = (requests || []).filter(req => !isResignationRecord(req))
+      setLeaveRequests(isPersonalView ? leaveOnly.filter(req => req.employee_id === user.employee_id) : leaveOnly)
       setLeaveBalance(balance)
-      setLeaveTypes(types || [])
+      const leaveTypesOnly = (types || []).filter(t => t.type_code !== 'THOI_VIEC' && t.leave_type_id !== 6)
+      setLeaveTypes(leaveTypesOnly)
       setLeaveStats(stats)
-      if (types && types.length > 0 && !newRequest.leave_type_id) {
-        setNewRequest(prev => ({ ...prev, leave_type_id: types[0].leave_type_id }))
+      if (leaveTypesOnly.length > 0 && !newRequest.leave_type_id) {
+        setNewRequest(prev => ({ ...prev, leave_type_id: leaveTypesOnly[0].leave_type_id }))
       }
 
       if (!isPersonalView) {
@@ -428,7 +431,8 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
   const fetchCalendarData = useCallback(async (month: string) => {
     try {
       const data = await leaveApi.getCalendar({ month, ...(isPersonalView ? { employee_id: user.employee_id } : {}) })
-      setCalendarLeaves(isPersonalView ? (data || []).filter(req => req.employee_id === user.employee_id) : (data || []))
+      const leaveOnly = (data || []).filter(req => !isResignationRecord(req))
+      setCalendarLeaves(isPersonalView ? leaveOnly.filter(req => req.employee_id === user.employee_id) : leaveOnly)
     } catch (err) {
       console.error('Error fetching calendar leaves:', err)
       setCalendarLeaves([])
@@ -561,27 +565,9 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
     return false
   }
 
-  // 1. Danh sách nhân sự thôi việc trong tháng (hiển thị riêng ở panel ghi chú)
-  const monthResignedEmployees = useMemo(() => {
-    const map = new Map<number, LeaveRequest>()
-    for (const l of calendarLeaves) {
-      if (isResignationRecord(l)) {
-        if (!map.has(l.employee_id)) {
-          map.set(l.employee_id, l)
-        }
-      }
-    }
-    return Array.from(map.values())
-  }, [calendarLeaves])
-
-  // 2. Danh sách các đơn nghỉ thông thường trong tháng (loại trừ các nhân viên thôi việc)
-  const regularCalendarLeaves = useMemo(() => {
-    return calendarLeaves.filter(l => !isResignationRecord(l))
-  }, [calendarLeaves])
-
   // 3. Danh sách đơn nghỉ theo bộ lọc tìm kiếm & loại nghỉ
   const filteredCalendarLeaves = useMemo(() => {
-    return regularCalendarLeaves.filter(l => {
+    return calendarLeaves.filter(l => {
       if (selectedTypeFilter !== 'all' && String(l.leave_type_id) !== selectedTypeFilter) {
         return false
       }
@@ -598,7 +584,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
       }
       return true
     })
-  }, [regularCalendarLeaves, selectedTypeFilter, searchTerm])
+  }, [calendarLeaves, selectedTypeFilter, searchTerm])
 
   const calendarDaysMatrix = useMemo(() => {
     const [yearStr, monthStr] = calendarMonth.split('-')
@@ -1627,97 +1613,6 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
               </div>
             </div>
 
-            {/* Note danh sách nhân sự thôi việc / nghỉ việc trong tháng */}
-            <div className="resigned-staff-panel">
-              <div className="resigned-staff-header">
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ display: 'inline-flex', padding: '6px', borderRadius: '6px', backgroundColor: 'var(--surface-subtle)', color: 'var(--text-primary)', border: '1px solid var(--border-default)' }}>
-                    {Icons.users}
-                  </span>
-                  <div>
-                    <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                      Danh Sách Nhân Sự Thôi Việc / Nghỉ Việc Trong Tháng {formatMonthDisplay(calendarMonth)} ({monthResignedEmployees.length})
-                    </h4>
-                  </div>
-                </div>
-
-                {monthResignedEmployees.length > 0 && (
-                  <span
-                    style={{
-                      fontSize: '11px',
-                      fontWeight: 700,
-                      padding: '2px 8px',
-                      borderRadius: '9999px',
-                      backgroundColor: 'var(--surface-subtle)',
-                      color: 'var(--text-primary)',
-                      border: '1px solid var(--border-default)',
-                    }}
-                  >
-                    {monthResignedEmployees.length} nhân sự
-                  </span>
-                )}
-              </div>
-
-              {monthResignedEmployees.length === 0 ? (
-                <div style={{ padding: '12px 14px', borderRadius: 'var(--radius-sm)', backgroundColor: 'var(--surface-subtle)', color: 'var(--text-secondary)', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ color: 'var(--status-success)' }}>{Icons.checkCircle}</span>
-                  <span>Không có nhân sự nào thôi việc hoặc nghỉ việc trong tháng {formatMonthDisplay(calendarMonth)}.</span>
-                </div>
-              ) : (
-                <div className="resigned-staff-grid">
-                  {monthResignedEmployees.map((emp) => (
-                    <div key={'resigned-' + emp.employee_id + '-' + emp.request_id} className="resigned-staff-card">
-                      <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
-                          <span
-                            style={{
-                              fontSize: '10.5px',
-                              fontWeight: 600,
-                              padding: '1px 6px',
-                              borderRadius: '4px',
-                              backgroundColor: 'var(--surface-subtle)',
-                              color: 'var(--text-primary)',
-                              border: '1px solid var(--border-default)',
-                            }}
-                          >
-                            Đã thôi việc
-                          </span>
-                          <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
-                            {emp.employee_code}
-                          </span>
-                        </div>
-                        <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)', marginBottom: '2px' }}>
-                          {emp.employee_name}
-                        </div>
-                        <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '6px' }}>
-                          {emp.store_name || emp.department_name || 'TechZone'} {emp.position_name ? `• ${emp.position_name}` : ''}
-                        </div>
-                        <div style={{ fontSize: '0.78rem', color: 'var(--text-primary)', backgroundColor: 'var(--surface-subtle)', border: '1px solid var(--border-subtle)', padding: '5px 8px', borderRadius: '4px', marginBottom: '6px' }}>
-                          <strong>Ngày thôi việc:</strong> {formatDate(emp.resignation_date || emp.start_date)}
-                        </div>
-                        {emp.reason && (
-                          <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={emp.reason}>
-                            &ldquo;{emp.reason}&rdquo;
-                          </div>
-                        )}
-                      </div>
-
-                      {emp.request_id > 0 && (
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          style={{ marginTop: '10px', width: '100%', justifyContent: 'center', gap: '4px', fontSize: '11.5px', padding: '4px 8px' }}
-                          onClick={() => setDetailModalRequest(emp)}
-                        >
-                          {Icons.eye} Chi tiết đơn thôi việc
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
             {/* Calendar Matrix (7-day grid) */}
             <div
               style={{
@@ -2102,11 +1997,6 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                         Quy định: Tối đa <strong>{selectedTypeInfo.max_days_allowed} ngày</strong> cho mỗi đợt nghỉ.
                       </span>
                     )}
-                    {selectedTypeInfo.type_code === 'THOI_VIEC' && (
-                      <span style={{ color: 'var(--status-error)', fontWeight: 500, display: 'block', marginTop: '2px' }}>
-                        Lưu ý: Sau khi HR duyệt đơn thôi việc, tài khoản của bạn sẽ tự động chấm dứt hợp đồng.
-                      </span>
-                    )}
                   </div>
                 )}
               </div>
@@ -2218,7 +2108,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                 />
 
                 {/* Cùng 1 hàng: Ô link chiếm 85-90% + Icon tệp bên phải */}
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch' }}>
                   <div style={{ flex: '1 1 88%', position: 'relative' }}>
                     <input
                       type="url"
@@ -2265,12 +2155,12 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                     style={{
                       flex: '0 0 auto',
                       width: '42px',
-                      height: '38px',
+                      height: 'auto', // stretch theo chiều cao ô input bên cạnh
                       display: 'inline-flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       padding: 0,
-                      borderRadius: 'var(--radius-md, 6px)',
+                      borderRadius: 'var(--radius-sm)',
                       cursor: selectedProofFiles.length >= 5 ? 'not-allowed' : 'pointer',
                       opacity: selectedProofFiles.length >= 5 ? 0.5 : 1,
                     }}
