@@ -2976,6 +2976,87 @@ async def get_payroll_detail(
     return pr_dict
 
 
+@router.get("/{payroll_id}/time-breakdown", summary="Giải trình giờ được tính lương theo từng ca (cùng quy tắc sp_generate_monthly_payroll)")
+async def get_payroll_time_breakdown(
+    payroll_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    from app.api.v1.endpoints.operations import enrich_session_record
+
+    pr = await get_payroll_detail(payroll_id, current_user, db)  # kiểm tra quyền xem như phiếu lương
+    tolerance = float((await db.execute(text(
+        "SELECT numeric_value FROM public.payroll_policy_settings WHERE setting_key='LATE_TOLERANCE_MINUTES' AND is_active=TRUE"
+    ))).scalar() or 15)
+    # payable_hours lấy từ chính fn_attendance_payable_hours (tham số giống hệt SP) nên khớp bảng lương;
+    # các thành phần (nghỉ giữa ca, ân hạn, OT, vượt ca) lấy từ enrich_session_record của bảng công.
+    rows = [dict(r) for r in (await db.execute(text('''
+        SELECT a.attendance_id, a.work_date, a.check_in_time, a.check_out_time, a.actual_work_hours,
+               a.late_minutes, a.early_minutes, a.overtime_hours, a.status, a.attendance_context,
+               COALESCE(sh.shift_name, a.attendance_context->'actual'->>'shift_name') AS shift_name,
+               COALESCE(sh.start_time, NULLIF(a.attendance_context->'actual'->>'start_time','')::TIME) AS scheduled_start,
+               COALESCE(sh.end_time, NULLIF(a.attendance_context->'actual'->>'end_time','')::TIME) AS scheduled_end,
+               COALESCE(sh.work_hours, NULLIF(a.attendance_context->'actual'->>'work_hours','')::NUMERIC) AS scheduled_hours,
+               COALESCE(NULLIF(a.attendance_context->'actual'->>'break_minutes','')::INTEGER, sh.break_minutes) AS break_minutes,
+               COALESCE(ota.approved_hours, 0) AS approved_ot_hours,
+               public.fn_attendance_payable_hours(
+                   a.attendance_context, a.actual_work_hours, a.check_in_time, a.check_out_time, a.late_minutes,
+                   COALESCE(sh.work_hours, NULLIF(a.attendance_context->'actual'->>'work_hours','')::NUMERIC),
+                   ota.approved_hours, :tol, a.work_date,
+                   COALESCE(sh.start_time, NULLIF(a.attendance_context->'actual'->>'start_time','')::TIME),
+                   COALESCE(sh.end_time, NULLIF(a.attendance_context->'actual'->>'end_time','')::TIME),
+                   COALESCE(NULLIF(a.attendance_context->'actual'->>'break_minutes','')::INTEGER, sh.break_minutes)
+               ) AS sql_payable_hours
+        FROM attendances a
+        LEFT JOIN work_shifts sh ON sh.shift_id = a.shift_id
+        LEFT JOIN attendance_overtime_approvals ota ON ota.attendance_id = a.attendance_id AND ota.decision = 'APPROVED'
+        WHERE a.employee_id = :emp AND to_char(a.work_date, 'YYYY-MM') = :period
+        ORDER BY a.work_date, a.check_in_time, a.attendance_id
+    '''), {"emp": pr["employee_id"], "period": pr["salary_period"], "tol": tolerance})).mappings().all()]
+
+    sessions = []
+    for r in rows:
+        enrich_session_record(r, int(tolerance))
+        payable = float(r["sql_payable_hours"] or 0)
+        shift_hours = float(r["scheduled_hours"]) if r.get("scheduled_hours") else None
+        sessions.append({
+            "attendance_id": r["attendance_id"],
+            "work_date": str(r["work_date"]),
+            "shift_name": r.get("shift_name"),
+            "scheduled_start": str(r["scheduled_start"])[:5] if r.get("scheduled_start") else None,
+            "scheduled_end": str(r["scheduled_end"])[:5] if r.get("scheduled_end") else None,
+            "shift_hours": shift_hours,
+            "break_minutes": int(r["break_minutes"] or 0),
+            "check_in_time": r["check_in_time"].isoformat() if r.get("check_in_time") else None,
+            "check_out_time": r["check_out_time"].isoformat() if r.get("check_out_time") else None,
+            "late_minutes": int(r["late_minutes"] or 0),
+            "early_minutes": int(r["early_minutes"] or 0),
+            "present_hours": r.get("raw_work_hours"),
+            "break_deducted_hours": r["break_deducted_hours"],
+            "grace_credit_hours": r["grace_credit_hours"],
+            "ot_paid_hours": r["ot_paid_hours"],
+            "over_cap_hours": r["over_cap_hours"],
+            "payable_hours": round(payable, 2),
+            "short_hours": round(max(0.0, shift_hours - payable), 2) if shift_hours else 0.0,
+            "is_excluded": r["is_excluded"],
+            "payroll_hold": r["payroll_hold"],
+        })
+
+    daily = float(pr.get("daily_standard_hours") or 8)
+    required = round((float(pr.get("standard_working_days") or 0) - float(pr.get("paid_leave_days") or 0)) * daily, 2)
+    payable_total = round(sum(s["payable_hours"] for s in sessions), 2)
+    return {
+        "payroll_id": payroll_id,
+        "late_tolerance_minutes": tolerance,
+        "required_hours": required,
+        "payable_hours": payable_total,
+        "present_hours": round(sum(float(s["present_hours"] or 0) for s in sessions), 2),
+        "unworked_hours": float(pr.get("unworked_hours") or 0),
+        "in_shift_short_hours": round(sum(s["short_hours"] for s in sessions if s["payable_hours"] > 0), 2),
+        "sessions": sessions,
+    }
+
+
 @router.put("/{payroll_id}/adjustments", summary="Điều chỉnh khoản cộng/trừ trên phiếu lương nháp có lý do và audit")
 async def update_payroll_adjustments(
     payroll_id: int,

@@ -6,7 +6,7 @@ import { StatCard } from '../components/common/StatCard'
 import { EmptyState } from '../components/common/EmptyState'
 import { TablePagination, useClientPagination } from '../components/common/TablePagination'
 import { formatCurrency, formatDate } from '../utils/formatters'
-import type { Payroll, PayrollPeriodWorkingDays, PayrollImportStatusResponse, Attendance, Employee } from '../types'
+import type { Payroll, PayrollPeriodWorkingDays, PayrollImportStatusResponse, Attendance, Employee, PayrollTimeBreakdown } from '../types'
 import { PayrollImportDialog } from './PayrollImportDialog'
 import { payrollApi, attendanceApi, employeeApi } from '../services/api'
 import './PayslipPrint.css'
@@ -126,6 +126,18 @@ export function PayrollPage({ user }: PayrollPageProps) {
   const [annualData, setAnnualData] = useState<any>(null)
   const [annualLoading, setAnnualLoading] = useState(false)
   const [lateAttendances, setLateAttendances] = useState<Attendance[]>([])
+  const [timeBreakdown, setTimeBreakdown] = useState<PayrollTimeBreakdown | null>(null)
+
+  // Giải trình giờ được tính lương từng ca (cùng hàm SQL với bảng lương)
+  useEffect(() => {
+    setTimeBreakdown(null)
+    if (!selectedPayroll?.payroll_id) return
+    let active = true
+    payrollApi.getTimeBreakdown(selectedPayroll.payroll_id)
+      .then(r => { if (active) setTimeBreakdown(r) })
+      .catch(() => { /* không có quyền / lỗi: tooltip dùng số tổng */ })
+    return () => { active = false }
+  }, [selectedPayroll?.payroll_id])
 
   // Load late attendances when selectedPayroll changes
   useEffect(() => {
@@ -140,7 +152,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
         const empId = selectedPayroll.employee_id
         const atts = await attendanceApi.getAll({ period, employee_id: empId }).catch(() => [])
         if (active) {
-          const lates = (atts || []).filter(a => (a.late_minutes || 0) > 0)
+          const lates = (atts || []).filter(a => (a.late_minutes || 0) > 0 || (a.early_minutes || 0) > 0)
           setLateAttendances(lates)
         }
       } catch {
@@ -1426,11 +1438,23 @@ export function PayrollPage({ user }: PayrollPageProps) {
                           <div>Nghỉ không lương: <strong style={{ color: (selectedPayroll.unpaid_leave_days || 0) > 0 ? 'var(--status-error)' : 'inherit' }}>{selectedPayroll.unpaid_leave_days ?? 0}</strong> ngày</div>
                           <div>Vắng không phép: <strong style={{ color: (selectedPayroll.absent_days || 0) > 0 ? 'var(--status-error)' : 'inherit' }}>{selectedPayroll.absent_days ?? 0}</strong> ngày</div>
                           <div>Định mức ca: <strong>{selectedPayroll.daily_standard_hours ?? 8}h/ngày</strong></div>
-                          <div>Giờ công: <strong>{Number(selectedPayroll.attendance_hours || 0).toFixed(1)}h</strong></div>
-                          {lateAttendances.length > 0 && (
-                            <div>Đi muộn: <strong style={{ color: 'var(--status-error)' }}>{lateAttendances.length} lần</strong></div>
+                          {timeBreakdown?.payroll_id === selectedPayroll.payroll_id ? (
+                            <div>Giờ tính lương: <strong>{timeBreakdown.payable_hours}h</strong> / phải làm {timeBreakdown.required_hours}h (có mặt {timeBreakdown.present_hours}h)</div>
+                          ) : (
+                            <div>Giờ có mặt: <strong>{Number(selectedPayroll.attendance_hours || 0).toFixed(2)}h</strong></div>
                           )}
-                          <div>Trễ: <strong style={{ color: (selectedPayroll.attendance_late_minutes || 0) > 0 ? 'var(--status-error)' : 'inherit' }}>{selectedPayroll.attendance_late_minutes || 0}p</strong></div>
+                          {(() => {
+                            const lates = lateAttendances.filter(a => (a.late_minutes || 0) > 0)
+                            const earlies = lateAttendances.filter(a => (a.early_minutes || 0) > 0)
+                            const lateMin = lates.reduce((s, a) => s + (a.late_minutes || 0), 0)
+                            const earlyMin = earlies.reduce((s, a) => s + (a.early_minutes || 0), 0)
+                            return (
+                              <>
+                                <div>Đi trễ: <strong style={{ color: lateMin > 0 ? 'var(--status-error)' : 'inherit' }}>{lates.length} lần · {lateMin}p</strong></div>
+                                <div>Về sớm: <strong style={{ color: earlyMin > 0 ? 'var(--status-error)' : 'inherit' }}>{earlies.length} lần · {earlyMin}p</strong></div>
+                              </>
+                            )
+                          })()}
                           <div>OT duyệt: <strong style={{ color: 'var(--primary-color, #2563eb)' }}>{Number(selectedPayroll.attendance_approved_overtime_hours || 0).toFixed(1)}h</strong></div>
                           {(selectedPayroll.unworked_hours || 0) > 0 && (
                             <div>Giờ thiếu: <strong style={{ color: 'var(--status-error)' }}>{selectedPayroll.unworked_hours}h</strong></div>
@@ -1458,7 +1482,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                                 </tr>
                                 <tr>
                                   <td style={{ padding: '8px 12px' }}>
-                                    <ActualBaseSalaryHoverItem payroll={selectedPayroll} lateRecords={lateAttendances} />
+                                    <ActualBaseSalaryHoverItem payroll={selectedPayroll} lateRecords={lateAttendances} timeBreakdown={timeBreakdown} />
                                   </td>
                                   <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
                                     {(selectedPayroll.actual_base_salary || 0) > 0 ? ('+' + formatCurrency(selectedPayroll.actual_base_salary)) : formatCurrency(0)}

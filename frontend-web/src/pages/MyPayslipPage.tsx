@@ -6,7 +6,7 @@ import { useCompanyProfile } from '../hooks/useCompanyProfile'
 import { StatCard } from '../components/common/StatCard'
 import { EmptyState } from '../components/common/EmptyState'
 import { formatCurrency, formatDate } from '../utils/formatters'
-import type { Payroll, Contract, Attendance } from '../types'
+import type { Payroll, Contract, Attendance, PayrollTimeBreakdown } from '../types'
 import { payrollApi, employeeApi, attendanceApi, default as api } from '../services/api'
 import { contractApi } from '../services/contractService'
 import { toast } from 'sonner'
@@ -176,6 +176,8 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
 
   // Late Attendances State
   const [lateAttendances, setLateAttendances] = useState<Attendance[]>([])
+  const [timeBreakdown, setTimeBreakdown] = useState<PayrollTimeBreakdown | null>(null)
+
 
   // Contracts State
   const [contracts, setContracts] = useState<Contract[]>([])
@@ -306,6 +308,17 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
   // Subform display payroll
   const displayPayroll = currentPayroll
 
+  // Giải trình giờ được tính lương từng ca (cùng hàm SQL với bảng lương)
+  useEffect(() => {
+    setTimeBreakdown(null)
+    if (!displayPayroll?.payroll_id) return
+    let active = true
+    payrollApi.getTimeBreakdown(displayPayroll.payroll_id)
+      .then(r => { if (active) setTimeBreakdown(r) })
+      .catch(() => { /* không có quyền / lỗi: tooltip dùng số tổng */ })
+    return () => { active = false }
+  }, [displayPayroll?.payroll_id])
+
   // StatCards overview payroll: hiển thị kỳ đang chọn, hoặc kỳ mới nhất trong năm nếu chưa chọn
   const statPayroll = useMemo(() => {
     if (currentPayroll) return currentPayroll
@@ -359,7 +372,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
           atts = await attendanceApi.getMyHistory(period).catch(() => [])
         }
         if (active) {
-          const lates = (atts || []).filter(a => (a.late_minutes || 0) > 0)
+          const lates = (atts || []).filter(a => (a.late_minutes || 0) > 0 || (a.early_minutes || 0) > 0)
           setLateAttendances(lates)
         }
       } catch {
@@ -834,11 +847,23 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
                         <div>Công thực tế: <strong style={{ color: 'var(--status-success)' }}>{displayPayroll.actual_working_days ?? 0}</strong> ngày</div>
                         <div>Phép có lương: <strong>{displayPayroll.paid_leave_days ?? 0}</strong> ngày</div>
                         <div>Nghỉ không lương: <strong style={{ color: (displayPayroll.unpaid_leave_days || 0) > 0 ? 'var(--status-error)' : 'inherit' }}>{displayPayroll.unpaid_leave_days ?? 0}</strong> ngày</div>
-                        {lateAttendances.length > 0 && (
-                          <div>Đi muộn: <strong style={{ color: 'var(--status-error)' }}>{lateAttendances.length} lần</strong></div>
+                        {(() => {
+                          const lates = lateAttendances.filter(a => (a.late_minutes || 0) > 0)
+                          const earlies = lateAttendances.filter(a => (a.early_minutes || 0) > 0)
+                          const lateMin = lates.reduce((s, a) => s + (a.late_minutes || 0), 0)
+                          const earlyMin = earlies.reduce((s, a) => s + (a.early_minutes || 0), 0)
+                          return (
+                            <>
+                              <div>Đi trễ: <strong style={{ color: lateMin > 0 ? 'var(--status-error)' : 'inherit' }}>{lates.length} lần · {lateMin}p</strong></div>
+                              <div>Về sớm: <strong style={{ color: earlyMin > 0 ? 'var(--status-error)' : 'inherit' }}>{earlies.length} lần · {earlyMin}p</strong></div>
+                            </>
+                          )
+                        })()}
+                        {timeBreakdown?.payroll_id === displayPayroll.payroll_id && (
+                          <div>Giờ tính lương: <strong>{timeBreakdown.payable_hours}h</strong> / phải làm {timeBreakdown.required_hours}h (có mặt {timeBreakdown.present_hours}h)</div>
                         )}
                         {(displayPayroll.unworked_hours || 0) > 0 && (
-                          <div>Trễ/thiếu: <strong style={{ color: 'var(--status-error)' }}>{displayPayroll.unworked_hours}h</strong></div>
+                          <div>Giờ thiếu: <strong style={{ color: 'var(--status-error)' }}>{displayPayroll.unworked_hours}h</strong></div>
                         )}
                         {(displayPayroll.overtime_salary || 0) > 0 && (
                           <div>Lương OT: <strong>{"+" + formatCurrency(displayPayroll.overtime_salary)}</strong></div>
@@ -860,7 +885,7 @@ export function MyPayslipPage({ user, employeeId, initialTab = 'monthly' }: MyPa
                           <tbody>
                             <tr>
                               <td style={{ padding: '8px 12px' }}>
-                                <ActualBaseSalaryHoverItem payroll={displayPayroll} lateRecords={lateAttendances} />
+                                <ActualBaseSalaryHoverItem payroll={displayPayroll} lateRecords={lateAttendances} timeBreakdown={timeBreakdown} />
                               </td>
                               <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
                                 {(displayPayroll.actual_base_salary || 0) > 0 ? ('+' + formatCurrency(displayPayroll.actual_base_salary)) : formatCurrency(0)}

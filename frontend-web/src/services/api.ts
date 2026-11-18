@@ -892,6 +892,10 @@ export const payrollApi = {
     return api.get(`/payrolls/${payrollId}/payslip`);
   },
 
+  getTimeBreakdown: async (payrollId: number): Promise<PayrollTimeBreakdown> => {
+    return api.get<PayrollTimeBreakdown>(`/payrolls/${payrollId}/time-breakdown`);
+  },
+
   adjustDraft: async (payrollId:number, additionAmount:number, deductionAmount:number, reason:string):Promise<any> =>
     api.put(`/payrolls/${payrollId}/adjustments`,{addition_amount:additionAmount,deduction_amount:deductionAmount,reason}),
 
@@ -1191,7 +1195,7 @@ export const userApi = {
 // Audit Log API
 // ============================================
 
-import type { AuditLog } from '../types';
+import type { AuditLog, PayrollTimeBreakdown } from '../types';
 
 export interface AuditLogResponse {
   items: AuditLog[];

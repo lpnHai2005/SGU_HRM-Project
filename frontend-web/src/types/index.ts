@@ -1258,3 +1258,38 @@ export interface PayrollImportStatusResponse {
   override_count: number;
   batches: PayrollImportStatusBatch[];
 }
+
+/** Giải trình giờ được tính lương từng ca (API /payrolls/{id}/time-breakdown). */
+export interface PayrollTimeSession {
+  attendance_id: number;
+  work_date: string;
+  shift_name?: string | null;
+  scheduled_start?: string | null;
+  scheduled_end?: string | null;
+  shift_hours?: number | null;
+  break_minutes: number;
+  check_in_time?: string | null;
+  check_out_time?: string | null;
+  late_minutes: number;
+  early_minutes: number;
+  present_hours?: number | null;
+  break_deducted_hours: number;
+  grace_credit_hours: number;
+  ot_paid_hours: number;
+  over_cap_hours: number;
+  payable_hours: number;
+  short_hours: number;
+  is_excluded: boolean;
+  payroll_hold: boolean;
+}
+
+export interface PayrollTimeBreakdown {
+  payroll_id: number;
+  late_tolerance_minutes: number;
+  required_hours: number;
+  payable_hours: number;
+  present_hours: number;
+  unworked_hours: number;
+  in_shift_short_hours: number;
+  sessions: PayrollTimeSession[];
+}

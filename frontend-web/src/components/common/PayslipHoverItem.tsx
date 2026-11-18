@@ -1,10 +1,16 @@
 import { Icons } from './Icons'
 import React, { useState, useEffect, useRef } from 'react'
-import { formatCurrency, formatDate } from '../../utils/formatters'
+import { formatCurrency, formatDate, formatTime } from '../../utils/formatters'
+import type { PayrollTimeBreakdown, PayrollTimeSession } from '../../types'
+
+// Khớp LATE_TOLERANCE_MINUTES mặc định của sp_generate_monthly_payroll.
+const LATE_GRACE_MINUTES = 15
 
 export interface LateAttendanceRecord {
   work_date: string
   shift_name?: string | null
+  check_in_time?: string | null
+  check_out_time?: string | null
   late_minutes?: number
   early_minutes?: number
 }
@@ -96,12 +102,39 @@ export function PayslipHoverItem({ label, tooltipTitle, tooltipLines, children }
   )
 }
 
+/** 31.55 → "31h33′"; 0.45 → "27 phút". */
+function formatHM(hours: number | null | undefined): string {
+  const total = Math.round((Number(hours) || 0) * 60)
+  if (total < 60) return `${total} phút`
+  const m = total % 60
+  return `${Math.floor(total / 60)}h${m ? String(m).padStart(2, '0') + '′' : ''}`
+}
+
+/** "Có mặt 8h33′ − nghỉ 60′ = 7h33′ → thiếu 27 phút so với ca 8h" */
+function sessionFormula(s: PayrollTimeSession, hourlyPrice: number): string {
+  if (s.is_excluded) return 'HR loại phiên này → không tính công'
+  if (s.payroll_hold) return 'Đang tạm giữ chờ giải trình → chưa tính công'
+  if (!s.check_out_time) return 'Chưa check-out → chưa tính công'
+  let f = `Có mặt ${formatHM(s.present_hours)}`
+  if (s.break_deducted_hours > 0) f += ` − nghỉ giữa ca ${formatHM(s.break_deducted_hours)}`
+  if (s.grace_credit_hours > 0) f += ` + ân hạn ${formatHM(s.grace_credit_hours)}`
+  if (s.ot_paid_hours > 0) f += ` − OT đã duyệt ${formatHM(s.ot_paid_hours)} (trả riêng)`
+  f += ` = ${formatHM(s.payable_hours + s.over_cap_hours)}`
+  if (s.over_cap_hours > 0) f += ` → tính tối đa ${formatHM(s.shift_hours)}`
+  return s.short_hours > 0
+    ? `${f} → thiếu ${formatHM(s.short_hours)} (${s.short_hours}h) so với ca ${formatHM(s.shift_hours)}`
+      + ` → ${s.short_hours}h × ${formatCurrency(hourlyPrice)}/h = -${formatCurrency(Math.round(s.short_hours * hourlyPrice))}`
+    : `${f} → đủ giờ ca`
+}
+
 export function ActualBaseSalaryHoverItem({
   payroll,
-  lateRecords = []
+  lateRecords = [],
+  timeBreakdown = null
 }: {
   payroll: any
   lateRecords?: LateAttendanceRecord[]
+  timeBreakdown?: PayrollTimeBreakdown | null
 }) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const [isPinned, setIsPinned] = useState(false)
@@ -131,7 +164,8 @@ export function ActualBaseSalaryHoverItem({
   const actDays = Number(payroll.actual_working_days) || 0
   const paidDays = Number(payroll.paid_leave_days) || 0
   const dailyPrice = stdDays > 0 ? Math.round(contractSalary / stdDays) : 0
-  const hourlyPrice = stdDays > 0 ? Math.round(contractSalary / (stdDays * 8)) : 0
+  // Cùng đơn giá giờ với SP: lương HĐ ÷ công chuẩn ÷ định mức giờ/ngày của nhân viên.
+  const hourlyPrice = stdDays > 0 ? Math.round(contractSalary / (stdDays * (Number(payroll.daily_standard_hours) || 8))) : 0
 
   const earnedWork = Math.round(actDays * dailyPrice)
   const earnedPaid = Math.round(paidDays * dailyPrice)
@@ -143,11 +177,24 @@ export function ActualBaseSalaryHoverItem({
   const unpaidDays = Number(payroll.unpaid_leave_days) || 0
   const absentDays = Number(payroll.absent_days) || 0
   const totalMissingDays = unpaidDays + absentDays
-  const missingSalary = Math.round(totalMissingDays * dailyPrice)
-  const lateEarlySalary = Math.max(0, timeDed - missingSalary)
 
-  const lates = (lateRecords || []).filter(r => (r.late_minutes || 0) > 0)
-  const lateMinutes = Number(payroll.attendance_late_minutes) || Number(payroll.late_minutes) || lates.reduce((sum, r) => sum + (r.late_minutes || 0), 0)
+  const dailyHours = Number(payroll.daily_standard_hours) || 8
+  const bd = timeBreakdown && timeBreakdown.payroll_id === payroll.payroll_id ? timeBreakdown : null
+  const grace = bd?.late_tolerance_minutes ?? LATE_GRACE_MINUTES
+  const sessions = bd?.sessions ?? []
+  const lates = bd ? sessions.filter(s => s.late_minutes > 0) : (lateRecords || []).filter(r => (r.late_minutes || 0) > 0)
+  const earlies = bd ? sessions.filter(s => s.early_minutes > 0) : (lateRecords || []).filter(r => (r.early_minutes || 0) > 0)
+  const lateMinutes = lates.reduce((sum, r) => sum + (r.late_minutes || 0), 0)
+  const earlyMinutes = earlies.reduce((sum, r) => sum + (r.early_minutes || 0), 0)
+  const graceLates = lates.filter(r => (r.late_minutes || 0) <= grace).length
+  const unworked = Number(payroll.unworked_hours) || 0
+  // Giờ thiếu trong các ca có đi làm; phần còn lại của giờ thiếu là giờ của ngày không đi làm.
+  const inShiftShort = bd ? bd.in_shift_short_hours : Math.max(0, Math.round((unworked - totalMissingDays * dailyHours) * 100) / 100)
+  const inShiftMoney = Math.min(timeDed, Math.round(inShiftShort * hourlyPrice))
+  const missingHours = Math.max(0, Math.round((unworked - inShiftShort) * 100) / 100)
+  const missingMoney = timeDed - inShiftMoney
+  const notable = sessions.filter(s => s.late_minutes > 0 || s.early_minutes > 0 || s.short_hours > 0
+    || s.ot_paid_hours > 0 || s.is_excluded || s.payroll_hold)
 
   return (
     <div
@@ -212,27 +259,52 @@ export function ActualBaseSalaryHoverItem({
           </div>
           {timeDed > 0 ? (
             <div className="payslip-item-tooltip-row payslip-tooltip-subrow" style={{ color: 'var(--text-secondary, #52525b)', flexDirection: 'column', alignItems: 'flex-start', gap: '4px' }}>
-              <div>• Nghỉ/vắng {totalMissingDays} ngày: -{formatCurrency(missingSalary)}</div>
-              <div>• Trễ/sớm {lateMinutes > 0 ? `${lateMinutes} phút` : ''}: -{formatCurrency(lateEarlySalary)} {lates.length > 0 ? `(${lates.length} lần đi trễ)` : ''}</div>
-              
-              {lates.length > 0 && (
+              {bd && (
+                <div>• Giờ phải làm: ({stdDays} ngày chuẩn − {paidDays} ngày phép) × {dailyHours}h = <strong>{formatHM(bd.required_hours)}</strong></div>
+              )}
+              {bd && (
+                <div>• Giờ được tính lương: <strong>{formatHM(bd.payable_hours)}</strong> (có mặt {formatHM(bd.present_hours)}; đã trừ nghỉ giữa ca, cộng phút trễ trong ân hạn, mỗi ca tính tối đa bằng giờ ca)</div>
+              )}
+              <div>• Giờ thiếu: <strong>{formatHM(unworked)} ({unworked}h)</strong> × {formatCurrency(hourlyPrice)}/h = <strong>-{formatCurrency(timeDed)}</strong>, gồm:</div>
+              <div style={{ paddingLeft: '12px' }}>– Ngày không đi làm ({totalMissingDays} ngày): {formatHM(missingHours)} ({missingHours}h) × {formatCurrency(hourlyPrice)}/h = <strong>-{formatCurrency(missingMoney)}</strong></div>
+              <div style={{ paddingLeft: '12px' }}>– Thiếu giờ trong các ca có đi làm: {formatHM(inShiftShort)} ({inShiftShort}h) × {formatCurrency(hourlyPrice)}/h = <strong>-{formatCurrency(inShiftMoney)}</strong></div>
+              <div>
+                • Đi trễ: {lateMinutes} phút ({lates.length} lần)
+                {graceLates > 0 && ` — ${graceLates} lần trong ân hạn ${grace}′ được bù, không trừ`}
+                {lates.length - graceLates > 0 && ` — ${lates.length - graceLates} lần quá ân hạn: trừ giờ + phạt riêng`}
+              </div>
+              <div>• Về sớm: {earlyMinutes} phút ({earlies.length} lần)</div>
+              <div style={{ fontSize: '11px', fontStyle: 'italic' }}>
+                Tiền trừ tính theo giờ thiếu của từng ca, không theo tổng phút trễ/sớm: đến sớm hoặc ở lại muộn trong cùng ca được bù, phút trễ trong ân hạn được cộng lại.
+              </div>
+
+              {notable.length > 0 && (
                 <div className="payslip-tooltip-late-box">
                   <div className="payslip-tooltip-late-header">
-                    <span>Chi tiết các ca đi trễ:</span>
-                    <span className="payslip-tooltip-late-badge">{lates.length} lần</span>
+                    <span>Chi tiết các ca có trễ/sớm/thiếu giờ:</span>
+                    <span className="payslip-tooltip-late-badge">{notable.length} ca</span>
                   </div>
-                  <div className="payslip-tooltip-late-list">
-                    {lates.map((item, idx) => (
-                      <div key={idx} className="payslip-tooltip-late-row">
+                  <div className="payslip-tooltip-late-list" style={{ maxHeight: '220px' }}>
+                    {notable.map(s => (
+                      <div key={s.attendance_id} className="payslip-tooltip-late-row" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
                         <span className="payslip-tooltip-late-date">
-                          • Ngày <strong>{formatDate(item.work_date)}</strong> ({item.shift_name || 'Ca làm việc'}):
+                          • <strong>{formatDate(s.work_date)}</strong> · {s.shift_name || 'Ca làm việc'}
+                          {s.scheduled_start && s.scheduled_end ? ` ${s.scheduled_start}–${s.scheduled_end}` : ''}
+                          {' '}· vào {formatTime(s.check_in_time)} – ra {formatTime(s.check_out_time)}
                         </span>
-                        <span className="payslip-tooltip-late-val">
-                          Trễ {item.late_minutes} phút
-                        </span>
+                        {s.late_minutes > 0 && (
+                          <span>
+                            Đi trễ {s.late_minutes} phút {s.late_minutes <= grace ? `(trong ân hạn ${grace}′ → được bù, không trừ)` : `(quá ân hạn ${grace}′ → trừ giờ + phạt)`}
+                          </span>
+                        )}
+                        {s.early_minutes > 0 && <span>Về sớm {s.early_minutes} phút</span>}
+                        <span className="payslip-tooltip-late-val">{sessionFormula(s, hourlyPrice)}</span>
                       </div>
                     ))}
                   </div>
+                  {sessions.length > notable.length && (
+                    <div style={{ fontSize: '11px', marginTop: '4px' }}>{sessions.length - notable.length} ca còn lại đủ giờ, không bị trừ.</div>
+                  )}
                 </div>
               )}
             </div>
