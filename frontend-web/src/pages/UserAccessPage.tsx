@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { toast } from 'sonner'
 import { roleApi, userApi } from '../services/api'
 import type { Role, User, Employee, UserCreate } from '../types'
@@ -8,7 +8,7 @@ import { Icons } from '../components/common/Icons'
 import { confirmAction } from '../components/common/ConfirmDialog'
 import { EmployeeSearchSelect } from '../components/common/EmployeeSearchSelect'
 import { TablePagination, useClientPagination } from '../components/common/TablePagination'
-import { Pencil, KeyRound, Lock, Unlock, Trash2 } from 'lucide-react'
+import { Pencil, KeyRound, Lock, Unlock, Trash2, Eye, EyeOff } from 'lucide-react'
 import './UserAccessPage.css'
 
 interface UserAccessPageProps {
@@ -35,6 +35,39 @@ export function UserAccessPage({ currentUserId }: UserAccessPageProps) {
   // Modals state
   const [activeModal, setActiveModal] = useState<ModalType>(null)
   const [targetUser, setTargetUser] = useState<User | null>(null)
+
+  // Password states for Create User modal
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+
+  // Ref tracking mousedown target on modal overlay to prevent accidental modal close on text selection
+  const overlayMouseDownTargetRef = useRef<EventTarget | null>(null)
+
+  const handleOverlayMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    overlayMouseDownTargetRef.current = e.target
+  }
+
+  const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    // Chỉ đóng modal khi cả mousedown và click đều diễn ra trực tiếp trên chính modal-overlay (click ra nền ngoài)
+    // Nếu người dùng bắt đầu bôi đen/tô chữ trong modal rồi kéo thả chuột ra ngoài backdrop -> KHÔNG ĐÓNG MODAL
+    if (e.target === e.currentTarget && overlayMouseDownTargetRef.current === e.currentTarget) {
+      setActiveModal(null)
+    }
+    overlayMouseDownTargetRef.current = null
+  }
+
+  // Đóng modal khi nhấn phím Escape
+  useEffect(() => {
+    if (!activeModal) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setActiveModal(null)
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [activeModal])
 
   // Form state for Create User (1 tài khoản 1 vai trò)
   const [createForm, setCreateForm] = useState<UserCreate>({
@@ -269,6 +302,9 @@ export function UserAccessPage({ currentUserId }: UserAccessPageProps) {
       role_id: 4,
       role_ids: [4],
     })
+    setConfirmPassword('')
+    setShowPassword(false)
+    setShowConfirmPassword(false)
     setActiveModal('create')
   }
 
@@ -281,6 +317,14 @@ export function UserAccessPage({ currentUserId }: UserAccessPageProps) {
     }
     if (createForm.password.length < 6) {
       toast.warning('Mật khẩu cần tối thiểu 6 ký tự')
+      return
+    }
+    if (!confirmPassword) {
+      toast.warning('Vui lòng nhập xác nhận mật khẩu')
+      return
+    }
+    if (createForm.password !== confirmPassword) {
+      toast.warning('Mật khẩu xác nhận không khớp. Vui lòng kiểm tra lại!')
       return
     }
 
@@ -770,8 +814,17 @@ export function UserAccessPage({ currentUserId }: UserAccessPageProps) {
       {/* MODAL 1: CREATE USER                                       */}
       {/* ========================================================== */}
       {activeModal === 'create' && (
-        <div className="modal-overlay" onClick={() => setActiveModal(null)}>
-          <div className="modal" style={{ maxWidth: 500 }} onClick={e => e.stopPropagation()}>
+        <div
+          className="modal-overlay"
+          onMouseDown={handleOverlayMouseDown}
+          onClick={handleOverlayClick}
+        >
+          <div
+            className="modal"
+            style={{ maxWidth: 500 }}
+            onClick={e => e.stopPropagation()}
+            onMouseDown={e => e.stopPropagation()}
+          >
             <form onSubmit={handleSubmitCreate}>
               <div className="modal-header">
                 <h3 className="modal-title">Tạo tài khoản người dùng mới</h3>
@@ -799,15 +852,64 @@ export function UserAccessPage({ currentUserId }: UserAccessPageProps) {
                   <label className="form-label">
                     Mật khẩu ban đầu <span style={{ color: 'var(--status-danger-text)' }}>*</span>
                   </label>
-                  <input
-                    type="password"
-                    required
-                    minLength={6}
-                    className="form-input"
-                    placeholder="Tối thiểu 6 ký tự"
-                    value={createForm.password}
-                    onChange={e => setCreateForm({ ...createForm, password: e.target.value })}
-                  />
+                  <div className="password-input-container">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      minLength={6}
+                      className="form-input"
+                      placeholder="Tối thiểu 6 ký tự"
+                      value={createForm.password}
+                      onChange={e => setCreateForm({ ...createForm, password: e.target.value })}
+                    />
+                    <button
+                      type="button"
+                      className="password-toggle-btn"
+                      onClick={() => setShowPassword(prev => !prev)}
+                      tabIndex={-1}
+                      title={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                      aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                    >
+                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">
+                    Xác nhận mật khẩu <span style={{ color: 'var(--status-danger-text)' }}>*</span>
+                  </label>
+                  <div className="password-input-container">
+                    <input
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      required
+                      minLength={6}
+                      className="form-input"
+                      placeholder="Nhập lại mật khẩu ban đầu"
+                      value={confirmPassword}
+                      onChange={e => setConfirmPassword(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="password-toggle-btn"
+                      onClick={() => setShowConfirmPassword(prev => !prev)}
+                      tabIndex={-1}
+                      title={showConfirmPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                      aria-label={showConfirmPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                    >
+                      {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                  {confirmPassword && createForm.password !== confirmPassword && (
+                    <small style={{ color: 'var(--status-danger-text, #ef4444)', fontSize: '0.8rem', marginTop: 4, display: 'block' }}>
+                      Mật khẩu xác nhận không khớp
+                    </small>
+                  )}
+                  {confirmPassword && createForm.password === confirmPassword && (
+                    <small style={{ color: 'var(--status-success, #10b981)', fontSize: '0.8rem', marginTop: 4, display: 'block' }}>
+                      ✓ Mật khẩu khớp
+                    </small>
+                  )}
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -927,8 +1029,17 @@ export function UserAccessPage({ currentUserId }: UserAccessPageProps) {
       {/* MODAL 2: EDIT USER                                         */}
       {/* ========================================================== */}
       {activeModal === 'edit' && targetUser && (
-        <div className="modal-overlay" onClick={() => setActiveModal(null)}>
-          <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+        <div
+          className="modal-overlay"
+          onMouseDown={handleOverlayMouseDown}
+          onClick={handleOverlayClick}
+        >
+          <div
+            className="modal"
+            style={{ maxWidth: 480 }}
+            onClick={e => e.stopPropagation()}
+            onMouseDown={e => e.stopPropagation()}
+          >
             <form onSubmit={handleSubmitEdit}>
               <div className="modal-header">
                 <h3 className="modal-title">Sửa tài khoản: {targetUser.username}</h3>
@@ -1077,8 +1188,17 @@ export function UserAccessPage({ currentUserId }: UserAccessPageProps) {
       {/* MODAL 4: CONFIRM DELETE USER                               */}
       {/* ========================================================== */}
       {activeModal === 'delete' && targetUser && (
-        <div className="modal-overlay" onClick={() => setActiveModal(null)}>
-          <div className="modal" style={{ maxWidth: 450 }} onClick={e => e.stopPropagation()}>
+        <div
+          className="modal-overlay"
+          onMouseDown={handleOverlayMouseDown}
+          onClick={handleOverlayClick}
+        >
+          <div
+            className="modal"
+            style={{ maxWidth: 450 }}
+            onClick={e => e.stopPropagation()}
+            onMouseDown={e => e.stopPropagation()}
+          >
             <div className="modal-header">
               <h3 className="modal-title">Xác nhận xóa tài khoản</h3>
               <button type="button" className="modal-close" onClick={() => setActiveModal(null)}>

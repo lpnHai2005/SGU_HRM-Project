@@ -141,3 +141,51 @@
   border-color: var(--status-error, #ef4444);
 }
 
+/* Password Input with Hide/Unhide Toggle in Modals */
+.password-input-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.password-input-container .form-input {
+  width: 100%;
+  padding-right: 40px !important;
+}
+
+/* Edge & IE default password reveal button suppression */
+.password-input-container .form-input::-ms-reveal,
+.password-input-container .form-input::-ms-clear {
+  display: none;
+}
+
+.password-toggle-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary, #94a3b8);
+  cursor: pointer;
+  padding: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm, 6px);
+  transition: color 0.15s ease, background-color 0.15s ease;
+  z-index: 2;
+}
+
+.password-toggle-btn:hover {
+  color: var(--text-primary);
+  background: var(--surface-hover, rgba(0, 0, 0, 0.05));
+}
+
+.password-toggle-btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 1px;
+}
+
+
