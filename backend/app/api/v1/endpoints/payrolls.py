@@ -53,7 +53,7 @@ async def lock_payroll_period(db, period):
 
 async def _payroll_procedure_code(db) -> str:
     body = (await db.execute(text("""SELECT pg_get_functiondef(p.oid) FROM pg_proc p
-        WHERE p.proname='sp_generate_monthly_payroll' AND p.prokind='p' AND p.pronargs=2
+        WHERE p.proname='sp_generate_monthly_payroll' AND p.prokind='p' AND p.pronargs=3
           AND pg_function_is_visible(p.oid) LIMIT 1"""))).scalar_one_or_none() or ""
     body = re.sub(r"/\*.*?\*/", "", body, flags=re.S)
     body = re.sub(r"--[^\n]*", "", body)
@@ -169,6 +169,35 @@ def populate_payroll_breakdown_from_details(pr_dict: dict, details_list: list):
     pr_dict["total_deductions"] = float(pr_dict.get("total_deductions") or 0.0)
     pr_dict["total_deduction"] = pr_dict["total_deductions"]
     return pr_dict
+
+
+async def attach_payroll_details_batch(db: AsyncSession, payroll_rows: list) -> list[dict]:
+    """Fetch all payroll_details for a list of payrolls in a single query (eliminates N+1 round-trips)."""
+    if not payroll_rows:
+        return []
+    result = [dict(pr) for pr in payroll_rows]
+    pids = [pr["payroll_id"] for pr in result]
+    det_res = await db.execute(
+        text("""
+            SELECT payroll_id, detail_id, item_code, item_name, item_type, calculation_formula, amount, notes
+            FROM payroll_details
+            WHERE payroll_id = ANY(:pids)
+            ORDER BY payroll_id ASC, detail_id ASC
+        """),
+        {"pids": pids},
+    )
+    details_by_pid: Dict[int, list] = {}
+    for d in det_res.mappings().all():
+        d_dict = dict(d)
+        pid = d_dict.pop("payroll_id")
+        details_by_pid.setdefault(pid, []).append(d_dict)
+
+    for pr_dict in result:
+        details_list = details_by_pid.get(pr_dict["payroll_id"], [])
+        pr_dict["details"] = details_list
+        populate_payroll_breakdown_from_details(pr_dict, details_list)
+
+    return result
 
 async def reapply_payroll_adjustments(db, period, adjustments):
     """Carry audited draft adjustments across recalculation, keyed by employee."""
@@ -322,14 +351,19 @@ async def list_payrolls(
         JOIN employees e ON p.employee_id = e.employee_id
         LEFT JOIN stores s ON e.store_id = s.store_id
         JOIN positions pos ON e.position_id = pos.position_id
-        LEFT JOIN LATERAL (SELECT COUNT(DISTINCT a.work_date) FILTER (WHERE a.check_in_time IS NOT NULL) AS attendance_actual_days,
-            COALESCE(SUM(a.actual_work_hours),0) AS attendance_hours,
-            COALESCE(SUM(CASE WHEN a.late_minutes > 15 THEN a.late_minutes ELSE 0 END),0) AS attendance_late_minutes,
-            COALESCE(SUM(a.early_minutes),0) AS attendance_early_minutes,
-            COALESCE(SUM(a.overtime_hours),0) AS attendance_actual_overtime_hours,
-            COALESCE(SUM(CASE WHEN ota.decision='APPROVED' THEN ota.approved_hours ELSE 0 END),0) AS attendance_approved_overtime_hours
-            FROM attendances a LEFT JOIN attendance_overtime_approvals ota USING(attendance_id)
-            WHERE a.employee_id=p.employee_id AND to_char(a.work_date,'YYYY-MM')=p.salary_period) att ON TRUE
+        LEFT JOIN (
+            SELECT a.employee_id,
+                COUNT(DISTINCT a.work_date) FILTER (WHERE a.check_in_time IS NOT NULL) AS attendance_actual_days,
+                COALESCE(SUM(a.actual_work_hours),0) AS attendance_hours,
+                COALESCE(SUM(CASE WHEN a.late_minutes > 15 THEN a.late_minutes ELSE 0 END),0) AS attendance_late_minutes,
+                COALESCE(SUM(a.early_minutes),0) AS attendance_early_minutes,
+                COALESCE(SUM(a.overtime_hours),0) AS attendance_actual_overtime_hours,
+                COALESCE(SUM(CASE WHEN ota.decision='APPROVED' THEN ota.approved_hours ELSE 0 END),0) AS attendance_approved_overtime_hours
+            FROM attendances a
+            LEFT JOIN attendance_overtime_approvals ota USING(attendance_id)
+            WHERE to_char(a.work_date,'YYYY-MM') = :period
+            GROUP BY a.employee_id
+        ) att ON att.employee_id = p.employee_id
         LEFT JOIN payroll_manual_adjustments adj USING(payroll_id)
         WHERE p.salary_period = :period
     """
@@ -364,62 +398,74 @@ async def list_payrolls(
         query += " AND p.payment_status = :status"
         params["status"] = payment_status
 
-    query += " ORDER BY p.payroll_id ASC"
+    query += " ORDER BY p.employee_id ASC, p.payroll_id ASC"
     res = await db.execute(text(query), params)
     payrolls = res.mappings().all()
 
-    result = []
-    for pr in payrolls:
-        pr_dict = dict(pr)
-        det_res = await db.execute(text("""
-            SELECT detail_id, item_code, item_name, item_type, calculation_formula, amount, notes
-            FROM payroll_details WHERE payroll_id = :pid
-            ORDER BY detail_id ASC
-        """), {"pid": pr["payroll_id"]})
-        details_list = [dict(d) for d in det_res.mappings().all()]
-        pr_dict["details"] = details_list
-        populate_payroll_breakdown_from_details(pr_dict, details_list)
-        result.append(pr_dict)
-
-    return result
+    return await attach_payroll_details_batch(db, payrolls)
 
 
 # ===================================================================================
 # 2. PAYROLL CALCULATION ENGINE & BATCH WORKFLOW
 # ===================================================================================
 
-async def execute_payroll_calculation(db, period: str, hr_id: int):
+async def execute_payroll_calculation(db, period: str, hr_id: int, employee_id: int | None = None) -> dict:
     await lock_payroll_period(db, period)
     await ensure_period_not_finalized(db, period)
     await ensure_payroll_ot_procedure_is_approval_gated(db)
     await ensure_ot_period_policy(db, period)
 
-    # 1. Tính hoa hồng trước
-    await db.execute(text("CALL sp_calculate_monthly_commission(:period)"), {"period": period})
+    bounds = {"p_start": date.fromisoformat(f"{period}-01")}
+    eligible_no_contract = """
+        FROM employees e
+        LEFT JOIN positions pos ON e.position_id = pos.position_id
+        WHERE public.fn_payroll_employee_eligible(e.employee_id, CAST(:p_start AS date),
+                  CAST(CAST(:p_start AS date) + INTERVAL '1 month - 1 day' AS date))
+          AND NOT EXISTS (SELECT 1 FROM public.fn_payroll_contract(e.employee_id, CAST(:p_start AS date),
+                  CAST(CAST(:p_start AS date) + INTERVAL '1 month - 1 day' AS date)))"""
 
-    # Dọn dẹp các chi tiết và bảng lương của kỳ này trước khi chốt lại
+    if employee_id is None:
+        # Hoa hồng chỉ chạy khi tính toàn chuỗi (proc tính cả kỳ)
+        await db.execute(text("CALL sp_calculate_monthly_commission(:period)"), {"period": period})
+        skipped = [dict(r) for r in (await db.execute(text(f"""
+            SELECT e.employee_id, e.employee_code, e.full_name AS employee_name, pos.position_name,
+                   CASE WHEN EXISTS (SELECT 1 FROM contracts c WHERE c.employee_id=e.employee_id AND c.status='DRAFT')
+                          THEN 'Hợp đồng đang ở trạng thái DRAFT, chưa kích hoạt'
+                        WHEN EXISTS (SELECT 1 FROM contracts c WHERE c.employee_id=e.employee_id AND c.status='EXPIRED')
+                          THEN 'Hợp đồng đã hết hạn trước kỳ lương'
+                        ELSE 'Chưa có hợp đồng lao động' END AS error_reason
+            {eligible_no_contract} ORDER BY e.employee_code"""), bounds)).mappings().all()]
+    else:
+        missing = (await db.execute(text(f"SELECT 1 {eligible_no_contract} AND e.employee_id=:eid"),
+                                    {**bounds, "eid": employee_id})).first()
+        if missing:
+            raise HTTPException(400, "Nhân viên chưa có hợp đồng hiệu lực trong kỳ, không thể tính lương.")
+        skipped = []
+
     saved_adjustments = (await db.execute(text('''SELECT p.employee_id,a.addition_amount,a.deduction_amount,a.reason,a.edited_by
         FROM payrolls p JOIN payroll_manual_adjustments a USING(payroll_id)
-        WHERE p.salary_period=:period ORDER BY p.employee_id'''),{'period':period})).mappings().all()
-    await db.execute(text("""
-        DELETE FROM payroll_details 
-        WHERE payroll_id IN (SELECT payroll_id FROM payrolls WHERE salary_period = :period)
-    """), {"period": period})
-    await db.execute(text("DELETE FROM payrolls WHERE salary_period = :period"), {"period": period})
+        WHERE p.salary_period=:period AND (CAST(:eid AS int) IS NULL OR p.employee_id=:eid)
+        ORDER BY p.employee_id'''), {'period': period, 'eid': employee_id})).mappings().all()
 
-    # 2. Gọi Stored Procedure chính
-    try:
-        await db.execute(text("CALL sp_generate_monthly_payroll(:period, :hr_id)"), {"period": period, "hr_id": hr_id})
-    except DBAPIError as exc:
-        match = re.search(r"PAYROLL_CONTRACT_MISSING: ([^\n]*)", str(exc))
-        if match:
-            await db.rollback()
-            raise HTTPException(409, f"Chưa thể tính lương: nhân viên chưa có hợp đồng hiệu lực trong kỳ: {match.group(1)}")
-        raise
+    # SP tự xóa DRAFT/NEEDS_RECALCULATION trong phạm vi (toàn chuỗi hoặc theo employee_id)
+    await db.execute(text("CALL sp_generate_monthly_payroll(:period, :hr_id, :eid)"),
+                     {"period": period, "hr_id": hr_id, "eid": employee_id})
+
+    if employee_id is not None and not (await db.execute(text(
+            "SELECT 1 FROM payrolls WHERE employee_id=:eid AND salary_period=:period"),
+            {"eid": employee_id, "period": period})).first():
+        # SP đã xóa phiếu cũ nhưng NV không còn eligible -> raise để rollback
+        raise HTTPException(409, "Nhân viên không còn đủ điều kiện tính lương trong kỳ (đã nghỉ/không thuộc kỳ).")
+
     await reapply_payroll_adjustments(db, period, saved_adjustments)
-    await db.execute(text('''INSERT INTO payroll_calculation_runs(salary_period,calculated_at)
-        VALUES(:period,clock_timestamp()) ON CONFLICT(salary_period) DO UPDATE
-        SET calculated_at=EXCLUDED.calculated_at'''),{'period':period})
+
+    if employee_id is None:
+        # Chỉ lần tính toàn chuỗi mới được làm mốc cho ensure_fresh_payroll
+        await db.execute(text('''INSERT INTO payroll_calculation_runs(salary_period,calculated_at)
+            VALUES(:period,clock_timestamp()) ON CONFLICT(salary_period) DO UPDATE
+            SET calculated_at=EXCLUDED.calculated_at'''), {'period': period})
+
+    return {"skipped_employees": skipped}
 
 
 @router.post("/calculate", summary="Chốt công và tự động tính bảng lương toàn chuỗi (Rubric III.3.1.7)")
@@ -431,18 +477,50 @@ async def calculate_payroll(
     _, hr_id = payroll_actor(current_user)
     period = req.salary_period
 
-    await execute_payroll_calculation(db, period, hr_id)
+    result = await execute_payroll_calculation(db, period, hr_id)
     await db.commit()
 
     count_res = await db.execute(text("SELECT count(*), COALESCE(SUM(gross_income), 0), COALESCE(SUM(net_salary), 0) FROM payrolls WHERE salary_period = :period"), {"period": period})
     total_count, total_gross, total_net = count_res.first()
 
+    calculated_at = (await db.execute(text('SELECT calculated_at FROM payroll_calculation_runs WHERE salary_period=:p'), {'p': period})).scalar()
+    skipped = result.get("skipped_employees", [])
+
     return {
-        "message": f"Chốt công và tính toán bảng lương kỳ {period} thành công!",
+        "message": f"Đã tính lương cho {total_count} nhân sự" + (f"; bỏ qua {len(skipped)} nhân sự chưa có hợp đồng hiệu lực" if skipped else "") + ".",
         "salary_period": period,
         "total_employees_calculated": total_count,
         "total_gross_income": float(total_gross),
-        "total_net_salary": float(total_net)
+        "total_net_salary": float(total_net),
+        "skipped_employees": skipped,
+        "calculated_at": calculated_at,
+    }
+
+
+@router.post("/{payroll_id}/recalculate", summary="Tính lại lương cho một nhân viên")
+async def recalculate_single_payroll(
+    payroll_id: int,
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
+    db: AsyncSession = Depends(get_db)
+):
+    pr = (await db.execute(text("SELECT p.employee_id, p.salary_period, p.payment_status, e.full_name "
+        "FROM payrolls p JOIN employees e USING(employee_id) WHERE p.payroll_id=:id"), {"id": payroll_id})).mappings().first()
+    if not pr:
+        raise HTTPException(404, "Không tìm thấy phiếu lương")
+    if pr["payment_status"] not in ("DRAFT", "NEEDS_RECALCULATION"):
+        raise HTTPException(409, "Phiếu đã duyệt/chi trả, cần mở lại kỳ trước khi tính lại.")
+    _, hr_id = payroll_actor(current_user)
+    await execute_payroll_calculation(db, pr["salary_period"], hr_id, pr["employee_id"])
+    new_payroll_id = (await db.execute(
+        text("SELECT payroll_id FROM payrolls WHERE employee_id=:eid AND salary_period=:period"),
+        {"eid": pr["employee_id"], "period": pr["salary_period"]},
+    )).scalar_one_or_none()
+    await db.commit()
+    return {
+        "message": f"Đã tính lại lương cho {pr['full_name']}.",
+        "salary_period": pr["salary_period"],
+        "employee_id": pr["employee_id"],
+        "payroll_id": new_payroll_id,
     }
 
 
@@ -474,7 +552,10 @@ async def confirm_all_payrolls(
     db: AsyncSession = Depends(get_db)
 ):
     await lock_payroll_period(db, req.salary_period)
-    await ensure_fresh_payroll(db,req.salary_period)
+    await ensure_fresh_payroll(db, req.salary_period)
+    if (await db.execute(text("SELECT 1 FROM payrolls WHERE salary_period=:p AND payment_status='NEEDS_RECALCULATION' LIMIT 1"),
+                         {"p": req.salary_period})).first():
+        raise HTTPException(409, "Còn phiếu lương 'Cần tính lại' trong kỳ. Hãy tính lại trước khi duyệt.")
     res = await db.execute(text("""
         UPDATE payrolls
         SET payment_status = 'CONFIRMED', updated_at = CURRENT_TIMESTAMP
@@ -633,18 +714,8 @@ async def get_annual_salary(
           AND payment_status IN ('CONFIRMED','PAID')
         ORDER BY salary_period ASC
     """), {"eid": employee_id, "year_prefix": f"{year}-%"})
-    monthly_rows = [dict(m) for m in monthly_res.mappings().all()]
-    monthly_list = []
-    for m in monthly_rows:
-        det_res = await db.execute(text("""
-            SELECT detail_id, item_code, item_name, item_type, calculation_formula, amount, notes
-            FROM payroll_details WHERE payroll_id = :pid
-            ORDER BY detail_id ASC
-        """), {"pid": m["payroll_id"]})
-        details_list = [dict(d) for d in det_res.mappings().all()]
-        m["details"] = details_list
-        populate_payroll_breakdown_from_details(m, details_list)
-        monthly_list.append(m)
+    monthly_rows = monthly_res.mappings().all()
+    monthly_list = await attach_payroll_details_batch(db, monthly_rows)
 
     # Lấy dữ liệu tổng hợp năm từ View
     row = None
@@ -2248,7 +2319,7 @@ async def confirm_payroll_import(
                 WHERE salary_period = :period AND employee_id = :eid
             """), {"period": period, "eid": eid})
 
-    await execute_payroll_calculation(db, period, hr_id)
+    calc_res = await execute_payroll_calculation(db, period, hr_id)
 
     totals_res = await db.execute(text("""
         SELECT COALESCE(SUM(gross_income), 0), COALESCE(SUM(net_salary), 0), COALESCE(SUM(total_insurance), 0)
@@ -2284,7 +2355,8 @@ async def confirm_payroll_import(
         "message": f"Nạp thành công {len(affected_actions)} bản ghi vào kỳ lương {period}!",
         "batch_id": batch_id,
         "counts": {"create": created_count, "update": updated_count, "delete": deleted_count},
-        "totals": {"gross": t_gross, "net": t_net, "insurance": t_ins}
+        "totals": {"gross": t_gross, "net": t_net, "insurance": t_ins},
+        "skipped_employees": calc_res.get("skipped_employees", [])
     }
 
 
@@ -2657,6 +2729,17 @@ async def export_payroll_csv(
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
+
+
+@router.get("/calculation-runs/{period}", summary="Thời điểm tính lương toàn chuỗi gần nhất")
+async def get_calculation_run(
+    period: str,
+    current_user: dict = Depends(require_roles(["HR_MANAGER", "DIRECTOR"])),
+    db: AsyncSession = Depends(get_db)
+):
+    ts = (await db.execute(text('SELECT calculated_at FROM payroll_calculation_runs WHERE salary_period=:p'),
+                           {"p": period})).scalar_one_or_none()
+    return {"salary_period": period, "calculated_at": ts}
 
 
 # ===================================================================================

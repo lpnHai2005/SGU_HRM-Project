@@ -749,6 +749,7 @@ class SalesRecordOut(SalesRecordCreate):
 
 class CalculatePayrollRequest(BaseModel):
     salary_period: str = Field(..., json_schema_extra={"example": "2026-09"})
+    employee_id: Optional[int] = None
 
 
 class PayrollDetailOut(BaseModel):

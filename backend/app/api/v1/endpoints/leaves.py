@@ -24,6 +24,64 @@ router = APIRouter()
 
 
 # ===================================================================================
+# 0. HELPER FUNCTIONS DÙNG CHUNG CHO HOÀN NGUYÊN & GẮN CỜ PAYROLL
+# ===================================================================================
+
+async def revert_hr_approved_leave(db: AsyncSession, leave_req: Any, request_id: int) -> None:
+    """(a1) Gỡ attendances theo note 'Đơn nghỉ phép #{request_id} (%', hoàn nguyên thôi việc (type 6). KHÔNG commit."""
+    note_pattern = f"Đơn nghỉ phép #{request_id} (%"
+    await db.execute(text("""
+        DELETE FROM attendances
+        WHERE employee_id = :eid AND notes LIKE :note AND check_in_time IS NULL
+    """), {"eid": leave_req["employee_id"], "note": note_pattern})
+    await db.execute(text("""
+        UPDATE attendances
+        SET status = 'NORMAL', notes = NULL, updated_at = CURRENT_TIMESTAMP,
+            actual_work_hours = COALESCE(ROUND((EXTRACT(EPOCH FROM check_out_time - check_in_time) / 3600)::numeric, 2), 0)
+        WHERE employee_id = :eid AND notes LIKE :note
+    """), {"eid": leave_req["employee_id"], "note": note_pattern})
+    if leave_req.get("type_code") == "THOI_VIEC" or leave_req.get("leave_type_id") == 6:
+        await db.execute(text("""
+            UPDATE employees 
+            SET employment_status = 'ACTIVE', resignation_date = NULL, updated_at = CURRENT_TIMESTAMP
+            WHERE employee_id = :eid
+        """), {"eid": leave_req["employee_id"]})
+        await db.execute(text("""
+            UPDATE users 
+            SET is_active = TRUE, updated_at = CURRENT_TIMESTAMP
+            WHERE employee_id = :eid
+        """), {"eid": leave_req["employee_id"]})
+        await db.execute(text("""
+            UPDATE contracts
+            SET status = 'ACTIVE', termination_date = NULL, termination_reason = NULL,
+                terminated_by = NULL, updated_at = CURRENT_TIMESTAMP
+            WHERE employee_id = :eid AND termination_reason = :reason
+        """), {
+            "eid": leave_req["employee_id"],
+            "reason": f"Nghỉ việc theo đơn xin thôi việc (Leave Request #{request_id})",
+        })
+
+async def revert_maternity_after_commit(db: AsyncSession, leave_req: Any, user_id: int) -> None:
+    """(a2) Hoàn nguyên thai sản, gọi SAU db.commit()."""
+    if leave_req.get("type_code") == "THAI_SAN" or leave_req.get("leave_type_id") == 3:
+        await apply_status_rules(db, local_now().date(), user_id, leave_req["employee_id"])
+
+async def flag_payroll_recalc(db: AsyncSession, employee_id: int, start: date, end: date) -> None:
+    await db.execute(text("""
+        UPDATE payrolls SET payment_status='NEEDS_RECALCULATION', updated_at=CURRENT_TIMESTAMP
+        WHERE employee_id=:eid AND payment_status='DRAFT'
+          AND salary_period BETWEEN to_char(CAST(:s AS date),'YYYY-MM') AND to_char(CAST(:e AS date),'YYYY-MM')
+    """), {"eid": employee_id, "s": start, "e": end})
+
+async def ensure_leave_payroll_open(db: AsyncSession, employee_id: int, start: date, end: date) -> None:
+    if (await db.execute(text("""SELECT 1 FROM payrolls WHERE employee_id=:eid
+          AND payment_status IN ('CONFIRMED','PAID')
+          AND salary_period BETWEEN to_char(CAST(:s AS date),'YYYY-MM') AND to_char(CAST(:e AS date),'YYYY-MM') LIMIT 1"""),
+          {"eid": employee_id, "s": start, "e": end})).first():
+        raise HTTPException(409, "Kỳ lương liên quan đã chốt. Cần mở lại kỳ lương trước khi thu hồi/hủy đơn đã duyệt.")
+
+
+# ===================================================================================
 # 1. DANH MỤC LOẠI ĐƠN NGHỈ PHÉP (LEAVE TYPES)
 # ===================================================================================
 
@@ -1024,6 +1082,9 @@ async def hr_approve_leave(
                 "note": att_note
             })
 
+    # Đánh dấu cờ cần tính lại cho mọi kỳ lương liên quan
+    await flag_payroll_recalc(db, leave_req["employee_id"], leave_req["start_date"], leave_req["end_date"])
+
     await db.commit()
 
     # Thai sản: ON_LEAVE chỉ có hiệu lực trong thời gian nghỉ, đơn tương lai để job đầu ngày xử lý
@@ -1142,6 +1203,8 @@ async def reject_leave(
             raise HTTPException(status_code=403, detail="Đơn đã được Phòng Nhân sự phê duyệt chính thức, Cửa hàng trưởng không thể từ chối.")
 
     old_status = leave_req["status"]
+    if old_status == "HR_APPROVED":
+        await ensure_leave_payroll_open(db, leave_req["employee_id"], leave_req["start_date"], leave_req["end_date"])
 
     # Cập nhật trạng thái từ chối kèm thông tin người từ chối
     await db.execute(text("""
@@ -1159,47 +1222,16 @@ async def reject_leave(
     })
 
     # NẾU ĐƠN NÀY TỪNG ĐƯỢC DUYỆT CHÍNH THỨC (HR_APPROVED) VÀ BỊ THU HỒI/TỪ CHỐI LẠI:
-    # Tự động hoàn nguyên trạng thái hồ sơ nhân sự
+    # Tự động hoàn nguyên trạng thái hồ sơ nhân sự và chấm công
     if old_status == "HR_APPROVED":
-        # Gỡ ngày nghỉ khỏi chấm công: dòng do đơn tạo thì xóa, dòng đã có giờ vào thì trả về ngày làm.
-        note_pattern = f"Đơn nghỉ phép #{request_id} (%"
-        await db.execute(text("""
-            DELETE FROM attendances
-            WHERE employee_id = :eid AND notes LIKE :note AND check_in_time IS NULL
-        """), {"eid": leave_req["employee_id"], "note": note_pattern})
-        await db.execute(text("""
-            UPDATE attendances
-            SET status = 'NORMAL', notes = NULL, updated_at = CURRENT_TIMESTAMP,
-                actual_work_hours = COALESCE(ROUND((EXTRACT(EPOCH FROM check_out_time - check_in_time) / 3600)::numeric, 2), 0)
-            WHERE employee_id = :eid AND notes LIKE :note
-        """), {"eid": leave_req["employee_id"], "note": note_pattern})
-        # 1. Hoàn nguyên nếu là đơn thôi việc
-        if leave_req["type_code"] == "THOI_VIEC" or leave_req["leave_type_id"] == 6:
-            await db.execute(text("""
-                UPDATE employees 
-                SET employment_status = 'ACTIVE', resignation_date = NULL, updated_at = CURRENT_TIMESTAMP
-                WHERE employee_id = :eid
-            """), {"eid": leave_req["employee_id"]})
-            await db.execute(text("""
-                UPDATE users 
-                SET is_active = TRUE, updated_at = CURRENT_TIMESTAMP
-                WHERE employee_id = :eid
-            """), {"eid": leave_req["employee_id"]})
-            await db.execute(text("""
-                UPDATE contracts
-                SET status = 'ACTIVE', termination_date = NULL, termination_reason = NULL,
-                    terminated_by = NULL, updated_at = CURRENT_TIMESTAMP
-                WHERE employee_id = :eid AND termination_reason = :reason
-            """), {
-                "eid": leave_req["employee_id"],
-                "reason": f"Nghỉ việc theo đơn xin thôi việc (Leave Request #{request_id})",
-            })
+        await revert_hr_approved_leave(db, leave_req, request_id)
+        await flag_payroll_recalc(db, leave_req["employee_id"], leave_req["start_date"], leave_req["end_date"])
 
     await db.commit()
 
     # Hoàn nguyên đơn thai sản đã duyệt, trả về đúng ACTIVE hoặc PROBATION theo hợp đồng
-    if old_status == "HR_APPROVED" and (leave_req["type_code"] == "THAI_SAN" or leave_req["leave_type_id"] == 3):
-        await apply_status_rules(db, local_now().date(), current_user.get("user_id"), leave_req["employee_id"])
+    if old_status == "HR_APPROVED":
+        await revert_maternity_after_commit(db, leave_req, current_user.get("user_id"))
 
     # Ghi nhật ký thanh tra
     client_ip = request.client.host if request.client else None
@@ -1247,9 +1279,13 @@ async def cancel_leave_request(
     user_emp_id = current_user.get("employee_id")
 
     req_res = await db.execute(text("""
-        SELECT request_id, employee_id, status, total_days
-        FROM leave_requests
-        WHERE request_id = :id
+        SELECT lr.request_id, lr.employee_id, lr.status, lr.total_days,
+               lr.leave_type_id, lt.type_code, lr.start_date, lr.end_date,
+               e.full_name as employee_name
+        FROM leave_requests lr
+        JOIN leave_types lt ON lt.leave_type_id = lr.leave_type_id
+        JOIN employees e ON e.employee_id = lr.employee_id
+        WHERE lr.request_id = :id
     """), {"id": request_id})
     leave_req = req_res.mappings().first()
 
@@ -1265,12 +1301,25 @@ async def cancel_leave_request(
                 detail="Đơn nghỉ phép đã được phê duyệt ở ít nhất một cấp, nhân viên không thể tự ý hủy đơn giữa chừng. Vui lòng liên hệ cấp trên hoặc Phòng Nhân sự để được hỗ trợ."
             )
 
+    # Nếu đơn đã duyệt HR_APPROVED, kiểm tra xem kỳ lương đã chốt chưa
+    if leave_req["status"] == "HR_APPROVED":
+        await ensure_leave_payroll_open(db, leave_req["employee_id"], leave_req["start_date"], leave_req["end_date"])
+
     await db.execute(text("""
         UPDATE leave_requests
         SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP
         WHERE request_id = :id
     """), {"id": request_id})
+
+    # Nếu đơn đã từng được duyệt chính thức (HR_APPROVED): dọn sạch attendances và hoàn nguyên hồ sơ
+    if leave_req["status"] == "HR_APPROVED":
+        await revert_hr_approved_leave(db, leave_req, request_id)
+        await flag_payroll_recalc(db, leave_req["employee_id"], leave_req["start_date"], leave_req["end_date"])
+
     await db.commit()
+
+    if leave_req["status"] == "HR_APPROVED":
+        await revert_maternity_after_commit(db, leave_req, current_user.get("user_id"))
 
     # Ghi nhật ký thanh tra
     client_ip = request.client.host if request.client else None

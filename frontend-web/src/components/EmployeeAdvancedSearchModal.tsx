@@ -113,9 +113,25 @@ export const getOpDef = (type: SearchFieldType, op: string, not: boolean): Searc
   return ops.find(o => o.backendOp === op && o.not === not) || ops[0]
 }
 
+const CURRENCY_FIELD_KEYS = new Set([
+  'base_salary',
+  'contract_salary',
+  'actual_base_salary',
+  'gross_income',
+  'net_salary',
+  'total_allowances',
+  'bonus_amount',
+  'commission_amount',
+  'overtime_salary',
+  'total_insurance',
+  'penalty_deduction',
+  'total_deduction',
+  'time_deduction_amount',
+])
+
 export const formatConditionDisplayValue = (field: SearchField | undefined, value: string) => {
   if (!value) return ''
-  if (field?.key === 'base_salary') {
+  if (field?.key && CURRENCY_FIELD_KEYS.has(field.key)) {
     const num = Number(value)
     return isNaN(num) ? value : `${num.toLocaleString('vi-VN')} ₫`
   }

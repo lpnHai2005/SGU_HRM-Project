@@ -27,6 +27,7 @@ export interface EmployeeSearchSelectProps {
   fallbackEmployee?: any
   label?: string
   clearOptionLabel?: string
+  compact?: boolean
   getItemDisabled?: (emp: any) => boolean
   getItemBadge?: (emp: any) => EmployeeBadge | null
 }
@@ -43,6 +44,7 @@ export function EmployeeSearchSelect({
   fallbackEmployee,
   label,
   clearOptionLabel,
+  compact = false,
   getItemDisabled,
   getItemBadge,
 }: EmployeeSearchSelectProps) {
@@ -64,18 +66,25 @@ export function EmployeeSearchSelect({
     return null
   }, [value, employees, fallbackEmployee])
 
-  // Filtered employees
+  // Filtered employees (hỗ trợ tìm cả có dấu và không dấu tiếng Việt)
   const filteredEmployees = useMemo(() => {
     if (!searchTerm.trim()) return employees
-    const term = searchTerm.toLowerCase().trim()
+    const normalize = (val: unknown) =>
+      String(val ?? '')
+        .normalize('NFD')
+        .replace(/\p{M}/gu, '')
+        .replace(/đ/gi, 'd')
+        .toLowerCase()
+        .trim()
+    const term = normalize(searchTerm)
     return employees.filter(
       (emp) =>
-        (emp.full_name && emp.full_name.toLowerCase().includes(term)) ||
-        (emp.employee_code && emp.employee_code.toLowerCase().includes(term)) ||
-        (emp.department_name && emp.department_name.toLowerCase().includes(term)) ||
-        (emp.position_name && emp.position_name.toLowerCase().includes(term)) ||
-        (emp.store_name && emp.store_name.toLowerCase().includes(term)) ||
-        (emp.phone && emp.phone.includes(term))
+        normalize(emp.full_name).includes(term) ||
+        normalize(emp.employee_code).includes(term) ||
+        normalize(emp.department_name).includes(term) ||
+        normalize(emp.position_name).includes(term) ||
+        normalize(emp.store_name).includes(term) ||
+        (emp.phone && String(emp.phone).includes(term))
     )
   }, [employees, searchTerm])
 
@@ -164,8 +173,9 @@ export function EmployeeSearchSelect({
       <div
         onClick={() => !disabled && setIsOpen(!isOpen)}
         style={{
-          minHeight: '40px',
-          padding: '6px 12px',
+          minHeight: compact ? '36px' : '40px',
+          height: compact ? '36px' : undefined,
+          padding: compact ? '4px 10px' : '6px 12px',
           background: 'var(--surface-input, var(--surface-card))',
           border: `1px solid ${isOpen ? 'var(--brand-primary)' : 'var(--surface-input-border, var(--border-default))'}`,
           borderRadius: 'var(--radius-sm)',
@@ -173,17 +183,17 @@ export function EmployeeSearchSelect({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          gap: '10px',
+          gap: '8px',
           transition: 'all 0.15s ease',
           boxShadow: isOpen ? '0 0 0 2px var(--status-info-bg)' : 'none',
         }}
       >
         {selectedEmployee ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
             <div
               style={{
-                width: '28px',
-                height: '28px',
+                width: compact ? '24px' : '28px',
+                height: compact ? '24px' : '28px',
                 borderRadius: '50%',
                 background: 'var(--surface-subtle, var(--status-info-bg))',
                 color: 'var(--brand-primary)',
@@ -191,7 +201,7 @@ export function EmployeeSearchSelect({
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                fontSize: '11px',
+                fontSize: compact ? '10px' : '11px',
                 fontWeight: 700,
                 flexShrink: 0,
               }}
@@ -217,26 +227,34 @@ export function EmployeeSearchSelect({
                     fontFamily: 'var(--font-mono)',
                     fontSize: '11.5px',
                     color: 'var(--text-tertiary)',
+                    flexShrink: 0,
                   }}
                 >
                   ({selectedEmployee.employee_code})
                 </span>
               </div>
-              <div
-                style={{
-                  fontSize: '11.5px',
-                  color: 'var(--text-secondary)',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                }}
-              >
-                {selectedEmployee.department_name || 'Phòng ban'} · {selectedEmployee.position_name || 'Chức vụ'}
-              </div>
+              {!compact && (
+                <div
+                  style={{
+                    fontSize: '11.5px',
+                    color: 'var(--text-secondary)',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {selectedEmployee.department_name || 'Phòng ban'} · {selectedEmployee.position_name || 'Chức vụ'}
+                </div>
+              )}
             </div>
           </div>
         ) : (
-          <span style={{ fontSize: '13px', color: 'var(--text-tertiary)' }}>{placeholder}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '7px', minWidth: 0, flex: 1, color: 'var(--text-tertiary)' }}>
+            {compact && <span style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>{Icons.search}</span>}
+            <span style={{ fontSize: '13px', color: 'var(--text-tertiary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {placeholder}
+            </span>
+          </div>
         )}
 
         {/* Right side controls */}

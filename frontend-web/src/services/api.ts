@@ -757,8 +757,23 @@ export const payrollApi = {
     total_employees_calculated?: number
     total_gross_income?: number
     total_net_salary?: number
+    skipped_employees?: {
+      employee_id: number
+      employee_code: string
+      employee_name: string
+      error_reason: string
+    }[]
+    calculated_at?: string
   }> => {
     return api.post('/payrolls/calculate', { salary_period: period });
+  },
+
+  recalculateSingle: async (payrollId: number): Promise<{ message: string; salary_period: string; employee_id: number; payroll_id?: number | null }> => {
+    return api.post<{ message: string; salary_period: string; employee_id: number; payroll_id?: number | null }>(`/payrolls/${payrollId}/recalculate`);
+  },
+
+  getCalculationRun: async (period: string): Promise<{ salary_period: string; calculated_at: string | null }> => {
+    return api.get<{ salary_period: string; calculated_at: string | null }>(`/payrolls/calculation-runs/${period}`);
   },
 
   generate: async (month: string): Promise<Payroll[]> => {

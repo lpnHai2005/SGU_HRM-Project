@@ -49,7 +49,7 @@ export function EmployeeListPage({ user }: EmployeeListPageProps) {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [employees, setEmployees] = useState<Employee[]>([])
-  const [searchTerm, setSearchTerm] = useState('')
+  const [searchTerm, setSearchTerm] = useState(() => searchParams.get('search') || '')
   const [filterStatus, setFilterStatus] = useState('all')
   const [filterStore, setFilterStore] = useState<number | null>(() => {
     const value = Number(searchParams.get('store_id'))

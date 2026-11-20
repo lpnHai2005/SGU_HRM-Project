@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { createPortal } from 'react-dom'
 import { Icons } from '../components/common/Icons'
 import { useCompanyProfile } from '../hooks/useCompanyProfile'
@@ -13,6 +14,13 @@ import './PayslipPrint.css'
 import './MyPayslipPage.css'
 import { PayslipHoverItem, ActualBaseSalaryHoverItem } from '../components/common/PayslipHoverItem'
 import { EmployeeSearchSelect } from '../components/common/EmployeeSearchSelect'
+import {
+  AdvancedSearchFilterBar,
+  EmployeeAdvancedSearchModal,
+  type SearchCondition,
+  type SearchField,
+} from '../components/EmployeeAdvancedSearchModal'
+import { matchesSearchConditions } from '../utils/searchConditions'
 import { PayrollAdjustmentDialog } from './PayrollAdjustmentDialog'
 import { PayrollRegulationDialog } from './PayrollRegulationDialog'
 import { AttendanceRegulationDialog } from './AttendanceRegulationDialog'
@@ -23,6 +31,28 @@ import { toast } from 'sonner'
 
 export interface PayrollPageProps {
   user: any
+}
+
+interface PayrollPeriodCacheEntry {
+  payrolls: Payroll[]
+  workingDaysInfo: PayrollPeriodWorkingDays | null
+  importStatus: PayrollImportStatusResponse | null
+  lastCalculatedAt: string | null
+  fetchedAt: number
+}
+
+// Bộ nhớ đệm phía client giúp chuyển qua lại giữa các kỳ lương vừa xem phản hồi tức thì (0ms)
+const payrollPeriodCache = new Map<string, PayrollPeriodCacheEntry>()
+const annualSummaryCache = new Map<string, any>()
+
+function getPreviousPeriodKey(period: string): string | null {
+  const parts = period.split('-')
+  if (parts.length !== 2) return null
+  const year = Number(parts[0])
+  const month = Number(parts[1])
+  if (!year || !month) return null
+  const d = new Date(year, month - 2, 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
 function getStatusBadgeClass(status?: string): string {
@@ -94,6 +124,7 @@ function parsePrintDate(dateStr?: string) {
 }
 
 export function PayrollPage({ user }: PayrollPageProps) {
+  const navigate = useNavigate()
   const company = useCompanyProfile()
   const [payrolls, setPayrolls] = useState<Payroll[]>([])
   const [selectedPeriod, setSelectedPeriod] = useState<string>(() => {
@@ -109,7 +140,13 @@ export function PayrollPage({ user }: PayrollPageProps) {
   // 2 Balanced Tabs: 'monthly' (Theo Tháng) vs 'annual' (Theo Năm)
   const [activeTab, setActiveTab] = useState<'monthly' | 'annual'>('monthly')
   const [searchTerm, setSearchTerm] = useState('')
+  const [selectedFilterEmployeeId, setSelectedFilterEmployeeId] = useState<number | null>(null)
+  const [storeFilter, setStoreFilter] = useState<string>('all')
+  const [positionFilter, setPositionFilter] = useState<string>('all')
   const [statusFilter, setStatusFilter] = useState<'all' | 'DRAFT' | 'NEEDS_RECALCULATION' | 'CONFIRMED' | 'PAID'>('all')
+  const [advancedSearch, setAdvancedSearch] = useState<SearchCondition[]>([])
+  const [searchMatchMode, setSearchMatchMode] = useState<'AND' | 'OR'>('AND')
+  const [showAdvancedModal, setShowAdvancedModal] = useState(false)
 
   // Selected item for details & print
   const [selectedPayroll, setSelectedPayroll] = useState<Payroll | null>(null)
@@ -127,6 +164,8 @@ export function PayrollPage({ user }: PayrollPageProps) {
   const [annualLoading, setAnnualLoading] = useState(false)
   const [lateAttendances, setLateAttendances] = useState<Attendance[]>([])
   const [timeBreakdown, setTimeBreakdown] = useState<PayrollTimeBreakdown | null>(null)
+  const [lastCalculatedAt, setLastCalculatedAt] = useState<string | null>(null)
+  const [skippedEmployees, setSkippedEmployees] = useState<any[]>([])
 
   // Giải trình giờ được tính lương từng ca (cùng hàm SQL với bảng lương)
   useEffect(() => {
@@ -187,6 +226,14 @@ export function PayrollPage({ user }: PayrollPageProps) {
   }
 
   const isDetailOpen = Boolean(selectedPayroll || isClosingPayroll)
+
+  const handleOpenAdvancedSearch = useCallback(() => {
+    if (selectedPayroll || isClosingPayroll) {
+      setSelectedPayroll(null)
+      setIsClosingPayroll(false)
+    }
+    setShowAdvancedModal(true)
+  }, [selectedPayroll, isClosingPayroll])
 
   // Action dropdown menu state (rendered via Portal)
   const [openMenuId, setOpenMenuId] = useState<number | null>(null)
@@ -269,6 +316,23 @@ export function PayrollPage({ user }: PayrollPageProps) {
           <span className="action-icon" style={{ color: 'var(--status-info, #0284c7)' }}>{Icons.printer}</span>
           <span>In phiếu lương (PDF)</span>
         </button>
+
+        {/* Tính lại lương nhân viên này */}
+        {canRunPayroll && ['DRAFT', 'NEEDS_RECALCULATION'].includes(pr.payment_status || '') && (
+          <button
+            type="button"
+            className="action-dropdown-item"
+            disabled={actionLoading}
+            onClick={() => {
+              setOpenMenuId(null)
+              setMenuPos(null)
+              handleRecalculateSingle(pr)
+            }}
+          >
+            <span className="action-icon" style={{ color: 'var(--primary-color, #2563eb)' }}>{Icons.refresh}</span>
+            <span>Tính lại lương nhân viên này</span>
+          </button>
+        )}
 
         {/* Điều chỉnh lương nháp */}
         {canRunPayroll && pr.payment_status === 'DRAFT' && (
@@ -445,47 +509,127 @@ export function PayrollPage({ user }: PayrollPageProps) {
     }
   }
 
-  // Load payrolls
-  const fetchPayrolls = useCallback(async () => {
-    setIsLoading(true)
+  const fetchCalculationRun = useCallback(async (period: string) => {
     try {
-      const data = await payrollApi.getAll({ period: selectedPeriod })
-      setPayrolls(data || [])
-      if (data && data.length > 0) {
-        const userPayroll = data.find(p => p.employee_id === user?.employee_id)
+      const res = await payrollApi.getCalculationRun(period)
+      setLastCalculatedAt(res?.calculated_at || null)
+    } catch {
+      setLastCalculatedAt(null)
+    }
+  }, [])
+
+  // Load payrolls (kết hợp In-Memory Cache + Promise.all song song giúp tải nhanh gấp nhiều lần)
+  const fetchPayrolls = useCallback(async (forceRefresh = true): Promise<Payroll[]> => {
+    const cached = payrollPeriodCache.get(selectedPeriod)
+    if (cached && !forceRefresh) {
+      setPayrolls(cached.payrolls)
+      setWorkingDaysInfo(cached.workingDaysInfo)
+      setImportStatus(cached.importStatus)
+      setLastCalculatedAt(cached.lastCalculatedAt)
+      setIsLoading(false)
+      // Nếu dữ liệu cache mới tải trong vòng 45 giây thì dùng ngay không cần gọi lại mạng
+      if (Date.now() - cached.fetchedAt < 45_000) {
+        return cached.payrolls
+      }
+    } else if (cached) {
+      // Hiển thị tức thì dữ liệu kỳ đã có trên màn hình trong khi cập nhật ngầm
+      setPayrolls(cached.payrolls)
+    } else {
+      setIsLoading(true)
+    }
+
+    try {
+      const [data, wdInfo, impInfo, calcRun] = await Promise.all([
+        payrollApi.getAll({ period: selectedPeriod }),
+        payrollApi.getWorkingDays(selectedPeriod).catch(() => null),
+        canRunPayroll ? payrollApi.getImportStatus(selectedPeriod).catch(() => null) : Promise.resolve(null),
+        payrollApi.getCalculationRun(selectedPeriod).catch(() => null),
+      ])
+
+      const rows = data || []
+      const calcAt = calcRun?.calculated_at || null
+
+      setPayrolls(rows)
+      setWorkingDaysInfo(wdInfo)
+      if (canRunPayroll) setImportStatus(impInfo)
+      setLastCalculatedAt(calcAt)
+
+      payrollPeriodCache.set(selectedPeriod, {
+        payrolls: rows,
+        workingDaysInfo: wdInfo,
+        importStatus: impInfo,
+        lastCalculatedAt: calcAt,
+        fetchedAt: Date.now(),
+      })
+
+      if (rows.length > 0) {
         setSelectedPayroll(prev => {
           if (!prev) return null
-          return data.find(p => p.payroll_id === prev.payroll_id) || null
+          return (
+            rows.find(p => p.payroll_id === prev.payroll_id) ||
+            rows.find(p => p.employee_id === prev.employee_id && p.salary_period === prev.salary_period) ||
+            null
+          )
         })
       } else {
         setSelectedPayroll(null)
       }
-      await fetchWorkingDays(selectedPeriod)
-      await fetchImportStatus()
+
+      // Tải trước (prefetch) ngầm kỳ lương liền trước vào cache để người dùng chuyển tháng là hiện ngay
+      const prevPeriod = getPreviousPeriodKey(selectedPeriod)
+      if (prevPeriod && !payrollPeriodCache.has(prevPeriod)) {
+        Promise.all([
+          payrollApi.getAll({ period: prevPeriod }),
+          payrollApi.getWorkingDays(prevPeriod).catch(() => null),
+          canRunPayroll ? payrollApi.getImportStatus(prevPeriod).catch(() => null) : Promise.resolve(null),
+          payrollApi.getCalculationRun(prevPeriod).catch(() => null),
+        ])
+          .then(([pRows, pWd, pImp, pRun]) => {
+            payrollPeriodCache.set(prevPeriod, {
+              payrolls: pRows || [],
+              workingDaysInfo: pWd,
+              importStatus: pImp,
+              lastCalculatedAt: pRun?.calculated_at || null,
+              fetchedAt: Date.now(),
+            })
+          })
+          .catch(() => {})
+      }
+
+      return rows
     } catch (err: any) {
       console.error('Error fetching payrolls:', err)
       setFeedbackMessage({ type: 'error', text: err.message || 'Lỗi khi tải danh sách bảng lương' })
-      setPayrolls([])
+      if (!cached) setPayrolls([])
+      return cached?.payrolls || []
     } finally {
       setIsLoading(false)
     }
-  }, [selectedPeriod, user?.employee_id, fetchWorkingDays])
+  }, [selectedPeriod, canRunPayroll])
 
   useEffect(() => {
-    fetchPayrolls()
-    fetchWorkingDays(selectedPeriod)
-    fetchImportStatus()
-  }, [fetchPayrolls, fetchWorkingDays, fetchImportStatus, selectedPeriod])
+    fetchPayrolls(false)
+  }, [fetchPayrolls, selectedPeriod])
 
-  // Fetch annual data when annual tab is active or selected employee changes
+  // Fetch annual data when annual tab is active or selected employee changes (có cache)
   const fetchAnnualSummary = useCallback(async (empId: number, year: string) => {
-    setAnnualLoading(true)
+    const cacheKey = `${empId}:${year}`
+    const cached = annualSummaryCache.get(cacheKey)
+    if (cached) {
+      setAnnualData(cached)
+      setAnnualLoading(false)
+    } else {
+      setAnnualLoading(true)
+    }
     try {
       const data = await payrollApi.getAnnualSummary(empId, year)
+      annualSummaryCache.set(cacheKey, data)
       setAnnualData(data)
     } catch (err: any) {
       console.error('Error fetching annual salary:', err)
-      setFeedbackMessage({ type: 'error', text: err.message || 'Lỗi khi tải bảng lương năm' })
+      if (!cached) {
+        setFeedbackMessage({ type: 'error', text: err.message || 'Lỗi khi tải bảng lương năm' })
+      }
     } finally {
       setAnnualLoading(false)
     }
@@ -552,14 +696,43 @@ export function PayrollPage({ user }: PayrollPageProps) {
     setActionLoading(true)
     try {
       const res = await payrollApi.calculate(selectedPeriod)
-      setFeedbackMessage({
-        type: 'success',
-        text: `✓ ${res.message} (Đã tính ${res.total_employees_calculated} nhân sự | Quỹ lương: ${formatCurrency(res.total_gross_income)} | Thực chi: ${formatCurrency(res.total_net_salary)})`,
-      })
+      if (res.calculated_at) {
+        setLastCalculatedAt(res.calculated_at)
+      }
+      if (res.skipped_employees && res.skipped_employees.length > 0) {
+        setSkippedEmployees(res.skipped_employees)
+        setFeedbackMessage({
+          type: 'success',
+          text: `✓ ${res.message} (Đã tính ${res.total_employees_calculated} nhân sự. Bỏ qua ${res.skipped_employees.length} nhân sự chưa có HĐ hiệu lực | Thực chi: ${formatCurrency(res.total_net_salary)})`,
+        })
+      } else {
+        setSkippedEmployees([])
+        setFeedbackMessage({
+          type: 'success',
+          text: `✓ ${res.message} (Đã tính ${res.total_employees_calculated} nhân sự | Quỹ lương: ${formatCurrency(res.total_gross_income)} | Thực chi: ${formatCurrency(res.total_net_salary)})`,
+        })
+      }
       await fetchPayrolls()
       await fetchWorkingDays(selectedPeriod)
     } catch (err: any) {
       setFeedbackMessage({ type: 'error', text: `Lỗi tính bảng lương: ${err.message}` })
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  // 1b. RECALCULATE SINGLE EMPLOYEE (Tính lại lương cho 1 nhân viên)
+  const handleRecalculateSingle = async (pr: Payroll) => {
+    setActionLoading(true)
+    try {
+      const res = await payrollApi.recalculateSingle(pr.payroll_id)
+      toast.success(res.message || `Đã tính lại lương cho nhân viên ${pr.employee_name} thành công`)
+      const updated = await fetchPayrolls()
+      if (statusFilter === 'NEEDS_RECALCULATION' && !updated.some(p => p.payment_status === 'NEEDS_RECALCULATION')) {
+        setStatusFilter('all')
+      }
+    } catch (err: any) {
+      toast.error(`Lỗi tính lại lương: ${err.message}`)
     } finally {
       setActionLoading(false)
     }
@@ -817,23 +990,146 @@ export function PayrollPage({ user }: PayrollPageProps) {
     }
   }
 
+  // Danh sách nhân viên cho combobox tìm kiếm & chọn nhanh ở Bảng lương tháng
+  const employeeLookupMap = useMemo(
+    () => new Map(annualEmployees.map(e => [e.employee_id, e])),
+    [annualEmployees],
+  )
+
+  const monthlyEmployeeOptions = useMemo(() => {
+    if (payrolls.length > 0) {
+      return payrolls.map(p => {
+        const emp = employeeLookupMap.get(p.employee_id)
+        return {
+          employee_id: p.employee_id,
+          employee_code: p.employee_code || emp?.employee_code || `NV-${p.employee_id}`,
+          full_name: p.employee_name || emp?.full_name || '',
+          department_name: emp?.department_name || p.store_name || 'Trụ sở',
+          position_name: p.position_name || emp?.position_name || 'Nhân viên',
+          store_name: p.store_name || emp?.store_name || '',
+          phone: emp?.phone || '',
+          payment_status: p.payment_status,
+        }
+      })
+    }
+    return annualEmployees
+  }, [payrolls, annualEmployees, employeeLookupMap])
+
+  const storeOptions = useMemo(() => {
+    const set = new Set<string>()
+    payrolls.forEach(p => {
+      if (p.store_name) set.add(p.store_name)
+    })
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'vi'))
+  }, [payrolls])
+
+  const positionOptions = useMemo(() => {
+    const set = new Set<string>()
+    payrolls.forEach(p => {
+      if (p.position_name) set.add(p.position_name)
+    })
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'vi'))
+  }, [payrolls])
+
+  const payrollSearchFields = useMemo<SearchField[]>(() => [
+    { key: 'employee_name', label: 'Họ và tên nhân viên', type: 'text', group: 'Thông tin nhân sự', placeholder: 'VD: Trần Thị Bình' },
+    { key: 'employee_code', label: 'Mã nhân viên', type: 'text', group: 'Thông tin nhân sự', placeholder: 'VD: TZ-002' },
+    {
+      key: 'store_name',
+      label: 'Cửa hàng / Chi nhánh',
+      type: storeOptions.length > 0 ? 'select' : 'text',
+      group: 'Thông tin nhân sự',
+      placeholder: 'VD: TechZone Quận 1',
+      options: storeOptions.map(s => ({ label: s, value: s })),
+    },
+    {
+      key: 'position_name',
+      label: 'Chức vụ',
+      type: positionOptions.length > 0 ? 'select' : 'text',
+      group: 'Thông tin nhân sự',
+      placeholder: 'VD: Nhân viên bán hàng',
+      options: positionOptions.map(pos => ({ label: pos, value: pos })),
+    },
+    { key: 'department_name', label: 'Phòng ban', type: 'text', group: 'Thông tin nhân sự', placeholder: 'VD: Kinh doanh' },
+    { key: 'actual_working_days', label: 'Ngày công thực tế', type: 'number', group: 'Ngày công & Chấm công', placeholder: 'VD: 24' },
+    { key: 'paid_leave_days', label: 'Ngày nghỉ phép có lương', type: 'number', group: 'Ngày công & Chấm công', placeholder: 'VD: 2' },
+    { key: 'unpaid_leave_days', label: 'Ngày nghỉ không lương', type: 'number', group: 'Ngày công & Chấm công', placeholder: 'VD: 1' },
+    { key: 'absent_days', label: 'Ngày vắng không phép', type: 'number', group: 'Ngày công & Chấm công', placeholder: 'VD: 0' },
+    { key: 'unworked_hours', label: 'Số giờ thiếu công', type: 'number', group: 'Ngày công & Chấm công', placeholder: 'VD: 8' },
+    { key: 'attendance_approved_overtime_hours', label: 'Số giờ OT đã duyệt', type: 'number', group: 'Ngày công & Chấm công', placeholder: 'VD: 4' },
+    { key: 'contract_salary', label: 'Lương hợp đồng', type: 'number', group: 'Thu nhập & Khấu trừ (VNĐ)', placeholder: 'VD: 10000000' },
+    { key: 'actual_base_salary', label: 'Lương cơ bản thực tế', type: 'number', group: 'Thu nhập & Khấu trừ (VNĐ)', placeholder: 'VD: 9000000' },
+    { key: 'gross_income', label: 'Tổng thu nhập (GROSS)', type: 'number', group: 'Thu nhập & Khấu trừ (VNĐ)', placeholder: 'VD: 15000000' },
+    { key: 'net_salary', label: 'Thực lĩnh (NET)', type: 'number', group: 'Thu nhập & Khấu trừ (VNĐ)', placeholder: 'VD: 13500000' },
+    { key: 'total_allowances', label: 'Tổng phụ cấp', type: 'number', group: 'Thu nhập & Khấu trừ (VNĐ)', placeholder: 'VD: 1500000' },
+    { key: 'bonus_amount', label: 'Tổng tiền thưởng', type: 'number', group: 'Thu nhập & Khấu trừ (VNĐ)', placeholder: 'VD: 2000000' },
+    { key: 'commission_amount', label: 'Hoa hồng doanh số', type: 'number', group: 'Thu nhập & Khấu trừ (VNĐ)', placeholder: 'VD: 1000000' },
+    { key: 'overtime_salary', label: 'Tiền lương tăng ca (OT)', type: 'number', group: 'Thu nhập & Khấu trừ (VNĐ)', placeholder: 'VD: 500000' },
+    { key: 'total_insurance', label: 'Trích nộp bảo hiểm (10.5%)', type: 'number', group: 'Thu nhập & Khấu trừ (VNĐ)', placeholder: 'VD: 1050000' },
+    { key: 'penalty_deduction', label: 'Tiền phạt đi trễ', type: 'number', group: 'Thu nhập & Khấu trừ (VNĐ)', placeholder: 'VD: 50000' },
+    { key: 'total_deduction', label: 'Tổng giảm trừ', type: 'number', group: 'Thu nhập & Khấu trừ (VNĐ)', placeholder: 'VD: 1200000' },
+    {
+      key: 'payment_status',
+      label: 'Trạng thái phiếu lương',
+      type: 'select',
+      group: 'Trạng thái',
+      placeholder: '',
+      options: [
+        { label: 'Bản nháp (DRAFT)', value: 'DRAFT' },
+        { label: 'Cần tính lại', value: 'NEEDS_RECALCULATION' },
+        { label: 'Đã duyệt (CONFIRMED)', value: 'CONFIRMED' },
+        { label: 'Đã chi trả (PAID)', value: 'PAID' },
+      ],
+    },
+  ], [storeOptions, positionOptions])
+
   // Filtered payrolls
   const filteredPayrolls = useMemo(() => {
     return payrolls.filter(p => {
+      const matchSelectedEmployee = selectedFilterEmployeeId
+        ? p.employee_id === selectedFilterEmployeeId
+        : true
+
       const matchSearch = searchTerm
         ? (p.employee_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
            p.employee_code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
            p.store_name?.toLowerCase().includes(searchTerm.toLowerCase()))
         : true
 
+      const matchStore = storeFilter === 'all' ? true : p.store_name === storeFilter
+      const matchPosition = positionFilter === 'all' ? true : p.position_name === positionFilter
       const matchStatus = statusFilter === 'all' ? true : p.payment_status === statusFilter
 
-      return matchSearch && matchStatus
+      if (!matchSelectedEmployee || !matchSearch || !matchStore || !matchPosition || !matchStatus) {
+        return false
+      }
+
+      if (advancedSearch.length > 0) {
+        const emp = employeeLookupMap.get(p.employee_id)
+        const enrichedRow: Record<string, unknown> = {
+          ...p,
+          department_name: emp?.department_name || '',
+        }
+        return matchesSearchConditions(enrichedRow, advancedSearch, payrollSearchFields, searchMatchMode)
+      }
+
+      return true
     })
-  }, [payrolls, searchTerm, statusFilter])
+  }, [
+    payrolls,
+    selectedFilterEmployeeId,
+    searchTerm,
+    storeFilter,
+    positionFilter,
+    statusFilter,
+    advancedSearch,
+    searchMatchMode,
+    payrollSearchFields,
+    employeeLookupMap,
+  ])
   const { pageItems: pagedPayrolls, paginationProps } = useClientPagination(
     filteredPayrolls,
-    `${selectedPeriod}|${searchTerm}|${statusFilter}`,
+    `${selectedPeriod}|${selectedFilterEmployeeId}|${searchTerm}|${storeFilter}|${positionFilter}|${statusFilter}|${searchMatchMode}|${JSON.stringify(advancedSearch)}`,
   )
 
   // Quick Metrics
@@ -944,6 +1240,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                 onChange={(e) => {
                   setSelectedPeriod(e.target.value)
                   setSelectedPayroll(null)
+                  setSkippedEmployees([])
                 }}
                 style={{ width: 'auto', minWidth: '150px', height: '32px', fontSize: '12.5px', padding: '0 10px' }}
               >
@@ -959,6 +1256,30 @@ export function PayrollPage({ user }: PayrollPageProps) {
                   )
                 })}
               </select>
+
+              {lastCalculatedAt ? (
+                <div
+                  title="Thời gian tính lương toàn kỳ gần nhất"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    fontSize: '12px',
+                    color: 'var(--text-secondary)',
+                    backgroundColor: 'var(--surface-subtle)',
+                    padding: '4px 8px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-subtle)',
+                  }}
+                >
+                  <span style={{ color: 'var(--status-success)', fontSize: '10px' }}>●</span>
+                  <span>Tính gần nhất: <strong>{new Date(lastCalculatedAt).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' })}</strong></span>
+                </div>
+              ) : (
+                <span style={{ fontSize: '12px', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
+                  (Chưa tính kỳ này)
+                </span>
+              )}
 
               <button
                 type="button"
@@ -1016,9 +1337,15 @@ export function PayrollPage({ user }: PayrollPageProps) {
 
                   <button
                     className="btn btn-secondary"
-                    onClick={() => setConfirmation({ message: `Duyệt chính thức các phiếu nháp kỳ ${selectedPeriod}?`, action: handleConfirmAll })}
-                    disabled={actionLoading || metrics.draftCount === 0}
-                    title="Duyệt chính thức các bản ghi DRAFT"
+                    onClick={() => {
+                      if (metrics.needsRecalculationCount > 0) {
+                        toast.error(`Có ${metrics.needsRecalculationCount} nhân viên đang ở trạng thái 'Cần tính lại'. Vui lòng tính lại lương trước khi duyệt toàn bộ.`)
+                        return
+                      }
+                      setConfirmation({ message: `Duyệt chính thức các phiếu nháp kỳ ${selectedPeriod}?`, action: handleConfirmAll })
+                    }}
+                    disabled={actionLoading || metrics.draftCount === 0 || metrics.needsRecalculationCount > 0}
+                    title={metrics.needsRecalculationCount > 0 ? `Còn ${metrics.needsRecalculationCount} nhân viên ở trạng thái Cần tính lại. Vui lòng tính lại trước khi duyệt.` : 'Duyệt chính thức các bản ghi DRAFT'}
                   >
                     {Icons.check}
                     <span>Duyệt</span>
@@ -1104,6 +1431,245 @@ export function PayrollPage({ user }: PayrollPageProps) {
             </div>
           </div>
 
+          {skippedEmployees.length > 0 && (
+            <div
+              style={{
+                background: 'var(--status-warning-bg, rgba(245, 158, 11, 0.08))',
+                border: '1px solid var(--status-warning-border, rgba(245, 158, 11, 0.35))',
+                borderLeft: '4px solid var(--status-warning, #f59e0b)',
+                borderRadius: 'var(--radius-md, 8px)',
+                padding: '14px 16px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '10px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--text-primary)', fontWeight: 600, fontSize: '13.5px' }}>
+                  <span
+                    style={{
+                      width: '28px',
+                      height: '28px',
+                      borderRadius: '6px',
+                      background: 'var(--surface-card)',
+                      border: '1px solid var(--status-warning-border, rgba(245, 158, 11, 0.35))',
+                      color: 'var(--status-warning, #d97706)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                    }}
+                  >
+                    {Icons.alertTriangle}
+                  </span>
+                  <span>
+                    Bỏ qua <strong>{skippedEmployees.length}</strong> nhân sự do chưa có hợp đồng lao động hiệu lực trong kỳ:
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-icon btn-sm"
+                  onClick={() => setSkippedEmployees([])}
+                  title="Đóng cảnh báo"
+                  aria-label="Đóng cảnh báo"
+                  style={{ width: '28px', height: '28px', flexShrink: 0 }}
+                >
+                  {Icons.close}
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {skippedEmployees.map((emp, i) => {
+                  const empSearchUrl = `/employees?search=${encodeURIComponent(emp.employee_code || emp.employee_name || '')}`
+                  const contractUrl = emp.employee_id
+                    ? `/contracts?employee_id=${emp.employee_id}${emp.employee_code ? `&search=${encodeURIComponent(emp.employee_code)}` : ''}`
+                    : `/contracts${emp.employee_code ? `?search=${encodeURIComponent(emp.employee_code)}` : ''}`
+
+                  return (
+                    <div
+                      key={emp.employee_id || i}
+                      onClick={() => navigate(empSearchUrl)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          navigate(empSearchUrl)
+                        }
+                      }}
+                      title={`Nhấn để chuyển đến trang Hồ sơ nhân sự của ${emp.employee_name}`}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        flexWrap: 'wrap',
+                        gap: '8px',
+                        padding: '8px 12px',
+                        borderRadius: 'var(--radius-sm, 6px)',
+                        background: 'var(--surface-card)',
+                        border: '1px solid var(--border-default)',
+                        fontSize: '12.5px',
+                        cursor: 'pointer',
+                        transition: 'border-color 0.15s ease, background-color 0.15s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = 'var(--brand-primary, #2563eb)'
+                        e.currentTarget.style.backgroundColor = 'var(--surface-subtle)'
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = 'var(--border-default)'
+                        e.currentTarget.style.backgroundColor = 'var(--surface-card)'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <span style={{ color: 'var(--brand-primary, #2563eb)', display: 'inline-flex', alignItems: 'center' }}>
+                          {Icons.user}
+                        </span>
+                        <span
+                          style={{
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: '11.5px',
+                            fontWeight: 700,
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            background: 'var(--surface-subtle)',
+                            border: '1px solid var(--border-default)',
+                            color: 'var(--brand-primary, #2563eb)',
+                          }}
+                        >
+                          {emp.employee_code}
+                        </span>
+                        <strong style={{ color: 'var(--text-primary)', textDecoration: 'underline', textUnderlineOffset: '3px' }}>
+                          {emp.employee_name}
+                        </strong>
+                        <span style={{ color: 'var(--text-secondary)' }}>
+                          ({emp.position_name || 'Nhân viên'})
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          navigate(contractUrl)
+                        }}
+                        title={`Nhấn để chuyển đến trang Quản lý hợp đồng của ${emp.employee_name}`}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          color: 'var(--status-warning, #d97706)',
+                          background: 'var(--status-warning-bg, rgba(245, 158, 11, 0.1))',
+                          border: '1px solid var(--status-warning-border, rgba(245, 158, 11, 0.35))',
+                          borderRadius: '6px',
+                          padding: '3px 9px',
+                          cursor: 'pointer',
+                          textDecoration: 'underline',
+                          textUnderlineOffset: '2px',
+                        }}
+                      >
+                        <span style={{ display: 'inline-flex', alignItems: 'center' }}>{Icons.fileText}</span>
+                        <span>{emp.error_reason || emp.reason || 'Chưa có hợp đồng hiệu lực'}</span>
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  fontSize: '12.5px',
+                  color: 'var(--text-secondary)',
+                  paddingTop: '2px',
+                }}
+              >
+                <span style={{ color: 'var(--status-warning, #d97706)', display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>
+                  {Icons.info}
+                </span>
+                <span>
+                  <strong>Gợi ý:</strong> Vui lòng vào trang{' '}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      navigate(
+                        skippedEmployees.length === 1 && skippedEmployees[0]?.employee_code
+                          ? `/employees?search=${encodeURIComponent(skippedEmployees[0].employee_code)}`
+                          : '/employees'
+                      )
+                    }
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: 0,
+                      color: 'var(--brand-primary, #2563eb)',
+                      fontWeight: 700,
+                      textDecoration: 'underline',
+                      cursor: 'pointer',
+                      fontSize: 'inherit',
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    Hồ sơ nhân sự
+                  </button>
+                  {' / '}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      navigate(
+                        skippedEmployees.length === 1 && skippedEmployees[0]?.employee_id
+                          ? `/contracts?employee_id=${skippedEmployees[0].employee_id}`
+                          : '/contracts'
+                      )
+                    }
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: 0,
+                      color: 'var(--brand-primary, #2563eb)',
+                      fontWeight: 700,
+                      textDecoration: 'underline',
+                      cursor: 'pointer',
+                      fontSize: 'inherit',
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    Quản lý hợp đồng
+                  </button>
+                  {' '}để ký hoặc kích hoạt{' '}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      navigate(
+                        skippedEmployees.length === 1 && skippedEmployees[0]?.employee_id
+                          ? `/contracts?employee_id=${skippedEmployees[0].employee_id}`
+                          : '/contracts'
+                      )
+                    }
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: 0,
+                      color: 'var(--brand-primary, #2563eb)',
+                      fontWeight: 600,
+                      textDecoration: 'underline',
+                      cursor: 'pointer',
+                      fontSize: 'inherit',
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    hợp đồng
+                  </button>
+                  {' '}cho nhân viên, sau đó bấm <strong>Tính lại</strong> hoặc chạy lại kỳ lương.
+                </span>
+              </div>
+            </div>
+          )}
+
           {isSyncNeeded && (
             <div style={{
               background: 'var(--surface-subtle)',
@@ -1188,54 +1754,299 @@ export function PayrollPage({ user }: PayrollPageProps) {
               {/* CỘT TRÁI (MAIN PANE): BẢNG QUẢN LÝ LƯƠNG NHÂN SỰ */}
               <div className="mypayslip-main-pane">
                 <div className="card" style={{ overflow: 'hidden' }}>
-                  {/* Search & Filter Toolbar */}
-                  <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flex: 1, minWidth: '260px' }}>
-                      <div style={{ position: 'relative', width: '100%', maxWidth: '320px' }}>
-                        <input
-                          type="text"
-                          className="form-input"
-                          placeholder="Tìm theo tên nhân viên, mã NV..."
-                          value={searchTerm}
-                          onChange={(e) => setSearchTerm(e.target.value)}
-                          style={{ paddingLeft: '32px' }}
+                  {/* Search & Filter Toolbar (Adaptive for Full-Width & Split Main-Subform) */}
+                  <div
+                    className="card-header"
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '10px',
+                      padding: isDetailOpen ? '12px 14px' : '14px 18px',
+                    }}
+                  >
+                    {/* Dòng 1: Thanh công cụ phẳng trên cùng 1 hàng, không bị rớt dòng lệch lạc */}
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        flexWrap: isDetailOpen ? 'nowrap' : 'wrap',
+                        width: '100%',
+                      }}
+                    >
+                      {/* Combobox vừa tìm kiếm vừa chọn nhân viên giống Bảng lương năm */}
+                      <div
+                        style={{
+                          flex: isDetailOpen ? '1 1 180px' : '0 1 250px',
+                          width: isDetailOpen ? undefined : '250px',
+                          minWidth: '180px',
+                        }}
+                      >
+                        <EmployeeSearchSelect
+                          employees={monthlyEmployeeOptions}
+                          value={selectedFilterEmployeeId}
+                          onChange={(id) => {
+                            setSelectedFilterEmployeeId(id ? Number(id) : null)
+                          }}
+                          placeholder={
+                            loadingAnnualEmployees && payrolls.length === 0
+                              ? 'Đang tải nhân sự...'
+                              : 'Tìm & chọn nhân sự (tên, mã NV...)'
+                          }
+                          clearable={true}
+                          compact={true}
+                          clearOptionLabel="Tất cả nhân sự trong kỳ"
+                          getItemBadge={(emp) => {
+                            if (!emp.payment_status) return null
+                            return {
+                              text: getStatusLabel(emp.payment_status),
+                              color:
+                                emp.payment_status === 'PAID'
+                                  ? 'var(--status-success)'
+                                  : emp.payment_status === 'CONFIRMED'
+                                    ? 'var(--status-info)'
+                                    : emp.payment_status === 'NEEDS_RECALCULATION'
+                                      ? 'var(--status-warning)'
+                                      : 'var(--text-secondary)',
+                              backgroundColor:
+                                emp.payment_status === 'PAID'
+                                  ? 'var(--status-success-bg)'
+                                  : emp.payment_status === 'CONFIRMED'
+                                    ? 'var(--status-info-bg)'
+                                    : emp.payment_status === 'NEEDS_RECALCULATION'
+                                      ? 'var(--status-warning-bg)'
+                                      : 'var(--surface-ground)',
+                            }
+                          }}
                         />
-                        <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }}>
-                          {Icons.search}
-                        </span>
                       </div>
 
-                      <select
-                        className="form-select"
-                        value={statusFilter}
-                        onChange={(e) => setStatusFilter(e.target.value as any)}
-                        style={{ width: 'auto' }}
-                      >
-                        <option value="all">Tất cả trạng thái</option>
-                        <option value="DRAFT">Bản nháp (DRAFT)</option>
-                        <option value="NEEDS_RECALCULATION">Cần tính lại</option>
-                        <option value="CONFIRMED">Đã duyệt (CONFIRMED)</option>
-                        <option value="PAID">Đã chi trả (PAID)</option>
-                      </select>
+                      {!isDetailOpen && storeOptions.length > 1 && (
+                        <select
+                          className="form-select"
+                          value={storeFilter}
+                          onChange={(e) => setStoreFilter(e.target.value)}
+                          style={{
+                            width: '160px',
+                            maxWidth: '165px',
+                            flex: '0 1 160px',
+                            height: '36px',
+                            fontSize: '13px',
+                            padding: '0 28px 0 10px',
+                            textOverflow: 'ellipsis',
+                            overflow: 'hidden',
+                            whiteSpace: 'nowrap',
+                          }}
+                          aria-label="Lọc theo cửa hàng"
+                        >
+                          <option value="all">Tất cả cửa hàng</option>
+                          {storeOptions.map(store => (
+                            <option key={store} value={store}>
+                              {store}
+                            </option>
+                          ))}
+                        </select>
+                      )}
 
-                      {(searchTerm || statusFilter !== 'all') && (
+                      {!isDetailOpen && positionOptions.length > 1 && (
+                        <select
+                          className="form-select"
+                          value={positionFilter}
+                          onChange={(e) => setPositionFilter(e.target.value)}
+                          style={{
+                            width: '155px',
+                            maxWidth: '160px',
+                            flex: '0 1 155px',
+                            height: '36px',
+                            fontSize: '13px',
+                            padding: '0 28px 0 10px',
+                            textOverflow: 'ellipsis',
+                            overflow: 'hidden',
+                            whiteSpace: 'nowrap',
+                          }}
+                          aria-label="Lọc theo chức vụ"
+                        >
+                          <option value="all">Tất cả chức vụ</option>
+                          {positionOptions.map(pos => (
+                            <option key={pos} value={pos}>
+                              {pos}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+
+                      {!isDetailOpen && (
+                        <select
+                          className="form-select"
+                          value={statusFilter}
+                          onChange={(e) => setStatusFilter(e.target.value as any)}
+                          style={{
+                            width: '155px',
+                            maxWidth: '160px',
+                            flex: '0 1 155px',
+                            height: '36px',
+                            fontSize: '13px',
+                            padding: '0 28px 0 10px',
+                            textOverflow: 'ellipsis',
+                            overflow: 'hidden',
+                            whiteSpace: 'nowrap',
+                          }}
+                          aria-label="Lọc theo trạng thái phiếu lương"
+                        >
+                          <option value="all">Tất cả trạng thái</option>
+                          <option value="DRAFT">Bản nháp (DRAFT)</option>
+                          <option value="NEEDS_RECALCULATION">Cần tính lại</option>
+                          <option value="CONFIRMED">Đã duyệt (CONFIRMED)</option>
+                          <option value="PAID">Đã chi trả (PAID)</option>
+                        </select>
+                      )}
+
+                      <button
+                        type="button"
+                        className={`btn ${advancedSearch.length > 0 ? 'btn-primary' : 'btn-secondary'}`}
+                        onClick={handleOpenAdvancedSearch}
+                        title="Tìm kiếm & lọc nâng cao bảng lương (tự động đóng chi tiết đang mở)"
+                        style={{ height: '36px', padding: '0 12px', fontSize: '12.5px', flexShrink: 0 }}
+                      >
+                        {Icons.filter}
+                        <span>Lọc nâng cao</span>
+                        {advancedSearch.length > 0 && (
+                          <span className="search-count-badge">
+                            {advancedSearch.length}
+                          </span>
+                        )}
+                      </button>
+
+                      {(selectedFilterEmployeeId !== null || searchTerm || storeFilter !== 'all' || positionFilter !== 'all' || statusFilter !== 'all' || advancedSearch.length > 0) && (
                         <button
                           type="button"
                           className="btn btn-secondary btn-sm"
                           onClick={() => {
+                            setSelectedFilterEmployeeId(null)
                             setSearchTerm('')
+                            setStoreFilter('all')
+                            setPositionFilter('all')
                             setStatusFilter('all')
+                            setAdvancedSearch([])
                           }}
+                          title="Đặt lại toàn bộ bộ lọc"
+                          style={{ height: '36px', padding: '0 10px', fontSize: '12.5px', flexShrink: 0 }}
                         >
-                          Đặt lại
+                          {Icons.undo}
+                          {!isDetailOpen && <span>Đặt lại</span>}
                         </button>
                       )}
+
+                      <div
+                        style={{
+                          fontSize: '12.5px',
+                          color: 'var(--text-secondary)',
+                          whiteSpace: 'nowrap',
+                          marginLeft: 'auto',
+                          paddingLeft: '8px',
+                          borderLeft: '1px solid var(--border-default)',
+                          flexShrink: 0,
+                        }}
+                      >
+                        Hiển thị <strong>{filteredPayrolls.length}</strong> / {payrolls.length} {!isDetailOpen && 'nhân sự'}
+                      </div>
                     </div>
 
-                    <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                      Hiển thị <strong>{filteredPayrolls.length}</strong> / {payrolls.length} nhân sự
-                    </div>
+                    {/* Dòng 2 (Chỉ hiển thị khi đang mở Main-Subform: chia 3 cột đều nhau 100% cân đối) */}
+                    {isDetailOpen && (
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: `repeat(${(storeOptions.length > 1 ? 1 : 0) + (positionOptions.length > 1 ? 1 : 0) + 1}, minmax(0, 1fr))`,
+                          gap: '8px',
+                          width: '100%',
+                        }}
+                      >
+                        {storeOptions.length > 1 && (
+                          <select
+                            className="form-select"
+                            value={storeFilter}
+                            onChange={(e) => setStoreFilter(e.target.value)}
+                            style={{
+                              width: '100%',
+                              minWidth: 0,
+                              height: '34px',
+                              fontSize: '12.5px',
+                              padding: '0 24px 0 8px',
+                              textOverflow: 'ellipsis',
+                              overflow: 'hidden',
+                              whiteSpace: 'nowrap',
+                            }}
+                            aria-label="Lọc theo cửa hàng"
+                          >
+                            <option value="all">Tất cả cửa hàng</option>
+                            {storeOptions.map(store => (
+                              <option key={store} value={store}>
+                                {store}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+
+                        {positionOptions.length > 1 && (
+                          <select
+                            className="form-select"
+                            value={positionFilter}
+                            onChange={(e) => setPositionFilter(e.target.value)}
+                            style={{
+                              width: '100%',
+                              minWidth: 0,
+                              height: '34px',
+                              fontSize: '12.5px',
+                              padding: '0 24px 0 8px',
+                              textOverflow: 'ellipsis',
+                              overflow: 'hidden',
+                              whiteSpace: 'nowrap',
+                            }}
+                            aria-label="Lọc theo chức vụ"
+                          >
+                            <option value="all">Tất cả chức vụ</option>
+                            {positionOptions.map(pos => (
+                              <option key={pos} value={pos}>
+                                {pos}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+
+                        <select
+                          className="form-select"
+                          value={statusFilter}
+                          onChange={(e) => setStatusFilter(e.target.value as any)}
+                          style={{
+                            width: '100%',
+                            minWidth: 0,
+                            height: '34px',
+                            fontSize: '12.5px',
+                            padding: '0 24px 0 8px',
+                            textOverflow: 'ellipsis',
+                            overflow: 'hidden',
+                            whiteSpace: 'nowrap',
+                          }}
+                          aria-label="Lọc theo trạng thái phiếu lương"
+                        >
+                          <option value="all">Tất cả trạng thái</option>
+                          <option value="DRAFT">Bản nháp (DRAFT)</option>
+                          <option value="NEEDS_RECALCULATION">Cần tính lại</option>
+                          <option value="CONFIRMED">Đã duyệt (CONFIRMED)</option>
+                          <option value="PAID">Đã chi trả (PAID)</option>
+                        </select>
+                      </div>
+                    )}
                   </div>
+
+                  <AdvancedSearchFilterBar
+                    conditions={advancedSearch}
+                    matchMode={searchMatchMode}
+                    fields={payrollSearchFields}
+                    onEdit={handleOpenAdvancedSearch}
+                    onClear={() => setAdvancedSearch([])}
+                  />
 
                   {/* Table with Dynamic Columns (Compact when Subform is Open, Full when Closed) */}
                   <div style={{ overflowX: 'auto' }}>
@@ -1247,8 +2058,12 @@ export function PayrollPage({ user }: PayrollPageProps) {
                       <div style={{ padding: '48px 24px' }}>
                         <EmptyState
                           icon={Icons.fileText}
-                          title="Chưa có dữ liệu bảng lương"
-                          description={`Kỳ ${selectedPeriod} chưa được chốt lương hoặc không có bản ghi phù hợp. Nhấn nút 'Chốt & Tính Lương' phía trên để chạy hệ thống.`}
+                          title={payrolls.length > 0 ? 'Không có nhân sự phù hợp bộ lọc' : 'Chưa có dữ liệu bảng lương'}
+                          description={
+                            payrolls.length > 0
+                              ? 'Không tìm thấy phiếu lương nào khớp với từ khóa hoặc bộ lọc trạng thái hiện tại.'
+                              : `Kỳ ${selectedPeriod} chưa được chốt lương hoặc không có bản ghi phù hợp. Nhấn nút 'Chốt & Tính Lương' phía trên để chạy hệ thống.`
+                          }
                         />
                       </div>
                     ) : (
@@ -1410,6 +2225,19 @@ export function PayrollPage({ user }: PayrollPageProps) {
                         <span className={`badge ${getStatusBadgeClass(selectedPayroll.payment_status)}`}>
                           {getStatusLabel(selectedPayroll.payment_status)}
                         </span>
+                        {canRunPayroll && ['DRAFT', 'NEEDS_RECALCULATION'].includes(selectedPayroll.payment_status || '') && (
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            disabled={actionLoading}
+                            onClick={() => handleRecalculateSingle(selectedPayroll)}
+                            title="Tính lại bảng lương cho nhân viên này"
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
+                          >
+                            <span style={{ display: 'inline-flex', alignItems: 'center' }}>{Icons.refresh}</span>
+                            <span>Tính lại</span>
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="btn btn-secondary btn-sm"
@@ -2590,6 +3418,22 @@ export function PayrollPage({ user }: PayrollPageProps) {
           document.body
         )
       })()}
+
+      {/* Modal Lọc & Tìm kiếm nâng cao Bảng lương */}
+      <EmployeeAdvancedSearchModal
+        isOpen={showAdvancedModal}
+        onClose={() => setShowAdvancedModal(false)}
+        onApply={(conditions, matchMode) => {
+          setSearchMatchMode(matchMode)
+          setAdvancedSearch(conditions)
+        }}
+        onClear={() => setAdvancedSearch([])}
+        initialConditions={advancedSearch}
+        initialMatchMode={searchMatchMode}
+        fields={payrollSearchFields}
+        title="Lọc & tìm kiếm bảng lương nâng cao"
+        entityLabel="phiếu lương"
+      />
     </div>
   )
 }
