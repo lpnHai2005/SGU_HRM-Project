@@ -700,7 +700,27 @@ async def create_leave_request(
     # Số ngày do server tính; giá trị client gửi lên chỉ để tương thích và không được tin.
     total_days = await count_leave_days(db, req.start_date, req.end_date, leave_type["type_code"])
     if total_days <= 0:
-        raise HTTPException(status_code=400, detail="Khoảng thời gian đã chọn không có ngày làm việc nào.")
+        hol_rows = (await db.execute(
+            text("SELECT holiday_date, holiday_name FROM public_holidays WHERE holiday_date BETWEEN :start AND :end ORDER BY holiday_date"),
+            {"start": req.start_date, "end": req.end_date},
+        )).mappings().all()
+        hol_map = {r["holiday_date"]: r["holiday_name"] for r in hol_rows}
+        off_labels: List[str] = []
+        cur_day = req.start_date
+        while cur_day <= req.end_date:
+            d_str = cur_day.strftime("%d/%m/%Y")
+            if cur_day in hol_map and cur_day.weekday() == 6:
+                off_labels.append(f"Ngày lễ {hol_map[cur_day]} & Chủ nhật ({d_str})")
+            elif cur_day in hol_map:
+                off_labels.append(f"Ngày lễ {hol_map[cur_day]} ({d_str})")
+            elif cur_day.weekday() == 6:
+                off_labels.append(f"Chủ nhật ({d_str})")
+            cur_day += timedelta(days=1)
+        conflict_desc = f" (trùng với: {', '.join(off_labels)})" if off_labels else ""
+        raise HTTPException(
+            status_code=400,
+            detail=f"Khoảng thời gian đã chọn trùng hoàn toàn với lịch nghỉ chung của công ty{conflict_desc}, không có ngày làm việc nào cần xin nghỉ phép.",
+        )
 
     # 3. Kiểm tra hạn mức số ngày nghỉ tối đa theo loại đơn
     if leave_type["type_code"] == "PHEP_NAM":

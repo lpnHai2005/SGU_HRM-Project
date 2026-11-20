@@ -144,10 +144,16 @@ BEGIN
         LEFT JOIN (
             SELECT 
                 a.employee_id,
-                -- Phép có lương: Phép năm & Thai sản
-                COUNT(CASE WHEN a.status IN ('ANNUAL_LEAVE', 'MATERNITY_LEAVE') THEN 1 END)::NUMERIC AS paid_leave_days,
-                -- Phép không lương: Nghỉ không lương & Nghỉ ốm đau
-                COUNT(CASE WHEN a.status IN ('UNPAID_LEAVE', 'SICK_LEAVE') THEN 1 END)::NUMERIC AS unpaid_leave_days,
+                -- Phép có lương: Phép năm & Thai sản (chỉ đếm trên ngày làm việc thực tế, trừ Chủ nhật & Ngày lễ để không trừ 2 lần với v_standard_days)
+                COUNT(CASE WHEN a.status IN ('ANNUAL_LEAVE', 'MATERNITY_LEAVE')
+                           AND EXTRACT(DOW FROM a.work_date) <> 0
+                           AND NOT EXISTS (SELECT 1 FROM public.public_holidays h WHERE h.holiday_date = a.work_date)
+                      THEN 1 END)::NUMERIC AS paid_leave_days,
+                -- Phép không lương: Nghỉ không lương & Nghỉ ốm đau (chỉ đếm trên ngày làm việc thực tế, trừ Chủ nhật & Ngày lễ)
+                COUNT(CASE WHEN a.status IN ('UNPAID_LEAVE', 'SICK_LEAVE')
+                           AND EXTRACT(DOW FROM a.work_date) <> 0
+                           AND NOT EXISTS (SELECT 1 FROM public.public_holidays h WHERE h.holiday_date = a.work_date)
+                      THEN 1 END)::NUMERIC AS unpaid_leave_days,
                 -- Miễn trừ phút trễ trong ngưỡng ân hạn
                 SUM((CASE WHEN a.late_minutes > v_late_tolerance THEN a.late_minutes ELSE 0 END) + COALESCE(a.early_minutes, 0)) AS total_late_early_minutes,
                 SUM(CASE WHEN a.late_minutes > v_late_tolerance THEN v_late_penalty ELSE 0 END) AS total_late_penalty
@@ -184,7 +190,7 @@ BEGIN
             GROUP BY d.employee_id
         ) wk ON e.employee_id = wk.employee_id
         LEFT JOIN (
-            -- Đơn xin nghỉ đã duyệt
+            -- Đơn xin nghỉ đã duyệt (chỉ đếm ngày làm việc thực tế: trừ Chủ nhật và Ngày lễ public_holidays để đồng bộ 100% với v_standard_days)
             SELECT 
                 req.employee_id,
                 COALESCE(SUM(CASE WHEN lt.is_paid = TRUE THEN 
@@ -193,7 +199,8 @@ BEGIN
                          GREATEST(req.start_date, v_period_date),
                          LEAST(req.end_date, v_period_end),
                          INTERVAL '1 day'
-                     ) d WHERE EXTRACT(DOW FROM d) <> 0)
+                     ) d WHERE EXTRACT(DOW FROM d) <> 0
+                       AND NOT EXISTS (SELECT 1 FROM public.public_holidays h WHERE h.holiday_date = d::DATE))
                 ELSE 0 END), 0) AS paid_days,
                 COALESCE(SUM(CASE WHEN lt.is_paid = FALSE THEN 
                     (SELECT COUNT(*)::NUMERIC 
@@ -201,7 +208,8 @@ BEGIN
                          GREATEST(req.start_date, v_period_date),
                          LEAST(req.end_date, v_period_end),
                          INTERVAL '1 day'
-                     ) d WHERE EXTRACT(DOW FROM d) <> 0)
+                     ) d WHERE EXTRACT(DOW FROM d) <> 0
+                       AND NOT EXISTS (SELECT 1 FROM public.public_holidays h WHERE h.holiday_date = d::DATE))
                 ELSE 0 END), 0) AS unpaid_days
             FROM leave_requests req
             JOIN leave_types lt ON req.leave_type_id = lt.leave_type_id

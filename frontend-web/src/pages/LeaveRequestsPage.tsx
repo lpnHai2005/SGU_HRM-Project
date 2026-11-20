@@ -8,8 +8,8 @@ import { EmptyState } from '../components/common/EmptyState'
 import { EmployeeSearchSelect } from '../components/common/EmployeeSearchSelect'
 import { LEAVE_STATUS_LABELS } from '../constants/navigation'
 import { formatDate } from '../utils/formatters'
-import type { LeaveRequest, LeaveBalance, LeaveType, LeaveRequestCreate, Employee } from '../types'
-import { leaveApi, employeeApi } from '../services/api'
+import type { LeaveRequest, LeaveBalance, LeaveType, LeaveRequestCreate, Employee, PublicHoliday } from '../types'
+import { leaveApi, employeeApi, payrollApi } from '../services/api'
 import { TablePagination, useClientPagination } from '../components/common/TablePagination'
 import './PayslipPrint.css'
 import './LeavePrint.css'
@@ -135,6 +135,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([])
   const [leaveBalance, setLeaveBalance] = useState<LeaveBalance | null>(null)
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([])
+  const [publicHolidays, setPublicHolidays] = useState<PublicHoliday[]>([])
   const [leaveStats, setLeaveStats] = useState<any>(null)
   const [calendarLeaves, setCalendarLeaves] = useState<LeaveRequest[]>([])
 
@@ -316,32 +317,94 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
     return 180
   }, [selectedTypeInfo, activeAnnualRemaining])
 
-  // Auto calculate total days when dates change in create modal
+  const holidayByDateMap = useMemo(() => {
+    const map = new Map<string, PublicHoliday>()
+    publicHolidays.forEach(h => {
+      if (h.holiday_date) {
+        map.set(h.holiday_date.slice(0, 10), h)
+      }
+    })
+    return map
+  }, [publicHolidays])
+
+  const analyzeLeaveDates = useCallback(
+    (startStr: string, endStr: string, typeCode?: string) => {
+      if (!startStr || !endStr) {
+        return { calendarDays: 0, workingDays: 0, overlappedOffDays: [] as Array<{ dateStr: string; label: string; isHoliday: boolean; isSunday: boolean }> }
+      }
+      const [sy, sm, sd] = startStr.split('-').map(Number)
+      const [ey, em, ed] = endStr.split('-').map(Number)
+      if (!sy || !sm || !sd || !ey || !em || !ed) {
+        return { calendarDays: 0, workingDays: 0, overlappedOffDays: [] as Array<{ dateStr: string; label: string; isHoliday: boolean; isSunday: boolean }> }
+      }
+      const start = new Date(sy, sm - 1, sd)
+      const end = new Date(ey, em - 1, ed)
+      if (end < start) {
+        return { calendarDays: 0, workingDays: 0, overlappedOffDays: [] as Array<{ dateStr: string; label: string; isHoliday: boolean; isSunday: boolean }> }
+      }
+
+      const isMaternity = typeCode === 'THAI_SAN'
+      let calendarDays = 0
+      let workingDays = 0
+      const overlappedOffDays: Array<{ dateStr: string; label: string; isHoliday: boolean; isSunday: boolean }> = []
+
+      const cur = new Date(start)
+      while (cur <= end) {
+        calendarDays += 1
+        const yyyy = cur.getFullYear()
+        const mm = String(cur.getMonth() + 1).padStart(2, '0')
+        const dd = String(cur.getDate()).padStart(2, '0')
+        const iso = `${yyyy}-${mm}-${dd}`
+        const displayDate = `${dd}/${mm}/${yyyy}`
+        const isSunday = cur.getDay() === 0
+        const holiday = holidayByDateMap.get(iso)
+
+        if (isMaternity) {
+          workingDays += 1
+        } else if (holiday || isSunday) {
+          let label = ''
+          if (holiday && isSunday) {
+            label = `Ngày lễ ${holiday.holiday_name} & Chủ nhật (${displayDate})`
+          } else if (holiday) {
+            label = `Ngày lễ ${holiday.holiday_name} (${displayDate})`
+          } else {
+            label = `Chủ nhật (${displayDate})`
+          }
+          overlappedOffDays.push({
+            dateStr: iso,
+            label,
+            isHoliday: Boolean(holiday),
+            isSunday,
+          })
+        } else {
+          workingDays += 1
+        }
+        cur.setDate(cur.getDate() + 1)
+      }
+
+      return { calendarDays, workingDays, overlappedOffDays }
+    },
+    [holidayByDateMap],
+  )
+
+  const leaveRangeAnalysis = useMemo(
+    () => analyzeLeaveDates(newRequest.start_date, newRequest.end_date, selectedTypeInfo?.type_code),
+    [analyzeLeaveDates, newRequest.start_date, newRequest.end_date, selectedTypeInfo?.type_code],
+  )
+
+  // Auto calculate total days (trừ Chủ nhật & Ngày lễ trong public_holidays) khi đổi ngày trên modal tạo đơn
   const handleStartDateChange = (val: string) => {
     setNewRequest(prev => {
-      let days = prev.total_days
-      if (val && prev.end_date) {
-        const d1 = new Date(val)
-        const d2 = new Date(prev.end_date)
-        if (d2 >= d1) {
-          days = Math.max(1, Math.round((d2.getTime() - d1.getTime()) / (1000 * 3600 * 24)) + 1)
-        }
-      }
-      return { ...prev, start_date: val, total_days: days }
+      const endDate = prev.end_date && prev.end_date >= val ? prev.end_date : val
+      const analysis = analyzeLeaveDates(val, endDate, selectedTypeInfo?.type_code)
+      return { ...prev, start_date: val, end_date: endDate, total_days: analysis.workingDays }
     })
   }
 
   const handleEndDateChange = (val: string) => {
     setNewRequest(prev => {
-      let days = prev.total_days
-      if (prev.start_date && val) {
-        const d1 = new Date(prev.start_date)
-        const d2 = new Date(val)
-        if (d2 >= d1) {
-          days = Math.max(1, Math.round((d2.getTime() - d1.getTime()) / (1000 * 3600 * 24)) + 1)
-        }
-      }
-      return { ...prev, end_date: val, total_days: days }
+      const analysis = analyzeLeaveDates(prev.start_date, val, selectedTypeInfo?.type_code)
+      return { ...prev, end_date: val, total_days: analysis.workingDays }
     })
   }
 
@@ -349,16 +412,18 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
   const fetchLeaveData = useCallback(async () => {
     setIsLoading(true)
     try {
-      const [requests, balance, types, stats] = await Promise.all([
+      const [requests, balance, types, stats, holidays] = await Promise.all([
         leaveApi.getAll(isPersonalView ? { employee_id: user.employee_id } : undefined),
         leaveApi.getMyBalance(),
         leaveApi.getTypes(),
         isPersonalView ? Promise.resolve(null) : leaveApi.getStats().catch(() => null),
+        payrollApi.getHolidays().catch(() => [] as PublicHoliday[]),
       ])
       // Thôi việc xử lý ở /resignations & /my-resignation, không hiện ở trang nghỉ phép
       const leaveOnly = (requests || []).filter(req => !isResignationRecord(req))
       setLeaveRequests(isPersonalView ? leaveOnly.filter(req => req.employee_id === user.employee_id) : leaveOnly)
       setLeaveBalance(balance)
+      setPublicHolidays(holidays || [])
       const leaveTypesOnly = (types || []).filter(t => t.type_code !== 'THOI_VIEC' && t.leave_type_id !== 6)
       setLeaveTypes(leaveTypesOnly)
       setLeaveStats(stats)
@@ -397,12 +462,15 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
     }
 
     const initialEmpId = targetEmpId ?? (isPersonalView ? (user?.employee_id || null) : null)
+    const todayIso = new Date().toISOString().slice(0, 10)
+    const initialType = leaveTypes[0]
+    const initialAnalysis = analyzeLeaveDates(todayIso, todayIso, initialType?.type_code)
     setNewRequest({
       employee_id: initialEmpId,
-      leave_type_id: leaveTypes[0]?.leave_type_id || 1,
-      start_date: new Date().toISOString().slice(0, 10),
-      end_date: new Date().toISOString().slice(0, 10),
-      total_days: 1.0,
+      leave_type_id: initialType?.leave_type_id || 1,
+      start_date: todayIso,
+      end_date: todayIso,
+      total_days: initialAnalysis.workingDays,
       reason: '',
       attachment_url: '',
     })
@@ -708,8 +776,14 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
       showNotification('error', 'Vui lòng chọn nhân viên cần tạo đơn nghỉ phép.')
       return
     }
-    if (newRequest.total_days <= 0) {
-      showNotification('error', 'Số ngày xin nghỉ phải lớn hơn 0.')
+    if (leaveRangeAnalysis.workingDays <= 0 || newRequest.total_days <= 0) {
+      const conflictNames = leaveRangeAnalysis.overlappedOffDays.map(d => d.label).join(', ')
+      showNotification(
+        'error',
+        conflictNames
+          ? `Ngày bạn chọn trùng hoàn toàn với lịch nghỉ chung (${conflictNames}), không có ngày làm việc nào cần xin nghỉ phép.`
+          : 'Số ngày xin nghỉ thực tế phải lớn hơn 0.',
+      )
       return
     }
     if (maxAllowedDays > 0 && newRequest.total_days > maxAllowedDays) {
@@ -1962,14 +2036,14 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                   onChange={(e) => {
                     const newTypeId = Number(e.target.value)
                     const targetType = leaveTypes.find(t => t.leave_type_id === newTypeId)
-                    let limit = 180
-                    if (targetType?.type_code === 'PHEP_NAM') limit = activeAnnualRemaining
-                    else if (targetType?.max_days_allowed && targetType.max_days_allowed > 0) limit = Number(targetType.max_days_allowed)
-                    setNewRequest(prev => ({
-                      ...prev,
-                      leave_type_id: newTypeId,
-                      total_days: prev.total_days > limit ? limit : prev.total_days,
-                    }))
+                    setNewRequest(prev => {
+                      const analysis = analyzeLeaveDates(prev.start_date, prev.end_date, targetType?.type_code)
+                      return {
+                        ...prev,
+                        leave_type_id: newTypeId,
+                        total_days: analysis.workingDays,
+                      }
+                    })
                   }}
                   required
                 >
@@ -2029,11 +2103,92 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                 </div>
               </div>
 
+              {/* Thông báo chi tiết khi khoảng ngày chọn trùng với Chủ nhật hoặc Ngày lễ trong public_holidays */}
+              {leaveRangeAnalysis.overlappedOffDays.length > 0 && (
+                <div
+                  style={{
+                    marginBottom: '16px',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-sm, 6px)',
+                    background:
+                      leaveRangeAnalysis.workingDays === 0
+                        ? 'var(--status-error-bg, rgba(239, 68, 68, 0.08))'
+                        : 'var(--status-warning-bg, rgba(245, 158, 11, 0.08))',
+                    border: `1px solid ${
+                      leaveRangeAnalysis.workingDays === 0
+                        ? 'var(--status-error-border, rgba(239, 68, 68, 0.35))'
+                        : 'var(--status-warning-border, rgba(245, 158, 11, 0.35))'
+                    }`,
+                    color:
+                      leaveRangeAnalysis.workingDays === 0
+                        ? 'var(--status-error, #dc2626)'
+                        : 'var(--text-primary)',
+                    fontSize: '12.5px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', fontWeight: 600 }}>
+                    <span
+                      style={{
+                        color:
+                          leaveRangeAnalysis.workingDays === 0
+                            ? 'var(--status-error, #dc2626)'
+                            : 'var(--status-warning, #d97706)',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        marginTop: '1px',
+                        flexShrink: 0,
+                      }}
+                    >
+                      {leaveRangeAnalysis.workingDays === 0 ? Icons.alertTriangle : Icons.info}
+                    </span>
+                    <span>
+                      {leaveRangeAnalysis.workingDays === 0
+                        ? `Ngày bạn chọn trùng hoàn toàn với ${leaveRangeAnalysis.overlappedOffDays.length} ngày nghỉ chung của công ty (không có ngày làm việc nào cần xin nghỉ):`
+                        : `Khoảng thời gian chọn có trùng với ${leaveRangeAnalysis.overlappedOffDays.length} ngày nghỉ chung (đã tự động trừ khỏi số ngày phép):`}
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', paddingLeft: '24px' }}>
+                    {leaveRangeAnalysis.overlappedOffDays.map((item) => (
+                      <span
+                        key={item.dateStr}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          padding: '2px 8px',
+                          borderRadius: '4px',
+                          fontSize: '11.5px',
+                          fontWeight: 600,
+                          background: 'var(--surface-card)',
+                          border: '1px solid var(--border-default)',
+                          color: item.isHoliday ? 'var(--brand-primary, #2563eb)' : 'var(--status-warning, #d97706)',
+                        }}
+                      >
+                        {Icons.calendar}
+                        <span>{item.label}</span>
+                      </span>
+                    ))}
+                  </div>
+
+                  {leaveRangeAnalysis.workingDays > 0 && (
+                    <div style={{ paddingLeft: '24px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                      Tổng <strong>{leaveRangeAnalysis.calendarDays} ngày lịch</strong> &rarr; Chỉ tính{' '}
+                      <strong style={{ color: 'var(--status-success)' }}>{leaveRangeAnalysis.workingDays} ngày nghỉ thực tế</strong>{' '}
+                      (không trừ phép năm và không trừ lương vào ngày nghỉ chung).
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Số ngày nghỉ */}
               <div style={{ marginBottom: '16px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                   <label style={{ fontWeight: 600, fontSize: '0.9rem', margin: 0 }}>
-                    Tổng số ngày nghỉ <span style={{ color: 'var(--status-error)' }}>*</span>
+                    Tổng số ngày nghỉ thực tế <span style={{ color: 'var(--status-error)' }}>*</span>
                   </label>
                   {maxAllowedDays > 0 && maxAllowedDays < 180 && (
                     <span style={{
@@ -2051,21 +2206,28 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                 </div>
                 <input
                   type="number"
-                  step="0.5"
-                  min="0.5"
+                  step="1"
+                  min="0"
                   max={maxAllowedDays}
                   className="form-input"
-                  style={newRequest.total_days > maxAllowedDays ? { borderColor: 'var(--status-error)', backgroundColor: 'var(--status-error-bg)' } : {}}
+                  readOnly
+                  style={
+                    newRequest.total_days > maxAllowedDays || newRequest.total_days <= 0
+                      ? { borderColor: 'var(--status-error)', backgroundColor: 'var(--status-error-bg)', cursor: 'not-allowed' }
+                      : { backgroundColor: 'var(--surface-subtle)', cursor: 'default' }
+                  }
                   value={newRequest.total_days}
-                  onChange={(e) => setNewRequest({ ...newRequest, total_days: parseFloat(e.target.value) || 0.5 })}
                   required
                 />
                 {newRequest.total_days > maxAllowedDays ? (
                   <div style={{ color: 'var(--status-error)', fontSize: '0.8rem', marginTop: '4px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <span>⚠️</span> Vượt quá giới hạn cho phép! {selectedTypeInfo?.type_name} chỉ được tối đa {maxAllowedDays} ngày.
+                    {Icons.alertTriangle}
+                    <span>Vượt quá giới hạn cho phép! {selectedTypeInfo?.type_name} chỉ được tối đa {maxAllowedDays} ngày.</span>
                   </div>
                 ) : (
-                  <small style={{ color: 'var(--text-secondary)' }}>Hỗ trợ nghỉ nửa ngày (0.5 ngày) hoặc cả ngày (1, 2, 3... ngày).</small>
+                  <small style={{ color: 'var(--text-secondary)' }}>
+                    Hệ thống tự động tính theo số ngày làm việc thực tế (đã loại trừ Chủ nhật và Ngày lễ của công ty).
+                  </small>
                 )}
               </div>
 
@@ -2301,7 +2463,7 @@ export function LeaveRequestsPage({ user, personal = false }: LeaveRequestsPageP
                 <button
                   type="submit"
                   className="btn btn-primary"
-                  disabled={actionLoading || (!isPersonalView && !newRequest.employee_id)}
+                  disabled={actionLoading || (!isPersonalView && !newRequest.employee_id) || leaveRangeAnalysis.workingDays <= 0}
                 >
                   {actionLoading ? 'Đang gửi...' : (isPersonalView ? 'Gửi đơn phê duyệt' : 'Tạo đơn cho nhân viên')}
                 </button>
