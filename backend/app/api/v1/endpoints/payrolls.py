@@ -27,6 +27,7 @@ from app.api.deps import get_current_user, require_roles, client_ip_var
 from app.core.vietnamese_number import currency_to_vietnamese_words
 from app.core.company import get_company_profile
 from app.core.excel_exporter import create_styled_excel
+from app.core.leave_days import count_leave_days
 import logging
 from app.schemas.schemas import (
     PayrollOut, PayrollDetailOut, CalculatePayrollRequest,
@@ -90,15 +91,136 @@ async def ensure_period_not_finalized(db, period: str):
 def payroll_actor(current_user: dict) -> Tuple[int, int]:
     return current_user["user_id"], current_user.get("employee_id") or 2
 
-async def ensure_fresh_payroll(db,period):
+async def mark_draft_payrolls_need_recalc(db: AsyncSession, period: str) -> None:
+    await db.execute(text("""
+        UPDATE payrolls
+        SET payment_status = 'NEEDS_RECALCULATION', updated_at = clock_timestamp()
+        WHERE salary_period = :period AND payment_status = 'DRAFT'
+    """), {"period": period})
+
+
+async def reconcile_leaves_for_added_holiday(
+    db: AsyncSession,
+    h_date: date,
+    h_name: str,
+    actor_user_id: int,
+) -> Tuple[int, Optional[str]]:
+    """Hướng A: Khi thêm/đổi ngày Lễ (kể cả ngày đã qua trong kỳ chưa chốt),
+    tự động tính lại total_days của đơn nghỉ trùng (trừ THAI_SAN) để hoàn lại số dư phép năm,
+    xóa dòng attendances nghỉ phép không có check-in, và cảnh báo nếu đã có chấm công thực tế."""
+    overlap_rows = (await db.execute(text("""
+        SELECT lr.request_id, lr.employee_id, lr.start_date, lr.end_date, lr.total_days,
+               lr.status, lt.type_code
+        FROM leave_requests lr
+        JOIN leave_types lt ON lr.leave_type_id = lt.leave_type_id
+        WHERE lr.status IN ('PENDING', 'STORE_APPROVED', 'HR_APPROVED')
+          AND lt.type_code <> 'THAI_SAN'
+          AND lr.start_date <= :hdate
+          AND lr.end_date >= :hdate
+        FOR UPDATE OF lr
+    """), {"hdate": h_date})).mappings().all()
+
+    adjusted_count = 0
+    for lr in overlap_rows:
+        rid = lr["request_id"]
+        old_days = float(lr["total_days"] or 0)
+        new_days = float(await count_leave_days(db, lr["start_date"], lr["end_date"], lr["type_code"]))
+        if new_days <= 0:
+            await db.execute(text("""
+                UPDATE leave_requests
+                SET total_days = 0, status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP
+                WHERE request_id = :rid
+            """), {"rid": rid})
+            await db.execute(text("""
+                INSERT INTO audit_logs (user_id, action, entity_name, entity_id, old_values, new_values, ip_address)
+                VALUES (:uid, 'AUTO_CANCEL_LEAVE_HOLIDAY_OVERLAP', 'leave_requests', :eid,
+                        CAST(:old AS jsonb), CAST(:new AS jsonb), :client_ip)
+            """).bindparams(client_ip=client_ip_var.get()), {
+                "uid": actor_user_id,
+                "eid": str(rid),
+                "old": json.dumps({"status": lr["status"], "total_days": old_days}),
+                "new": json.dumps({
+                    "status": "CANCELLED",
+                    "total_days": 0,
+                    "reason": f"Trùng ngày nghỉ Lễ '{h_name}' ({h_date.strftime('%d/%m/%Y')}) mới khai báo",
+                }),
+            })
+            adjusted_count += 1
+        elif abs(old_days - new_days) > 1e-6:
+            await db.execute(text("""
+                UPDATE leave_requests
+                SET total_days = :new_days, updated_at = CURRENT_TIMESTAMP
+                WHERE request_id = :rid
+            """), {"rid": rid, "new_days": new_days})
+            await db.execute(text("""
+                INSERT INTO audit_logs (user_id, action, entity_name, entity_id, old_values, new_values, ip_address)
+                VALUES (:uid, 'AUTO_RECALC_LEAVE_HOLIDAY_OVERLAP', 'leave_requests', :eid,
+                        CAST(:old AS jsonb), CAST(:new AS jsonb), :client_ip)
+            """).bindparams(client_ip=client_ip_var.get()), {
+                "uid": actor_user_id,
+                "eid": str(rid),
+                "old": json.dumps({"total_days": old_days}),
+                "new": json.dumps({
+                    "total_days": new_days,
+                    "reason": f"Hoàn ngày nghỉ trùng ngày Lễ '{h_name}' ({h_date.strftime('%d/%m/%Y')})",
+                }),
+            })
+            adjusted_count += 1
+
+        # Dọn dòng attendances do đơn nghỉ sinh ra trên đúng ngày Lễ (không đụng phiên check-in thật)
+        await db.execute(text("""
+            DELETE FROM attendances
+            WHERE employee_id = :eid
+              AND work_date = :hdate
+              AND check_in_time IS NULL
+              AND notes LIKE :note_pat
+        """), {"eid": lr["employee_id"], "hdate": h_date, "note_pat": f"Đơn nghỉ phép #{rid} (%"})
+
+    checked_in_count = (await db.execute(text("""
+        SELECT COUNT(DISTINCT employee_id)
+        FROM attendances
+        WHERE work_date = :hdate AND check_in_time IS NOT NULL
+    """), {"hdate": h_date})).scalar() or 0
+
+    warnings: List[str] = []
+    if adjusted_count > 0:
+        warnings.append(
+            f"Đã tự động tính lại số ngày nghỉ cho {adjusted_count} đơn trùng ngày {h_date.strftime('%d/%m/%Y')} để hoàn lại số dư phép năm."
+        )
+    if checked_in_count > 0:
+        warnings.append(
+            f"Cảnh báo: Đã có {checked_in_count} nhân sự chấm công thực tế vào ngày {h_date.strftime('%d/%m/%Y')}. "
+            "Giờ làm ngày Lễ không tính vào công thường; vui lòng rà soát nếu cần."
+        )
+    return adjusted_count, (" ".join(warnings) if warnings else None)
+
+
+async def ensure_fresh_payroll(db, period):
     await ensure_ot_period_policy(db, period)
-    run=(await db.execute(text('SELECT calculated_at FROM payroll_calculation_runs WHERE salary_period=:period'),{'period':period})).scalar_one_or_none()
+    run = (await db.execute(text('SELECT calculated_at FROM payroll_calculation_runs WHERE salary_period=:period'), {'period': period})).scalar_one_or_none()
     if not run:
-        raise HTTPException(409,'Kỳ lương nháp cần được tính lại theo giờ OT đã duyệt trước khi chốt')
-    changed=(await db.execute(text('''SELECT 1 FROM attendance_overtime_approvals ota
+        raise HTTPException(409, 'Kỳ lương nháp cần được tính lại theo giờ OT đã duyệt trước khi chốt')
+    changed = (await db.execute(text('''SELECT 1 FROM attendance_overtime_approvals ota
         JOIN attendances a USING(attendance_id) WHERE to_char(a.work_date,'YYYY-MM')=:period
-        AND ota.updated_at>:calculated LIMIT 1'''),{'period':period,'calculated':run})).first()
-    if changed: raise HTTPException(409,'Quyết định OT thay đổi sau lần tính lương; vui lòng tính lại trước khi duyệt')
+        AND ota.updated_at>:calculated LIMIT 1'''), {'period': period, 'calculated': run})).first()
+    if changed:
+        raise HTTPException(409, 'Quyết định OT thay đổi sau lần tính lương; vui lòng tính lại trước khi duyệt')
+    needs_recalc = (await db.execute(text(
+        "SELECT 1 FROM payrolls WHERE salary_period=:period AND payment_status='NEEDS_RECALCULATION' LIMIT 1"
+    ), {'period': period})).first()
+    if needs_recalc:
+        raise HTTPException(409, "Còn phiếu lương 'Cần tính lại' trong kỳ. Vui lòng tính lại toàn kỳ trước khi duyệt.")
+    std_mismatch = (await db.execute(text('''
+        SELECT 1
+        FROM public.payrolls p
+        JOIN public.v_payroll_period_working_days v ON v.salary_period = p.salary_period
+        WHERE p.salary_period = :period
+          AND p.payment_status = 'DRAFT'
+          AND p.standard_working_days <> v.applied_standard_days
+        LIMIT 1
+    '''), {'period': period})).first()
+    if std_mismatch:
+        raise HTTPException(409, 'Ngày công chuẩn của phiếu lương nháp không khớp quy chế hiện hành; vui lòng tính lại toàn kỳ trước khi duyệt.')
 
 
 async def ensure_ot_period_policy(db, period):
@@ -118,6 +240,28 @@ async def ensure_ot_period_policy(db, period):
         raise HTTPException(409, {"code": "OT_PAYROLL_REVIEW_REQUIRED",
             "message": "Kỳ lương có giờ ngoài ca từ ngày áp dụng quy chế OT mới. Chưa có đường đối chiếu OT được phép với giờ thực tế; vui lòng rà soát trước khi tính lại hoặc chốt lương."})
 
+def _build_actual_base_salary_formula(
+    contract_sal: float,
+    std_days: float,
+    act_days: float,
+    paid_days: float,
+    hol_days: float,
+    time_ded: float,
+    ded_form: Optional[str] = None,
+) -> str:
+    daily_price = round(contract_sal / std_days, 0) if std_days > 0 else 0
+    parts = [f"{act_days:g} ngày làm"]
+    if paid_days > 0:
+        parts.append(f"{paid_days:g} phép")
+    if hol_days > 0:
+        parts.append(f"{hol_days:g} lễ")
+    work_summary = " + ".join(parts)
+    if time_ded > 0:
+        ded_str = ded_form or f"-{time_ded:,.0f} đ"
+        return f"Lương HĐ: {contract_sal:,.0f} đ (Đơn giá {daily_price:,.0f} đ/ngày) | Hưởng lương: {work_summary} / {std_days:g} ngày | {ded_str}"
+    return f"Lương HĐ: {contract_sal:,.0f} đ ÷ {std_days:g} ngày chuẩn × ({work_summary})"
+
+
 def populate_payroll_breakdown_from_details(pr_dict: dict, details_list: list):
     """Bottom-Up architecture helper: derives granular breakdown fields from payroll_details."""
     det_map = {d["item_code"]: float(d["amount"] or 0) for d in details_list}
@@ -127,13 +271,14 @@ def populate_payroll_breakdown_from_details(pr_dict: dict, details_list: list):
     pr_dict["actual_base_salary"] = max(0.0, contract_sal - time_ded)
     std_days = float(pr_dict.get("standard_working_days") or 26.0)
     act_days = float(pr_dict.get("actual_working_days") or 0.0)
-    daily_price = round(contract_sal / std_days, 0) if std_days > 0 else 0
-    if time_ded > 0:
-        base_deduct_obj = next((d for d in details_list if d.get("item_code") == "BASE_SALARY_DEDUCTION"), None)
-        ded_form = base_deduct_obj.get("calculation_formula") if base_deduct_obj else f"-{time_ded:,.0f} đ"
-        pr_dict["actual_base_salary_formula"] = f"Lương HĐ: {contract_sal:,.0f} đ (Đơn giá {daily_price:,.0f} đ/ngày) | Thực tế: {act_days:g}/{std_days:g} ngày | {ded_form}"
-    else:
-        pr_dict["actual_base_salary_formula"] = f"Lương HĐ: {contract_sal:,.0f} đ ÷ {std_days:g} ngày chuẩn × {act_days:g} ngày thực tế"
+    paid_days = float(pr_dict.get("paid_leave_days") or 0.0)
+    hol_days = float(pr_dict.get("holiday_paid_days") or 0.0)
+    pr_dict["holiday_paid_days"] = hol_days
+    base_deduct_obj = next((d for d in details_list if d.get("item_code") == "BASE_SALARY_DEDUCTION"), None)
+    ded_form = base_deduct_obj.get("calculation_formula") if base_deduct_obj else None
+    pr_dict["actual_base_salary_formula"] = _build_actual_base_salary_formula(
+        contract_sal, std_days, act_days, paid_days, hol_days, time_ded, ded_form
+    )
     pr_dict["overtime_salary"] = det_map.get("OVERTIME", 0.0)
     pr_dict["position_allowance"] = det_map.get("POSITION_ALLOWANCE", 0.0)
     pr_dict["seniority_allowance"] = det_map.get("SENIORITY_ALLOWANCE", 0.0)
@@ -329,7 +474,8 @@ async def list_payrolls(
     query = """
         SELECT p.payroll_id, p.employee_id, e.employee_code, e.full_name as employee_name,
                s.store_name, pos.position_name, p.salary_period,
-               p.standard_working_days, p.actual_working_days, p.paid_leave_days, p.unpaid_leave_days,
+               p.standard_working_days, p.actual_working_days, p.paid_leave_days,
+               COALESCE(p.holiday_paid_days, 0) AS holiday_paid_days, p.unpaid_leave_days,
                p.absent_days, COALESCE(p.daily_standard_hours, 8.00) AS daily_standard_hours,
                p.unworked_hours,
                p.contract_salary,
@@ -701,7 +847,8 @@ async def get_annual_salary(
     # Lấy danh sách phiếu lương từng tháng trong năm
     monthly_res = await db.execute(text("""
         SELECT payroll_id, employee_id, salary_period,
-               standard_working_days, actual_working_days, paid_leave_days, unpaid_leave_days,
+               standard_working_days, actual_working_days, paid_leave_days,
+               COALESCE(holiday_paid_days, 0) AS holiday_paid_days, unpaid_leave_days,
                contract_salary,
                COALESCE(total_earnings, gross_income) AS total_earnings,
                COALESCE(total_allowances, 0) AS total_allowances,
@@ -1602,6 +1749,7 @@ async def override_payroll_period_working_days(
     if not re.match(r"^[0-9]{4}-(0[1-9]|1[0-2])$", period):
         raise HTTPException(status_code=400, detail="Định dạng kỳ lương không hợp lệ (yêu cầu YYYY-MM)")
 
+    await lock_payroll_period(db, period)
     # 1. Kiểm tra khóa kỳ lương
     closed = (await db.execute(text("""
         SELECT 1 FROM public.payrolls 
@@ -1627,8 +1775,8 @@ async def override_payroll_period_working_days(
         "uid": current_user["user_id"]
     })
 
-    # 3. Ghi audit log
-    import json
+    # 3. Đánh dấu phiếu DRAFT của kỳ cần tính lại & ghi audit log
+    await mark_draft_payrolls_need_recalc(db, period)
     await db.execute(text("""
         INSERT INTO public.audit_logs (user_id, action, entity_name, entity_id, new_values)
         VALUES (:uid, 'OVERRIDE_STANDARD_WORKING_DAYS', 'payroll_period_overrides', :eid, CAST(:new AS jsonb))
@@ -1651,6 +1799,7 @@ async def reset_payroll_period_working_days(
     if not re.match(r"^[0-9]{4}-(0[1-9]|1[0-2])$", period):
         raise HTTPException(status_code=400, detail="Định dạng kỳ lương không hợp lệ (yêu cầu YYYY-MM)")
 
+    await lock_payroll_period(db, period)
     # 1. Kiểm tra khóa kỳ lương
     closed = (await db.execute(text("""
         SELECT 1 FROM public.payrolls 
@@ -1663,8 +1812,8 @@ async def reset_payroll_period_working_days(
     # 2. Xóa khỏi payroll_period_overrides
     await db.execute(text("DELETE FROM public.payroll_period_overrides WHERE salary_period = :period"), {"period": period})
 
-    # 3. Ghi audit log
-    import json
+    # 3. Đánh dấu phiếu DRAFT của kỳ cần tính lại & ghi audit log
+    await mark_draft_payrolls_need_recalc(db, period)
     await db.execute(text("""
         INSERT INTO public.audit_logs (user_id, action, entity_name, entity_id, new_values)
         VALUES (:uid, 'RESET_STANDARD_WORKING_DAYS', 'payroll_period_overrides', :eid, CAST(:new AS jsonb))
@@ -1702,6 +1851,7 @@ async def create_public_holiday(
     db: AsyncSession = Depends(get_db)
 ):
     h_period = req.holiday_date.strftime("%Y-%m")
+    await lock_payroll_period(db, h_period)
     closed = (await db.execute(text("""
         SELECT 1 FROM public.payrolls 
         WHERE salary_period = :period AND payment_status IN ('CONFIRMED', 'PAID')
@@ -1725,9 +1875,14 @@ async def create_public_holiday(
         "notes": req.notes.strip() if req.notes else None,
         "uid": current_user["user_id"]
     })
-    row = res.mappings().first()
+    row = dict(res.mappings().first())
 
-    import json
+    # Hướng A: hoàn lại số dư phép cho đơn trùng + dọn dòng attendances nghỉ phép + gắn cờ tính lại lương
+    adjusted_leaves, warning_msg = await reconcile_leaves_for_added_holiday(
+        db, req.holiday_date, req.holiday_name.strip(), current_user["user_id"]
+    )
+    await mark_draft_payrolls_need_recalc(db, h_period)
+
     await db.execute(text("""
         INSERT INTO public.audit_logs (user_id, action, entity_name, entity_id, new_values)
         VALUES (:uid, 'CREATE_PUBLIC_HOLIDAY', 'public_holidays', :eid, CAST(:new AS jsonb))
@@ -1738,7 +1893,9 @@ async def create_public_holiday(
     })
 
     await db.commit()
-    return dict(row)
+    row["warning"] = warning_msg
+    row["adjusted_leaves_count"] = adjusted_leaves
+    return row
 
 
 @router.put("/holidays/{holiday_id}", response_model=PublicHolidayOut, summary="Cập nhật ngày nghỉ Lễ, Tết (Kiểm tra kép Dual-Period Check)")
@@ -1756,9 +1913,13 @@ async def update_public_holiday(
     if not current:
         raise HTTPException(status_code=404, detail="Không tìm thấy ngày lễ")
 
-    old_period = current["holiday_date"].strftime("%Y-%m")
-    new_date = req.holiday_date or current["holiday_date"]
+    old_date = current["holiday_date"]
+    old_period = old_date.strftime("%Y-%m")
+    new_date = req.holiday_date or old_date
     new_period = new_date.strftime("%Y-%m")
+
+    for lock_p in sorted({old_period, new_period}):
+        await lock_payroll_period(db, lock_p)
 
     # DUAL-PERIOD CHECK
     # 1. Kiểm tra kỳ cũ
@@ -1781,7 +1942,7 @@ async def update_public_holiday(
             raise HTTPException(status_code=409, detail=f"Kỳ lương {new_period} đã chốt hoặc thanh toán. Không thể thêm hoặc chuyển ngày lễ vào kỳ này!")
 
     # Kiểm tra trùng lặp ngày nếu đổi ngày
-    if req.holiday_date and req.holiday_date != current["holiday_date"]:
+    if req.holiday_date and req.holiday_date != old_date:
         dup = (await db.execute(text("SELECT holiday_id FROM public.public_holidays WHERE holiday_date = :hdate AND holiday_id <> :hid"), {"hdate": req.holiday_date, "hid": holiday_id})).first()
         if dup:
             raise HTTPException(status_code=400, detail=f"Ngày {req.holiday_date.strftime('%d/%m/%Y')} đã tồn tại trong danh mục ngày lễ!")
@@ -1800,21 +1961,49 @@ async def update_public_holiday(
         "notes": notes_to_set,
         "hid": holiday_id
     })
-    row = res.mappings().first()
+    row = dict(res.mappings().first())
 
-    import json
+    warnings: List[str] = []
+    adjusted_leaves = 0
+    if new_date != old_date:
+        adjusted_leaves, add_warn = await reconcile_leaves_for_added_holiday(
+            db, new_date, name_to_set, current_user["user_id"]
+        )
+        if add_warn:
+            warnings.append(add_warn)
+        # Không tự trừ ngược phép trên ngày cũ; chỉ cảnh báo nếu có đơn cũ vắt qua
+        old_overlap = (await db.execute(text("""
+            SELECT COUNT(*)
+            FROM leave_requests lr
+            JOIN leave_types lt ON lr.leave_type_id = lt.leave_type_id
+            WHERE lr.status IN ('PENDING', 'STORE_APPROVED', 'HR_APPROVED')
+              AND lt.type_code <> 'THAI_SAN'
+              AND lr.start_date <= :odate AND lr.end_date >= :odate
+        """), {"odate": old_date})).scalar() or 0
+        if old_overlap > 0:
+            warnings.append(
+                f"Lưu ý: Có {old_overlap} đơn nghỉ phép vắt qua ngày lễ cũ ({old_date.strftime('%d/%m/%Y')}); "
+                "hệ thống không tự động trừ ngược ngày phép năm."
+            )
+
+    await mark_draft_payrolls_need_recalc(db, old_period)
+    if new_period != old_period:
+        await mark_draft_payrolls_need_recalc(db, new_period)
+
     await db.execute(text("""
         INSERT INTO public.audit_logs (user_id, action, entity_name, entity_id, old_values, new_values)
         VALUES (:uid, 'UPDATE_PUBLIC_HOLIDAY', 'public_holidays', :eid, CAST(:old AS jsonb), CAST(:new AS jsonb))
     """), {
         "uid": current_user["user_id"],
         "eid": str(holiday_id),
-        "old": json.dumps({"holiday_date": str(current["holiday_date"]), "holiday_name": current["holiday_name"]}),
+        "old": json.dumps({"holiday_date": str(old_date), "holiday_name": current["holiday_name"]}),
         "new": json.dumps({"holiday_date": str(new_date), "holiday_name": name_to_set})
     })
 
     await db.commit()
-    return dict(row)
+    row["warning"] = " ".join(warnings) if warnings else None
+    row["adjusted_leaves_count"] = adjusted_leaves
+    return row
 
 
 @router.delete("/holidays/{holiday_id}", summary="Xóa ngày nghỉ Lễ, Tết")
@@ -1831,7 +2020,9 @@ async def delete_public_holiday(
     if not current:
         raise HTTPException(status_code=404, detail="Không tìm thấy ngày lễ")
 
-    h_period = current["holiday_date"].strftime("%Y-%m")
+    h_date = current["holiday_date"]
+    h_period = h_date.strftime("%Y-%m")
+    await lock_payroll_period(db, h_period)
     closed = (await db.execute(text("""
         SELECT 1 FROM public.payrolls 
         WHERE salary_period = :period AND payment_status IN ('CONFIRMED', 'PAID')
@@ -1840,20 +2031,42 @@ async def delete_public_holiday(
     if closed:
         raise HTTPException(status_code=409, detail=f"Kỳ lương {h_period} đã chốt hoặc thanh toán. Không thể sửa hoặc xóa ngày lễ thuộc kỳ này!")
 
-    await db.execute(text("DELETE FROM public.public_holidays WHERE holiday_id = :hid"), {"hid": holiday_id})
+    # Không chặn xóa ngày Lễ đã qua, không trừ ngược phép năm; chỉ cảnh báo nếu có đơn nghỉ vắt qua hoặc ngày đã qua
+    overlap_leave_count = (await db.execute(text("""
+        SELECT COUNT(*)
+        FROM leave_requests lr
+        JOIN leave_types lt ON lr.leave_type_id = lt.leave_type_id
+        WHERE lr.status IN ('PENDING', 'STORE_APPROVED', 'HR_APPROVED')
+          AND lt.type_code <> 'THAI_SAN'
+          AND lr.start_date <= :hdate AND lr.end_date >= :hdate
+    """), {"hdate": h_date})).scalar() or 0
 
-    import json
+    await db.execute(text("DELETE FROM public.public_holidays WHERE holiday_id = :hid"), {"hid": holiday_id})
+    await mark_draft_payrolls_need_recalc(db, h_period)
+
     await db.execute(text("""
         INSERT INTO public.audit_logs (user_id, action, entity_name, entity_id, old_values)
         VALUES (:uid, 'DELETE_PUBLIC_HOLIDAY', 'public_holidays', :eid, CAST(:old AS jsonb))
     """), {
         "uid": current_user["user_id"],
         "eid": str(holiday_id),
-        "old": json.dumps({"holiday_date": str(current["holiday_date"]), "holiday_name": current["holiday_name"]})
+        "old": json.dumps({"holiday_date": str(h_date), "holiday_name": current["holiday_name"]})
     })
 
     await db.commit()
-    return {"message": f"Đã xóa ngày lễ '{current['holiday_name']}' thành công!"}
+    warnings: List[str] = []
+    if h_date < date.today():
+        warnings.append("Xóa ngày Lễ đã qua sẽ làm toàn bộ nhân viên không chấm công ngày này bị trừ 1 ngày công khi tính lại lương.")
+    if overlap_leave_count > 0:
+        warnings.append(
+            f"Lưu ý: Có {overlap_leave_count} đơn nghỉ phép vắt qua ngày lễ vừa xóa; "
+            "hệ thống không tự động trừ ngược ngày phép năm — vui lòng rà soát nếu cần."
+        )
+    return {
+        "message": f"Đã xóa ngày lễ '{current['holiday_name']}' thành công!",
+        "warning": " ".join(warnings) if warnings else None,
+        "overlapping_leaves_count": int(overlap_leave_count),
+    }
 
 
 # ===================================================================================
@@ -2486,6 +2699,7 @@ async def export_payroll_excel(
         {"key": "standard_working_days", "title": "Công chuẩn", "width": 13, "format": "number"},
         {"key": "actual_working_days", "title": "Công thực tế", "width": 13, "format": "number"},
         {"key": "paid_leave_days", "title": "Phép có lương", "width": 14, "format": "number"},
+        {"key": "holiday_paid_days", "title": "Nghỉ Lễ có lương", "width": 16, "format": "number"},
         {"key": "contract_salary", "title": "Lương Hợp đồng", "width": 18, "format": "currency"},
         {"key": "time_deduction_amount", "title": "Trừ thời gian", "width": 16, "format": "currency"},
         {"key": "actual_base_salary", "title": "Lương CB thực tế", "width": 18, "format": "currency"},
@@ -2574,6 +2788,7 @@ async def export_annual_payroll_excel(
             {"key": "standard_working_days", "title": "Công chuẩn", "width": 13, "format": "number"},
             {"key": "actual_working_days", "title": "Công thực tế", "width": 13, "format": "number"},
             {"key": "paid_leave_days", "title": "Phép có lương", "width": 14, "format": "number"},
+            {"key": "holiday_paid_days", "title": "Nghỉ Lễ có lương", "width": 16, "format": "number"},
             {"key": "contract_salary", "title": "Lương Hợp đồng", "width": 18, "format": "currency"},
             {"key": "time_deduction_amount", "title": "Trừ thời gian", "width": 16, "format": "currency"},
             {"key": "actual_base_salary", "title": "Lương CB thực tế", "width": 18, "format": "currency"},
@@ -2704,6 +2919,7 @@ async def export_payroll_csv(
     writer = csv.writer(output)
     writer.writerow([
         "Mã NV", "Họ và Tên", "Cửa hàng", "Chức vụ", "Kỳ lương",
+        "Công chuẩn", "Công thực tế", "Phép có lương", "Nghỉ Lễ có lương",
         "Lương HĐ", "Trừ thời gian", "Lương CB thực", "Phụ cấp CV",
         "Phụ cấp Thâm niên", "Phụ cấp Dự án", "PC đặc thù", "Phụ cấp Cơm xe", "Hoa hồng",
         "Tổng thưởng", "Lương Gross", "Bảo hiểm 10.5%", "Phạt trễ", "Khấu trừ vi phạm", "Tổng khấu trừ",
@@ -2715,6 +2931,8 @@ async def export_payroll_csv(
         writer.writerow([
             p_dict.get("employee_code"), p_dict.get("employee_name"), p_dict.get("store_name") or "Trụ sở",
             p_dict.get("position_name"), p_dict.get("salary_period"),
+            p_dict.get("standard_working_days"), p_dict.get("actual_working_days"),
+            p_dict.get("paid_leave_days"), p_dict.get("holiday_paid_days"),
             p_dict.get("contract_salary"), p_dict.get("time_deduction_amount"), p_dict.get("actual_base_salary"),
             p_dict.get("position_allowance"), p_dict.get("seniority_allowance"), p_dict.get("project_allowance"), p_dict.get("extra_allowance_amount"),
             p_dict.get("meal_transport_allowance"), p_dict.get("commission_amount"), p_dict.get("bonus_amount"),
@@ -2946,6 +3164,7 @@ async def get_printable_payslip(
             "daily_standard_hours": float(row["daily_standard_hours"] if row.get("daily_standard_hours") is not None else 8.00),
             "actual_working_days": float(row["actual_working_days"] if row["actual_working_days"] is not None else 0),
             "paid_leave_days": float(row["paid_leave_days"] if row["paid_leave_days"] is not None else 0),
+            "holiday_paid_days": float(row["holiday_paid_days"] if row.get("holiday_paid_days") is not None else 0),
             "unpaid_leave_days": float(row["unpaid_leave_days"] if row["unpaid_leave_days"] is not None else 0),
             "absent_days": float(row["absent_days"] if row.get("absent_days") is not None else 0),
             "unworked_hours": float(row["unworked_hours"] if row["unworked_hours"] is not None else 0),
@@ -2963,6 +3182,7 @@ async def get_printable_payslip(
             "daily_standard_hours": float(row["daily_standard_hours"] if row.get("daily_standard_hours") is not None else 8.00),
             "actual_working_days": float(row["actual_working_days"] if row["actual_working_days"] is not None else 0),
             "paid_leave_days": float(row["paid_leave_days"] if row["paid_leave_days"] is not None else 0),
+            "holiday_paid_days": float(row["holiday_paid_days"] if row.get("holiday_paid_days") is not None else 0),
             "unpaid_leave_days": float(row["unpaid_leave_days"] if row["unpaid_leave_days"] is not None else 0),
             "absent_days": float(row["absent_days"] if row.get("absent_days") is not None else 0),
             "unworked_hours": float(row["unworked_hours"] if row["unworked_hours"] is not None else 0)
@@ -2973,10 +3193,14 @@ async def get_printable_payslip(
             "contract_salary": contract_sal,
             "time_deduction_amount": time_ded,
             "actual_base_salary": actual_base,
-            "actual_base_salary_formula": (
-                f"Lương HĐ: {contract_sal:,.0f} đ (Đơn giá {round(contract_sal/float(row['standard_working_days'] or 26), 0):,.0f} đ/ngày) | Thực tế: {float(row['actual_working_days'] or 0):g}/{float(row['standard_working_days'] or 26):g} ngày"
-                if time_ded > 0 else
-                f"Lương HĐ: {contract_sal:,.0f} đ ÷ {float(row['standard_working_days'] or 26):g} ngày chuẩn × {float(row['actual_working_days'] or 0):g} ngày thực tế"
+            "actual_base_salary_formula": _build_actual_base_salary_formula(
+                contract_sal,
+                float(row["standard_working_days"] if row["standard_working_days"] is not None else 26.0),
+                float(row["actual_working_days"] if row["actual_working_days"] is not None else 0),
+                float(row["paid_leave_days"] if row["paid_leave_days"] is not None else 0),
+                float(row["holiday_paid_days"] if row.get("holiday_paid_days") is not None else 0),
+                time_ded,
+                next((d.get("calculation_formula") for d in details if d.get("item_code") == "BASE_SALARY_DEDUCTION"), None),
             ),
             "gross_income": float(calc_total_earnings),
             "total_insurance": float(row.get("total_insurance") or 0),
@@ -2999,7 +3223,8 @@ async def get_payroll_detail(
     query = text("""
         SELECT p.payroll_id, p.employee_id, e.employee_code, e.full_name as employee_name,
                s.store_name, pos.position_name, p.salary_period,
-               p.standard_working_days, p.actual_working_days, p.paid_leave_days, p.unpaid_leave_days,
+               p.standard_working_days, p.actual_working_days, p.paid_leave_days,
+               COALESCE(p.holiday_paid_days, 0) AS holiday_paid_days, p.unpaid_leave_days,
                p.absent_days, COALESCE(p.daily_standard_hours, 8.00) AS daily_standard_hours,
                p.unworked_hours,
                p.contract_salary,
@@ -3082,6 +3307,8 @@ async def get_payroll_time_breakdown(
                COALESCE(sh.work_hours, NULLIF(a.attendance_context->'actual'->>'work_hours','')::NUMERIC) AS scheduled_hours,
                COALESCE(NULLIF(a.attendance_context->'actual'->>'break_minutes','')::INTEGER, sh.break_minutes) AS break_minutes,
                COALESCE(ota.approved_hours, 0) AS approved_ot_hours,
+               (h.holiday_date IS NOT NULL) AS is_holiday,
+               h.holiday_name,
                public.fn_attendance_payable_hours(
                    a.attendance_context, a.actual_work_hours, a.check_in_time, a.check_out_time, a.late_minutes,
                    COALESCE(sh.work_hours, NULLIF(a.attendance_context->'actual'->>'work_hours','')::NUMERIC),
@@ -3093,6 +3320,7 @@ async def get_payroll_time_breakdown(
         FROM attendances a
         LEFT JOIN work_shifts sh ON sh.shift_id = a.shift_id
         LEFT JOIN attendance_overtime_approvals ota ON ota.attendance_id = a.attendance_id AND ota.decision = 'APPROVED'
+        LEFT JOIN public.public_holidays h ON h.holiday_date = a.work_date
         WHERE a.employee_id = :emp AND to_char(a.work_date, 'YYYY-MM') = :period
         ORDER BY a.work_date, a.check_in_time, a.attendance_id
     '''), {"emp": pr["employee_id"], "period": pr["salary_period"], "tol": tolerance})).mappings().all()]
@@ -3100,7 +3328,8 @@ async def get_payroll_time_breakdown(
     sessions = []
     for r in rows:
         enrich_session_record(r, int(tolerance))
-        payable = float(r["sql_payable_hours"] or 0)
+        is_hol = bool(r.get("is_holiday"))
+        payable = 0.0 if is_hol else float(r["sql_payable_hours"] or 0)
         shift_hours = float(r["scheduled_hours"]) if r.get("scheduled_hours") else None
         sessions.append({
             "attendance_id": r["attendance_id"],
@@ -3120,22 +3349,29 @@ async def get_payroll_time_breakdown(
             "ot_paid_hours": r["ot_paid_hours"],
             "over_cap_hours": r["over_cap_hours"],
             "payable_hours": round(payable, 2),
-            "short_hours": round(max(0.0, shift_hours - payable), 2) if shift_hours else 0.0,
+            "short_hours": 0.0 if is_hol else (round(max(0.0, shift_hours - payable), 2) if shift_hours else 0.0),
             "is_excluded": r["is_excluded"],
             "payroll_hold": r["payroll_hold"],
+            "is_holiday": is_hol,
+            "holiday_name": r.get("holiday_name"),
         })
 
     daily = float(pr.get("daily_standard_hours") or 8)
-    required = round((float(pr.get("standard_working_days") or 0) - float(pr.get("paid_leave_days") or 0)) * daily, 2)
+    holiday_paid = float(pr.get("holiday_paid_days") or 0)
+    required = round(
+        max(0.0, float(pr.get("standard_working_days") or 0) - float(pr.get("paid_leave_days") or 0) - holiday_paid) * daily,
+        2,
+    )
     payable_total = round(sum(s["payable_hours"] for s in sessions), 2)
     return {
         "payroll_id": payroll_id,
         "late_tolerance_minutes": tolerance,
+        "holiday_paid_days": holiday_paid,
         "required_hours": required,
         "payable_hours": payable_total,
         "present_hours": round(sum(float(s["present_hours"] or 0) for s in sessions), 2),
         "unworked_hours": float(pr.get("unworked_hours") or 0),
-        "in_shift_short_hours": round(sum(s["short_hours"] for s in sessions if s["payable_hours"] > 0), 2),
+        "in_shift_short_hours": round(sum(s["short_hours"] for s in sessions if s["payable_hours"] > 0 and not s["is_holiday"]), 2),
         "sessions": sessions,
     }
 

@@ -754,6 +754,7 @@ export interface Payroll {
   standard_working_days?: number;
   actual_working_days?: number;
   paid_leave_days?: number;
+  holiday_paid_days?: number;
   unpaid_leave_days?: number;
   absent_days?: number;            // Số ngày vắng mặt không phép
   daily_standard_hours?: number;   // Định mức giờ làm việc chuẩn mỗi ngày
@@ -1104,6 +1105,8 @@ export interface PublicHoliday {
   notes?: string | null;
   created_by?: number | null;
   created_at?: string;
+  warning?: string | null;
+  adjusted_leaves_count?: number | null;
 }
 
 export interface PayrollPeriodWorkingDays {
@@ -1281,11 +1284,14 @@ export interface PayrollTimeSession {
   short_hours: number;
   is_excluded: boolean;
   payroll_hold: boolean;
+  is_holiday?: boolean;
+  holiday_name?: string | null;
 }
 
 export interface PayrollTimeBreakdown {
   payroll_id: number;
   late_tolerance_minutes: number;
+  holiday_paid_days?: number;
   required_hours: number;
   payable_hours: number;
   present_hours: number;

@@ -775,6 +775,7 @@ class PayrollOut(BaseModel):
     standard_working_days: Optional[float] = 26.0
     actual_working_days: Optional[float] = 0.0
     paid_leave_days: Optional[float] = 0.0
+    holiday_paid_days: Optional[float] = 0.0
     unpaid_leave_days: Optional[float] = 0.0
     absent_days: Optional[float] = 0.0
     daily_standard_hours: Optional[float] = 8.0
@@ -1146,6 +1147,8 @@ class PublicHolidayOut(BaseModel):
     notes: Optional[str] = None
     created_by: Optional[int] = None
     created_at: Optional[datetime] = None
+    warning: Optional[str] = None
+    adjusted_leaves_count: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
 

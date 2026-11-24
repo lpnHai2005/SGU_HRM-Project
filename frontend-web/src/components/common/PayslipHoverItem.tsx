@@ -115,6 +115,10 @@ function sessionFormula(s: PayrollTimeSession, hourlyPrice: number): string {
   if (s.is_excluded) return 'HR loại phiên này → không tính công'
   if (s.payroll_hold) return 'Đang tạm giữ chờ giải trình → chưa tính công'
   if (!s.check_out_time) return 'Chưa check-out → chưa tính công'
+  if (s.is_holiday) {
+    const base = `Làm ngày Lễ${s.holiday_name ? ` (${s.holiday_name})` : ''}: không tính công thường; giờ ngoài ca tính qua OT 300% khi đã được duyệt`
+    return s.ot_paid_hours > 0 ? `${base} (OT đã duyệt: ${formatHM(s.ot_paid_hours)})` : base
+  }
   let f = `Có mặt ${formatHM(s.present_hours)}`
   if (s.break_deducted_hours > 0) f += ` − nghỉ giữa ca ${formatHM(s.break_deducted_hours)}`
   if (s.grace_credit_hours > 0) f += ` + ân hạn ${formatHM(s.grace_credit_hours)}`
@@ -163,13 +167,15 @@ export function ActualBaseSalaryHoverItem({
   const stdDays = Number(payroll.standard_working_days) || 26
   const actDays = Number(payroll.actual_working_days) || 0
   const paidDays = Number(payroll.paid_leave_days) || 0
+  const holidayDays = Number(payroll.holiday_paid_days) || 0
   const dailyPrice = stdDays > 0 ? Math.round(contractSalary / stdDays) : 0
   // Cùng đơn giá giờ với SP: lương HĐ ÷ công chuẩn ÷ định mức giờ/ngày của nhân viên.
   const hourlyPrice = stdDays > 0 ? Math.round(contractSalary / (stdDays * (Number(payroll.daily_standard_hours) || 8))) : 0
 
   const earnedWork = Math.round(actDays * dailyPrice)
   const earnedPaid = Math.round(paidDays * dailyPrice)
-  const totalEarned = earnedWork + earnedPaid
+  const earnedHoliday = Math.round(holidayDays * dailyPrice)
+  const totalEarned = earnedWork + earnedPaid + earnedHoliday
 
   const timeDed = Number(payroll.time_deduction_amount) || 0
   const actualBase = Number(payroll.actual_base_salary) || 0
@@ -194,7 +200,7 @@ export function ActualBaseSalaryHoverItem({
   const missingHours = Math.max(0, Math.round((unworked - inShiftShort) * 100) / 100)
   const missingMoney = timeDed - inShiftMoney
   const notable = sessions.filter(s => s.late_minutes > 0 || s.early_minutes > 0 || s.short_hours > 0
-    || s.ot_paid_hours > 0 || s.is_excluded || s.payroll_hold)
+    || s.ot_paid_hours > 0 || s.is_excluded || s.payroll_hold || s.is_holiday)
 
   return (
     <div
@@ -245,7 +251,11 @@ export function ActualBaseSalaryHoverItem({
             </span>
           </div>
           <div className="payslip-item-tooltip-row payslip-tooltip-subrow">
-            <span>• Đi làm {actDays} ngày: +{formatCurrency(earnedWork)} {paidDays > 0 ? `| Phép ${paidDays} ngày: +${formatCurrency(earnedPaid)}` : ''}</span>
+            <span>
+              • Đi làm {actDays} ngày: +{formatCurrency(earnedWork)}
+              {paidDays > 0 ? ` | Phép ${paidDays} ngày: +${formatCurrency(earnedPaid)}` : ''}
+              {holidayDays > 0 ? ` | Nghỉ Lễ/Tết ${holidayDays} ngày: +${formatCurrency(earnedHoliday)}` : ''}
+            </span>
           </div>
 
           <div className="payslip-calc-tooltip-divider" />
@@ -260,7 +270,7 @@ export function ActualBaseSalaryHoverItem({
           {timeDed > 0 ? (
             <div className="payslip-item-tooltip-row payslip-tooltip-subrow" style={{ color: 'var(--text-secondary, #52525b)', flexDirection: 'column', alignItems: 'flex-start', gap: '4px' }}>
               {bd && (
-                <div>• Giờ phải làm: ({stdDays} ngày chuẩn − {paidDays} ngày phép) × {dailyHours}h = <strong>{formatHM(bd.required_hours)}</strong></div>
+                <div>• Giờ phải làm: ({stdDays} ngày chuẩn − {paidDays} ngày phép{holidayDays > 0 ? ` − ${holidayDays} ngày Lễ` : ''}) × {dailyHours}h = <strong>{formatHM(bd.required_hours)}</strong></div>
               )}
               {bd && (
                 <div>• Giờ được tính lương: <strong>{formatHM(bd.payable_hours)}</strong> (có mặt {formatHM(bd.present_hours)}; đã trừ nghỉ giữa ca, cộng phút trễ trong ân hạn, mỗi ca tính tối đa bằng giờ ca)</div>

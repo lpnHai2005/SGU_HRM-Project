@@ -483,20 +483,24 @@ export function PayrollRegulationDialog({ onClose, initialTab }: PayrollRegulati
     }
     setSavingHoliday(true)
     try {
+      let saved: PublicHoliday
       if (editingHoliday) {
-        await payrollApi.updateHoliday(editingHoliday.holiday_id, {
+        saved = await payrollApi.updateHoliday(editingHoliday.holiday_id, {
           holiday_date: holidayDate,
           holiday_name: holidayName.trim(),
           notes: holidayNotes.trim() || undefined,
         })
         toast.success(`Đã cập nhật ngày lễ "${holidayName}"!`)
       } else {
-        await payrollApi.createHoliday({
+        saved = await payrollApi.createHoliday({
           holiday_date: holidayDate,
           holiday_name: holidayName.trim(),
           notes: holidayNotes.trim() || undefined,
         })
         toast.success(`Đã thêm ngày lễ "${holidayName}"!`)
+      }
+      if (saved?.warning) {
+        toast.warning(saved.warning, { duration: 7000 })
       }
       setShowHolidayModal(false)
       setEditingHoliday(null)
@@ -511,12 +515,21 @@ export function PayrollRegulationDialog({ onClose, initialTab }: PayrollRegulati
 
   // Xóa ngày lễ
   const handleDeleteHoliday = async (h: PublicHoliday) => {
-    if (!(await confirmAction(`Bạn có chắc chắn muốn xóa ngày lễ "${h.holiday_name}" (${h.holiday_date})? Ngày công chuẩn của tháng tương ứng sẽ tự động tăng thêm.`))) {
+    const now = new Date()
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+    const isPast = h.holiday_date < todayStr
+    const confirmMsg = isPast
+      ? `Xóa ngày Lễ đã qua sẽ làm toàn bộ nhân viên không chấm công ngày này bị trừ 1 ngày công. Bạn có chắc chắn muốn xóa ngày lễ "${h.holiday_name}" (${h.holiday_date})?`
+      : `Bạn có chắc chắn muốn xóa ngày lễ "${h.holiday_name}" (${h.holiday_date})? Nếu kỳ lương liên quan đang ở bản nháp, hệ thống sẽ gắn cờ cần tính lại lương.`
+    if (!(await confirmAction(confirmMsg))) {
       return
     }
     try {
-      await payrollApi.deleteHoliday(h.holiday_id)
+      const delRes = await payrollApi.deleteHoliday(h.holiday_id)
       toast.success(`Đã xóa ngày lễ "${h.holiday_name}"!`)
+      if (delRes?.warning) {
+        toast.warning(delRes.warning, { duration: 7000 })
+      }
       await fetchHolidays(holidayYear)
       await fetchWorkingDays(selectedWorkingPeriod)
     } catch (err: any) {
@@ -1130,12 +1143,12 @@ export function PayrollRegulationDialog({ onClose, initialTab }: PayrollRegulati
                       </div>
 
                       <div className="prd-stat-box">
-                        <div className="prd-stat-box-label">Lễ, Tết (T2-T7)</div>
+                        <div className="prd-stat-box-label">Lễ, Tết hưởng lương (T2–T7)</div>
                         <div className="prd-stat-box-value">{workingDaysData.holidays_count}</div>
                       </div>
 
                       <div className="prd-stat-box highlight">
-                        <div className="prd-stat-box-label">Công chuẩn tự động</div>
+                        <div className="prd-stat-box-label">Công chuẩn tự động (Tổng - CN)</div>
                         <div className="prd-stat-box-value">{workingDaysData.auto_standard_days} ngày</div>
                       </div>
                     </div>
@@ -1500,17 +1513,21 @@ export function PayrollRegulationDialog({ onClose, initialTab }: PayrollRegulati
                 </div>
 
                 <div className="prd-rule-formula">
-                  Lương CB thực nhận = (Lương Hợp Đồng / D_std) × (Công Đi Làm Thực Tế + Công Nghỉ Phép Hưởng Lương)
+                  Lương CB thực nhận = (Lương Hợp Đồng / D_std) × (Công Đi Làm Thực Tế + Phép Có Lương + Nghỉ Lễ/Tết Có Lương)
                 </div>
 
                 <div className="prd-rule-list">
                   <div className="prd-rule-item">
                     <span className="dot">•</span>
-                    <span><strong>Ngày công chuẩn tháng (D_std):</strong> Tự động tính theo lịch thực tế từng tháng = <code>Tổng ngày trong tháng - Số ngày Chủ Nhật - Số ngày Lễ/Tết (Thứ 2 đến Thứ 7)</code>. Ban Giám đốc có thể ghi đè thủ công cho kỳ lương tại Tab <em>"Lịch Lễ, Tết & Công chuẩn"</em>.</span>
+                    <span><strong>Ngày công chuẩn tháng (D_std):</strong> Tự động tính theo lịch thực tế từng tháng = <code>Tổng ngày trong tháng - Số ngày Chủ Nhật</code> (không trừ ngày Lễ, Tết khỏi công chuẩn). Ban Giám đốc có thể ghi đè thủ công cho kỳ lương tại Tab <em>"Lịch Lễ, Tết & Công chuẩn"</em>.</span>
                   </div>
                   <div className="prd-rule-item">
                     <span className="dot">•</span>
                     <span><strong>Nghỉ phép hưởng lương:</strong> Nghỉ phép năm (Annual Leave) được duyệt tính đủ 1.0 ngày công.</span>
+                  </div>
+                  <div className="prd-rule-item">
+                    <span className="dot">•</span>
+                    <span><strong>Nghỉ Lễ, Tết hưởng nguyên lương (Điều 112 BLLĐ):</strong> Các ngày Lễ/Tết (Thứ 2 đến Thứ 7) nằm trong danh mục của hệ thống được cộng vào <code>holiday_paid_days</code> (hưởng nguyên lương 100%) như ngày nghỉ phép có lương cho nhân viên đang có hợp đồng hiệu lực (trừ trường hợp nghỉ thai sản).</span>
                   </div>
                   <div className="prd-rule-item">
                     <span className="dot">•</span>

@@ -899,7 +899,7 @@ export const payrollApi = {
     return api.put<PublicHoliday>(`/payrolls/holidays/${holidayId}`, data);
   },
 
-  deleteHoliday: async (holidayId: number): Promise<{ message: string }> => {
+  deleteHoliday: async (holidayId: number): Promise<{ message: string; warning?: string | null; overlapping_leaves_count?: number }> => {
     return api.delete(`/payrolls/holidays/${holidayId}`);
   },
 

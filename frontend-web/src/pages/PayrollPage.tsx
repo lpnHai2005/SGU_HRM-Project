@@ -90,15 +90,22 @@ function getActualBaseSalaryFormula(payroll?: any): string | undefined {
   const contractSalary = Number(payroll.contract_salary) || 0
   const stdDays = Number(payroll.standard_working_days) || 26
   const actDays = Number(payroll.actual_working_days) || 0
+  const paidDays = Number(payroll.paid_leave_days) || 0
+  const holDays = Number(payroll.holiday_paid_days) || 0
   const dailyPrice = stdDays > 0 ? Math.round(contractSalary / stdDays) : 0
   const timeDed = Number(payroll.time_deduction_amount) || 0
+
+  const parts = [`${actDays} ngày làm`]
+  if (paidDays > 0) parts.push(`${paidDays} phép`)
+  if (holDays > 0) parts.push(`${holDays} lễ`)
+  const workSummary = parts.join(' + ')
 
   const baseDeductItem = payroll.details?.find((d: any) => d.item_code === 'BASE_SALARY_DEDUCTION')
   if (timeDed > 0) {
     const dedFormula = baseDeductItem?.calculation_formula || ('Khấu trừ: -' + formatCurrency(timeDed))
-    return 'Lương HĐ: ' + formatCurrency(contractSalary) + ' (Đơn giá ' + formatCurrency(dailyPrice) + '/ngày) | Thực tế: ' + actDays + '/' + stdDays + ' ngày | ' + dedFormula
+    return 'Lương HĐ: ' + formatCurrency(contractSalary) + ' (Đơn giá ' + formatCurrency(dailyPrice) + '/ngày) | Hưởng lương: ' + workSummary + ' / ' + stdDays + ' ngày | ' + dedFormula
   }
-  return 'Lương HĐ: ' + formatCurrency(contractSalary) + ' ÷ ' + stdDays + ' ngày chuẩn × ' + actDays + ' ngày thực tế'
+  return 'Lương HĐ: ' + formatCurrency(contractSalary) + ' ÷ ' + stdDays + ' ngày chuẩn × (' + workSummary + ')'
 }
 
 function parsePrintDate(dateStr?: string) {
@@ -421,16 +428,22 @@ export function PayrollPage({ user }: PayrollPageProps) {
         const stdDays = Number(monthlyPrintData.attendance?.standard_working_days ?? 26)
         const actDays = Number(monthlyPrintData.attendance?.actual_working_days ?? 0)
         const paidDays = Number(monthlyPrintData.attendance?.paid_leave_days ?? 0)
+        const holDays = Number(monthlyPrintData.attendance?.holiday_paid_days ?? 0)
         const dailyPrice = stdDays > 0 ? Math.round(contractSalary / stdDays) : 0
-        const earnedTotal = Math.round((actDays + paidDays) * dailyPrice)
+        const earnedTotal = Math.round((actDays + paidDays + holDays) * dailyPrice)
         const timeDed = Number(monthlyPrintData.summary?.time_deduction_amount) || 0
         const actualBase = Number(monthlyPrintData.summary?.actual_base_salary ?? e.amount)
 
+        const parts = [`${actDays} ngày làm`]
+        if (paidDays > 0) parts.push(`${paidDays} phép`)
+        if (holDays > 0) parts.push(`${holDays} lễ`)
+        const workSummary = parts.join(' + ')
+
         let formula = ''
         if (timeDed > 0) {
-          formula = 'Lương theo công: ' + formatCurrency(earnedTotal) + ' (' + actDays + ' ngày làm' + (paidDays > 0 ? (' + ' + paidDays + ' phép') : '') + ') | Trừ thời gian: -' + formatCurrency(timeDed)
+          formula = 'Lương theo công: ' + formatCurrency(earnedTotal) + ' (' + workSummary + ') | Trừ thời gian: -' + formatCurrency(timeDed)
         } else {
-          formula = 'Lương HĐ: ' + formatCurrency(contractSalary) + ' ÷ ' + stdDays + ' ngày chuẩn × ' + actDays + ' ngày thực tế'
+          formula = 'Lương HĐ: ' + formatCurrency(contractSalary) + ' ÷ ' + stdDays + ' ngày chuẩn × (' + workSummary + ')'
         }
 
         return {
@@ -884,7 +897,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
   const exportPayrollsToCsv = (data: Payroll[], period: string) => {
     const headers = [
       'Mã NV', 'Họ và Tên', 'Cửa hàng', 'Chức vụ', 'Kỳ lương',
-      'Công chuẩn', 'Công thực tế', 'Lương HĐ', 'Trừ thời gian', 'Lương CB thực',
+      'Công chuẩn', 'Công thực tế', 'Phép có lương', 'Nghỉ Lễ có lương', 'Lương HĐ', 'Trừ thời gian', 'Lương CB thực',
       'PC Chức vụ', 'PC Thâm niên', 'PC Dự án', 'PC Cơm xe',
       'Hoa hồng', 'Tổng thưởng', 'Tổng Gross', 'Bảo hiểm (10.5%)', 'Phạt trễ', 'Tổng giảm trừ', 'Thực lĩnh (NET)', 'Trạng thái'
     ]
@@ -896,6 +909,8 @@ export function PayrollPage({ user }: PayrollPageProps) {
       p.salary_period || period,
       p.standard_working_days ?? 0,
       p.actual_working_days ?? 0,
+      p.paid_leave_days ?? 0,
+      p.holiday_paid_days ?? 0,
       p.contract_salary ?? 0,
       p.time_deduction_amount ?? 0,
       p.actual_base_salary ?? 0,
@@ -2119,7 +2134,17 @@ export function PayrollPage({ user }: PayrollPageProps) {
 
                                 {/* Ngày công */}
                                 <td style={{ padding: '12px 10px', textAlign: 'center', fontFamily: 'var(--font-mono)' }}>
-                                  <strong>{pr.actual_working_days ?? '—'}</strong> / {pr.standard_working_days ?? '—'}
+                                  <div>
+                                    <strong>{pr.actual_working_days ?? '—'}</strong> / {pr.standard_working_days ?? '—'}
+                                  </div>
+                                  {((pr.paid_leave_days || 0) + (pr.holiday_paid_days || 0)) > 0 && (
+                                    <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                                      {[
+                                        (pr.paid_leave_days || 0) > 0 ? `+${pr.paid_leave_days} phép` : null,
+                                        (pr.holiday_paid_days || 0) > 0 ? `+${pr.holiday_paid_days} lễ` : null,
+                                      ].filter(Boolean).join(' ')}
+                                    </div>
+                                  )}
                                 </td>
 
                                 {/* Lương HĐ (ẩn khi mở subform) */}
@@ -2263,6 +2288,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                           <div>Công chuẩn: <strong>{selectedPayroll.standard_working_days ?? 26}</strong> ngày</div>
                           <div>Công thực tế: <strong style={{ color: 'var(--status-success)' }}>{selectedPayroll.actual_working_days ?? 0}</strong> ngày</div>
                           <div>Phép có lương: <strong>{selectedPayroll.paid_leave_days ?? 0}</strong> ngày</div>
+                          <div>Nghỉ Lễ/Tết có lương: <strong style={{ color: (selectedPayroll.holiday_paid_days || 0) > 0 ? 'var(--primary-color, #2563eb)' : 'inherit' }}>{selectedPayroll.holiday_paid_days ?? 0}</strong> ngày</div>
                           <div>Nghỉ không lương: <strong style={{ color: (selectedPayroll.unpaid_leave_days || 0) > 0 ? 'var(--status-error)' : 'inherit' }}>{selectedPayroll.unpaid_leave_days ?? 0}</strong> ngày</div>
                           <div>Vắng không phép: <strong style={{ color: (selectedPayroll.absent_days || 0) > 0 ? 'var(--status-error)' : 'inherit' }}>{selectedPayroll.absent_days ?? 0}</strong> ngày</div>
                           <div>Định mức ca: <strong>{selectedPayroll.daily_standard_hours ?? 8}h/ngày</strong></div>
@@ -2972,7 +2998,11 @@ export function PayrollPage({ user }: PayrollPageProps) {
       {isAttendanceRulesOpen && (
         <PayrollRegulationDialog
           initialTab="attendance"
-          onClose={() => setIsAttendanceRulesOpen(false)}
+          onClose={() => {
+            setIsAttendanceRulesOpen(false)
+            fetchPayrolls()
+            fetchWorkingDays(selectedPeriod)
+          }}
         />
       )}
       {isPayrollRegulationOpen && (
@@ -3082,6 +3112,7 @@ export function PayrollPage({ user }: PayrollPageProps) {
                     <div>Công chuẩn: <strong>{monthlyPrintData.attendance?.standard_working_days ?? selectedPayroll?.standard_working_days ?? 26} ngày</strong></div>
                     <div>Công thực tế: <strong>{monthlyPrintData.attendance?.actual_working_days ?? selectedPayroll?.actual_working_days ?? 0} ngày</strong></div>
                     <div>Phép năm có lương: <strong>{monthlyPrintData.attendance?.paid_leave_days ?? selectedPayroll?.paid_leave_days ?? 0} ngày</strong></div>
+                    <div>Nghỉ Lễ/Tết có lương: <strong>{monthlyPrintData.attendance?.holiday_paid_days ?? selectedPayroll?.holiday_paid_days ?? 0} ngày</strong></div>
                     <div>Nghỉ không lương: <strong>{monthlyPrintData.attendance?.unpaid_leave_days ?? selectedPayroll?.unpaid_leave_days ?? 0} ngày</strong></div>
                     <div>Vắng không phép: <strong>{monthlyPrintData.attendance?.absent_days ?? selectedPayroll?.absent_days ?? 0} ngày</strong></div>
                     <div>Định mức ca: <strong>{monthlyPrintData.attendance?.daily_standard_hours ?? selectedPayroll?.daily_standard_hours ?? 8}h/ngày</strong></div>
