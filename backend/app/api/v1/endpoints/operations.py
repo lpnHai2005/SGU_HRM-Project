@@ -333,6 +333,78 @@ def _as_time(value):
         return None
 
 
+def _effective_shift_values(row: dict) -> tuple[time | None, time | None, float | None, int]:
+    """Return the shift snapshot that governs this attendance session.
+
+    The check-in snapshot is authoritative unless HR explicitly reassigned the
+    session. A reassigned session uses the newly joined shift values.
+    """
+    ctx = row.get("attendance_context") or {}
+    if isinstance(ctx, str):
+        try:
+            ctx = json.loads(ctx)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            ctx = {}
+
+    actual = ctx.get("actual") or {}
+    review = ctx.get("hr_review") or {}
+    reassigned = review.get("review_decision") == "SHIFT_REASSIGNED"
+
+    def first_time(*values):
+        for value in values:
+            parsed = _as_time(value)
+            if parsed is not None:
+                return parsed
+        return None
+
+    def first_number(*values):
+        for value in values:
+            if value not in (None, ""):
+                try:
+                    return float(value)
+                except (TypeError, ValueError):
+                    continue
+        return None
+
+    if reassigned:
+        start_values = (row.get("scheduled_start"),)
+        end_values = (row.get("scheduled_end"),)
+        hours_values = (row.get("scheduled_hours"), row.get("scheduled_work_hours"))
+        break_values = (row.get("break_minutes"),)
+    else:
+        start_values = (actual.get("start_time"), row.get("scheduled_start"))
+        end_values = (actual.get("end_time"), row.get("scheduled_end"))
+        hours_values = (actual.get("work_hours"), row.get("scheduled_hours"), row.get("scheduled_work_hours"))
+        break_values = (actual.get("break_minutes"), row.get("break_minutes"))
+
+    start = first_time(*start_values)
+    end = first_time(*end_values)
+    hours = first_number(*hours_values)
+    break_minutes = int(first_number(*break_values) or 0)
+    return start, end, hours, max(0, break_minutes)
+
+
+def _shift_window(row: dict):
+    work_date = row.get("work_date")
+    if isinstance(work_date, str):
+        try:
+            work_date = date.fromisoformat(work_date[:10])
+        except ValueError:
+            return None
+    if not isinstance(work_date, date):
+        return None
+
+    start, end, scheduled_hours, break_minutes = _effective_shift_values(row)
+    if start is None or end is None:
+        return None
+
+    shift_start = datetime.combine(work_date, start, tzinfo=VIETNAM_TZ)
+    shift_end = datetime.combine(work_date, end, tzinfo=VIETNAM_TZ)
+    if end <= start:
+        shift_end += timedelta(days=1)
+    return shift_start, shift_end, scheduled_hours, break_minutes
+
+
 def in_shift_hours(row: dict) -> float | None:
     """Số giờ của phiên nằm trong khung ca (giờ Việt Nam, ca qua đêm cộng 1 ngày).
 
@@ -341,55 +413,54 @@ def in_shift_hours(row: dict) -> float | None:
     check_in, check_out, work_date = row.get("check_in_time"), row.get("check_out_time"), row.get("work_date")
     if not check_in or not check_out or not work_date:
         return None
-    ctx = row.get("attendance_context") or {}
-    if isinstance(ctx, str):
-        try:
-            ctx = json.loads(ctx)
-        except Exception:
-            ctx = {}
-    snapshot = ctx.get("actual") or {}
-    start = _as_time(row.get("scheduled_start") or snapshot.get("start_time"))
-    end = _as_time(row.get("scheduled_end") or snapshot.get("end_time"))
-    if start is None or end is None:
+    window = _shift_window(row)
+    if window is None:
         return None
-    if isinstance(work_date, str):
-        work_date = date.fromisoformat(work_date[:10])
-    shift_start = datetime.combine(work_date, start, tzinfo=VIETNAM_TZ)
-    shift_end = datetime.combine(work_date, end, tzinfo=VIETNAM_TZ)
-    if end <= start:
-        shift_end += timedelta(days=1)
+    shift_start, shift_end, _, _ = window
     local_in, local_out = _as_vietnam_datetime(check_in), _as_vietnam_datetime(check_out)
     overlap = (min(local_out, shift_end) - max(local_in, shift_start)).total_seconds()
     return round(max(0.0, overlap) / 3600, 2)
 
 
-def spans_shift_midpoint(row: dict) -> bool:
-    """Phiên có kéo qua thời điểm giữa ca không (giờ Việt Nam, ca qua đêm cộng 1 ngày).
+def fixed_shift_work_components(row: dict, base_hours: float | None = None) -> dict | None:
+    """Calculate payable regular time strictly inside the assigned shift.
 
-    Dùng để quyết định có trừ nghỉ giữa ca hay không — cùng quy tắc với fn_attendance_payable_hours.
+    Time before shift start or after shift end is never added to regular hours.
+    The grace period and overtime approvals are intentionally not used here;
+    those are separate attendance/payroll decisions.
     """
-    check_in, check_out, work_date = row.get("check_in_time"), row.get("check_out_time"), row.get("work_date")
-    if not check_in or not check_out or not work_date:
-        return False
-    ctx = row.get("attendance_context") or {}
-    if isinstance(ctx, str):
-        try:
-            ctx = json.loads(ctx)
-        except Exception:
-            ctx = {}
-    snapshot = ctx.get("actual") or {}
-    start = _as_time(row.get("scheduled_start") or snapshot.get("start_time"))
-    end = _as_time(row.get("scheduled_end") or snapshot.get("end_time"))
-    if start is None or end is None:
-        return False
-    if isinstance(work_date, str):
-        work_date = date.fromisoformat(work_date[:10])
-    shift_start = datetime.combine(work_date, start, tzinfo=VIETNAM_TZ)
-    shift_end = datetime.combine(work_date, end, tzinfo=VIETNAM_TZ)
-    if end <= start:
-        shift_end += timedelta(days=1)
+    check_in, check_out = row.get("check_in_time"), row.get("check_out_time")
+    window = _shift_window(row)
+    if not check_in or not check_out or window is None:
+        return None
+
+    shift_start, shift_end, scheduled_hours, break_minutes = window
+    local_in, local_out = _as_vietnam_datetime(check_in), _as_vietnam_datetime(check_out)
+    if local_out <= local_in:
+        return {"payable_hours": 0.0, "in_shift_hours": 0.0, "break_deducted_hours": 0.0}
+
+    overlap_seconds = max(0.0, (min(local_out, shift_end) - max(local_in, shift_start)).total_seconds())
+    in_shift = overlap_seconds / 3600.0
+    recorded_hours = max(0.0, float(row.get("actual_work_hours") or 0.0))
+    candidate_hours = max(0.0, float(base_hours)) if base_hours is not None else recorded_hours
+    credited_before_break = min(in_shift, candidate_hours)
+
     midpoint = shift_start + (shift_end - shift_start) / 2
-    return _as_vietnam_datetime(check_in) <= midpoint <= _as_vietnam_datetime(check_out)
+    break_hours = min(credited_before_break, break_minutes / 60.0) if (
+        break_minutes > 0 and local_in <= midpoint <= local_out
+    ) else 0.0
+
+    window_net_hours = max(0.0, (shift_end - shift_start).total_seconds() / 3600.0 - break_minutes / 60.0)
+    configured_cap = scheduled_hours if scheduled_hours is not None and scheduled_hours > 0 else window_net_hours
+    # Inconsistent shift configuration must not create payable time beyond the
+    # physical shift window after its configured break.
+    cap = min(configured_cap, window_net_hours)
+    payable = min(max(0.0, credited_before_break - break_hours), cap)
+    return {
+        "payable_hours": round(payable, 2),
+        "in_shift_hours": round(in_shift, 2),
+        "break_deducted_hours": round(break_hours, 2),
+    }
 
 
 def raw_work_credit(row: dict) -> dict:
@@ -399,7 +470,8 @@ def raw_work_credit(row: dict) -> dict:
     """
     raw_hours = round(max(0.0, float(row.get("actual_work_hours") or 0)), 2)
     within_shift = in_shift_hours(row)
-    credited = round(min(raw_hours, within_shift), 2) if within_shift is not None else raw_hours
+    # Missing fixed-shift data never falls back to raw elapsed time.
+    credited = round(min(raw_hours, within_shift), 2) if within_shift is not None else 0.0
     return {"raw_work_hours": raw_hours, "credited_work_hours": credited,
             "hr_excluded_hours": round(raw_hours - credited, 2)}
 
@@ -523,31 +595,12 @@ def enrich_session_record(row: dict, tolerance_minutes: int = 15) -> dict:
     row["is_overdue_open_session"] = is_overdue_open
     row["payroll_hold"] = payroll_hold
 
-    # MISSION ATT-UI-06: Sliding Shift mechanism
-    # outside_schedule_hours only occurs when actual_work_hours exceeds scheduled_work_hours
-    scheduled_wh = (
-        row.get("scheduled_hours")
-        or row.get("scheduled_work_hours")
-        or (ctx.get("actual") or {}).get("work_hours")
-    )
-    if scheduled_wh is not None:
-        try:
-            s_wh = float(scheduled_wh)
-            outside_schedule_hours = max(0.0, round(actual_hours - s_wh, 2))
-        except Exception:
-            outside_schedule_hours = overtime_h
-    else:
-        outside_schedule_hours = overtime_h
-
-    row["outside_schedule_hours"] = outside_schedule_hours
     row["excessive_late_threshold_minutes"] = EXCESSIVE_LATE_THRESHOLD_MINUTES
 
-    # Giờ thô trước khi áp quyết định HR; phần HR loại khỏi giờ công ghi riêng
-    # để bảng tháng, bản in và chi tiết cộng ra cùng một con số.
-    raw_work_hours = actual_hours
+    # Keep measured elapsed time separate from regular hours credited to the shift.
+    raw_work_hours = max(0.0, actual_hours)
     hr_excluded_hours = 0.0
 
-    # Evaluate decision logic (Mục 3 & 4)
     if review_decision == "CONFIRMED_LATE":
         is_valid_late = True
         is_grace_late = False
@@ -562,24 +615,23 @@ def enrich_session_record(row: dict, tolerance_minutes: int = 15) -> dict:
         needs_hr_review = False
         hr_excluded_hours = raw_work_hours
         actual_hours = 0.0
-        outside_schedule_hours = 0.0
     elif review_decision == "CONFIRMED_RAW_WORK":
-        # "Xác nhận công loại trừ thô": chỉ công nhận phần giờ nằm trong khung ca,
-        # phần ngoài ca bị loại khỏi giờ công. Không kết luận trễ/sớm hợp lệ.
-        # Ưu tiên số giờ đã lưu lúc HR xử lý (bảng lương đọc cùng số này qua
-        # fn_attendance_payable_hours), chỉ tự tính khi phiên cũ chưa có.
         stored = (hr_rev or {}).get("credited_work_hours")
-        within_shift = float(stored) if stored is not None else in_shift_hours(row)
+        within_shift = in_shift_hours(row)
+        if stored is not None and within_shift is not None:
+            try:
+                within_shift = min(within_shift, max(0.0, float(stored)))
+            except (TypeError, ValueError):
+                pass
         if within_shift is not None:
-            credited = min(raw_work_hours, within_shift)
+            credited = min(raw_work_hours, max(0.0, within_shift))
             hr_excluded_hours = round(raw_work_hours - credited, 2)
             actual_hours = credited
-        outside_schedule_hours = 0.0
-        is_excluded = False
-        needs_hr_review = False
         is_valid_late = False
         is_grace_late = False
         is_valid_early = False
+        is_excluded = False
+        needs_hr_review = False
     elif review_decision == "SHIFT_REASSIGNED":
         is_excluded = False
         needs_hr_review = False
@@ -600,38 +652,56 @@ def enrich_session_record(row: dict, tolerance_minutes: int = 15) -> dict:
         is_grace_late = is_grace_late_session(row, tolerance_minutes)
         is_valid_early = is_valid_early_session(row)
 
-    # Giờ được tính công của phiên — cùng quy tắc với fn_attendance_payable_hours (bảng lương):
-    #   - trừ nghỉ giữa ca (break_minutes) khi phiên kéo qua thời điểm giữa ca,
-    #   + cộng lại phút trễ trong ân hạn (1..tolerance phút),
-    #   - trừ giờ OT đã duyệt của phiên (trả riêng qua tiền OT, không tính hai lần),
-    #   tối đa bằng số giờ của ca; phần vượt ca không có OT duyệt thì không tính công.
-    grace_credit = ot_paid = over_cap = payable = break_deducted = 0.0
-    if check_in and check_out and not is_excluded and not payroll_hold:
-        worked = actual_hours
-        if break_m and break_m > 0 and spans_shift_midpoint(row):
-            break_deducted = min(worked, break_m / 60.0)
-            worked -= break_deducted
-        if 1 <= late_m <= tolerance_minutes:
-            grace_credit = late_m / 60.0
-        ot_paid = min(float(row.get("approved_ot_hours") or 0), worked)
-        base = worked + grace_credit - ot_paid
-        cap = row.get("scheduled_hours") or (ctx.get("actual") or {}).get("work_hours")
-        cap = float(cap) if cap not in (None, "") and float(cap) > 0 else None
-        if cap is not None and base > cap:
-            over_cap = base - cap
-            base = cap
-        payable = max(0.0, base)
-    row["payable_hours"] = round(payable, 2)
-    row["grace_credit_hours"] = round(grace_credit, 2)
-    row["ot_paid_hours"] = round(ot_paid, 2)
-    row["over_cap_hours"] = round(over_cap, 2)
-    row["break_deducted_hours"] = round(break_deducted, 2)
+    stored_credit = None
+    if review_decision == "CONFIRMED_RAW_WORK" and hr_rev:
+        try:
+            if hr_rev.get("credited_work_hours") is not None:
+                stored_credit = float(hr_rev["credited_work_hours"])
+        except (TypeError, ValueError):
+            stored_credit = None
+
+    shift_components = fixed_shift_work_components(row, base_hours=stored_credit)
+    in_shift = shift_components["in_shift_hours"] if shift_components else None
+    if check_in and check_out and not is_excluded and not payroll_hold and shift_components is None:
+        # Missing schedule data must never fall back to raw elapsed time.
+        payroll_hold = True
+        needs_hr_review = True
+        quality_status = "NEEDS_REVIEW"
+        review_status = "PENDING"
+        if "FIXED_SHIFT_MISSING" not in quality_flags:
+            quality_flags.append("FIXED_SHIFT_MISSING")
+
+    payable_hours = 0.0
+    break_deducted_hours = 0.0
+    if shift_components is not None and not is_excluded and not payroll_hold:
+        payable_hours = shift_components["payable_hours"]
+        break_deducted_hours = shift_components["break_deducted_hours"]
+
+    if in_shift is None:
+        hr_excluded_hours = raw_work_hours
+    else:
+        hr_excluded_hours = round(max(0.0, raw_work_hours - min(raw_work_hours, in_shift)), 2)
+    if is_excluded:
+        hr_excluded_hours = raw_work_hours
+
+    outside_schedule_hours = 0.0 if is_excluded else hr_excluded_hours
+    approved_ot_hours = max(0.0, float(row.get("approved_ot_hours") or 0.0))
+    ot_paid_hours = min(approved_ot_hours, outside_schedule_hours)
 
     row["is_excluded"] = is_excluded
     row["payroll_hold"] = payroll_hold
+    row["session_quality_status"] = quality_status
+    row["quality_flags"] = quality_flags
+    row["review_status"] = review_status
     row["raw_work_hours"] = raw_work_hours
     row["hr_excluded_hours"] = hr_excluded_hours
+    row["in_shift_hours"] = round(in_shift, 2) if in_shift is not None else None
     row["actual_work_hours"] = actual_hours
+    row["payable_hours"] = payable_hours
+    row["break_deducted_hours"] = round(break_deducted_hours, 2)
+    row["grace_credit_hours"] = 0.0
+    row["ot_paid_hours"] = round(ot_paid_hours, 2)
+    row["over_cap_hours"] = round(outside_schedule_hours, 2)
     row["outside_schedule_hours"] = outside_schedule_hours
     row["is_valid_late"] = is_valid_late
     row["is_grace_late"] = is_grace_late
@@ -651,22 +721,18 @@ def summarize_work_sessions(rows: list[dict]) -> dict:
     Một nguồn số duy nhất cho bảng công tháng, bản in xác nhận và chi tiết nhân viên:
       - Chỉ phiên đã check-out mới có công; phiên mở chưa tính.
       - Phiên HR loại trừ không có công; phiên "cần thêm giải trình" bị tạm giữ.
-      - Giờ được tính mỗi phiên = giờ làm + phút trễ trong ân hạn − giờ OT đã duyệt, tối đa bằng giờ ca
-        (khớp fn_attendance_payable_hours của bảng lương).
-      - Phiên kéo qua giữa ca của ca có nghỉ giữa ca bị trừ break_minutes.
-      - raw_work_hours + grace_credit_hours = actual_work_hours + excluded_hours + held_hours
-            + ot_paid_hours + over_cap_hours + break_deducted_hours.
+      - Gi\u1edd t\u00ednh c\u00f4ng l\u00e0 ph\u1ea7n n\u1eb1m trong ca c\u1ed1 \u0111\u1ecbnh; gi\u1edd th\u00f4 theo d\u00f5i ri\u00eang.
     """
     closed = [r for r in rows if r.get('check_in_time') and r.get('check_out_time')]
     held = [r for r in closed if r.get('payroll_hold') and not r.get('is_excluded')]
     counted = [r for r in closed if not r.get('is_excluded') and not r.get('payroll_hold')]
 
-    def payable(r):
-        return float(r.get('payable_hours', r.get('actual_work_hours')) or 0)
+    def payable(row):
+        return float(row.get('payable_hours', row.get('actual_work_hours')) or 0)
 
-    actual = round(sum(payable(r) for r in counted), 2)
+    actual = round(sum(payable(row) for row in counted), 2)
     return {
-        'working_days': len({str(r['work_date'])[:10] for r in counted if payable(r) > 0}),
+        'working_days': len({str(r['work_date'])[:10] for r in counted if r.get('work_date') and payable(r) > 0}),
         'actual_work_hours': actual,
         'grace_credit_hours': round(sum(float(r.get('grace_credit_hours') or 0) for r in counted), 2),
         'ot_paid_hours': round(sum(float(r.get('ot_paid_hours') or 0) for r in counted), 2),
@@ -677,7 +743,7 @@ def summarize_work_sessions(rows: list[dict]) -> dict:
         'excluded_hours': round(sum(float(r.get('hr_excluded_hours') or 0) for r in closed if not r.get('payroll_hold') or r.get('is_excluded')), 2),
         'trimmed_outside_shift_hours': round(sum(float(r.get('hr_excluded_hours') or 0) for r in closed if not r.get('is_excluded') and not r.get('payroll_hold')), 2),
         'held_session_count': len(held),
-        'held_hours': round(sum(float(r.get('actual_work_hours') or 0) for r in held), 2),
+        'held_hours': round(sum(float(r.get('raw_work_hours', r.get('actual_work_hours')) or 0) for r in held), 2),
         'open_session_count': sum(1 for r in rows if r.get('check_in_time') and not r.get('check_out_time')),
         'outside_schedule_hours': round(sum(float(r.get('outside_schedule_hours') or 0) for r in counted), 2),
     }
@@ -687,7 +753,7 @@ def summarize_work_sessions(rows: list[dict]) -> dict:
 async def monthly_attendance(period:str=Query(...,pattern=r'^\d{4}-(0[1-9]|1[0-2])$'),
     employee_id:int|None=None,department_id:int|None=None,store_id:int|None=None,status:str|None=None,
     user=Depends(get_current_user),db:AsyncSession=Depends(get_db)):
-    """Month-level workforce view; keep each attendance session for drill-down."""
+    """Monthly attendance summary with working-hour totals and session details."""
     tolerance_minutes, penalty_amount = await get_late_policy_settings(db)
     
     # Lấy ngày công chuẩn động theo lịch & ghi đè từ view v_payroll_period_working_days
@@ -740,6 +806,7 @@ async def monthly_attendance(period:str=Query(...,pattern=r'^\d{4}-(0[1-9]|1[0-2
     ))).scalar_one())
     if not ids: return {'period':period,'employees':[],'summary':{
         'total_employees':0,'with_attendance':0,'without_attendance':0,'flagged_sessions':0,
+        'total_working_days':0.0,'total_actual_work_hours':0.0,
         'total_late_days':0,'total_late_sessions':0,'total_late_minutes':0,'total_late_penalty_amount':0,
         'total_grace_late_sessions':0,'total_grace_late_minutes':0,'employees_with_late':0,
         'total_early_days':0,'total_early_sessions':0,'total_early_minutes':0,'employees_with_early':0,
@@ -897,6 +964,8 @@ async def monthly_attendance(period:str=Query(...,pattern=r'^\d{4}-(0[1-9]|1[0-2
         'total_verified_ot_hours': (round(sum(p['verified_ot_hours'] or 0 for p in result), 2)
                                     if verified_ot_source_available else None),
         'verified_ot_source_available': verified_ot_source_available,
+        'total_working_days': round(sum(p['working_days'] for p in result), 2),
+        'total_actual_work_hours': round(sum(p['actual_work_hours'] for p in result), 2),
         'standard_working_days': standard_working_days,
     }
     return {
@@ -1505,6 +1574,9 @@ async def resolve_attendance_session(
         or float(session_dict.get('actual_work_hours') or 0) <= 0
     ):
         raise HTTPException(400, "Chỉ xác nhận công thực tế cho phiên đã có check-in, check-out và giờ công lớn hơn 0.")
+
+    if decision == 'CONFIRMED_RAW_WORK' and in_shift_hours(session_dict) is None:
+        raise HTTPException(409, "Kh\u00f4ng th\u1ec3 x\u00e1c nh\u1eadn gi\u1edd c\u00f4ng khi thi\u1ebfu khung ca c\u1ed1 \u0111\u1ecbnh. Vui l\u00f2ng g\u00e1n/kh\u00f4i ph\u1ee5c ca l\u00e0m vi\u1ec7c tr\u01b0\u1edbc.")
 
     # Optimistic Concurrency Check
     ctx = session_dict.get("attendance_context") or {}
