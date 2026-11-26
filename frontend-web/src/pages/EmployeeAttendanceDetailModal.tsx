@@ -63,6 +63,7 @@ export interface AttendanceSession {
   net_duration_minutes?: number | null
   break_minutes?: number | null
   actual_work_hours?: number | null
+  payable_hours?: number | null
   late_minutes?: number | null
   early_minutes?: number | null
   outside_hours?: number | null
@@ -721,6 +722,8 @@ function AttendanceSessionTableRow({
   const [menuOpen, setMenuOpen] = useState(false)
   const [menuPos, setMenuPos] = useState<{ top?: number; bottom?: number; right: number } | null>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
+  const payableHours = session.payable_hours == null ? null : Number(session.payable_hours)
+  const hasPayableHours = payableHours !== null && Number.isFinite(payableHours)
 
   useEffect(() => {
     if (!menuOpen) return
@@ -967,11 +970,7 @@ function AttendanceSessionTableRow({
       </td>
       <td style={{ textAlign: 'center' }}>
         <div style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text-primary)' }}>
-          {session.actual_work_hours !== undefined && session.actual_work_hours !== null
-            ? `${Number(session.actual_work_hours).toFixed(1)}h công`
-            : session.raw_duration_minutes
-            ? formatDurationMinutes(session.raw_duration_minutes)
-            : '0h'}
+          {hasPayableHours ? `${Math.max(0, payableHours).toFixed(2)}h công` : 'Chưa tính'}
         </div>
         <div style={{ fontSize: '10.5px', color: 'var(--text-tertiary)', marginTop: '2px' }}>
           {session.raw_duration_minutes ? (
@@ -1379,14 +1378,12 @@ export function EmployeeAttendanceDetailModal({
   const totalLatePenalty =
     employee.late_penalty_amount ?? (employee.late_session_count ?? 0) * 50000
 
-  const totalActualHours = filteredSessions.reduce((sum, s) => {
-    const hrs =
-      s.actual_work_hours != null
-        ? Number(s.actual_work_hours)
-        : s.raw_duration_minutes
-        ? s.raw_duration_minutes / 60
-        : 0
-    return sum + (Number.isFinite(hrs) ? Math.max(0, hrs) : 0)
+  const hasCompletePayableHours = filteredSessions.every(
+    s => s.payable_hours != null && Number.isFinite(Number(s.payable_hours))
+  )
+  const totalPayableHours = filteredSessions.reduce((sum, s) => {
+    const hours = s.payable_hours == null ? 0 : Number(s.payable_hours)
+    return sum + (Number.isFinite(hours) ? Math.max(0, hours) : 0)
   }, 0)
 
   const totalLateMinutes = filteredSessions.reduce(
@@ -1521,11 +1518,11 @@ export function EmployeeAttendanceDetailModal({
                 (employee.needs_review_session_count ?? 0) > 0 ? 'is-review' : 'is-time'
               }`}
             >
-              <div className="att-emp-kpi-label">Giờ thực tế / Phân ca</div>
+              <div className="att-emp-kpi-label">Giờ công trong ca / Phân ca</div>
               <div className="att-emp-kpi-value">
-                {employee.actual_work_hours?.toFixed(1) ?? '0.0'}{' '}
+                {employee.actual_work_hours?.toFixed(2) ?? '0.00'}{' '}
                 <span className="unit">h</span>{' '}
-                <span className="sub-val">/ {employee.scheduled_hours?.toFixed(1) ?? '0.0'}h</span>
+                <span className="sub-val">/ {employee.scheduled_hours?.toFixed(2) ?? '0.00'}h</span>
               </div>
               <div className="att-emp-kpi-sub">
                 {employee.working_days ?? 0} ngày làm việc thực tế
@@ -1598,7 +1595,12 @@ export function EmployeeAttendanceDetailModal({
                   <th>Ca làm việc</th>
                   <th style={{ width: '95px' }}>Khung giờ ca</th>
                   <th style={{ width: '135px' }}>Check-in → Check-out</th>
-                  <th style={{ width: '105px', textAlign: 'center' }}>THỜI LƯỢNG</th>
+                  <th
+                    style={{ width: '120px', textAlign: 'center' }}
+                    title="Giờ công hợp lệ trong ca cố định, đã áp dụng giới hạn ca và giờ nghỉ; OT được hiển thị riêng."
+                  >
+                    GIỜ CÔNG
+                  </th>
                   <th style={{ width: '115px', textAlign: 'center' }}>Phút trễ / sớm</th>
                   <th style={{ width: '110px', textAlign: 'center' }}>Phân loại Đi trễ &amp; Phạt</th>
                   <th style={{ width: '100px', textAlign: 'center' }}>Trạng thái &amp; Đánh giá HR</th>
@@ -1656,10 +1658,17 @@ export function EmployeeAttendanceDetailModal({
                       color: 'var(--text-secondary)',
                     }}
                   >
-                    TỔNG CỘNG:
+                    TỔNG GIỜ CÔNG:
                   </td>
-                  <td style={{ textAlign: 'center', fontWeight: 700, color: 'var(--text-primary)' }}>
-                    {totalActualHours.toFixed(1)}h
+                  <td
+                    style={{ textAlign: 'center', fontWeight: 700, color: 'var(--text-primary)' }}
+                    title={
+                      hasCompletePayableHours
+                        ? 'Tổng giờ công trong ca của các phiên đang hiển thị.'
+                        : 'Chưa thể cộng tổng chính xác vì thiếu giờ công đã chuẩn hóa ở một hoặc nhiều phiên.'
+                    }
+                  >
+                    {hasCompletePayableHours ? `${totalPayableHours.toFixed(2)}h` : '—'}
                   </td>
                   <td style={{ textAlign: 'center', fontWeight: 700 }}>
                     {totalLateMinutes > 0 ? (
